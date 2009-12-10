@@ -62,6 +62,7 @@
 #include <string.h>
 #include <getopt.h>
 #include <limits.h>
+#include <ctype.h>
 
 #ifdef __linux__
 /* libcfs.h is not really needed here, but on SLES10/PPC, fs.h includes idr.h which
@@ -1772,7 +1773,8 @@ int main(int argc, char *const argv[])
                 if (ret == 0)
                         mop.mo_flags |= MO_IS_LOOP;
 
-                sprintf(always_mountopts, "errors=remount-ro");
+                strscat(default_mountopts, ",errors=remount-ro",
+                        sizeof(default_mountopts));
                 if (IS_MDT(ldd) || IS_MGS(ldd))
                         strscat(always_mountopts, ",iopen_nopriv,user_xattr",
                                 sizeof(always_mountopts));
@@ -1792,7 +1794,7 @@ int main(int argc, char *const argv[])
         }
         case LDD_MT_SMFS: {
                 mop.mo_flags |= MO_IS_LOOP;
-                sprintf(always_mountopts, "type=ext3,dev=%s",
+                sprintf(always_mountopts, ",type=ext3,dev=%s",
                         mop.mo_device);
                 break;
         }
