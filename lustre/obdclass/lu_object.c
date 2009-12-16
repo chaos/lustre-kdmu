@@ -555,6 +555,61 @@ static struct lu_object *lu_object_find_try(const struct lu_env *env,
 }
 
 /**
+ * allocates object with 0 (non-assiged) fid
+ * XXX: temporary solution to be able to assign fid in ->do_create()
+ *      till we have fully-functional OST fids
+ */
+struct lu_object *lu_object_anon(const struct lu_env *env,
+                                 struct lu_device *dev,
+                                 const struct lu_object_conf *conf)
+{
+        struct lu_fid     fid;
+        struct lu_object *o;
+
+        fid.f_seq = 0;
+        fid.f_oid = 0;
+        fid.f_ver = 0;
+
+        o = lu_object_alloc(env, dev, &fid, conf);
+
+        return o;
+}
+EXPORT_SYMBOL(lu_object_anon);
+
+/**
+ * XXX: temporary solution to be able to assign fid in ->do_create()
+ *      till we have fully-functional OST fids
+ */
+void lu_object_assign_fid(const struct lu_env *env, struct lu_object *o,
+                          struct lu_fid *fid)
+{
+        struct lu_site    *s = o->lo_dev->ld_site;
+        struct lu_fid     *old = &o->lo_header->loh_fid;
+        struct lu_object  *shadow;
+        struct hlist_head *bucket;
+        cfs_waitlink_t     waiter;
+
+        LASSERT(old->f_oid == 0 && old->f_seq == 0 && old->f_ver == 0);
+
+        bucket = s->ls_hash + fid_hash(fid, s->ls_hash_bits);
+
+        write_lock(&s->ls_guard);
+        
+        shadow = htable_lookup(s, bucket, fid, &waiter);
+        /* supposed to be unique */
+        LASSERT(shadow == NULL);
+
+        *old = *fid;
+        hlist_add_head(&o->lo_header->loh_hash, bucket);
+        list_add_tail(&o->lo_header->loh_lru, &s->ls_lru);
+        ++ s->ls_busy;
+        ++ s->ls_total;
+
+        write_unlock(&s->ls_guard);
+}
+EXPORT_SYMBOL(lu_object_assign_fid);
+
+/**
  * Much like lu_object_find(), but top level device of object is specifically
  * \a dev rather than top level device of the site. This interface allows
  * objects of different "stacking" to be created within the same site.
