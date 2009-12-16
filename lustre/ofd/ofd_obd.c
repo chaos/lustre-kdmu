@@ -683,6 +683,10 @@ int filter_setattr(struct obd_export *exp,
                        info->fti_fid.f_seq);
                 GOTO(out, rc = PTR_ERR(fo));
         }
+        if (!filter_object_exists(fo)) {
+                CERROR("can't find object "DFID"\n", PFID(&info->fti_fid));
+                GOTO(out_unlock, rc = -ENOENT);
+        }
 
         la_from_obdo(&info->fti_attr, oinfo->oi_oa, oinfo->oi_oa->o_valid);
         info->fti_attr.la_valid &= ~LA_TYPE;
