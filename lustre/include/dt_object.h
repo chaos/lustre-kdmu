@@ -691,6 +691,11 @@ struct dt_object *dt_store_open(const struct lu_env *env,
                                 const char *filename,
                                 struct lu_fid *fid);
 
+struct dt_object *dt_reg_open_or_create(const struct lu_env *env,
+                                        struct dt_device *dt,
+                                        const struct lu_fid *fid,
+                                        struct lu_attr *attr);
+
 struct dt_object *dt_locate(const struct lu_env *env,
                             struct dt_device *dev,
                             const struct lu_fid *fid);
@@ -988,6 +993,28 @@ static inline int dt_declare_delete(const struct lu_env *env,
         return dt->do_index_ops->dio_declare_delete(env, dt, key, th);
 }
 
+static inline int dt_declare_xattr_set(const struct lu_env *env,
+                                      struct dt_object *dt,
+                                      const int buflen, const char *name, int fl,
+                                      struct thandle *th)
+{
+        return dt->do_ops->do_declare_xattr_set(env, dt, buflen, name, fl, th);
+}
+
+static inline int dt_xattr_set(const struct lu_env *env,
+                              struct dt_object *dt, const struct lu_buf *buf,
+                              const char *name, int fl, struct thandle *th,
+                              struct lustre_capa *capa)
+{
+        return dt->do_ops->do_xattr_set(env, dt, buf, name, fl, th, capa);
+}
+
+static inline int dt_xattr_get(const struct lu_env *env,
+                              struct dt_object *dt, struct lu_buf *buf,
+                              const char *name, struct lustre_capa *capa)
+{
+        return dt->do_ops->do_xattr_get(env, dt, buf, name, capa);
+}
 
 static inline int dt_delete(const struct lu_env *env,
                                     struct dt_object *dt,

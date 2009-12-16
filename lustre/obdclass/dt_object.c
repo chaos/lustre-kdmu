@@ -384,6 +384,59 @@ struct dt_object *dt_store_open(const struct lu_env *env,
 }
 EXPORT_SYMBOL(dt_store_open);
 
+struct dt_object *dt_reg_open_or_create(const struct lu_env *env,
+                                        struct dt_device *dt,
+                                        const struct lu_fid *fid,
+                                        struct lu_attr *attr)
+{
+        struct dt_object_format  dof;
+        struct dt_object        *o;
+        struct thandle          *th;
+        int                      rc;
+        ENTRY;
+
+        o = dt_locate(env, dt, fid);
+        if (IS_ERR(o))
+                RETURN(o);
+
+        if (dt_object_exists(o))
+                RETURN(o);
+
+        dof.dof_type = dt_mode_to_dft(S_IFREG);
+
+        th = dt_trans_create(env, dt);
+        if (IS_ERR(th))
+                GOTO(out, rc = PTR_ERR(th));
+
+        rc = dt_declare_create(env, o, attr, NULL, &dof, th);
+        if (rc)
+                GOTO(trans_stop, rc);
+
+        rc = dt_trans_start(env, dt, th);
+        if (rc)
+                GOTO(trans_stop, rc);
+
+        dt_write_lock(env, o, 0);
+        if (dt_object_exists(o))
+                GOTO(unlock, rc = 0);
+
+        rc = dt_create(env, o, attr, NULL, &dof, th);
+
+unlock:
+        dt_write_unlock(env, o);
+
+trans_stop:
+        dt_trans_stop(env, dt, th);
+out:
+        if (rc) {
+                lu_object_put(env, &o->do_lu);
+                RETURN(ERR_PTR(rc));
+        }
+        RETURN(o);
+}
+EXPORT_SYMBOL(dt_reg_open_or_create);
+
+
 /* dt class init function. */
 int dt_global_init(void)
 {
