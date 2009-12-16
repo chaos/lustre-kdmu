@@ -1196,13 +1196,20 @@ out:
         RETURN(rc);
 }
 
-static void stop_temp_site(struct super_block *sb)
+/*
+ * we used our temporary site and special mountconf device
+ * now it's time to make site persistent and create special
+ * obd device so that other devices can find OSD and site
+ */
+static void convert_temp_site(struct super_block *sb)
 {
         struct lustre_sb_info *lsi = s2lsi(sb);
         struct lu_env          env;
         struct mconf_device   *mdev;
         int                    rc;
         struct lu_site        *site;
+        struct obd_device     *obd;
+        char                  *obdname;
 
         LASSERT(lsi);
         LASSERT(lsi->lsi_dt_dev);
@@ -1217,12 +1224,26 @@ static void stop_temp_site(struct super_block *sb)
         rc = lu_env_init(&env, mdev->mcf_lu_dev.ld_type->ldt_ctx_tags);
         LASSERT(rc == 0);
         lu_site_purge(&env, site, ~0);
-        lu_site_fini(site);
         lu_env_fini(&env);
 
-        lsi->lsi_dt_dev->dd_lu_dev.ld_site = NULL;
+        LASSERT(site->ls_total == 0);
+        site->ls_top_dev = NULL;
+        site->ls_bottom_dev = &lsi->lsi_dt_dev->dd_lu_dev;
 
-        OBD_FREE_PTR(site);
+        /* create obd device so that other device can find OSD/site */
+        OBD_ALLOC(obdname, strlen(lsi->lsi_ldd->ldd_svname) + strlen("-dsk") + 1);
+        LASSERT(obdname);
+        strcpy(obdname, lsi->lsi_ldd->ldd_svname);
+        strcat(obdname, "-dsk");
+
+        obd = class_newdev("mconf", obdname);
+        LASSERT(!IS_ERR(obd));
+        obd->obd_attached = 1;
+
+        obd->obd_lu_dev = &lsi->lsi_dt_dev->dd_lu_dev;
+        lsi->lsi_dt_dev->dd_lu_dev.ld_obd = obd;
+
+
         OBD_FREE_PTR(mdev);
 }
 
@@ -1263,7 +1284,7 @@ static int server_start_targets(struct super_block *sb, struct dt_device *dt)
         rc = server_register_target(sb);
 
         /* destroy temporary site */
-        stop_temp_site(sb);
+        convert_temp_site(sb);
 
         /* If we're an OST, make sure the global OSS is running */
         if (lsi->lsi_ldd->ldd_flags & LDD_F_SV_TYPE_OST) {
@@ -1765,7 +1786,8 @@ static struct dt_device *server_kernel_mount(struct super_block *sb)
         rc = ldd_parse(mdev, ldd);
         if (rc == -ENOENT) {
                 /* no configuration found, use disk label */
-                stop_temp_site(sb);
+                LBUG();
+                //stop_temp_site(sb);
         } else {
                 if (rc != 0)
                         CERROR("Error reading disk data: %d\n", rc);
@@ -2087,7 +2109,8 @@ static int server_fill_super(struct super_block *sb)
            lustre fs associated - the MGS is for all lustre fs's */
         } else {
                 /* destroy temporary site */
-                stop_temp_site(sb);
+                LBUG();
+                //stop_temp_site(sb);
         }
 
         rc = server_fill_super_common(sb);
@@ -2543,8 +2566,16 @@ struct file_system_type lustre_fs_type = {
                         LL_RENAME_DOES_D_MOVE,
 };
 
+static struct obd_ops mconf_obd_device_ops = {
+        .o_owner = THIS_MODULE
+};
+
 int lustre_register_fs(void)
 {
+        struct lprocfs_static_vars lvars;
+        class_register_type(&mconf_obd_device_ops, NULL,
+                            lvars.module_vars, "mconf", NULL);
+
         return register_filesystem(&lustre_fs_type);
 }
 

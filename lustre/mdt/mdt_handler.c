@@ -4144,6 +4144,7 @@ static void mdt_stack_fini(const struct lu_env *env,
         m->mdt_bottom = NULL;
 }
 
+#if 0
 static struct lu_device *mdt_layer_setup(struct lu_env *env,
                                          const char *typename,
                                          struct lu_device *child,
@@ -4204,6 +4205,7 @@ out_type:
 out:
         return ERR_PTR(rc);
 }
+#endif
 
 static int mdt_stack_init(struct lu_env *env,
                           struct mdt_device *m,
@@ -4214,6 +4216,7 @@ static int mdt_stack_init(struct lu_env *env,
         struct lu_device  *tmp;
         struct md_device  *md;
         struct lu_device  *child_lu_dev;
+        struct lu_site    *site;
         int rc;
         ENTRY;
 
@@ -4221,15 +4224,12 @@ static int mdt_stack_init(struct lu_env *env,
         tmp = &lmi->lmi_dt->dd_lu_dev;
         tmp->ld_site = d->ld_site;
 
-        m->mdt_bottom = lu2dt_dev(tmp);
-        d = tmp;
-        tmp = mdt_layer_setup(env, LUSTRE_MDD_NAME, d, cfg);
-        if (IS_ERR(tmp)) {
-                GOTO(out, rc = PTR_ERR(tmp));
-        }
-        d = tmp;
-        md = lu2md_dev(d);
+        site = m->mdt_md_dev.md_lu_dev.ld_site;
+        LASSERT(site);
+        m->mdt_bottom = lu2dt_dev(site->ls_bottom_dev);
+        site->ls_top_dev = d;
 
+#if 0
         tmp = mdt_layer_setup(env, LUSTRE_CMM_NAME, d, cfg);
         if (IS_ERR(tmp)) {
                 GOTO(out, rc = PTR_ERR(tmp));
@@ -4237,18 +4237,7 @@ static int mdt_stack_init(struct lu_env *env,
         d = tmp;
         /*set mdd upcall device*/
         md_upcall_dev_set(md, lu2md_dev(d));
-
-        md = lu2md_dev(d);
-        /*set cmm upcall device*/
-        md_upcall_dev_set(md, &m->mdt_md_dev);
-
-        m->mdt_child = lu2md_dev(d);
-
-        /* process setup config */
-        tmp = &m->mdt_md_dev.md_lu_dev;
-        rc = tmp->ld_ops->ldo_process_config(env, tmp, cfg);
-        if (rc)
-                GOTO(out, rc);
+#endif
 
         /* initialize local objects */
         child_lu_dev = &m->mdt_child->md_lu_dev;
@@ -4474,8 +4463,10 @@ static int mdt_init0(const struct lu_env *env, struct mdt_device *m,
         struct lprocfs_static_vars lvars;
         struct mdt_thread_info    *info;
         struct obd_device         *obd;
+        struct obd_device         *nextobd;
         const char                *dev = lustre_cfg_string(cfg, 0);
         const char                *num = lustre_cfg_string(cfg, 2);
+        const char                *nxt = lustre_cfg_string(cfg, 3);
         struct lustre_mount_info  *lmi = NULL;
         struct lustre_sb_info     *lsi;
         struct lustre_disk_data   *ldd;
@@ -4507,6 +4498,17 @@ static int mdt_init0(const struct lu_env *env, struct mdt_device *m,
 
         obd = class_name2obd(dev);
         LASSERT(obd != NULL);
+
+        nextobd = class_name2obd(nxt);
+        if (nextobd == NULL) {
+                CERROR("can't found next device: %s\n", nxt);
+                RETURN(-EINVAL);
+        }
+        LASSERT(nextobd->obd_lu_dev);
+        LASSERT(nextobd->obd_lu_dev->ld_site);
+        m->mdt_child = lu2md_dev(nextobd->obd_lu_dev);
+        s = m->mdt_md_dev.md_lu_dev.ld_site = nextobd->obd_lu_dev->ld_site;
+        /* XXX: grab reference on next device? */
 
         spin_lock_init(&m->mdt_transno_lock);
 
@@ -4553,28 +4555,19 @@ static int mdt_init0(const struct lu_env *env, struct mdt_device *m,
 
         spin_lock_init(&m->mdt_client_bitmap_lock);
 
-        OBD_ALLOC_PTR(mite);
-        if (mite == NULL)
-                GOTO(err_lmi, rc = -ENOMEM);
-
-        s = &mite->ms_lu;
+        mite = &m->mdt_mite;
+        s->ld_md_site = mite;
 
         m->mdt_md_dev.md_lu_dev.ld_ops = &mdt_lu_ops;
         m->mdt_md_dev.md_lu_dev.ld_obd = obd;
         /* set this lu_device to obd, because error handling need it */
         obd->obd_lu_dev = &m->mdt_md_dev.md_lu_dev;
 
-        rc = lu_site_init(s, &m->mdt_md_dev.md_lu_dev);
-        if (rc) {
-                CERROR("Can't init lu_site, rc %d\n", rc);
-                GOTO(err_free_site, rc);
-        }
-
         lprocfs_mdt_init_vars(&lvars);
         rc = lprocfs_obd_setup(obd, lvars.obd_vars);
         if (rc) {
                 CERROR("Can't init lprocfs, rc %d\n", rc);
-                GOTO(err_fini_site, rc);
+                GOTO(err_lmi, rc);
         }
         ptlrpc_lprocfs_register_obd(obd);
 
@@ -4592,7 +4585,7 @@ static int mdt_init0(const struct lu_env *env, struct mdt_device *m,
                                    lprocfs_nid_stats_clear_write, obd, NULL);
 
         /* set server index */
-        lu_site2md(s)->ms_node_id = node_id;
+        mite->ms_node_id = node_id;
 
         /* failover is the default
          * FIXME: we do not failout mds0/mgs, which may cause some problems.
@@ -4600,7 +4593,8 @@ static int mdt_init0(const struct lu_env *env, struct mdt_device *m,
          * */
         obd->obd_replayable = 1;
         /* No connection accepted until configurations will finish */
-        obd->obd_no_conn = 1;
+        /* XXX: turn off for a while */
+        obd->obd_no_conn = 0;
 
         if (cfg->lcfg_bufcount > 4 && LUSTRE_CFG_BUFLEN(cfg, 4) > 0) {
                 char *str = lustre_cfg_string(cfg, 4);
@@ -4668,11 +4662,14 @@ static int mdt_init0(const struct lu_env *env, struct mdt_device *m,
         if (rc)
                 GOTO(err_fs_cleanup, rc);
 
+#if 0
+        /* XXX: doesn't work w/o OBD yet */
         if (obd->obd_fsops) {
                 rc = mdt_llog_ctxt_clone(env, m, LLOG_CHANGELOG_ORIG_CTXT);
                 if (rc)
                         GOTO(err_llog_cleanup, rc);
         }
+#endif
 
         mdt_adapt_sptlrpc_conf(obd, 1);
 
@@ -4690,10 +4687,6 @@ static int mdt_init0(const struct lu_env *env, struct mdt_device *m,
                 GOTO(err_recovery, rc);
 
         ping_evictor_start();
-
-        rc = lu_site_init_finish(s);
-        if (rc)
-                GOTO(err_stop_service, rc);
 
         if (obd->obd_recovering == 0)
                 mdt_postrecov(env, m);
@@ -4747,8 +4740,6 @@ err_fini_proc:
         lprocfs_obd_cleanup(obd);
 err_fini_site:
         lu_site_fini(s);
-err_free_site:
-        OBD_FREE_PTR(mite);
 err_lmi:
         if (lmi) 
                 server_put_mount(dev);

@@ -622,6 +622,11 @@ struct lu_site {
         struct lu_device     *ls_top_dev;
 
         /**
+         * Bottom-level device for this stack
+         */
+        struct lu_device     *ls_bottom_dev;
+
+        /**
          * Wait-queue signaled when an object in this site is ultimately
          * destroyed (lu_object_free()). It is used by lu_object_find() to
          * wait before re-trying when object in the process of destruction is
@@ -664,6 +669,11 @@ struct lu_site {
          */
         struct list_head      ls_linkage;
         struct lprocfs_stats *ls_time_stats;
+
+        /**
+         * XXX: a hack! fld has to find md_site via site, remove ASAP!
+         */
+        struct md_site                    *ld_md_site;
 };
 
 /** \name ctors

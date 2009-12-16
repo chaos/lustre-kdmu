@@ -78,14 +78,35 @@ static struct lu_device_type mdd_device_type;
 static const char mdd_root_dir_name[] = "ROOT";
 static const char mdd_obf_dir_name[] = "fid";
 
-static int mdd_device_init(const struct lu_env *env, struct lu_device *d,
-                           const char *name, struct lu_device *next)
+static int mdd_init0(const struct lu_env *env, struct mdd_device *mdd,
+                     struct lu_device_type *t, struct lustre_cfg *lcfg)
 {
-        struct mdd_device *mdd = lu2mdd_dev(d);
+        const char                *name = lustre_cfg_string(lcfg, 0);
+        const char                *next = lustre_cfg_string(lcfg, 3);
+        struct obd_type           *obdtype = NULL;
+        struct obd_device         *obd;
         int rc;
         ENTRY;
+                
+        md_device_init(&mdd->mdd_md_dev, t);
+        
+        obdtype = class_get_type(LUSTRE_MDD_NAME);
+        if (!obdtype) {
+                CERROR("Unknown type: '%s'\n", LUSTRE_MDD_NAME);
+                GOTO(out, rc = -ENODEV);
+        }
+        t->ldt_obd_type = obdtype;
 
-        mdd->mdd_child = lu2dt_dev(next);
+        obd = class_name2obd(next);
+        if (obd == NULL) {
+                CERROR("can't found next device: %s\n", next);
+                GOTO(out, rc = -EINVAL);
+        }
+        LASSERT(obd->obd_lu_dev);
+        LASSERT(obd->obd_lu_dev->ld_site);
+        mdd->mdd_child = lu2dt_dev(obd->obd_lu_dev);
+        mdd->mdd_md_dev.md_lu_dev.ld_site = obd->obd_lu_dev->ld_site;
+        /* XXX: grab reference on next device? */
 
         /* Prepare transactions callbacks. */
         mdd->mdd_txn_cb.dtc_txn_start = mdd_txn_start_cb;
@@ -99,6 +120,15 @@ static int mdd_device_init(const struct lu_env *env, struct lu_device *d,
         mdd->mdd_sync_permission = 1;
 
         rc = mdd_procfs_init(mdd, name);
+
+        mdd->mdd_child->dd_ops->dt_conf_get(env, mdd->mdd_child, &mdd->mdd_dt_conf);
+
+out:
+        if (rc) {
+                if (obdtype)
+                        class_put_type(obdtype);
+        }
+
         RETURN(rc);
 }
 
@@ -1032,7 +1062,7 @@ static int mdd_recovery_complete(const struct lu_env *env,
         ENTRY;
 
         LASSERT(mdd != NULL);
-        LASSERT(obd != NULL);
+        if (obd != NULL) {
 #if 0
         /* XXX: Do we need this in new stack? */
         rc = mdd_lov_set_nextid(env, mdd);
@@ -1057,6 +1087,9 @@ static int mdd_recovery_complete(const struct lu_env *env,
         /* Drop obd_recovering to 0 and call o_postrecov to recover mds_lov */
         obd->obd_recovering = 0;
         obd->obd_type->typ_dt_ops->o_postrecov(obd);
+        } else {
+                CERROR("mdd has no OBD yet\n");
+        }
 
         /* XXX: orphans handling. */
         __mdd_orphan_cleanup(env, mdd);
@@ -1081,6 +1114,7 @@ static int mdd_prepare(const struct lu_env *env,
         if (rc)
                 GOTO(out, rc);
 
+        /* XXX: register at bottom device */ 
         dt_txn_callback_add(mdd->mdd_child, &mdd->mdd_txn_cb);
         root = dt_store_open(env, mdd->mdd_child, "", mdd_root_dir_name,
                              &mdd->mdd_root_fid);
@@ -1165,7 +1199,11 @@ static int mdd_init_capa_ctxt(const struct lu_env *env, struct md_device *m,
         int rc;
         ENTRY;
 
-        mds->mds_capa_keys = keys;
+        if (mdd2obd_dev(mdd)) {
+                mds->mds_capa_keys = keys;
+        } else {
+                CERROR("mdd has no obd yet\n");
+        }
         rc = mdd_child_ops(mdd)->dt_init_capa_ctxt(env, mdd->mdd_child, mode,
                                                    timeout, alg, keys);
         RETURN(rc);
@@ -1206,7 +1244,7 @@ static struct lu_device *mdd_device_alloc(const struct lu_env *env,
         if (m == NULL) {
                 l = ERR_PTR(-ENOMEM);
         } else {
-                md_device_init(&m->mdd_md_dev, t);
+                mdd_init0(env, m, t, lcfg);
                 l = mdd2lu_dev(m);
                 l->ld_ops = &mdd_lu_ops;
                 m->mdd_md_dev.md_ops = &mdd_ops;
@@ -1552,7 +1590,6 @@ static struct lu_device_type_operations mdd_device_type_ops = {
         .ldto_device_alloc = mdd_device_alloc,
         .ldto_device_free  = mdd_device_free,
 
-        .ldto_device_init    = mdd_device_init,
         .ldto_device_fini    = mdd_device_fini
 };
 
