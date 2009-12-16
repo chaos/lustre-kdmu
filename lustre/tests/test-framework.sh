@@ -301,6 +301,7 @@ load_modules_local() {
         load_module ost/ost
         load_module ofd/ofd
         load_module lod/lod
+        load_module osp/osp
     fi
 
     load_module llite/lustre
