@@ -52,14 +52,26 @@ typedef unsigned short umode_t;
  * header files exported to user space
  */
 
+#ifndef HAVE___S8
 typedef __signed__ char __s8;
+#endif
+#ifndef HAVE___U8
 typedef unsigned char __u8;
+#endif
 
+#ifndef HAVE___S16
 typedef __signed__ short __s16;
+#endif
+#ifndef HAVE___U16
 typedef unsigned short __u16;
+#endif
 
+#ifndef HAVE___S32
 typedef __signed__ int __s32;
+#endif
+#ifndef HAVE___U32
 typedef unsigned int __u32;
+#endif
 
 #ifndef HAVE___S64
 typedef __signed__ long long __s64;
@@ -71,5 +83,6 @@ typedef unsigned long long __u64;
 /* long integer with size equal to pointer */
 typedef unsigned long ulong_ptr_t;
 typedef long long_ptr_t;
+
 
 #endif
