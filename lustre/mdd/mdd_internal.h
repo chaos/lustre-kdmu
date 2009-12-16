@@ -391,6 +391,8 @@ int mdd_get_default_md(struct mdd_object *mdd_obj, struct lov_mds_md *lmm,
                        int *size);
 int mdd_readpage(const struct lu_env *env, struct md_object *obj,
                  const struct lu_rdpg *rdpg);
+void mdd_object_make_hint(const struct lu_env *env, struct mdd_object *parent,
+                          struct mdd_object *child, struct lu_attr *attr);
 
 /* mdd_quota.c*/
 #ifdef HAVE_QUOTA_SUPPORT

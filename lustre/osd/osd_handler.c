@@ -1718,7 +1718,8 @@ static osd_obj_type_f osd_create_type_f(enum dt_format_type type)
 
 
 static void osd_ah_init(const struct lu_env *env, struct dt_allocation_hint *ah,
-                        struct dt_object *parent, umode_t child_mode)
+                        struct dt_object *parent, struct dt_object *child,
+                        umode_t child_mode)
 {
         LASSERT(ah);
 

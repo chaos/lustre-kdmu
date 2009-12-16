@@ -2065,6 +2065,8 @@ static int mdd_create(const struct lu_env *env,
                         got_def_acl = 1;
         }
 
+        mdd_object_make_hint(env, mdd_pobj, son, attr);
+
         handle = mdd_start_and_declare_create(env, pobj, son, name,
                                               lmm_size, attr, spec);
         if (IS_ERR(handle))
