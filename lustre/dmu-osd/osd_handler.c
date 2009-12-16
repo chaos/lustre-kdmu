@@ -493,126 +493,13 @@ enum {
         OSD_TXN_INODE_DELETE_CREDITS = 20
 };
 
-static void osd_declare_object_delete(const struct lu_env *env,
-                                       struct osd_object *obj,
-                                       struct thandle *handle)
-{
-        struct osd_device *osd = osd_obj2dev(obj);
-        struct dt_object *dt = &obj->oo_dt;
-        struct osd_thandle *oh;
-        uint64_t zapid;
-        char buf[32];
-        ENTRY;
-
-        LASSERT(handle != NULL);
-        LASSERT(dt_object_exists(dt));
-        LASSERT(osd_invariant(obj));
-
-        oh = container_of0(handle, struct osd_thandle, ot_super);
-        LASSERT(oh->ot_tx != NULL);
-
-        udmu_declare_object_delete(&osd->od_objset, oh->ot_tx, obj->oo_db);
-
-        /* declare that we'll remove object from fid-dnode mapping */
-        osd_fid2str(buf, lu_object_fid(&obj->oo_dt.do_lu));
-        zapid = udmu_object_get_id(osd->od_objdir_db);
-        udmu_tx_hold_zap(oh->ot_tx, zapid, 0, buf);
-
-        EXIT;
-}
-
-/*
- * Called just before object is freed. Releases all resources except for
- * object itself (that is released by osd_object_free()).
- *
- * Concurrency: no concurrent access is possible that late in object
- * life-cycle.
- */
-static int osd_object_destroy(const struct lu_env *env, struct osd_object *obj)
-{
-        struct osd_device *osd = osd_obj2dev(obj);
-        dmu_buf_t *zapdb = osd->od_objdir_db;
-        struct dt_object *dt = &obj->oo_dt;
-        struct osd_thandle *oh;
-        uint64_t zapid, oid;
-        char buf[32];
-        vnattr_t va;
-        int rc;
-        struct thandle         *th;
-
-        ENTRY;
-        LASSERT(obj->oo_db != NULL);
-        LASSERT(zapdb != NULL);
-
-        LASSERT(osd_invariant(obj));
-        LASSERT(dt_object_exists(dt));
-
-        zapid = udmu_object_get_id(zapdb);
-        oid = udmu_object_get_id(obj->oo_db);
-        osd_fid2str(buf, lu_object_fid(&obj->oo_dt.do_lu));
-
-        udmu_object_getattr(obj->oo_db, &va);
-
-        /* create tx */
-        th = osd_trans_create(env, &osd->od_dt_dev);
-        if (IS_ERR(th))
-                RETURN (PTR_ERR(th));
-
-        oh = container_of0(th, struct osd_thandle, ot_super);
-        LASSERT(oh != NULL);
-        LASSERT(oh->ot_tx != NULL);
-
-        /* declare changes */
-        osd_declare_object_delete(env, obj, th);
-
-        /* start change */
-        rc = osd_trans_start(env, &osd->od_dt_dev, th);
-        if (rc) {
-                CERROR("osd_trans_start() failed with error %d\n", rc);
-                GOTO(out, rc);
-        }
-
-        /* remove obj ref from main obj. dir */
-        rc = udmu_zap_delete(&osd->od_objset, zapdb, oh->ot_tx, buf);
-        if (rc) {
-                CERROR("udmu_zap_delete() failed with error %d\n", rc);
-                GOTO(out, rc);
-        }
-
-        /* kill object */
-        rc = udmu_object_delete(&osd->od_objset, &obj->oo_db,
-                                oh->ot_tx, osd_object_tag);
-        if (rc) {
-                CERROR("udmu_object_delete() failed with error %d\n", rc);
-                GOTO(out, rc);
-        }
-
-out:
-        /* COMMIT changes */
-        osd_trans_stop(env, th);
-        
-        udmu_object_put_dmu_buf(obj->oo_db, osd_object_tag);
-        obj->oo_db = NULL;
-
-        CDEBUG(D_OTHER, "destroy object %s (objid %llu)\n", buf, va.va_nodeid);
-        RETURN (0);
-}
-
 static void osd_object_delete(const struct lu_env *env, struct lu_object *l)
 {
-        struct osd_object *obj    = osd_obj(l);
-        int rc;
+        struct osd_object *obj = osd_obj(l);
 
         if (obj->oo_db != NULL) {
-                if (udmu_object_get_links(obj->oo_db) == 0) {
-                        rc = osd_object_destroy(env, obj);
-                        if (rc) {
-                                CERROR("destroy error %d", rc);
-                        }
-                } else {
-                        udmu_object_put_dmu_buf(obj->oo_db, osd_object_tag);
-                        obj->oo_db = NULL;
-                }
+                udmu_object_put_dmu_buf(obj->oo_db, osd_object_tag);
+                obj->oo_db = NULL;
         }
 }
 
@@ -622,11 +509,6 @@ static void osd_object_delete(const struct lu_env *env, struct lu_object *l)
 static void osd_object_release(const struct lu_env *env,
                                struct lu_object *l)
 {
-        struct osd_object *obj = osd_obj(l);
-
-        LASSERT(!lu_object_is_dying(l->lo_header));
-        if (obj->oo_db && udmu_object_get_links(obj->oo_db) == 0)
-                set_bit(LU_OBJECT_HEARD_BANSHEE, &l->lo_header->loh_flags);
 }
 
 /*
@@ -1371,6 +1253,75 @@ static int osd_object_create(const struct lu_env *env, struct dt_object *dt,
         LASSERT(osd_invariant(obj));
 out:
         RETURN(-rc);
+}
+
+static int osd_declare_object_destroy(const struct lu_env *env,
+                                      struct dt_object *o,
+                                      struct thandle *th)
+{
+        struct osd_object  *obj = osd_dt_obj(o);
+        struct osd_device  *osd = osd_obj2dev(obj);
+        struct osd_thandle *oh;
+        uint64_t            zapid;
+        char                buf[32];
+        ENTRY;
+
+        LASSERT(th != NULL);
+        LASSERT(dt_object_exists(o));
+        LASSERT(osd_invariant(obj));
+
+        oh = container_of0(th, struct osd_thandle, ot_super);
+        LASSERT(oh->ot_tx != NULL);
+
+        udmu_declare_object_delete(&osd->od_objset, oh->ot_tx, obj->oo_db);
+
+        /* declare that we'll remove object from fid-dnode mapping */
+        osd_fid2str(buf, lu_object_fid(&obj->oo_dt.do_lu));
+        zapid = udmu_object_get_id(osd->od_objdir_db);
+        udmu_tx_hold_zap(oh->ot_tx, zapid, 0, buf);
+
+        RETURN(0);
+}
+
+static int osd_object_destroy(const struct lu_env *env,
+                              struct dt_object *o,
+                              struct thandle *th)
+{
+        struct osd_object  *obj = osd_dt_obj(o);
+        struct osd_device  *osd = osd_obj2dev(obj);
+        dmu_buf_t          *zapdb = osd->od_objdir_db;
+        struct osd_thandle *oh;
+        char                buf[32];
+        int                 rc;
+        ENTRY;
+
+        LASSERT(obj->oo_db != NULL);
+        LASSERT(zapdb != NULL);
+
+        oh = container_of0(th, struct osd_thandle, ot_super);
+        LASSERT(oh != NULL);
+        LASSERT(oh->ot_tx != NULL);
+
+        /* remove obj ref from main obj. dir */
+        osd_fid2str(buf, lu_object_fid(&obj->oo_dt.do_lu));
+        rc = udmu_zap_delete(&osd->od_objset, zapdb, oh->ot_tx, buf);
+        if (rc) {
+                CERROR("udmu_zap_delete() failed with error %d\n", rc);
+                RETURN(rc);
+        }
+
+        /* kill object */
+        rc = udmu_object_delete(&osd->od_objset, &obj->oo_db,
+                                oh->ot_tx, osd_object_tag);
+        if (rc) {
+                CERROR("udmu_object_delete() failed with error %d\n", rc);
+                RETURN(rc);
+        }
+
+        /* not needed in the cache anymore */
+        set_bit(LU_OBJECT_HEARD_BANSHEE, &o->do_lu.lo_header->loh_flags);
+
+        RETURN(rc);
 }
 
 /**
@@ -2222,6 +2173,8 @@ static struct dt_object_operations osd_obj_ops = {
         .do_index_try         = osd_index_try,
         .do_declare_create    = osd_declare_object_create,
         .do_create            = osd_object_create,
+        .do_declare_destroy   = osd_declare_object_destroy,
+        .do_destroy           = osd_object_destroy,
         .do_declare_ref_add   = osd_declare_object_ref_add,
         .do_ref_add           = osd_object_ref_add,
         .do_declare_ref_del   = osd_declare_object_ref_del,

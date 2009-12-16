@@ -2095,6 +2095,9 @@ static int mdd_close(const struct lu_env *env, struct md_object *obj,
         if (IS_ERR(handle))
                 RETURN(PTR_ERR(handle));
         rc = mdd_declare_finish_unlink(env, mdd_obj, ma, handle);
+        rc = mdo_declare_destroy_obj(env, mdd_obj, handle);
+        if (rc)
+                GOTO(cleanup, rc);
         if (rc)
                 GOTO(cleanup, rc);
         rc = __mdd_declare_orphan_del(env, mdd_obj, handle);
@@ -2147,6 +2150,7 @@ static int mdd_close(const struct lu_env *env, struct md_object *obj,
                                 if (rc == 0)
                                         reset = 0;
                 }
+                rc = mdo_destroy_obj(env, mdd_obj, handle);
 
                 if (rc != 0)
                         CERROR("Error when prepare to delete Object "DFID" , "

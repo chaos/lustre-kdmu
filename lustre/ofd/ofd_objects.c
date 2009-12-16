@@ -297,6 +297,7 @@ int filter_object_destroy(const struct lu_env *env, struct filter_object *fo)
         if (IS_ERR(th))
                 RETURN(PTR_ERR(th));
         dt_declare_ref_del(env, filter_object_child(fo), th);
+        dt_declare_destroy(env, filter_object_child(fo), th);
         rc = filter_trans_start(env, filter_obj2dev(fo), th);
         if (rc)
                 RETURN(rc);
@@ -305,6 +306,7 @@ int filter_object_destroy(const struct lu_env *env, struct filter_object *fo)
 
         filter_write_lock(env, fo, 0);
         dt_ref_del(env, filter_object_child(fo), th);
+        dt_destroy(env, filter_object_child(fo), th);
         filter_write_unlock(env, fo);
 
         filter_trans_stop(env, filter_obj2dev(fo), th);

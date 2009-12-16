@@ -664,40 +664,6 @@ static int osd_trans_stop(const struct lu_env *env, struct thandle *th)
 }
 
 /*
- * Concurrency: no concurrent access is possible that late in object
- * life-cycle.
- */
-static int osd_inode_remove(const struct lu_env *env, struct osd_object *obj)
-{
-        const struct lu_fid    *fid = lu_object_fid(&obj->oo_dt.do_lu);
-        struct osd_device      *osd = osd_obj2dev(obj);
-        struct osd_thread_info *oti = osd_oti_get(env);
-        struct osd_thandle     *oh;
-        struct thandle         *th;
-        struct lu_env          *env_del_obj = &oti->oti_obj_delete_tx_env;
-        int result;
-
-        lu_env_init(env_del_obj, LCT_DT_THREAD);
-        th = osd_trans_create(env_del_obj, &osd->od_dt_dev);
-        if (IS_ERR(th))
-                return PTR_ERR(th);
-
-        oh = container_of0(th, struct osd_thandle, ot_super);
-        LASSERT(oh->ot_handle == NULL);
-
-        OSD_DECLARE_OP(oh, delete);
-        oh->ot_credits += osd_dto_credits_noquota[DTO_OBJECT_DELETE];
-        oh->ot_credits += osd_dto_credits_noquota[DTO_INDEX_DELETE];
-
-        result = osd_trans_start(env_del_obj, &osd->od_dt_dev, th);
-        if (result == 0)
-                result = osd_oi_delete(osd_oti_get(env_del_obj), osd, fid, th);
-        osd_trans_stop(env_del_obj, th);
-        lu_env_fini(env_del_obj);
-        return result;
-}
-
-/*
  * Called just before object is freed. Releases all resources except for
  * object itself (that is released by osd_object_free()).
  *
@@ -717,16 +683,10 @@ static void osd_object_delete(const struct lu_env *env, struct lu_object *l)
 
         osd_index_fini(obj);
         if (inode != NULL) {
-                int result;
 
-                if (osd_inode_unlinked(inode)) {
-                        result = osd_inode_remove(env, obj);
-                        if (result != 0)
-                                LU_OBJECT_DEBUG(D_ERROR, env, l,
-                                                "Failed to cleanup: %d\n",
-                                                result);
-                }
-
+                /* XXX: we probably want to make last iput() from dedicated
+                 * thread so that caller doesn't block awaiting for deletion
+                 * of the whole file which can be huge */
                 iput(inode);
                 obj->oo_inode = NULL;
         }
@@ -738,11 +698,6 @@ static void osd_object_delete(const struct lu_env *env, struct lu_object *l)
 static void osd_object_release(const struct lu_env *env,
                                struct lu_object *l)
 {
-        struct osd_object *o = osd_obj(l);
-
-        LASSERT(!lu_object_is_dying(l->lo_header));
-        if (o->oo_inode != NULL && osd_inode_unlinked(o->oo_inode))
-                set_bit(LU_OBJECT_HEARD_BANSHEE, &l->lo_header->loh_flags);
 }
 
 /*
@@ -1879,6 +1834,62 @@ static int osd_object_create(const struct lu_env *env, struct dt_object *dt,
         RETURN(result);
 }
 
+/** 
+ * Called to destroy on-disk representation of the object
+ *
+ * Concurrency: must be locked
+ */
+static int osd_declare_object_destroy(const struct lu_env *env,
+                                      struct dt_object *dt,
+                                      struct thandle *th)
+{
+        struct osd_object      *obj = osd_dt_obj(dt);
+        struct inode           *inode = obj->oo_inode;
+        struct osd_thandle     *oh;
+        ENTRY;
+
+        oh = container_of0(th, struct osd_thandle, ot_super);
+        LASSERT(oh->ot_handle == NULL);
+        LASSERT(inode);
+        LASSERT(!osd_inode_unlinked(inode));
+
+        OSD_DECLARE_OP(oh, destroy);
+        OSD_DECLARE_OP(oh, delete);
+        oh->ot_credits += osd_dto_credits_noquota[DTO_OBJECT_DELETE];
+        oh->ot_credits += osd_dto_credits_noquota[DTO_INDEX_DELETE];
+
+        RETURN(0);
+}
+
+static int osd_object_destroy(const struct lu_env *env,
+                              struct dt_object *dt,
+                              struct thandle *th)
+{
+        const struct lu_fid    *fid = lu_object_fid(&dt->do_lu);
+        struct osd_object      *obj = osd_dt_obj(dt);
+        struct inode           *inode = obj->oo_inode;
+        struct osd_device      *osd = osd_obj2dev(obj);
+        struct osd_thandle     *oh;
+        int                     result;
+        ENTRY;
+
+        oh = container_of0(th, struct osd_thandle, ot_super);
+        LASSERT(oh->ot_handle);
+        LASSERT(inode);
+        LASSERT(osd_inode_unlinked(inode));
+
+        OSD_EXEC_OP(th, destroy);
+
+        result = osd_oi_delete(osd_oti_get(env), osd, fid, th);
+
+        /* XXX: add to ext3 orphan list */
+
+        /* not needed in the cache anymore */
+        set_bit(LU_OBJECT_HEARD_BANSHEE, &dt->do_lu.lo_header->loh_flags);
+
+        RETURN(0);
+}
+
 /**
  * Helper function for osd_xattr_set()
  */
@@ -2587,6 +2598,8 @@ static const struct dt_object_operations osd_obj_ops = {
         .do_ah_init           = osd_ah_init,
         .do_declare_create    = osd_declare_object_create,
         .do_create            = osd_object_create,
+        .do_declare_destroy   = osd_declare_object_destroy,
+        .do_destroy           = osd_object_destroy,
         .do_index_try         = osd_index_try,
         .do_declare_ref_add   = osd_declare_object_ref_add,
         .do_ref_add           = osd_object_ref_add,
@@ -2623,6 +2636,8 @@ static const struct dt_object_operations osd_obj_ea_ops = {
         .do_ah_init           = osd_ah_init,
         .do_declare_create    = osd_declare_object_create,
         .do_create            = osd_object_ea_create,
+        .do_declare_destroy   = osd_declare_object_destroy,
+        .do_destroy           = osd_object_destroy,
         .do_index_try         = osd_index_try,
         .do_declare_ref_add   = osd_declare_object_ref_add,
         .do_ref_add           = osd_object_ref_add,

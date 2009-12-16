@@ -913,7 +913,7 @@ int mdd_finish_unlink(const struct lu_env *env,
                                         PFID(mdd_object_fid(obj)),
                                         obj->mod_count);
                 } else {
-                        rc = mdd_object_kill(env, obj, ma, th);
+                        rc = mdo_destroy_obj(env, obj, th);
                         if (rc == 0)
                                 reset = 0;
                 }
@@ -956,6 +956,9 @@ mdd_declare_and_start_unlink(const struct lu_env *env, struct md_object *pobj,
                 RETURN(handle);
 
         rc = __mdd_declare_index_delete(env, mdd_pobj, name, handle);
+        if (rc)
+                GOTO(out, rc);
+        rc = mdo_declare_destroy_obj(env, mdd_cobj, handle);
         if (rc)
                 GOTO(out, rc);
         rc = mdo_declare_ref_del(env, mdd_cobj, handle);

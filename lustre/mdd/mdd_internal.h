@@ -817,6 +817,22 @@ int mdo_create_obj(const struct lu_env *env, struct mdd_object *o,
 }
 
 static inline
+int mdo_declare_destroy_obj(const struct lu_env *env, struct mdd_object *o,
+                            struct thandle *handle)
+{
+        struct dt_object *next = mdd_object_child(o);
+        return next->do_ops->do_declare_destroy(env, next, handle);
+}
+
+static inline
+int mdo_destroy_obj(const struct lu_env *env, struct mdd_object *o,
+                    struct thandle *handle)
+{
+        struct dt_object *next = mdd_object_child(o);
+        return next->do_ops->do_destroy(env, next, handle);
+}
+
+static inline
 int mdo_dio_declare_insert(const struct lu_env *env, struct mdd_object *o,
                            const struct dt_rec *rec, const struct dt_key *key,
                            struct thandle *handle)

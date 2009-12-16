@@ -277,7 +277,6 @@ static int orphan_object_kill(const struct lu_env *env,
                               struct mdd_device *mdd,
                               struct thandle *th)
 {
-        struct lu_attr *la = &mdd_env_info(env)->mti_la;
         int rc = 0;
         ENTRY;
 
@@ -286,14 +285,11 @@ static int orphan_object_kill(const struct lu_env *env,
          * as its precondition for osd api we using. */
 
         mdo_ref_del(env, obj, th);
+        rc = mdo_destroy_obj(env, obj, th);
+
         if (S_ISDIR(mdd_object_type(obj))) {
                 mdo_ref_del(env, obj, th);
                 mdd_orphan_ref_del(env, mdd, th);
-        } else {
-                /* regular file , cleanup linked ost objects */
-                rc = mdd_la_get(env, obj, la, BYPASS_CAPA);
-                if (rc == 0)
-                        rc = mdd_lov_destroy(env, mdd, obj, la, th);
         }
         RETURN(rc);
 }

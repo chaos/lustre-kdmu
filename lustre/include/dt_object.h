@@ -367,6 +367,16 @@ struct dt_object_operations {
                            struct thandle *th);
 
         /**
+          Destroy object on this device
+         * precondition: !dt_object_exists(dt);
+         * postcondition: ergo(result == 0, dt_object_exists(dt));
+         */
+        int   (*do_declare_destroy)(const struct lu_env *env, struct dt_object *dt,
+                                    struct thandle *th);
+        int   (*do_destroy)(const struct lu_env *env, struct dt_object *dt,
+                            struct thandle *th);
+
+        /**
          * Announce that this object is going to be used as an index. This
          * operation check that object supports indexing operations and
          * installs appropriate dt_index_operations vector on success.
@@ -769,6 +779,26 @@ static inline int dt_create(const struct lu_env *env,
         return dt->do_ops->do_create(env, dt, attr, hint, dof, th);
 }
 
+static inline int dt_declare_destroy(const struct lu_env *env,
+                                     struct dt_object *dt,
+                                     struct thandle *th)
+{
+        LASSERT(dt);
+        LASSERT(dt->do_ops);
+        LASSERT(dt->do_ops->do_declare_destroy);
+        return dt->do_ops->do_declare_destroy(env, dt, th);
+}
+
+static inline int dt_destroy(const struct lu_env *env,
+                             struct dt_object *dt,
+                             struct thandle *th)
+{
+        LASSERT(dt);
+        LASSERT(dt->do_ops);
+        LASSERT(dt->do_ops->do_destroy);
+        return dt->do_ops->do_destroy(env, dt, th);
+}
+
 static inline void dt_read_lock(const struct lu_env *env,
                                 struct dt_object *dt,
                                 unsigned role)
@@ -968,5 +998,27 @@ static inline int dt_delete(const struct lu_env *env,
         return dt->do_index_ops->dio_delete(env, dt, key, th, capa);
 }
 
+static inline int dt_declare_xattr_set(const struct lu_env *env,
+                                      struct dt_object *dt,
+                                      const int buflen, const char *name, int fl,
+                                      struct thandle *th)
+{
+        return dt->do_ops->do_declare_xattr_set(env, dt, buflen, name, fl, th);
+}
+
+static inline int dt_xattr_set(const struct lu_env *env,
+                              struct dt_object *dt, const struct lu_buf *buf,
+                              const char *name, int fl, struct thandle *th,
+                              struct lustre_capa *capa)
+{
+        return dt->do_ops->do_xattr_set(env, dt, buf, name, fl, th, capa);
+}
+
+static inline int dt_xattr_get(const struct lu_env *env,
+                              struct dt_object *dt, struct lu_buf *buf,
+                              const char *name, struct lustre_capa *capa)
+{
+        return dt->do_ops->do_xattr_get(env, dt, buf, name, capa);
+}
 
 #endif /* __LUSTRE_DT_OBJECT_H */
