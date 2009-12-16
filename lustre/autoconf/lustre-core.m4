@@ -2467,6 +2467,8 @@ lustre/tests/Makefile
 lustre/tests/mpi/Makefile
 lustre/utils/Makefile
 lustre/utils/gss/Makefile
+lustre/lod/Makefile
+lustre/lod/autoMakefile
 ])
 case $lb_target_os in
         darwin)

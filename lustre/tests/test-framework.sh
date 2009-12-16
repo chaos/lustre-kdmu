@@ -300,6 +300,7 @@ load_modules_local() {
         load_module osd/osd-ldiskfs
         load_module ost/ost
         load_module ofd/ofd
+        load_module lod/lod
     fi
 
     load_module llite/lustre
