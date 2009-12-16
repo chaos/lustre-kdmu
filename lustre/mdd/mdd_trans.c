@@ -70,29 +70,13 @@
 int mdd_txn_start_cb(const struct lu_env *env, struct thandle *txn,
                      void *cookie)
 {
-        struct mdd_device *mdd = cookie;
-        struct obd_device *obd = mdd2obd_dev(mdd);
-
-        /* Each transaction updates lov objids, the credits should be added for
-         * this */
-        int blk, shift = mdd->mdd_dt_conf.ddp_block_shift;
-        blk = ((obd->u.mds.mds_lov_desc.ld_tgt_count * sizeof(obd_id) +
-               (1 << shift) - 1) >> shift) + 1;
-
-        /* add lov objids credits */
-        mds_declare_lov_write_objids(env, obd, txn);
-
         return 0;
 }
 
 int mdd_txn_stop_cb(const struct lu_env *env, struct thandle *txn,
                     void *cookie)
 {
-        struct mdd_device *mdd = cookie;
-        struct obd_device *obd = mdd2obd_dev(mdd);
-
-        LASSERT(obd);
-        return mds_lov_write_objids(env, obd, txn);
+        return 0;
 }
 
 int mdd_txn_commit_cb(const struct lu_env *env, struct thandle *txn,
@@ -100,37 +84,6 @@ int mdd_txn_commit_cb(const struct lu_env *env, struct thandle *txn,
 {
         return 0;
 }
-
-/*int mdd_log_txn_param_build(const struct lu_env *env, struct md_object *obj,
-                            struct md_attr *ma, enum mdd_txn_op op)
-{
-        struct mdd_device *mdd = mdo2mdd(&md2mdd_obj(obj)->mod_obj);
-        int rc, log_credits, stripe;
-        ENTRY;
-
-        mdd_txn_param_build(env, mdd, op);
-
-        if (S_ISDIR(lu_object_attr(&obj->mo_lu)))
-                RETURN(0);
-
-        LASSERT(op == MDD_TXN_UNLINK_OP || op == MDD_TXN_RENAME_OP);
-        rc = mdd_lmm_get_locked(env, md2mdd_obj(obj), ma);
-        if (rc || !(ma->ma_valid & MA_LOV))
-                RETURN(rc);
-
-        LASSERTF(le32_to_cpu(ma->ma_lmm->lmm_magic) == LOV_MAGIC_V1 ||
-                 le32_to_cpu(ma->ma_lmm->lmm_magic) == LOV_MAGIC_V3,
-                 "%08x", le32_to_cpu(ma->ma_lmm->lmm_magic));
-
-        if ((int)le32_to_cpu(ma->ma_lmm->lmm_stripe_count) < 0)
-                stripe = mdd2obd_dev(mdd)->u.mds.mds_lov_desc.ld_tgt_count;
-        else
-                stripe = le32_to_cpu(ma->ma_lmm->lmm_stripe_count);
-
-        log_credits = stripe * dto_txn_credits[DTO_LOG_REC];
-        txn_param_credit_add(&mdd_env_info(env)->mti_param, log_credits);
-        RETURN(rc);
-}*/
 
 struct thandle* mdd_trans_create(const struct lu_env *env,
                                 struct mdd_device *mdd)

@@ -183,6 +183,12 @@ int mds_lov_init(struct obd_device *obd)
         int rc;
         ENTRY;
 
+        if (obd == NULL) {
+                /* XXX: temp hack as we don't have mdd obd yet */
+                RETURN(0);
+        }
+
+
         rc = mds_lov_init_objids(obd);
         if (rc != 0) {
                CERROR("cannot init lov objid rc = %d\n", rc);

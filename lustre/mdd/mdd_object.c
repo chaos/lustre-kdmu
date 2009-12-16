@@ -865,16 +865,14 @@ int mdd_object_create_internal(const struct lu_env *env, struct mdd_object *p,
                                struct thandle *handle,
                                const struct md_op_spec *spec)
 {
-        struct lu_attr *attr = &ma->ma_attr;
         struct dt_allocation_hint *hint = &mdd_env_info(env)->mti_hint;
+        struct lu_attr *attr = &ma->ma_attr;
         struct dt_object_format *dof = &mdd_env_info(env)->mti_dof;
         const struct dt_index_features *feat = spec->sp_feat;
         int rc;
         ENTRY;
 
         if (!mdd_object_exists(c)) {
-                struct dt_object *next = mdd_object_child(c);
-                LASSERT(next);
 
                 if (feat != &dt_directory_features && feat != NULL)
                         dof->dof_type = DFT_INDEX;
@@ -1267,8 +1265,7 @@ static int mdd_changelog_data_store(const struct lu_env     *env,
 
 static struct thandle *
 mdd_declare_and_start_attr_set(const struct lu_env *env, struct md_object *obj,
-                               const struct md_attr *ma, struct lov_mds_md *lmm,
-                               int lmm_size)
+                               const struct md_attr *ma)
 {
         struct mdd_object *mdd_obj = md2mdd_obj(obj);
         struct mdd_device *mdd = mdo2mdd(obj);
@@ -1279,7 +1276,7 @@ mdd_declare_and_start_attr_set(const struct lu_env *env, struct md_object *obj,
         if (IS_ERR(handle))
                 RETURN(handle);
 
-        rc = mdo_declare_attr_set(env, mdd_obj, NULL, handle);
+        rc = mdo_declare_attr_set(env, mdd_obj, &ma->ma_attr, handle);
         if (rc)
                 GOTO(out, rc);
         if (ma->ma_valid & MA_LOV) {
@@ -1291,10 +1288,6 @@ mdd_declare_and_start_attr_set(const struct lu_env *env, struct md_object *obj,
                 if (rc)
                         GOTO(out, rc);
         }
-
-        rc = mdd_declare_setattr_log(env, mdd_obj, ma, lmm, lmm_size, handle);
-        if (rc)
-                GOTO(out, rc);
 
         rc = mdd_trans_start(env, mdd, handle);
 
@@ -1383,10 +1376,8 @@ static int mdd_attr_set(const struct lu_env *env, struct md_object *obj,
         struct mdd_object *mdd_obj = md2mdd_obj(obj);
         struct mdd_device *mdd = mdo2mdd(obj);
         struct thandle *handle;
-        struct lov_mds_md *lmm = NULL;
-        struct llog_cookie *logcookies = NULL;
-        int  rc, lmm_size = 0, cookie_size = 0;
         struct lu_attr *la_copy = &mdd_env_info(env)->mti_la_for_fix;
+        int  rc;
 #ifdef HAVE_QUOTA_SUPPORT
         struct obd_device *obd = mdd->mdd_obd_dev;
         struct obd_export *exp = md_quota(env)->mq_exp;
@@ -1401,21 +1392,8 @@ static int mdd_attr_set(const struct lu_env *env, struct md_object *obj,
 
         /*TODO: add lock here*/
         /* start a log jounal handle if needed */
-        if (S_ISREG(mdd_object_type(mdd_obj)) &&
-            ma->ma_attr.la_valid & (LA_UID | LA_GID)) {
-                lmm_size = mdd_lov_mdsize(env, mdd);
-                lmm = mdd_max_lmm_get(env, mdd);
-                if (lmm == NULL)
-                        RETURN(rc = -ENOMEM);
 
-                rc = mdd_get_md_locked(env, mdd_obj, lmm, &lmm_size,
-                                XATTR_NAME_LOV);
-
-                if (rc < 0)
-                        RETURN(rc);
-        }
-
-        handle = mdd_declare_and_start_attr_set(env, obj, ma, lmm, lmm_size);
+        handle = mdd_declare_and_start_attr_set(env, obj, ma);
         if (IS_ERR(handle))
                 RETURN(PTR_ERR(handle));
 
@@ -1468,17 +1446,6 @@ static int mdd_attr_set(const struct lu_env *env, struct md_object *obj,
         } else if (la_copy->la_valid) {            /* setattr */
                 rc = mdd_attr_set_internal_locked(env, mdd_obj, la_copy,
                                                   handle, 1);
-                /* journal chown/chgrp in llog, just like unlink */
-                if (rc == 0 && lmm_size){
-                        cookie_size = mdd_lov_cookiesize(env, mdd);
-                        logcookies = mdd_max_cookie_get(env, mdd);
-                        if (logcookies == NULL)
-                                GOTO(cleanup, rc = -ENOMEM);
-
-                        if (mdd_setattr_log(env, mdd, ma, lmm, lmm_size,
-                                            logcookies, cookie_size, handle) <= 0)
-                                logcookies = NULL;
-                }
         }
 
         if (rc == 0 && ma->ma_valid & MA_LOV) {
@@ -1508,11 +1475,6 @@ cleanup:
                 rc = mdd_changelog_data_store(env, mdd, CL_SETATTR, mdd_obj,
                                               handle);
         mdd_trans_stop(env, mdd, rc, handle);
-        if (rc == 0 && (lmm != NULL && lmm_size > 0 )) {
-                /*set obd attr, if needed*/
-                rc = mdd_lov_setattr_async(env, mdd_obj, lmm, lmm_size,
-                                           logcookies);
-        }
 #ifdef HAVE_QUOTA_SUPPORT
         if (quota_opc) {
                 lquota_pending_commit(mds_quota_interface_ref, obd, qnids,
@@ -2059,26 +2021,6 @@ static int mdd_open(const struct lu_env *env, struct md_object *obj,
         return rc;
 }
 
-/* return md_attr back,
- * if it is last unlink then return lov ea + llog cookie*/
-int mdd_object_kill(const struct lu_env *env, struct mdd_object *obj,
-                    struct md_attr *ma, struct thandle *th)
-{
-        int rc = 0;
-        ENTRY;
-
-        if (S_ISREG(mdd_object_type(obj))) {
-                /* Return LOV & COOKIES unconditionally here. We clean evth up.
-                 * Caller must be ready for that. */
-
-                rc = __mdd_lmm_get(env, obj, ma);
-                if ((ma->ma_valid & MA_LOV))
-                        rc = mdd_unlink_log(env, mdo2mdd(&obj->mod_obj),
-                                            obj, ma, th);
-        }
-        RETURN(rc);
-}
-
 /*
  * No permission check is needed.
  */
@@ -2086,7 +2028,6 @@ static int mdd_close(const struct lu_env *env, struct md_object *obj,
                      struct md_attr *ma)
 {
         struct mdd_object *mdd_obj = md2mdd_obj(obj);
-        struct mdd_device *mdd = mdo2mdd(obj);
         struct thandle    *handle;
         int rc;
         int reset = 1;
@@ -2102,10 +2043,10 @@ static int mdd_close(const struct lu_env *env, struct md_object *obj,
         handle = mdd_trans_create(env, mdo2mdd(obj));
         if (IS_ERR(handle))
                 RETURN(PTR_ERR(handle));
-        rc = mdd_declare_finish_unlink(env, mdd_obj, ma, handle);
         rc = mdo_declare_destroy_obj(env, mdd_obj, handle);
         if (rc)
                 GOTO(cleanup, rc);
+        rc = __mdd_declare_orphan_add(env, mdd_obj, handle);
         if (rc)
                 GOTO(cleanup, rc);
         rc = __mdd_declare_orphan_del(env, mdd_obj, handle);
@@ -2148,16 +2089,6 @@ static int mdd_close(const struct lu_env *env, struct md_object *obj,
                         mdd_quota_wrapper(&ma->ma_attr, qids);
                 }
 #endif
-                /* MDS_CLOSE_CLEANUP means destroy OSS objects by MDS. */
-                if (ma->ma_valid & MA_FLAGS &&
-                    ma->ma_attr_flags & MDS_CLOSE_CLEANUP) {
-                        rc = mdd_lov_destroy(env, mdd, mdd_obj,
-                                             &ma->ma_attr, handle);
-                } else {
-                        rc = mdd_object_kill(env, mdd_obj, ma, handle);
-                                if (rc == 0)
-                                        reset = 0;
-                }
                 rc = mdo_destroy_obj(env, mdd_obj, handle);
 
                 if (rc != 0)

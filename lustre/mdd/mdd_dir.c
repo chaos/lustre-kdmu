@@ -839,50 +839,6 @@ out_pending:
         return rc;
 }
 
-int mdd_declare_finish_unlink(const struct lu_env *env,
-                              struct mdd_object *obj, struct md_attr *ma,
-                              struct thandle *th)
-{
-        struct lov_stripe_md *lsm = NULL;
-        struct llog_ctxt     *ctxt;
-        struct mdd_device    *mdd = mdo2mdd(&obj->mod_obj);
-        struct obd_device    *obd = mdd2obd_dev(mdd);
-        struct mds_obd       *mds = &obd->u.mds;
-        int                   rc;
-        ENTRY;
-
-        rc = __mdd_declare_orphan_add(env, obj, th);
-
-        if (rc || !S_ISREG(mdd_object_type(obj)))
-                RETURN(rc);
-
-        /* XXX: llog is still uses fsfilt to control transactions
-         * thus the best we can do is to calculate credits here
-         * once llog is re-written on top of osd, we'll be able
-         * to call it's method to declare all needed changes
-         */
-         /* the worst case is when new llog file is required:
-          * new object, add record to a catalog, record to file */
-
-        rc = mdd_lmm_get_locked(env, obj, ma);
-        if (rc || !(ma->ma_valid & MA_LOV))
-                RETURN(rc);
-
-        rc = obd_unpackmd(mds->mds_osc_exp, &lsm, ma->ma_lmm, ma->ma_lmm_size);
-        if (rc < 0)
-                RETURN(rc);
-
-        ctxt = llog_get_context(obd, LLOG_MDS_OST_ORIG_CTXT);
-        rc = llog_declare_add_2(ctxt, NULL, lsm, th);
-        llog_ctxt_put(ctxt);
-
-        GOTO(out, rc);
-out:
-        obd_free_memmd(mds->mds_osc_exp, &lsm);
-
-        RETURN(rc);
-}
-
 /* caller should take a lock before calling */
 int mdd_finish_unlink(const struct lu_env *env,
                       struct mdd_object *obj, struct md_attr *ma,
@@ -967,7 +923,7 @@ mdd_declare_and_start_unlink(const struct lu_env *env, struct md_object *pobj,
         rc = mdo_declare_ref_del(env, mdd_cobj, handle);
         if (rc)
                 GOTO(out, rc);
-        rc = mdd_declare_finish_unlink(env, mdd_cobj, ma, handle);
+        rc = __mdd_declare_orphan_add(env, mdd_cobj, handle);
         if (rc)
                 GOTO(out, rc);
         rc = mdo_declare_attr_set(env, mdd_pobj, NULL, handle);
@@ -1424,7 +1380,7 @@ mdd_declare_and_start_rename_tgt(const struct lu_env *env, struct md_object *pob
         rc = mdo_declare_attr_set(env, mdd_tobj, NULL, handle);
         if (rc)
                 GOTO(out_trans, rc);
-        rc = mdd_declare_finish_unlink(env, mdd_tobj, ma, handle);
+        rc = __mdd_declare_orphan_add(env, mdd_tobj, handle);
         if (rc)
                 GOTO(out_trans, rc);
         rc = mdd_trans_start(env, mdd, handle);
@@ -1628,6 +1584,9 @@ static int mdd_create_data(const struct lu_env *env, struct md_object *pobj,
         int                rc;
         ENTRY;
 
+        /* XXX: shouldn't get here. at least as long as object creation isn't lazy */
+        LBUG();
+
         rc = mdd_cd_sanity_check(env, son);
         if (rc)
                 RETURN(rc);
@@ -1657,22 +1616,17 @@ static int mdd_create_data(const struct lu_env *env, struct md_object *pobj,
                                     (struct lov_mds_md *)spec->u.sp_ea.eadata,
                                     spec->u.sp_ea.eadatalen, handle, 0);
         } else
-#endif
+#endif  
+                LBUG();
                 /* No need mdd_lsm_sanity_check here */
-                rc = mdd_lov_set_md(env, mdd_pobj, son, lmm,
-                                    lmm_size, handle, 0);
+                /*rc = mdd_lov_set_md(env, mdd_pobj, son, lmm,
+                                    lmm_size, handle, 0);*/
 
         if (rc == 0)
                rc = mdd_attr_get_internal_locked(env, son, ma);
 
-        /* update lov_objid data, must be before transaction stop! */
-        if (rc == 0)
-                mdd_lov_objid_update(mdd, lmm, handle);
-
         mdd_trans_stop(env, mdd, rc, handle);
 out_free:
-        /* Finish mdd_lov_create() stuff. */
-        mdd_lov_create_finish(env, mdd, lmm, lmm_size, spec);
         RETURN(rc);
 }
 
@@ -1853,7 +1807,6 @@ mdd_start_and_declare_create(const struct lu_env *env,
                              struct md_object *pobj,
                              struct mdd_object *son,
                              const char *name,
-                             int lmm_size,
                              struct lu_attr *attr,
                              struct md_op_spec *spec)
 {
@@ -1884,10 +1837,6 @@ mdd_start_and_declare_create(const struct lu_env *env,
                 GOTO(cleanup, rc);
         rc = __mdd_declare_index_insert(env, mdd_pobj, mdo2fid(son),
                                         name, S_ISDIR(attr->la_mode), handle);
-        rc = mdo_declare_xattr_set(env, son, lmm_size, XATTR_NAME_LOV, 0, 
-                                   handle);
-        if (rc)
-                GOTO(cleanup, rc);
         rc = mdo_declare_xattr_set(env, son, 0, XATTR_NAME_LINK, 0, handle);
         if (rc)
                 GOTO(cleanup, rc);
@@ -1904,7 +1853,7 @@ mdd_start_and_declare_create(const struct lu_env *env,
         rc = mdo_declare_attr_set(env, mdd_pobj, NULL, handle);
         if (rc)
                 GOTO(cleanup, rc);
-        rc = mdo_declare_attr_set(env, son, NULL, handle);
+        rc = mdo_declare_attr_set(env, son, attr, handle);
         if (rc)
                 GOTO(cleanup, rc);
         rc = mdd_trans_start(env, mdd, handle);
@@ -1934,11 +1883,10 @@ static int mdd_create(const struct lu_env *env,
         struct mdd_object      *son = md2mdd_obj(child);
         struct mdd_device      *mdd = mdo2mdd(pobj);
         struct lu_attr         *attr = &ma->ma_attr;
-        struct lov_mds_md      *lmm = NULL;
         struct thandle         *handle;
         struct dynlock_handle  *dlh;
         const char             *name = lname->ln_name;
-        int rc, created = 0, initialized = 0, inserted = 0, lmm_size = 0;
+        int rc, created = 0, initialized = 0, inserted = 0;
         int got_def_acl = 0;
 #ifdef HAVE_QUOTA_SUPPORT
         struct obd_device *obd = mdd->mdd_obd_dev;
@@ -2038,18 +1986,6 @@ static int mdd_create(const struct lu_env *env,
         }
 #endif
 
-        /*
-         * No RPC inside the transaction, so OST objects should be created at
-         * first.
-         */
-        if (S_ISREG(attr->la_mode)) {
-                lmm_size = ma->ma_lmm_size;
-                rc = mdd_lov_create(env, mdd, mdd_pobj, son, &lmm, &lmm_size,
-                                    spec, attr);
-                if (rc)
-                        GOTO(out_pending, rc);
-        }
-
         if (!S_ISLNK(attr->la_mode)) {
                 ma_acl->ma_acl_size = sizeof info->mti_xattr_buf;
                 ma_acl->ma_acl = info->mti_xattr_buf;
@@ -2068,7 +2004,7 @@ static int mdd_create(const struct lu_env *env,
         mdd_object_make_hint(env, mdd_pobj, son, attr);
 
         handle = mdd_start_and_declare_create(env, pobj, son, name,
-                                              lmm_size, attr, spec);
+                                              attr, spec);
         if (IS_ERR(handle))
                 GOTO(out_free, rc = PTR_ERR(handle));
 
@@ -2122,19 +2058,6 @@ static int mdd_create(const struct lu_env *env,
 
         inserted = 1;
 
-        /* No need mdd_lsm_sanity_check here */
-        rc = mdd_lov_set_md(env, mdd_pobj, son, lmm, lmm_size, handle, 0);
-        if (rc) {
-                CERROR("error on stripe info copy %d \n", rc);
-                GOTO(cleanup, rc);
-        }
-        if (lmm && lmm_size > 0) {
-                /* Set Lov here, do not get lmm again later */
-                memcpy(ma->ma_lmm, lmm, lmm_size);
-                ma->ma_lmm_size = lmm_size;
-                ma->ma_valid |= MA_LOV;
-        }
-
         if (S_ISLNK(attr->la_mode)) {
                 struct md_ucred  *uc = md_ucred(env);
                 struct dt_object *dt = mdd_object_child(son);
@@ -2186,10 +2109,6 @@ cleanup:
                 }
         }
 
-        /* update lov_objid data, must be before transaction stop! */
-        if (rc == 0)
-                mdd_lov_objid_update(mdd, lmm, handle);
-
         mdd_pdo_write_unlock(env, mdd_pobj, dlh);
 out_trans:
         if (rc == 0)
@@ -2200,9 +2119,6 @@ out_trans:
                             son, mdd_pobj, NULL, lname, handle);
         mdd_trans_stop(env, mdd, rc, handle);
 out_free:
-        /* finis lov_create stuff, free all temporary data */
-        mdd_lov_create_finish(env, mdd, lmm, lmm_size, spec);
-out_pending:
 #ifdef HAVE_QUOTA_SUPPORT
         if (quota_opc) {
                 lquota_pending_commit(mds_quota_interface_ref, obd, qcids,
@@ -2361,7 +2277,7 @@ mdd_declare_and_start_rename(const struct lu_env *env, struct md_object *src_pob
                 rc = mdo_declare_attr_set(env, mdd_tobj, NULL, handle);
                 if (rc)
                         GOTO(out, rc);
-                rc = mdd_declare_finish_unlink(env, mdd_tobj, ma, handle);
+                rc = __mdd_declare_orphan_add(env, mdd_tobj, handle);
                 if (rc)
                         GOTO(out, rc);
         }
