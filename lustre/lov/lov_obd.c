@@ -835,6 +835,7 @@ int lov_setup(struct obd_device *obd, struct lustre_cfg *lcfg)
 
         RETURN(0);
 }
+EXPORT_SYMBOL(lov_setup);
 
 static int lov_precleanup(struct obd_device *obd, enum obd_cleanup_stage stage)
 {
