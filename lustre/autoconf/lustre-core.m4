@@ -1413,6 +1413,9 @@ int main(void)
         AC_DEFINE_UNQUOTED(XATTR_ACL_SIZE, AS_TR_SH([$acl_size]), [size of xattr acl])
 ],[
         AC_ERROR([ACL size can't computed])
+],[
+	AC_MSG_WARN([ACL size can't be computed, use default])
+        AC_DEFINE(XATTR_ACL_SIZE, 260, [size of xattr])
 ])
 CFLAGS="$tmp_flags"
 ])
