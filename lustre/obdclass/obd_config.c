@@ -905,6 +905,10 @@ int class_process_config(struct lustre_cfg *lcfg)
                         CERROR("no device for: %s\n",
                                lustre_cfg_string(lcfg, 0));
 
+                /* XXX: fix mgs_llog.c */
+                if (lcfg->lcfg_command == LCFG_PARAM)
+                        GOTO(out, err = 0);
+
                 GOTO(out, err = -EINVAL);
         }
 
