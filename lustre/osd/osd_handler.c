@@ -556,6 +556,8 @@ int osd_trans_start(const struct lu_env *env,
 
         if (!osd_param_is_sane(dev, th)) {
                 CERROR("Invalid transaction parameters (%d)\n", oh->ot_credits);
+                /* XXX */
+                oh->ot_credits = osd_journal(dev)->j_max_transaction_buffers;
 #ifdef OSD_TRACK_DECLARES
                 CERROR("  attr_set: %d, punch: %d, xattr_set: %d, xattr_del: %d\n",
                        oh->ot_declare_attr_set, oh->ot_declare_punch,
@@ -566,7 +568,7 @@ int osd_trans_start(const struct lu_env *env,
                 CERROR("  insert: %d, delete: %d\n",
                        oh->ot_declare_insert, oh->ot_declare_delete);
 #endif
-                GOTO(out, hook_res = -EINVAL);
+                /* XXX: GOTO(out, hook_res = -EINVAL); */
         }
 
         /*
@@ -913,7 +915,7 @@ const int osd_dto_credits_noquota[DTO_NR] = {
          * XXX Note: maybe iam need more, since iam have more level than
          *           EXT3 htree.
          */
-        [DTO_INDEX_INSERT]  = 16,
+        [DTO_INDEX_INSERT]  = 10, /* XXX: 16 */
         [DTO_INDEX_DELETE]  = 16,
         /**
          * Unused now
@@ -950,7 +952,7 @@ const int osd_dto_credits_noquota[DTO_NR] = {
         /**
          * credits for single block write.
          */
-        [DTO_WRITE_BLOCK]   = 14,
+        [DTO_WRITE_BLOCK]   = 10, /* XXX: 14 */
         /**
          * Attr set credits for chown.
          * This is extra credits for setattr, and it is null without quota
