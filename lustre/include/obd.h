@@ -696,6 +696,7 @@ struct lov_tgt_desc {
         unsigned long       ltd_active:1,/* is this target up for requests */
                             ltd_activate:1,/* should this target be activated */
                             ltd_reap:1;  /* should this target be deleted */
+        struct obd_statfs   ltd_statfs;
 };
 
 /* Pool metadata */
