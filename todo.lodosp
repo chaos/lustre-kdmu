@@ -1,0 +1,31 @@
+ * LOD TODO
+ *  - shutdown
+ *  - support for different LOV EA formats
+ *  - load/init striping info on demand
+ *  - object allocation
+ *  - ost removal/deactivation
+ *  - lod_ah_init() to grab default striping from parent or fs
+ *  - lod_qos_prep_create() to support non-zero files w/o objects
+ *  - lod_alloc_idx_array() to support object creation on specified OSTs
+ *  - lod_qos_prep_create() to support pools
+ *  - how lod_alloc_qos() can learn OST slowness w/o obd_precreate()
+ *  - improve locking in lod_qos_statfs_update()
+ *  - lod_qos_statfs_update() to recalculate space with fixed block size
+
+ * OSP TODO
+ *  - shutdown
+ *  - global lu_idif_build()
+ *  - ->do_create() to set initial attributes
+ *  - send uid/gid changes immediately?
+ *  - adaptive precreation (shouldn't block in most cases)
+ *  - support for CMD (group = mds #)
+ *  - release object reservation when object is created or released
+ *  - start orphan cleanup when recovery is over
+ *  - negotiate proper connect data
+ *  - how to handle precreation failure
+ *  - ost_precreate_reserve() to return -EIO if connection is broken
+ *  - bulk RPC to OST
+ *  - llog_process() to get a cursor to skip non-committed-yet changes
+ *  - a mechanism to learn committness ASAP?
+ *  - what ->statfs() returns when connection is down?
+
