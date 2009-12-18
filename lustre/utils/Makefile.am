@@ -74,8 +74,9 @@ llverfs_LDADD := $(EXT2FSLIB) $(E2PLIB)
 llverdev_LDADD := $(EXT2FSLIB) $(BLKIDLIB)
 
 L_IOCTL := $(top_builddir)/libcfs/libcfs/util/l_ioctl.c
+L_PARAMSTREE := $(top_builddir)/libcfs/libcfs/params_tree.c
 L_KERNELCOMM := $(top_builddir)/libcfs/libcfs/ulinux/ulinux-kernelcomm.c
-liblustreapi_a_SOURCES = liblustreapi.c $(L_IOCTL) $(L_KERNELCOMM)
+liblustreapi_a_SOURCES = liblustreapi.c $(L_IOCTL) $(L_PARAMSTREE) $(L_KERNELCOMM)
 
 libiam_a_SOURCES = libiam.c
 
@@ -109,7 +110,7 @@ tunefs_lustre_LDADD := $(mkfs_lustre_LDADD)
 tunefs_lustre_DEPENDENCIES := $(mkfs_lustre_DEPENDENCIES)
 
 l_getidentity_SOURCES = l_getidentity.c
-l_getidentity_LDADD := $(LIBPTLCTL)
+l_getidentity_LDADD := $(LIBREADLINE) liblustreapi.a $(LIBPTLCTL)
 l_getidentity_DEPENDENCIES := $(LIBPTLCTL)
 
 ltrack_stats_SOURCES = ltrack_stats.c

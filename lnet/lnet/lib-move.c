@@ -46,6 +46,24 @@ static int local_nid_dist_zero = 1;
 CFS_MODULE_PARM(local_nid_dist_zero, "i", int, 0444,
                 "Reserved");
 
+#ifdef __KERNEL__
+static struct libcfs_param_ctl_table libcfs_param_libmove_ctl_table[] = {
+        {
+                .name     = "local_nid_dist_zero",
+                .data     = &local_nid_dist_zero,
+                .mode     = 0444,
+                .read     = libcfs_param_intvec_read
+        },
+        {0}
+};
+
+void lnet_libmove_sysctl_init()
+{
+        libcfs_param_sysctl_init("lnet", libcfs_param_libmove_ctl_table,
+                                 libcfs_param_lnet_root);
+}
+#endif
+
 /* forward ref */
 static void lnet_commit_md (lnet_libmd_t *md, lnet_msg_t *msg);
 

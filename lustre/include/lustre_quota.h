@@ -83,7 +83,6 @@ struct client_obd;
 
 #ifdef __KERNEL__
 
-#ifdef LPROCFS
 enum {
         LQUOTA_FIRST_STAT = 0,
         /** @{ */
@@ -139,7 +138,6 @@ enum {
         LQUOTA_LAST_STAT
         /** }@ */
 };
-#endif  /* LPROCFS */
 
 /* structures to access admin quotafile */
 struct lustre_mem_dqinfo {
@@ -337,7 +335,7 @@ struct lustre_quota_ctxt {
          * with wait==1 will be put here b=14840
          */
         cfs_waitq_t   lqc_wait_for_qmaster;
-        struct proc_dir_entry *lqc_proc_dir;
+        struct libcfs_param_entry         *lqc_proc_dir;
         /** lquota statistics */
         struct lprocfs_stats  *lqc_stats;
         /** the number of used hashed lqs */

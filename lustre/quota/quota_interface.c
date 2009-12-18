@@ -443,7 +443,7 @@ static int quota_chk_acq_common(struct obd_device *obd, struct obd_export *exp,
                                      &lwi);
                         CDEBUG(D_QUOTA, "wake up when quota master is back\n");
                         lc_watchdog_touch(oti->oti_thread->t_watchdog,
-                                 GET_TIMEOUT(oti->oti_thread->t_svc));
+                                          GET_TIMEOUT(oti->oti_thread->t_svc));
                 } else {
                         spin_unlock(&qctxt->lqc_lock);
                 }
@@ -487,7 +487,7 @@ static int quota_chk_acq_common(struct obd_device *obd, struct obd_export *exp,
 
                         if (oti && oti->oti_thread && oti->oti_thread->t_watchdog)
                                 lc_watchdog_touch(oti->oti_thread->t_watchdog,
-                                         GET_TIMEOUT(oti->oti_thread->t_svc));
+                                           GET_TIMEOUT(oti->oti_thread->t_svc));
                         CDEBUG(D_QUOTA, "rc: %d, count_err: %d\n", rc,
                                count_err++);
 
@@ -986,7 +986,7 @@ quota_interface_t lov_quota_interface = {
 
 #ifdef __KERNEL__
 
-cfs_proc_dir_entry_t *lquota_type_proc_dir = NULL;
+struct libcfs_param_entry *lquota_type_proc_dir = NULL;
 
 static int __init init_lustre_quota(void)
 {
@@ -1001,6 +1001,7 @@ static int __init init_lustre_quota(void)
                 rc = PTR_ERR(lquota_type_proc_dir);
                 return rc;
         }
+        lprocfs_put_lperef(lquota_type_proc_dir);
 
         rc = qunit_cache_init();
         if (rc)

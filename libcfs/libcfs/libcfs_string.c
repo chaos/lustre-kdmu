@@ -146,5 +146,30 @@ char *libcfs_strdup(const char *str, u_int32_t flags)
         return dup_str;
 }
 
+/* safe vsnprintf */
+int libcfs_vsnprintf(char *buf, size_t size, const char *fmt, va_list args)
+{
+        int i;
+
+        LASSERT(size > 0);
+        i = vsnprintf(buf, size, fmt, args);
+
+        return  i = (i >= size) ? size - 1 : i;
+}
+
+/* safe snprintf */
+int libcfs_snprintf(char *buf, size_t size, const char *fmt, ...)
+{
+        va_list args;
+        int i;
+
+        va_start(args, fmt);
+        i=libcfs_vsnprintf(buf,size,fmt,args);
+        va_end(args);
+
+        return  i;
+}
 EXPORT_SYMBOL(libcfs_str2mask);
 EXPORT_SYMBOL(libcfs_strdup);
+EXPORT_SYMBOL(libcfs_vsnprintf);
+EXPORT_SYMBOL(libcfs_snprintf);

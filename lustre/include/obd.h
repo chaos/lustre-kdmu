@@ -70,7 +70,6 @@
 
 #include <libcfs/bitmap.h>
 
-
 #define MAX_OBD_DEVICES 8192
 
 /* this is really local to the OSC */
@@ -209,7 +208,7 @@ struct obd_type {
         struct list_head typ_chain;
         struct obd_ops *typ_dt_ops;
         struct md_ops *typ_md_ops;
-        cfs_proc_dir_entry_t *typ_procroot;
+        struct libcfs_param_entry *typ_procroot;
         char *typ_name;
         int  typ_refcnt;
         struct lu_device_type *typ_lu;
@@ -510,7 +509,7 @@ struct mgs_obd {
         struct dentry                   *mgs_fid_de;
         struct list_head                 mgs_fs_db_list;
         struct semaphore                 mgs_sem;
-        cfs_proc_dir_entry_t            *mgs_proc_live;
+        struct libcfs_param_entry       *mgs_proc_live;
 };
 
 struct dt_object;
@@ -712,7 +711,7 @@ struct pool_desc {
         struct lov_qos_rr     pool_rr;                /* round robin qos */
         struct hlist_node     pool_hash;              /* access by poolname */
         struct list_head      pool_list;              /* serial access */
-        cfs_proc_dir_entry_t *pool_proc_entry;        /* file in /proc */
+        struct libcfs_param_entry *pool_proc_entry;        /* file in /proc */
         struct lov_obd       *pool_lov;               /* lov obd to which this
                                                          pool belong */
 };
@@ -734,7 +733,7 @@ struct lov_obd {
         int                     lov_pool_count;
         cfs_hash_t             *lov_pools_hash_body; /* used for key access */
         struct list_head        lov_pool_list; /* used for sequential access */
-        cfs_proc_dir_entry_t   *lov_pool_proc_entry;
+        struct libcfs_param_entry *lov_pool_proc_entry;
         enum lustre_sec_part    lov_sp_me;
 };
 
@@ -1134,12 +1133,12 @@ struct obd_device {
         unsigned int           md_cntr_base;
         struct lprocfs_stats  *md_stats;
 
-        cfs_proc_dir_entry_t  *obd_proc_entry;
-        cfs_proc_dir_entry_t  *obd_proc_exports_entry;
-        cfs_proc_dir_entry_t  *obd_svc_procroot;
-        struct lprocfs_stats  *obd_svc_stats;
-        atomic_t               obd_evict_inprogress;
-        cfs_waitq_t            obd_evict_inprogress_waitq;
+        struct libcfs_param_entry       *obd_proc_entry;
+        struct libcfs_param_entry       *obd_proc_exports_entry;
+        struct libcfs_param_entry       *obd_svc_procroot;
+        struct lprocfs_stats            *obd_svc_stats;
+        atomic_t                         obd_evict_inprogress;
+        cfs_waitq_t                      obd_evict_inprogress_waitq;
 
         /**
          * Ldlm pool part. Save last calculated SLV and Limit.

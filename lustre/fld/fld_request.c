@@ -282,7 +282,7 @@ EXPORT_SYMBOL(fld_client_del_target);
 
 static void fld_client_proc_fini(struct lu_client_fld *fld);
 
-#ifdef LPROCFS
+#ifdef __KERNEL__
 static int fld_client_proc_init(struct lu_client_fld *fld)
 {
         int rc;
@@ -301,6 +301,7 @@ static int fld_client_proc_init(struct lu_client_fld *fld)
 
         rc = lprocfs_add_vars(fld->lcf_proc_dir,
                               fld_client_proc_list, fld);
+        lprocfs_put_lperef(fld->lcf_proc_dir);
         if (rc) {
                 CERROR("%s: Can't init FLD proc, rc %d\n",
                        fld->lcf_name, rc);
@@ -325,16 +326,9 @@ static void fld_client_proc_fini(struct lu_client_fld *fld)
         EXIT;
 }
 #else
-static int fld_client_proc_init(struct lu_client_fld *fld)
-{
-        return 0;
-}
-
-static void fld_client_proc_fini(struct lu_client_fld *fld)
-{
-        return;
-}
-#endif
+static int fld_client_proc_init(struct lu_client_fld *fld) { return 0; }
+static void fld_client_proc_fini(struct lu_client_fld *fld) {}
+#endif /* __KERNEL__ */
 
 static inline int hash_is_sane(int hash)
 {

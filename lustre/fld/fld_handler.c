@@ -77,7 +77,7 @@ LU_KEY_INIT_FINI(fld, struct fld_thread_info);
 /* context key: fld_thread_key */
 LU_CONTEXT_KEY_DEFINE(fld, LCT_MD_THREAD|LCT_DT_THREAD);
 
-cfs_proc_dir_entry_t *fld_type_proc_dir = NULL;
+struct libcfs_param_entry *fld_type_proc_dir = NULL;
 
 static struct lu_local_obj_desc llod_fld_index = {
         .llod_name      = fld_index_name,
@@ -93,6 +93,7 @@ static int __init fld_mod_init(void)
                                              NULL, NULL);
         if (IS_ERR(fld_type_proc_dir))
                 return PTR_ERR(fld_type_proc_dir);
+        lprocfs_put_lperef(fld_type_proc_dir);
 
         llo_local_obj_register(&llod_fld_index);
 
@@ -450,7 +451,6 @@ EXPORT_SYMBOL(fid_is_local);
 
 static void fld_server_proc_fini(struct lu_server_fld *fld);
 
-#ifdef LPROCFS
 static int fld_server_proc_init(struct lu_server_fld *fld)
 {
         int rc = 0;
@@ -463,6 +463,7 @@ static int fld_server_proc_init(struct lu_server_fld *fld)
                 rc = PTR_ERR(fld->lsf_proc_dir);
                 RETURN(rc);
         }
+        lprocfs_put_lperef(fld->lsf_proc_dir);
 
         RETURN(rc);
 }
@@ -477,17 +478,6 @@ static void fld_server_proc_fini(struct lu_server_fld *fld)
         }
         EXIT;
 }
-#else
-static int fld_server_proc_init(struct lu_server_fld *fld)
-{
-        return 0;
-}
-
-static void fld_server_proc_fini(struct lu_server_fld *fld)
-{
-        return;
-}
-#endif
 
 int fld_server_init(struct lu_server_fld *fld, struct dt_device *dt,
                     const char *prefix, const struct lu_env *env,

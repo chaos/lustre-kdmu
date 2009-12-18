@@ -153,8 +153,6 @@ kptl_tunables_t kptllnd_tunables = {
 #endif
 };
 
-
-#if defined(CONFIG_SYSCTL) && !CFS_SYSFS_MODULE_PARM
 #ifdef CRAY_XT3
 static char ptltrace_basename_space[1024];
 
@@ -166,6 +164,8 @@ kptllnd_init_strtunable(char **str_param, char *space, int size)
         *str_param = space;
 }
 #endif
+
+#if defined(CONFIG_SYSCTL) && !CFS_SYSFS_MODULE_PARM
 
 #ifndef HAVE_SYSCTL_UNNUMBERED
 
@@ -386,6 +386,136 @@ static cfs_sysctl_table_t kptllnd_top_ctl_table[] = {
         },
         {0}
 };
+#endif
+
+static struct libcfs_param_ctl_table libcfs_param_kptllnd_ctl_table[] = {
+        {
+                .name   = "ntx",
+                .data   = &ntx,
+                .mode   = 0444,
+                .read   = libcfs_param_intvec_read
+        },
+        {
+                .name   = "max_nodes",
+                .data   = &max_nodes,
+                .mode   = 0444,
+                .read   = libcfs_param_intvec_read
+        },
+        {
+                .name   = "max_procs_per_node",
+                .data   = &max_procs_per_node,
+                .mode   = 0444,
+                .read   = libcfs_param_intvec_read
+        },
+        {
+                .name   = "checksum",
+                .data   = &checksum,
+                .mode   = 0644,
+                .read   = libcfs_param_intvec_read,
+                .write  = libcfs_param_intvec_write
+        },
+        {
+                .name   = "timeout",
+                .data   = &timeout,
+                .mode   = 0644,
+                .read   = libcfs_param_intvec_read,
+                .write  = libcfs_param_intvec_write
+        },
+        {
+                .name   = "portal",
+                .data   = &portal,
+                .mode   = 0444,
+                .read   = libcfs_param_intvec_read
+        },
+        {
+                .name   = "pid",
+                .data   = &pid,
+                .mode   = 0444,
+                .read   = libcfs_param_intvec_read
+        },
+        {
+                .name   = "rxb_npages",
+                .data   = &rxb_npages,
+                .mode   = 0444,
+                .read   = libcfs_param_intvec_read
+        },
+        {
+                .name   = "credits",
+                .data   = &credits,
+                .mode   = 0444,
+                .read   = libcfs_param_intvec_read
+        },
+        {
+                .name   = "peercredits",
+                .data   = &peercredits,
+                .mode   = 0444,
+                .read   = libcfs_param_intvec_read
+        },
+        {
+                .name   = "peer_buffer_credits",
+                .data   = &peer_buffer_credits,
+                .mode   = 0444,
+                .read   = libcfs_param_intvec_read
+        },
+        {
+                .name   = "max_msg_size",
+                .data   = &max_msg_size,
+                .mode   = 0444,
+                .read   = libcfs_param_intvec_read
+        },
+        {
+                .name   = "peer_hash_table_size",
+                .data   = &peer_hash_table_size,
+                .mode   = 0444,
+                .read   = libcfs_param_intvec_read
+        },
+        {
+                .name   = "reschedule_loops",
+                .data   = &reschedule_loops,
+                .mode   = 0444,
+                .read   = libcfs_param_intvec_read
+        },
+        {
+                .name   = "ack_puts",
+                .data   = &ack_puts,
+                .mode   = 0644,
+                .read   = libcfs_param_intvec_read,
+                .write  = libcfs_param_intvec_write
+        },
+#ifdef CRAY_XT3
+        {
+                .name   = "ptltrace_on_timeout",
+                .data   = &ptltrace_on_timeout,
+                .mode   = 0644,
+                .read   = libcfs_param_intvec_read,
+                .write  = libcfs_param_intvec_write
+        },
+        {
+                .name   = "ptltrace_on_fail",
+                .data   = &ptltrace_on_fail,
+                .mode   = 0644,
+                .read   = libcfs_param_intvec_read,
+                .write  = libcfs_param_intvec_write
+        },
+        {
+                .name   = "ptltrace_basename",
+                .data   = ptltrace_basename_space,
+                .mode   = 0644,
+                .read   = libcfs_param_string_read,
+                .write  = libcfs_param_string_write
+        },
+#endif
+#ifdef PJK_DEBUGGING
+        {
+                .name   = "simulation_bitmap",
+                .data   = &simulation_bitmap,
+                .mode   = 0444,
+                .read   = libcfs_param_intvec_read
+        },
+#endif
+
+        {0}
+};
 
 int
 kptllnd_tunables_init ()
@@ -395,11 +525,17 @@ kptllnd_tunables_init ()
                                 ptltrace_basename_space,
                                 sizeof(ptltrace_basename_space));
 #endif
+
+        libcfs_param_sysctl_init("ptllnd", libcfs_param_kptllnd_ctl_table,
+                                 libcfs_param_lnet_root);
+
+#if defined(CONFIG_SYSCTL) && !CFS_SYSFS_MODULE_PARM
         kptllnd_tunables.kptl_sysctl =
                 cfs_register_sysctl_table(kptllnd_top_ctl_table, 0);
 
         if (kptllnd_tunables.kptl_sysctl == NULL)
                 CWARN("Can't setup /proc tunables\n");
+#endif
 
         return 0;
 }
@@ -407,21 +543,9 @@ kptllnd_tunables_init ()
 void
 kptllnd_tunables_fini ()
 {
+        libcfs_param_sysctl_fini("ptllnd", libcfs_param_lnet_root);
+#if defined(CONFIG_SYSCTL) && !CFS_SYSFS_MODULE_PARM
         if (kptllnd_tunables.kptl_sysctl != NULL)
                 cfs_unregister_sysctl_table(kptllnd_tunables.kptl_sysctl);
-}
-
-#else
-
-int
-kptllnd_tunables_init ()
-{
-        return 0;
-}
-
-void
-kptllnd_tunables_fini ()
-{
-}
-
 #endif
+}

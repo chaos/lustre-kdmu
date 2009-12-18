@@ -44,6 +44,7 @@
 #include <dt_object.h>
 
 #include <libcfs/libcfs.h>
+#include <lprocfs_status.h>
 
 #ifdef __KERNEL__
 struct seq_thread_info {
@@ -94,13 +95,10 @@ void seq_store_trans_stop(struct lu_server_seq *seq,
                           const struct lu_env *env,
                           struct thandle *th);
 
-#ifdef LPROCFS
 extern struct lprocfs_vars seq_server_proc_list[];
 extern struct lprocfs_vars seq_client_proc_list[];
-#endif
+#endif  /* __KERNEL__ */
 
-#endif
-
-extern cfs_proc_dir_entry_t *seq_type_proc_dir;
+extern struct libcfs_param_entry *seq_type_proc_dir;
 
 #endif /* __FID_INTERNAL_H */

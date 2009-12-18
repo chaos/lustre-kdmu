@@ -109,16 +109,17 @@ struct filter_export_data {
 #define fed_lr_idx      fed_led.led_lr_idx
 
 typedef struct nid_stat {
-        lnet_nid_t               nid;
-        struct hlist_node        nid_hash;
-        struct list_head         nid_list;
-        struct obd_device       *nid_obd;
-        struct proc_dir_entry   *nid_proc;
-        struct lprocfs_stats    *nid_stats;
-        struct lprocfs_stats    *nid_ldlm_stats;
-        struct brw_stats        *nid_brw_stats;
-        atomic_t                 nid_exp_ref_count; /* for obd_nid_stats_hash
-                                                           exp_nid_stats */
+        lnet_nid_t                      nid;
+        struct hlist_node               nid_hash;
+        struct list_head                nid_list;
+        struct obd_device              *nid_obd;
+        struct libcfs_param_entry      *nid_proc;
+        struct lprocfs_stats           *nid_stats;
+        struct lprocfs_stats           *nid_ldlm_stats;
+        struct brw_stats               *nid_brw_stats;
+                                       /*for obd_nid_stats_hash 
+                                        * exp_nid_stats */
+        atomic_t                        nid_exp_ref_count; 
 }nid_stat_t;
 
 #define nidstat_getref(nidstat)                                                \

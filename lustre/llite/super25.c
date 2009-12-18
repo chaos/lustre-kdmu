@@ -155,7 +155,10 @@ static int __init init_lustre_lite(void)
         }
 
         proc_lustre_fs_root = proc_lustre_root ?
-                              lprocfs_register("llite", proc_lustre_root, NULL, NULL) : NULL;
+                              lprocfs_register("llite", proc_lustre_root,
+                                               NULL, NULL) :
+                              NULL;
+        lprocfs_put_lperef(proc_lustre_fs_root);
 
         lustre_register_client_fill_super(ll_fill_super);
         lustre_register_kill_super_cb(ll_kill_super);

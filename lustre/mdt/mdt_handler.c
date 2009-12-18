@@ -3854,7 +3854,7 @@ static int mdt_start_ptlrpc_service(struct mdt_device *m)
 {
         int rc;
         static struct ptlrpc_service_conf conf;
-        cfs_proc_dir_entry_t *procfs_entry;
+        struct libcfs_param_entry *procfs_entry;
         ENTRY;
 
         procfs_entry = m->mdt_md_dev.md_lu_dev.ld_obd->obd_proc_entry;
@@ -4375,15 +4375,9 @@ static void mdt_fini(const struct lu_env *env, struct mdt_device *m)
          */
         mdt_stack_fini(env, m, md2lu_dev(m->mdt_child));
 
-        mdt_procfs_fini(m);
-        if (obd->obd_proc_exports_entry) {
-                lprocfs_remove_proc_entry("clear", obd->obd_proc_exports_entry);
-                obd->obd_proc_exports_entry = NULL;
-        }
         lprocfs_free_per_client_stats(obd);
+        mdt_procfs_fini(m);
         lprocfs_free_obd_stats(obd);
-        ptlrpc_lprocfs_unregister_obd(obd);
-        lprocfs_obd_cleanup(obd);
 
         if (ls) {
                 struct md_site *mite;
@@ -4471,7 +4465,6 @@ int mdt_postrecov(const struct lu_env *, struct mdt_device *);
 static int mdt_init0(const struct lu_env *env, struct mdt_device *m,
                      struct lu_device_type *ldt, struct lustre_cfg *cfg)
 {
-        struct lprocfs_static_vars lvars;
         struct mdt_thread_info    *info;
         struct obd_device         *obd;
         const char                *dev = lustre_cfg_string(cfg, 0);
@@ -4570,26 +4563,11 @@ static int mdt_init0(const struct lu_env *env, struct mdt_device *m,
                 GOTO(err_free_site, rc);
         }
 
-        lprocfs_mdt_init_vars(&lvars);
-        rc = lprocfs_obd_setup(obd, lvars.obd_vars);
-        if (rc) {
-                CERROR("Can't init lprocfs, rc %d\n", rc);
-                GOTO(err_fini_site, rc);
-        }
-        ptlrpc_lprocfs_register_obd(obd);
-
         rc = mdt_procfs_init(m, dev);
         if (rc) {
                 CERROR("Can't init MDT lprocfs, rc %d\n", rc);
                 GOTO(err_fini_proc, rc);
         }
-
-        obd->obd_proc_exports_entry = proc_mkdir("exports",
-                                                 obd->obd_proc_entry);
-        if (obd->obd_proc_exports_entry)
-                lprocfs_add_simple(obd->obd_proc_exports_entry,
-                                   "clear", lprocfs_nid_stats_clear_read,
-                                   lprocfs_nid_stats_clear_write, obd, NULL);
 
         /* set server index */
         lu_site2md(s)->ms_node_id = node_id;
@@ -4739,13 +4717,6 @@ err_fini_stack:
         mdt_stack_fini(env, m, md2lu_dev(m->mdt_child));
 err_fini_proc:
         mdt_procfs_fini(m);
-        if (obd->obd_proc_exports_entry) {
-                lprocfs_remove_proc_entry("clear", obd->obd_proc_exports_entry);
-                obd->obd_proc_exports_entry = NULL;
-        }
-        ptlrpc_lprocfs_unregister_obd(obd);
-        lprocfs_obd_cleanup(obd);
-err_fini_site:
         lu_site_fini(s);
 err_free_site:
         OBD_FREE_PTR(mite);

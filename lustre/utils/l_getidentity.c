@@ -51,6 +51,8 @@
 #include <liblustre.h>
 #include <lustre/lustre_user.h>
 #include <lustre/lustre_idl.h>
+#include <lustre/liblustreapi.h>
+#include <lprocfs_status.h>
 
 #define PERM_PATHNAME "/etc/lustre/perm.conf"
 
@@ -389,9 +391,9 @@ int main(int argc, char **argv)
         FILE *perms_fp;
         char *end;
         struct identity_downcall_data *data;
-        char procname[1024];
+        char pathname[1024];
         unsigned long uid;
-        int fd, rc;
+        int rc;
 
         progname = basename(argv[0]);
 
@@ -438,16 +440,10 @@ downcall:
                 return 0;
         }
 
-        snprintf(procname, sizeof(procname),
-                 "/proc/fs/lustre/mdt/%s/identity_info", argv[1]);
-        fd = open(procname, O_WRONLY);
-        if (fd < 0) {
-                errlog("can't open file %s: %s\n", procname, strerror(errno));
-                return 1;
-        }
-
-        rc = write(fd, data, sizeof(*data));
-        close(fd);
+        snprintf(pathname, sizeof(pathname),
+                 "lustre/mdt/%s/identity_info", argv[1]);
+        rc = llapi_params_write(pathname, strlen(pathname),
+                                (void *)data, sizeof(*data) - 1, 0);
         if (rc != sizeof(*data)) {
                 errlog("partial write ret %d: %s\n", rc, strerror(errno));
                 return 1;

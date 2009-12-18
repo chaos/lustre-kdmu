@@ -179,10 +179,12 @@ static inline void our_cond_resched(void)
 # define CFS_MODULE_PARM(name, t, type, perm, desc) \
         MODULE_PARM(name, t);\
         MODULE_PARM_DESC(name, desc)
-
 #else
 # define CFS_MODULE_PARM(name, t, type, perm, desc) \
         module_param(name, type, perm);\
+        MODULE_PARM_DESC(name, desc)
+# define CFS_MODULE_PARM_STR(name, string, len, perm, desc) \
+        module_param_string(name, string, len, perm);\
         MODULE_PARM_DESC(name, desc)
 #endif
 

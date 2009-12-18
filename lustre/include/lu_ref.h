@@ -231,6 +231,7 @@ static inline void lu_ref_print(const struct lu_ref *ref)
 static inline void lu_ref_print_all(void)
 {
 }
+
 #endif /* USE_LU_REF */
 
 /** @} lu */

@@ -23,7 +23,7 @@ noinst_SCRIPTS += sanity-sec.sh sanity-gss.sh krb5_login.sh setup_kerberos.sh
 noinst_SCRIPTS += recovery-mds-scale.sh run_dd.sh run_tar.sh run_iozone.sh
 noinst_SCRIPTS += run_dbench.sh run_IOR.sh recovery-double-scale.sh
 noinst_SCRIPTS += recovery-random-scale.sh parallel-scale.sh metadata-updates.sh
-noinst_SCRIPTS += lustre_rsync-test.sh ost-pools.sh rpc.sh
+noinst_SCRIPTS += lustre_rsync-test.sh ost-pools.sh rpc.sh comp_params.sh
 nobase_noinst_SCRIPTS = cfg/local.sh
 nobase_noinst_SCRIPTS += acl/make-tree acl/run cfg/ncli.sh
 nobase_noinst_SCRIPTS += racer/dir_create.sh racer/file_create.sh racer/file_list.sh
@@ -65,12 +65,13 @@ endif # TESTS
 # mkdirdeep_LDADD=-L$(top_builddir)/lnet/utils -lptlctl $(LIBREADLINE)
 mmap_sanity_SOURCES= mmap_sanity.c
 
-LIBLUSTREAPI := $(top_builddir)/lustre/utils/liblustreapi.a
+LIBLUSTREAPI := $(top_builddir)/lustre/utils/liblustreapi.a $(top_builddir)/libcfs/libcfs/libcfsutil.a
+ll_getstripe_info_LDADD=$(LIBLUSTREAPI)
 multiop_LDADD=$(LIBLUSTREAPI) -lrt
 copytool_LDADD=$(LIBLUSTREAPI)
 
 ll_dirstripe_verify_SOURCES= ll_dirstripe_verify.c
-ll_dirstripe_verify_LDADD= -L$(top_builddir)/lustre/utils -llustreapi
+ll_dirstripe_verify_LDADD=$(LIBLUSTREAPI)
 
 flocks_test_SOURCES=flocks_test.c
 flocks_test_LDADD=-lpthread

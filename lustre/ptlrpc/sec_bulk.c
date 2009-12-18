@@ -142,11 +142,12 @@ static struct shrinker *pools_shrinker = NULL;
 int sptlrpc_proc_read_enc_pool(char *page, char **start, off_t off, int count,
                                int *eof, void *data)
 {
-        int     rc;
+        int rc = 0;
 
+        *eof = 1;
         spin_lock(&page_pools.epp_lock);
 
-        rc = snprintf(page, count,
+        rc = libcfs_param_snprintf(page, count, data, LP_STR,
                       "physical pages:          %lu\n"
                       "pages per pool:          %lu\n"
                       "max pages:               %lu\n"
@@ -187,6 +188,7 @@ int sptlrpc_proc_read_enc_pool(char *page, char **start, off_t off, int count,
                      );
 
         spin_unlock(&page_pools.epp_lock);
+
         return rc;
 }
 

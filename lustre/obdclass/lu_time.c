@@ -95,9 +95,50 @@ void lu_time_global_fini(void)
         lu_context_key_degister(&lu_time_key);
 }
 
+static inline struct lu_time_data *lu_time_data_get(const struct lu_env *env)
+{
+        return lu_context_key_get(&env->le_ctx, &lu_time_key);
+}
+
+int lu_time_is_clean(const struct lu_env *env)
+{
+        return lu_time_data_get(env)->ltd_tos == 0;
+}
+EXPORT_SYMBOL(lu_time_is_clean);
+
+/* from sleepometer by Andrew Morton */
+unsigned long long lu_time_stamp_get(void)
+{
+        /*
+         * Return timestamp with microsecond precision. This has to be cheap.
+         */
+#if defined(CONFIG_X86) && !defined(CONFIG_X86_64)
+	/*
+	 * do_gettimeofday() goes backwards sometimes :(.  Usethe TSC
+	 */
+	unsigned long long ret;
+
+	rdtscll(ret);
+	do_div(ret, cpu_khz / 1000);
+	return ret;
+#else
+	struct timeval now;
+	unsigned long long ret;
+
+	do_gettimeofday(&now);
+	ret = now.tv_sec;
+	ret *= 1000000;
+	ret += now.tv_usec;
+	return ret;
+#endif
+}
+/*
+ * Export it, but do not advertise in headers. This is limited use only.
+ */
+EXPORT_SYMBOL(lu_time_stamp_get);
+
 int lu_time_named_init(struct lprocfs_stats **stats, const char *name,
-                       cfs_proc_dir_entry_t *entry,
-                       const char **names, int nr)
+                       struct libcfs_param_entry *entry, const char **names, int nr)
 {
         int result;
         int i;
@@ -128,7 +169,7 @@ int lu_time_named_init(struct lprocfs_stats **stats, const char *name,
 }
 EXPORT_SYMBOL(lu_time_named_init);
 
-int lu_time_init(struct lprocfs_stats **stats, cfs_proc_dir_entry_t *entry,
+int lu_time_init(struct lprocfs_stats **stats, struct libcfs_param_entry *entry,
                  const char **names, int nr)
 {
         return lu_time_named_init(stats, "stats", entry, names, nr);
@@ -143,49 +184,6 @@ void lu_time_fini(struct lprocfs_stats **stats)
         }
 }
 EXPORT_SYMBOL(lu_time_fini);
-
-static inline struct lu_time_data *lu_time_data_get(const struct lu_env *env)
-{
-        return lu_context_key_get(&env->le_ctx, &lu_time_key);
-}
-
-int lu_time_is_clean(const struct lu_env *env)
-{
-        return lu_time_data_get(env)->ltd_tos == 0;
-}
-EXPORT_SYMBOL(lu_time_is_clean);
-
-/* from sleepometer by Andrew Morton */
-unsigned long long lu_time_stamp_get(void)
-{
-        /*
-         * Return timestamp with microsecond precision. This has to be cheap.
-         */
-//#ifdef CONFIG_X86
-#if defined(CONFIG_X86) && !defined(CONFIG_X86_64)
-	/*
-	 * do_gettimeofday() goes backwards sometimes :(.  Usethe TSC
-	 */
-	unsigned long long ret;
-
-	rdtscll(ret);
-	do_div(ret, cpu_khz / 1000);
-	return ret;
-#else
-	struct timeval now;
-	unsigned long long ret;
-
-	do_gettimeofday(&now);
-	ret = now.tv_sec;
-	ret *= 1000000;
-	ret += now.tv_usec;
-	return ret;
-#endif
-}
-/*
- * Export it, but do not advertise in headers. This is limited use only.
- */
-EXPORT_SYMBOL(lu_time_stamp_get);
 
 void lu_lprocfs_time_start(const struct lu_env *env)
 {

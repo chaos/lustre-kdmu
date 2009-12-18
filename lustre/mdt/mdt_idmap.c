@@ -72,7 +72,7 @@
 #include <lustre_dlm.h>
 #include <lustre_sec.h>
 #include <lustre_lib.h>
-#include <lustre_ucache.h>
+#include <libcfs/lucache.h>
 
 #include "mdt_internal.h"
 

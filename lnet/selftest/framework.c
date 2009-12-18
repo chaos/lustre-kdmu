@@ -57,6 +57,38 @@ static int rpc_timeout = 64;
 CFS_MODULE_PARM(rpc_timeout, "i", int, 0644,
                 "rpc timeout in seconds (64 by default, 0 == never)");
 
+#ifdef __KERNEL__
+static struct libcfs_param_ctl_table libcfs_param_sfw_ctl_table[] = {
+        {
+                .name     = "brw_inject_errors",
+                .data     = &brw_inject_errors,
+                .mode     = 0644,
+                .read     = libcfs_param_intvec_read,
+                .write    = libcfs_param_intvec_write
+        },
+        {
+                .name     = "session_timeout",
+                .data     = &session_timeout,
+                .mode     = 0444,
+                .read     = libcfs_param_intvec_read
+        },
+        {
+                .name     = "rpc_timeout",
+                .data     = &rpc_timeout,
+                .mode     = 0644,
+                .read     = libcfs_param_intvec_read,
+                .write    = libcfs_param_intvec_write
+        },
+        {0}
+};
+
+void lnet_sfw_sysctl_init()
+{
+        libcfs_param_sysctl_init("selftest", libcfs_param_sfw_ctl_table,
+                                 libcfs_param_lnet_root);
+}
+#endif
+
 #define SFW_TEST_CONCURRENCY     1792
 #define SFW_EXTRA_TEST_BUFFERS   8 /* tolerate buggy peers with extra buffers */
 

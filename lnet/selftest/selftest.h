@@ -463,6 +463,8 @@ void swi_shutdown(void);
 void sfw_shutdown(void);
 void srpc_shutdown(void);
 
+void lnet_sfw_sysctl_init(void);
+
 static inline void
 srpc_destroy_client_rpc (srpc_client_rpc_t *rpc)
 {

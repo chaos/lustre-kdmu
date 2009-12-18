@@ -40,6 +40,7 @@
 #define DEBUG_SUBSYSTEM S_LNET
 
 #include <libcfs/libcfs.h>
+#include <libcfs/params_tree.h>
 #include <lnet/lib-lnet.h>
 #include <lnet/lnet.h>
 #include "tracefile.h"
@@ -222,23 +223,27 @@ EXPORT_SYMBOL(libcfs_deregister_ioctl);
 
 static int libcfs_ioctl(struct cfs_psdev_file *pfile, unsigned long cmd, void *arg)
 {
-        char    buf[1024];
-        int err = -EINVAL;
+        char *buf = NULL;
         struct libcfs_ioctl_data *data;
+        int err = 0, len = 0;
         ENTRY;
 
         /* 'cmd' and permissions get checked in our arch-specific caller */
-
-        if (libcfs_ioctl_getdata(buf, buf + 800, (void *)arg)) {
-                CERROR("PORTALS ioctl: data error\n");
+        if (libcfs_ioctl_getdata(&buf, &len, (void *)arg)) {
+                CERROR("PORTALS ioctl: data error cmd %lx \n", cmd);
                 RETURN(-EINVAL);
         }
         data = (struct libcfs_ioctl_data *)buf;
+        
+        if (!data) {
+                CERROR("PORTALS ioctl: data error cmd %lx \n", cmd);
+                RETURN(-EINVAL);
+        }
 
         switch (cmd) {
         case IOC_LIBCFS_CLEAR_DEBUG:
                 libcfs_debug_clear_buffer();
-                RETURN(0);
+                break;
         /*
          * case IOC_LIBCFS_PANIC:
          * Handled in arch/cfs_module.c
@@ -248,7 +253,7 @@ static int libcfs_ioctl(struct cfs_psdev_file *pfile, unsigned long cmd, void *a
                     data->ioc_inlbuf1[data->ioc_inllen1 - 1] != '\0')
                         RETURN(-EINVAL);
                 libcfs_debug_mark_buffer(data->ioc_inlbuf1);
-                RETURN(0);
+                break;
 #if LWT_SUPPORT
         case IOC_LIBCFS_LWT_CONTROL:
                 err = lwt_control ((data->ioc_flags & 1) != 0, 
@@ -312,7 +317,31 @@ static int libcfs_ioctl(struct cfs_psdev_file *pfile, unsigned long cmd, void *a
                         ping(data);
                         PORTAL_SYMBOL_PUT(kping_client);
                 }
-                RETURN(0);
+                break;
+        }
+
+        case IOC_LIBCFS_GET_PARAM: {
+                err = libcfs_param_read(data->ioc_inlbuf1, data->ioc_pbuf1,
+                                        data->ioc_plen1, &data->ioc_u64[0],
+                                        &data->ioc_u32[1]);
+                data->ioc_u32[0] = err;
+                err = libcfs_ioctl_popdata(arg, data, sizeof(*data));
+                break;
+        }
+
+        case IOC_LIBCFS_SET_PARAM: {
+                err = libcfs_param_write(data->ioc_inlbuf1, data->ioc_inlbuf2,
+                                         data->ioc_inllen2);
+                data->ioc_u32[0] = err;
+                err = libcfs_ioctl_popdata(arg, data, sizeof(*data));
+                break;
+        }
+
+        case IOC_LIBCFS_LIST_PARAM: {
+                err = libcfs_param_list(data->ioc_inlbuf1, data->ioc_u32[0]);
+                data->ioc_u32[0] = err;
+                err = libcfs_ioctl_popdata(arg, data, sizeof(*data));
+                break;
         }
 
         default: {
@@ -324,7 +353,7 @@ static int libcfs_ioctl(struct cfs_psdev_file *pfile, unsigned long cmd, void *a
                         err = hand->handle_ioctl(cmd, data);
                         if (err != -EINVAL) {
                                 if (err == 0)
-                                        err = libcfs_ioctl_popdata(arg, 
+                                        err = libcfs_ioctl_popdata(arg,
                                                         data, sizeof (*data));
                                 break;
                         }
@@ -334,6 +363,8 @@ static int libcfs_ioctl(struct cfs_psdev_file *pfile, unsigned long cmd, void *a
         }
         }
 
+        if (buf)
+                libcfs_ioctl_freedata(buf, len);
         RETURN(err);
 }
 
@@ -347,6 +378,8 @@ struct cfs_psdev_ops libcfs_psdev_ops = {
 
 extern int insert_proc(void);
 extern void remove_proc(void);
+extern int insert_params(void);
+extern void remove_params(void);
 MODULE_AUTHOR("Peter J. Braam <braam@clusterfs.com>");
 MODULE_DESCRIPTION("Portals v3.1");
 MODULE_LICENSE("GPL");
@@ -369,6 +402,7 @@ static int init_libcfs_module(void)
         init_mutex(&trace_thread_sem);
         init_rwsem(&ioctl_list_sem);
         CFS_INIT_LIST_HEAD(&ioctl_list);
+        libcfs_param_root_init();
 
         rc = libcfs_debug_init(5 * 1024 * 1024);
         if (rc < 0) {
@@ -389,11 +423,18 @@ static int init_libcfs_module(void)
                 goto cleanup_lwt;
         }
 
+        rc = insert_params();
+        if (rc) {
+                CERROR("insert_params: error %d\n", rc);
+                goto cleanup_deregister;
+        }
+#ifdef LPROCFS
         rc = insert_proc();
         if (rc) {
                 CERROR("insert_proc: error %d\n", rc);
                 goto cleanup_deregister;
         }
+#endif
 
         CDEBUG (D_OTHER, "portals setup OK\n");
         return (0);
@@ -413,7 +454,11 @@ static void exit_libcfs_module(void)
 {
         int rc;
 
+#ifdef LPROCFS
         remove_proc();
+#endif
+        remove_params();
+        libcfs_param_root_fini();
 
         CDEBUG(D_MALLOC, "before Portals cleanup: kmem %d\n",
                atomic_read(&libcfs_kmemory));

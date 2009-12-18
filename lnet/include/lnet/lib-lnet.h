@@ -52,6 +52,7 @@
 #endif
 
 #include <libcfs/libcfs.h>
+#include <libcfs/params_tree.h>
 #include <lnet/types.h>
 #include <lnet/lnet.h>
 #include <lnet/lib-types.h>
@@ -547,6 +548,8 @@ int lnet_get_route(int idx, __u32 *net, __u32 *hops,
                    lnet_nid_t *gateway, __u32 *alive);
 void lnet_proc_init(void);
 void lnet_proc_fini(void);
+int lnet_params_init(void);
+void lnet_params_fini(void);
 void lnet_init_rtrpools(void);
 int  lnet_alloc_rtrpools(int im_a_router);
 void lnet_free_rtrpools(void);
@@ -714,4 +717,10 @@ lnet_parse_int_tunable(int *value, char *name)
 }
 #endif
 
+#define MAX_STRLEN      256
+void lnet_apini_sysctl_init(void);
+void lnet_module_sysctl_init(void);
+void lnet_router_sysctl_init(void);
+void lnet_libmove_sysctl_init(void);
+void lnet_acceptor_sysctl_init(void);
 #endif

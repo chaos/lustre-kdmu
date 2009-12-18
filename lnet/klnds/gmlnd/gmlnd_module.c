@@ -176,11 +176,60 @@ static cfs_sysctl_table_t gmnal_top_ctl_table[] = {
 };
 #endif
 
+static struct libcfs_param_ctl_table libcfs_param_gmnal_ctl_table[] = {
+        {
+                .name     = "port",
+                .data     = &port,
+                .mode     = 0444,
+                .read     = libcfs_param_intvec_read
+        },
+        {
+                .name     = "ntx",
+                .data     = &ntx,
+                .mode     = 0444,
+                .read     = libcfs_param_intvec_read
+        },
+        {
+                .name     = "credits",
+                .data     = &credits,
+                .mode     = 0444,
+                .read     = libcfs_param_intvec_read
+        },
+        {
+                .name     = "peer_credits",
+                .data     = &peer_credits,
+                .mode     = 0444,
+                .read     = libcfs_param_intvec_read
+        },
+        {
+                .name     = "nlarge_tx_bufs",
+                .data     = &nlarge_tx_bufs,
+                .mode     = 0444,
+                .read     = libcfs_param_intvec_read
+        },
+        {
+                .name     = "nrx_small",
+                .data     = &nrx_small,
+                .mode     = 0444,
+                .read     = libcfs_param_intvec_read
+        },
+        {
+                .name     = "nrx_large",
+                .data     = &nrx_large,
+                .mode     = 0444,
+                .read     = libcfs_param_intvec_read
+        },
+        {0}
+};
+
 static int __init
 gmnal_load(void)
 {
         int     status;
         CDEBUG(D_TRACE, "This is the gmnal module initialisation routine\n");
+
+        libcfs_param_sysctl_init("gmnal", libcfs_param_gmnal_ctl_table,
+                                 libcfs_param_lnet_root);
 
 #if defined(CONFIG_SYSCTL) && !CFS_SYSFS_MODULE_PARM
         gmnal_tunables.gm_sysctl =
@@ -207,6 +256,7 @@ static void __exit
 gmnal_unload(void)
 {
         gmnal_fini();
+        libcfs_param_sysctl_fini("gmnal", libcfs_param_lnet_root);
 #if defined(CONFIG_SYSCTL) && !CFS_SYSFS_MODULE_PARM
         if (gmnal_tunables.gm_sysctl != NULL)
                 cfs_unregister_sysctl_table(gmnal_tunables.gm_sysctl);

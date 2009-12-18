@@ -37,6 +37,7 @@
 #ifndef _LUSTRE_SEC_H_
 #define _LUSTRE_SEC_H_
 
+#include<libcfs/params_tree.h>
 /*
  * to avoid include
  */
@@ -47,8 +48,7 @@ struct ptlrpc_request;
 struct ptlrpc_reply_state;
 struct ptlrpc_bulk_desc;
 struct brw_page;
-struct seq_file;
-
+//struct seq_file;
 /*
  * forward declaration
  */
@@ -447,7 +447,7 @@ struct ptlrpc_sec_cops {
          * misc
          */
         int                     (*display)     (struct ptlrpc_sec *sec,
-                                                struct seq_file *seq);
+                                                libcfs_seq_file_t *seq);
 };
 
 struct ptlrpc_sec_sops {
@@ -577,8 +577,7 @@ struct ptlrpc_bulk_sec_desc {
 /*
  * lprocfs
  */
-struct proc_dir_entry;
-extern struct proc_dir_entry *sptlrpc_proc_root;
+extern struct libcfs_param_entry *sptlrpc_proc_root;
 
 /*
  * round size up to next power of 2, for slab allocation.

@@ -76,9 +76,9 @@ lnet_accept_magic(__u32 magic, __u32 constant)
 
 EXPORT_SYMBOL(lnet_acceptor_port);
 
-static char *accept = "secure";
+static char accept[MAX_STRLEN] = "secure";
 
-CFS_MODULE_PARM(accept, "s", charp, 0444,
+CFS_MODULE_PARM_STR(accept, accept, sizeof(accept), 0444,
                 "Accept connections (secure|all|none)");
 CFS_MODULE_PARM(accept_port, "i", int, 0444,
                 "Acceptor's port (same on all nodes)");
@@ -86,6 +86,41 @@ CFS_MODULE_PARM(accept_backlog, "i", int, 0444,
                 "Acceptor's listen backlog");
 CFS_MODULE_PARM(accept_timeout, "i", int, 0644,
                 "Acceptor's timeout (seconds)");
+
+static struct libcfs_param_ctl_table libcfs_param_acceptor_ctl_table[] = {
+        {
+                .name     = "accept",
+                .data     = accept,
+                .mode     = 0444,
+                .read     = libcfs_param_string_read
+        },
+        {
+                .name     = "accept_port",
+                .data     = &accept_port,
+                .mode     = 0444,
+                .read     = libcfs_param_intvec_read
+        },
+        {
+                .name     = "accept_backlog",
+                .data     = &accept_backlog,
+                .mode     = 0444,
+                .read     = libcfs_param_intvec_read
+        },
+        {
+                .name     = "accept_timeout",
+                .data     = &accept_timeout,
+                .mode     = 0644,
+                .read     = libcfs_param_intvec_read,
+                .write    = libcfs_param_intvec_write
+        },
+        {0}
+};
+
+void lnet_acceptor_sysctl_init()
+{
+        libcfs_param_sysctl_init("lnet", libcfs_param_acceptor_ctl_table,
+                                 libcfs_param_lnet_root);
+}
 
 static char *accept_type = NULL;
 

@@ -44,14 +44,7 @@
 #include <lustre_log.h>
 #include <lustre_export.h>
 
-#ifdef LPROCFS
 void lprocfs_mgc_init_vars(struct lprocfs_static_vars *lvars);
-#else
-static void lprocfs_mgc_init_vars(struct lprocfs_static_vars *lvars)
-{
-        memset(lvars, 0, sizeof(*lvars));
-}
-#endif  /* LPROCFS */
 
 int mgc_process_log(struct obd_device *mgc, struct config_llog_data *cld);
 

@@ -393,6 +393,8 @@ CFS_EXPORT_SYMBOL(cfs_hash_del_key);
 
 /**
  * Lookup an item using @key in the libcfs hash @hs and return it.
+ * If the @key is NULL, return the first non-null hsb_head. If not
+ * found, return NULL.
  * If the @key is found in the hash hs->hs_get() is called and the
  * matching objects is returned.  It is the callers responsibility
  * to call the counterpart ops->hs_put using the cfs_hash_put() macro
@@ -403,22 +405,34 @@ void *
 cfs_hash_lookup(cfs_hash_t *hs, void *key)
 {
         void                 *obj = NULL;
-        struct hlist_node    *hnode;
+        struct hlist_node    *hnode = NULL;
         cfs_hash_bucket_t    *hsb;
         unsigned              i;
         ENTRY;
 
         cfs_hash_rlock(hs);
-        i = cfs_hash_id(hs, key, hs->hs_cur_mask);
-        hsb = hs->hs_buckets[i];
-        LASSERT(i <= hs->hs_cur_mask);
+        if (key == NULL) {
+                cfs_hash_for_each_bucket(hs, hsb, i) {
+                        read_lock(&hsb->hsb_rwlock);
+                        if (hsb->hsb_head.first) {
+                                hnode = hsb->hsb_head.first;
+                                obj = cfs_hash_get(hs, hnode);
+                                read_unlock(&hsb->hsb_rwlock);
+                                break;
+                        }
+                        read_unlock(&hsb->hsb_rwlock);
+                }
+        } else {
+                i = cfs_hash_id(hs, key, hs->hs_cur_mask);
+                hsb = hs->hs_buckets[i];
+                LASSERT(i <= hs->hs_cur_mask);
 
-        read_lock(&hsb->hsb_rwlock);
-        hnode = __cfs_hash_bucket_lookup(hs, hsb, key);
-        if (hnode)
-                obj = cfs_hash_get(hs, hnode);
-
-        read_unlock(&hsb->hsb_rwlock);
+                read_lock(&hsb->hsb_rwlock);
+                hnode = __cfs_hash_bucket_lookup(hs, hsb, key);
+                if (hnode)
+                        obj = cfs_hash_get(hs, hnode);
+                read_unlock(&hsb->hsb_rwlock);
+        }
         cfs_hash_runlock(hs);
 
         RETURN(obj);

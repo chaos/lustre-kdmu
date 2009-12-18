@@ -90,6 +90,7 @@ int cmm_procfs_init(struct cmm_device *cmm, const char *name)
         rc = lu_time_init(&cmm->cmm_stats,
                           cmm->cmm_proc_entry,
                           cmm_counter_names, ARRAY_SIZE(cmm_counter_names));
+        lprocfs_put_lperef(cmm->cmm_proc_entry);
 
         EXIT;
 out:

@@ -74,16 +74,16 @@ void tracefile_exit(void);
 
 
 int trace_copyin_string(char *knl_buffer, int knl_buffer_nob,
-                        const char *usr_buffer, int usr_buffer_nob);
+                        const char *usr_buffer, int usr_buffer_nob, int flag);
 int trace_copyout_string(char *usr_buffer, int usr_buffer_nob,
                          const char *knl_str, char *append);
 int trace_allocate_string_buffer(char **str, int nob);
 void trace_free_string_buffer(char *str, int nob);
-int trace_dump_debug_buffer_usrstr(void *usr_str, int usr_str_nob);
+int trace_dump_debug_buffer_usrstr(void *usr_str, int usr_str_nob, int flag);
 int trace_daemon_command(char *str);
-int trace_daemon_command_usrstr(void *usr_str, int usr_str_nob);
+int trace_daemon_command_usrstr(void *usr_str, int usr_str_nob, int flag);
 int trace_set_debug_mb(int mb);
-int trace_set_debug_mb_usrstr(void *usr_str, int usr_str_nob);
+int trace_set_debug_mb_usrstr(void *usr_str, int usr_str_nob, int flag);
 int trace_get_debug_mb(void);
 
 extern void libcfs_debug_dumplog_internal(void *arg);

@@ -1017,7 +1017,7 @@ schedule_dqacq(struct obd_device *obd, struct lustre_quota_ctxt *qctxt,
                                      check_qm(qctxt), &lwi);
                         CDEBUG(D_QUOTA, "wake up when quota master is back\n");
                         lc_watchdog_touch(oti->oti_thread->t_watchdog,
-                                 GET_TIMEOUT(oti->oti_thread->t_svc));
+                                          GET_TIMEOUT(oti->oti_thread->t_svc));
                 } else {
                         spin_unlock(&qctxt->lqc_lock);
                 }
@@ -1246,11 +1246,9 @@ qctxt_init(struct obd_device *obd, dqacq_handler_t handler)
                 RETURN(-ENOMEM);
         }
 
-#ifdef LPROCFS
         rc = lquota_proc_setup(obd, is_master(qctxt));
         if (rc)
                 CERROR("initialize proc for %s error!\n", obd->obd_name);
-#endif
 
         RETURN(rc);
 }
@@ -1324,10 +1322,8 @@ void qctxt_cleanup(struct lustre_quota_ctxt *qctxt, int force)
 
         ptlrpcd_decref();
 
-#ifdef LPROCFS
         if (lquota_proc_cleanup(qctxt))
                 CERROR("cleanup proc error!\n");
-#endif
 
         EXIT;
 }

@@ -404,7 +404,8 @@ static void mgs_free_fsdb(struct obd_device *obd, struct fs_db *fsdb)
 {
         /* wait for anyone with the sem */
         down(&fsdb->fsdb_sem);
-        lproc_mgs_del_live(obd, fsdb);
+        if (!fsdb->fsdb_fl_mgsself) 
+                lproc_mgs_del_live(obd, fsdb);
         list_del(&fsdb->fsdb_list);
         if (fsdb->fsdb_ost_index_map)
                 OBD_FREE(fsdb->fsdb_ost_index_map, INDEX_MAP_SIZE);

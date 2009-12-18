@@ -227,6 +227,71 @@ static cfs_sysctl_table_t kmxlnd_top_ctl_table[] = {
         },
         {0}
 };
+#endif
+
+static struct libcfs_param_ctl_table libcfs_param_kmxlnd_ctl_table[] = {
+        {
+                .name   = "n_waitd",
+                .data   = &n_waitd,
+                .mode   = 0444,
+                .read   = libcfs_param_intvec_read
+        },
+        {
+                .name   = "max_peers",
+                .data   = &max_peers,
+                .mode   = 0444,
+                .read   = libcfs_param_intvec_read
+        },
+        {
+                .name   = "cksum",
+                .data   = &cksum,
+                .mode   = 0644,
+                .read   = libcfs_param_intvec_read
+        },
+        {
+                .name   = "ntx",
+                .data   = &ntx,
+                .mode   = 0444,
+                .read   = libcfs_param_intvec_read
+        },
+        {
+                .name   = "credits",
+                .data   = &credits,
+                .mode   = 0444,
+                .read   = libcfs_param_intvec_read
+        },
+        {
+                .name   = "peercredits",
+                .data   = &peercredits,
+                .mode   = 0444,
+                .read   = libcfs_param_intvec_read
+        },
+        {
+                .name   = "board",
+                .data   = &board,
+                .mode   = 0444,
+                .read   = libcfs_param_intvec_read
+        },
+        {
+                .name   = "ep_id",
+                .data   = &ep_id,
+                .mode   = 0444,
+                .read   = libcfs_param_intvec_read
+        },
+        {
+                .name   = "ipif_name",
+                .data   = ipif_basename_space,
+                .mode   = 0444,
+                .read   = libcfs_param_string_read
+        },
+        {
+                .name   = "polling",
+                .data   = &polling,
+                .mode   = 0444,
+                .read   = libcfs_param_intvec_read
+        },
+        {0}
+};
 
 void
 kmxlnd_initstrtunable(char *space, char *str, int size)
@@ -238,36 +303,31 @@ kmxlnd_initstrtunable(char *space, char *str, int size)
 void
 kmxlnd_sysctl_init (void)
 {
+        /* register to params_tree */
+        libcfs_param_sysctl_init("mxlnd", libcfs_param_kmxlnd_ctl_table,
+                                 libcfs_param_lnet_root);
+
         kmxlnd_initstrtunable(ipif_basename_space, ipif_name,
                               sizeof(ipif_basename_space));
 
+#if defined(CONFIG_SYSCTL) && !CFS_SYSFS_MODULE_PARM
         kmxlnd_tunables.kib_sysctl =
                 cfs_register_sysctl_table(kmxlnd_top_ctl_table, 0);
 
         if (kmxlnd_tunables.kib_sysctl == NULL)
                 CWARN("Can't setup /proc tunables\n");
+#endif
 }
 
 void
 kmxlnd_sysctl_fini (void)
 {
+        libcfs_param_sysctl_fini("mxlnd", libcfs_param_lnet_root);
+#if defined(CONFIG_SYSCTL) && !CFS_SYSFS_MODULE_PARM
         if (kmxlnd_tunables.kib_sysctl != NULL)
                 cfs_unregister_sysctl_table(kmxlnd_tunables.kib_sysctl);
-}
-
-#else
-
-void
-kmxlnd_sysctl_init (void)
-{
-}
-
-void
-kmxlnd_sysctl_fini (void)
-{
-}
-
 #endif
+}
 
 int
 kmxlnd_tunables_init (void)

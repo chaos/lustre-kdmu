@@ -73,6 +73,7 @@
 # define DEBUG_SUBSYSTEM S_LNET
 
 #include <libcfs/libcfs.h>
+#include <libcfs/params_tree.h>
 #include <asm/div64.h>
 #include "tracefile.h"
 
@@ -174,7 +175,7 @@ static int __proc_dobitmasks(void *data, int write,
                                                   tmpstr + pos, "\n");
                 }
         } else {
-                rc = trace_copyin_string(tmpstr, tmpstrlen, buffer, nob);
+                rc = trace_copyin_string(tmpstr, tmpstrlen, buffer, nob, 0);
                 if (rc < 0)
                         return rc;
 
@@ -199,7 +200,7 @@ static int __proc_dump_kernel(void *data, int write,
         if (!write)
                 return 0;
 
-        return trace_dump_debug_buffer_usrstr(buffer, nob);
+        return trace_dump_debug_buffer_usrstr(buffer, nob, 0);
 }
 
 DECLARE_PROC_HANDLER(proc_dump_kernel)
@@ -217,7 +218,7 @@ static int __proc_daemon_file(void *data, int write,
                                             tracefile + pos, "\n");
         }
 
-        return trace_daemon_command_usrstr(buffer, nob);
+        return trace_daemon_command_usrstr(buffer, nob, 0);
 }
 
 DECLARE_PROC_HANDLER(proc_daemon_file)
@@ -236,7 +237,7 @@ static int __proc_debug_mb(void *data, int write,
                 return trace_copyout_string(buffer, nob, tmpstr + pos, "\n");
         }
 
-        return trace_set_debug_mb_usrstr(buffer, nob);
+        return trace_set_debug_mb_usrstr(buffer, nob, 0);
 }
 
 DECLARE_PROC_HANDLER(proc_debug_mb)
@@ -388,7 +389,6 @@ static cfs_sysctl_table_t lnet_table[] = {
                 .mode     = 0644,
                 .proc_handler = &proc_console_backoff
         },
-
         {
                 .ctl_name = PSDEV_DEBUG_PATH,
                 .procname = "debug_path",
@@ -397,7 +397,6 @@ static cfs_sysctl_table_t lnet_table[] = {
                 .mode     = 0644,
                 .proc_handler = &proc_dostring,
         },
-
         {
                 .ctl_name = PSDEV_LNET_UPCALL,
                 .procname = "upcall",
@@ -502,7 +501,6 @@ void remove_proc(void)
 #ifdef CONFIG_SYSCTL
         if (lnet_table_header != NULL)
                 cfs_unregister_sysctl_table(lnet_table_header);
-
         lnet_table_header = NULL;
 #endif
 }
