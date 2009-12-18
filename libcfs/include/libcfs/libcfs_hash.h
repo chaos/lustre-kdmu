@@ -126,7 +126,7 @@ typedef struct cfs_hash_bucket {
         cfs_rwlock_t                hsb_rwlock;     /* cfs_hash_bucket */
 } cfs_hash_bucket_t;
 
-#define CFS_MAX_HASH_NAME 16
+#define CFS_MAX_HASH_NAME 48
 
 typedef struct cfs_hash {
         int                         hs_cur_bits;    /* current hash bits */

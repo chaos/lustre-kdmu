@@ -52,4 +52,10 @@ int libcfs_str2mask(const char *str, const char *(*bit2str)(int bit),
  * Must free with cfs_free().
  */
 char *libcfs_strdup(const char *str, u_int32_t flags);
+
+/* safe vsnprintf */
+int libcfs_vsnprintf(char *buf, size_t size, const char *fmt, va_list args);
+
+/* safe snprintf */
+int libcfs_snprintf(char *buf, size_t size, const char *fmt, ...);
 #endif

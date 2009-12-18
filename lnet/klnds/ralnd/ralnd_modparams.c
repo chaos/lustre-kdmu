@@ -202,15 +202,77 @@ static cfs_sysctl_table_t kranal_top_ctl_table[] = {
         },
         {0}
 };
+#endif
+
+static struct libcfs_param_ctl_table libcfs_param_kranal_ctl_table[] = {
+        {
+                .name     = "n_connd",
+                .data     = &n_connd,
+                .mode     = 0444,
+                .read     = libcfs_param_intvec_read
+        },
+        {
+                .name     = "min_reconnect_interval",
+                .data     = &min_reconnect_interval,
+                .mode     = 0644,
+                .read     = libcfs_param_intvec_read,
+                .write    = libcfs_param_intvec_write
+        },
+        {
+                .name     = "max_reconnect_interval",
+                .data     = &max_reconnect_interval,
+                .mode     = 0644,
+                .read     = libcfs_param_intvec_read,
+                .write    = libcfs_param_intvec_write
+        },
+        {
+                .name     = "ntx",
+                .data     = &ntx,
+                .mode     = 0444,
+                .read     = libcfs_param_intvec_read
+        },
+        {
+                .name     = "credits",
+                .data     = &credits,
+                .mode     = 0444,
+                .read     = libcfs_param_intvec_read
+        },
+        {
+                .name     = "peer_credits",
+                .data     = &peer_credits,
+                .mode     = 0444,
+                .read     = libcfs_param_intvec_read
+        },
+        {
+                .name     = "fma_cq_size",
+                .data     = &fma_cq_size,
+                .mode     = 0644,
+                .read     = libcfs_param_intvec_read,
+                .write    = libcfs_param_intvec_write
+        },
+        {
+                .name     = "max_immediate",
+                .data     = &max_immediate,
+                .mode     = 0644,
+                .read     = libcfs_param_intvec_read,
+                .write    = libcfs_param_intvec_write
+        },
+        {0}
+};
 
 int
 kranal_tunables_init ()
 {
+        /* register sysctl_table into params_tree */
+        libcfs_param_sysctl_init("ranal", libcfs_param_kranal_ctl_table,
+                                 libcfs_param_lnet_root);
+#if CONFIG_SYSCTL && !CFS_SYSFS_MODULE_PARM
         kranal_tunables.kra_sysctl =
                 cfs_register_sysctl_table(kranal_top_ctl_table, 0);
 
         if (kranal_tunables.kra_sysctl == NULL)
                 CWARN("Can't setup /proc tunables\n");
+#endif
 
         return 0;
 }
@@ -218,21 +280,9 @@ kranal_tunables_init ()
 void
 kranal_tunables_fini ()
 {
+        libcfs_param_sysctl_fini("ranal", libcfs_param_lnet_root);
+#if CONFIG_SYSCTL && !CFS_SYSFS_MODULE_PARM
         if (kranal_tunables.kra_sysctl != NULL)
                 cfs_unregister_sysctl_table(kranal_tunables.kra_sysctl);
-}
-
-#else
-
-int
-kranal_tunables_init ()
-{
-        return 0;
-}
-
-void
-kranal_tunables_fini ()
-{
-}
-
 #endif
+}

@@ -181,12 +181,9 @@ int fld_index_lookup(struct lu_server_fld *fld,
 int fld_client_rpc(struct obd_export *exp,
                    struct lu_seq_range *range, __u32 fld_op);
 
-#ifdef LPROCFS
 extern struct lprocfs_vars fld_server_proc_list[];
 extern struct lprocfs_vars fld_client_proc_list[];
-#endif
-
-#endif
+#endif  /* __KERNEL__ */
 
 struct fld_cache *fld_cache_init(const char *name,
                                  int cache_size, int cache_threshold);
@@ -213,6 +210,6 @@ fld_target_name(struct lu_fld_target *tar)
         return (const char *)tar->ft_exp->exp_obd->obd_name;
 }
 
-extern cfs_proc_dir_entry_t *fld_type_proc_dir;
+extern struct libcfs_param_entry *fld_type_proc_dir;
 
 #endif /* __FLD_INTERNAL_H */

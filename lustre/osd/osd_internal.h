@@ -220,7 +220,7 @@ struct osd_device {
         struct lustre_capa_key   *od_capa_keys;
         cfs_hlist_head_t         *od_capa_hash;
 
-        cfs_proc_dir_entry_t     *od_proc_entry;
+        struct libcfs_param_entry *od_proc_entry;
         struct lprocfs_stats     *od_stats;
         /*
          * statfs optimization: we cache a bit.
@@ -381,7 +381,6 @@ struct osd_thread_info {
         char                   oti_fid_packed[OSD_FID_REC_SZ];
 };
 
-#ifdef LPROCFS
 /* osd_lproc.c */
 void lprocfs_osd_init_vars(struct lprocfs_static_vars *lvars);
 int osd_procfs_init(struct osd_device *osd, const char *name);
@@ -389,7 +388,6 @@ int osd_procfs_fini(struct osd_device *osd);
 void osd_lprocfs_time_start(const struct lu_env *env);
 void osd_lprocfs_time_end(const struct lu_env *env,
                           struct osd_device *osd, int op);
-#endif
 int osd_statfs(const struct lu_env *env, struct dt_device *dev,
                cfs_kstatfs_t *sfs);
 

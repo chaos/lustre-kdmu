@@ -1275,11 +1275,9 @@ qctxt_init(struct obd_device *obd, dqacq_handler_t handler)
                 RETURN(-ENOMEM);
         }
 
-#ifdef LPROCFS
         rc = lquota_proc_setup(obd, is_master(qctxt));
         if (rc)
                 CERROR("initialize proc for %s error!\n", obd->obd_name);
-#endif
 
         RETURN(rc);
 }
@@ -1354,10 +1352,8 @@ void qctxt_cleanup(struct lustre_quota_ctxt *qctxt, int force)
 
         ptlrpcd_decref();
 
-#ifdef LPROCFS
         if (lquota_proc_cleanup(qctxt))
                 CERROR("cleanup proc error!\n");
-#endif
 
         EXIT;
 }

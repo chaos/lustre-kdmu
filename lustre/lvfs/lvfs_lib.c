@@ -158,7 +158,7 @@ int __obd_fail_timeout_set(__u32 id, __u32 value, int ms, int set)
 }
 EXPORT_SYMBOL(__obd_fail_timeout_set);
 
-#ifdef LPROCFS
+#ifdef  __KERNEL__
 void lprocfs_counter_add(struct lprocfs_stats *stats, int idx,
                                        long amount)
 {
@@ -191,7 +191,6 @@ void lprocfs_counter_add(struct lprocfs_stats *stats, int idx,
         cfs_atomic_inc(&percpu_cntr->lc_cntl.la_exit);
         lprocfs_stats_unlock(stats);
 }
-EXPORT_SYMBOL(lprocfs_counter_add);
 
 void lprocfs_counter_sub(struct lprocfs_stats *stats, int idx,
                                        long amount)
@@ -225,9 +224,10 @@ void lprocfs_counter_sub(struct lprocfs_stats *stats, int idx,
         cfs_atomic_inc(&percpu_cntr->lc_cntl.la_exit);
         lprocfs_stats_unlock(stats);
 }
-EXPORT_SYMBOL(lprocfs_counter_sub);
-#endif  /* LPROCFS */
+#endif /* __KERNEL_ */
 
+EXPORT_SYMBOL(lprocfs_counter_add);
+EXPORT_SYMBOL(lprocfs_counter_sub);
 EXPORT_SYMBOL(obd_fail_loc);
 EXPORT_SYMBOL(obd_alloc_fail_rate);
 EXPORT_SYMBOL(obd_fail_val);

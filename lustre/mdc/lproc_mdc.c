@@ -41,32 +41,38 @@
 #include <lprocfs_status.h>
 #include <lustre_log.h>
 
-#ifdef LPROCFS
-
 static int mdc_rd_max_rpcs_in_flight(char *page, char **start, off_t off,
                                      int count, int *eof, void *data)
 {
-        struct obd_device *dev = data;
-        struct client_obd *cli = &dev->u.cli;
+        struct obd_device *dev;
+        struct client_obd *cli;
         int rc;
 
+        LIBCFS_PARAM_GET_DATA(dev, data, NULL);
+        cli = &dev->u.cli;
+        *eof = 1;
         client_obd_list_lock(&cli->cl_loi_list_lock);
-        rc = snprintf(page, count, "%u\n", cli->cl_max_rpcs_in_flight);
+        rc = libcfs_param_snprintf(page, count, data, LP_U32, "%u\n",
+                                   cli->cl_max_rpcs_in_flight);
         client_obd_list_unlock(&cli->cl_loi_list_lock);
+
         return rc;
 }
-
-static int mdc_wr_max_rpcs_in_flight(struct file *file, const char *buffer,
+  
+static int mdc_wr_max_rpcs_in_flight(libcfs_file_t *file, const char *buffer,
                                      unsigned long count, void *data)
 {
-        struct obd_device *dev = data;
-        struct client_obd *cli = &dev->u.cli;
+        struct obd_device *dev;
+        struct client_obd *cli;
         int val, rc;
-
-        rc = lprocfs_write_helper(buffer, count, &val);
+        int flag = 0;
+  
+        LIBCFS_PARAM_GET_DATA(dev, data, &flag);
+        cli = &dev->u.cli;
+        rc = lprocfs_write_helper(buffer, count, &val, flag);
         if (rc)
                 return rc;
-
+        
         if (val < 1 || val > MDC_MAX_RIF_MAX)
                 return -ERANGE;
 
@@ -141,20 +147,23 @@ static int changelog_show_cb(struct llog_handle *llh, struct llog_rec_hdr *hdr,
         RETURN(rc);
 }
 
-static int lproc_mdc_wr_changelog(struct file *file, const char *buffer,
+static int lproc_mdc_wr_changelog(libcfs_file_t *file, const char *buffer,
                                   unsigned long count, void *data)
 {
-        struct obd_device *obd = data;
+        struct obd_device *obd;
         struct llog_ctxt *ctxt;
         struct llog_handle *llh;
         struct lnl_hdr *lnlh;
         struct changelog_show cs = {};
         int rc;
+        int flag;
 
+        LIBCFS_PARAM_GET_DATA(obd, data, &flag);
         if (count != sizeof(cs))
                 return -EINVAL;
 
-        if (cfs_copy_from_user(&cs, buffer, sizeof(cs)))
+        rc = libcfs_param_copy(flag, (char *)&cs, buffer, sizeof(cs));
+        if (rc < 0)
                 return -EFAULT;
 
         CDEBUG(D_CHANGELOG, "changelog to pid=%d start "LPU64"\n",
@@ -195,17 +204,19 @@ out:
 }
 
 /* temporary for testing */
-static int mdc_wr_netlink(struct file *file, const char *buffer,
+static int mdc_wr_netlink(libcfs_file_t *file, const char *buffer,
                           unsigned long count, void *data)
 {
-        struct obd_device *obd = data;
+        struct obd_device *obd;
         struct lnl_hdr *lh;
         struct hsm_action_list *hal;
         struct hsm_action_item *hai;
         int len;
         int pid, rc;
+        int flag;
 
-        rc = lprocfs_write_helper(buffer, count, &pid);
+        LIBCFS_PARAM_GET_DATA(obd, data, &flag);
+        rc = lprocfs_write_helper(buffer, count, &pid, flag);
         if (rc)
                 return rc;
 
@@ -283,4 +294,3 @@ void lprocfs_mdc_init_vars(struct lprocfs_static_vars *lvars)
     lvars->module_vars  = lprocfs_mdc_module_vars;
     lvars->obd_vars     = lprocfs_mdc_obd_vars;
 }
-#endif /* LPROCFS */

@@ -242,7 +242,7 @@ lmv_find_target(struct lmv_obd *lmv, const struct lu_fid *fid)
 }
 
 /* lproc_lmv.c */
-#ifdef LPROCFS
+#ifdef __KERNEL__
 void lprocfs_lmv_init_vars(struct lprocfs_static_vars *lvars);
 #else
 static inline void lprocfs_lmv_init_vars(struct lprocfs_static_vars *lvars)
@@ -250,6 +250,6 @@ static inline void lprocfs_lmv_init_vars(struct lprocfs_static_vars *lvars)
         memset(lvars, 0, sizeof(*lvars));
 }
 #endif
-extern struct file_operations lmv_proc_target_fops;
 
+extern libcfs_file_ops_t lmv_proc_target_fops;
 #endif

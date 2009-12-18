@@ -61,8 +61,8 @@
 #define FILTER_GRANT_SHRINK_LIMIT (16ULL * FILTER_GRANT_CHUNK)
 #define GRANT_FOR_LLOG(obd) 16
 
-extern struct file_operations filter_per_export_stats_fops;
-extern struct file_operations filter_per_nid_stats_fops;
+extern libcfs_file_ops_t filter_per_export_stats_fops;
+extern libcfs_file_ops_t filter_per_nid_stats_fops;
 
 /* Limit the returned fields marked valid to those that we actually might set */
 #define FILTER_VALID_FLAGS (OBD_MD_FLTYPE | OBD_MD_FLMODE | OBD_MD_FLGENER  |\
@@ -212,21 +212,13 @@ void filter_cancel_cookies_cb(struct obd_device *obd, __u64 transno,
 int filter_recov_log_mds_ost_cb(struct llog_handle *llh,
                                struct llog_rec_hdr *rec, void *data);
 
-#ifdef LPROCFS
+/* proc & params_tree stuff */
 void filter_tally(struct obd_export *exp, struct page **pages, int nr_pages,
                   unsigned long *blocks, int blocks_per_page, int wr);
 int lproc_filter_attach_seqstat(struct obd_device *dev);
 void lprocfs_filter_init_vars(struct lprocfs_static_vars *lvars);
-#else
-static inline void filter_tally(struct obd_export *exp, struct page **pages,
-                                int nr_pages, unsigned long *blocks,
-                                int blocks_per_page, int wr) {}
-static inline int lproc_filter_attach_seqstat(struct obd_device *dev) {}
-static void lprocfs_filter_init_vars(struct lprocfs_static_vars *lvars)
-{
-        memset(lvars, 0, sizeof(*lvars));
-}
-#endif
+int filter_nid_proc_stats_add(struct obd_device *obd, struct obd_export *exp);
+void init_brw_stats(struct brw_stats *brw_stats);
 
 /* Quota stuff */
 extern quota_interface_t *filter_quota_interface_ref;

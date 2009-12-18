@@ -298,7 +298,7 @@ EXPORT_SYMBOL(seq_client_flush);
 
 static void seq_client_proc_fini(struct lu_client_seq *seq);
 
-#ifdef LPROCFS
+#ifdef __KERNEL__
 static int seq_client_proc_init(struct lu_client_seq *seq)
 {
         int rc;
@@ -317,6 +317,7 @@ static int seq_client_proc_init(struct lu_client_seq *seq)
 
         rc = lprocfs_add_vars(seq->lcs_proc_dir,
                               seq_client_proc_list, seq);
+        lprocfs_put_lperef(seq->lcs_proc_dir);
         if (rc) {
                 CERROR("%s: Can't init sequence manager "
                        "proc, rc %d\n", seq->lcs_name, rc);
@@ -341,15 +342,8 @@ static void seq_client_proc_fini(struct lu_client_seq *seq)
         EXIT;
 }
 #else
-static int seq_client_proc_init(struct lu_client_seq *seq)
-{
-        return 0;
-}
-
-static void seq_client_proc_fini(struct lu_client_seq *seq)
-{
-        return;
-}
+static int seq_client_proc_init(struct lu_client_seq *seq) { return 0; }
+static void seq_client_proc_fini(struct lu_client_seq *seq) {}
 #endif
 
 int seq_client_init(struct lu_client_seq *seq,

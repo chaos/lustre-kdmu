@@ -150,7 +150,6 @@ typedef unsigned long cfs_cpumask_t;
 
 #define ll_proc_dointvec(table, write, filp, buffer, lenp, ppos)        \
         proc_dointvec(table, write, filp, buffer, lenp, ppos);
-
 #define ll_proc_dolongvec(table, write, filp, buffer, lenp, ppos)        \
         proc_doulongvec_minmax(table, write, filp, buffer, lenp, ppos);
 #define ll_proc_dostring(table, write, filp, buffer, lenp, ppos)        \

@@ -590,6 +590,8 @@ extern int ksocknal_tunables_init(void);
 extern void ksocknal_tunables_fini(void);
 extern int ksocknal_lib_tunables_init(void);
 extern void ksocknal_lib_tunables_fini(void);
+extern int ksocknal_lib_params_init(void);
+extern void ksocknal_lib_params_fini(void);
 
 extern void ksocknal_lib_csum_tx(ksock_tx_t *tx);
 

@@ -97,7 +97,7 @@ typedef long cfs_task_state_t;
 #define CFS_TASK_RUNNING        (2)
 
 
-/* 
+/*
  * Lproc
  */
 typedef int (cfs_read_proc_t)(char *page, char **start, off_t off,
@@ -106,6 +106,14 @@ typedef int (cfs_read_proc_t)(char *page, char **start, off_t off,
 struct file; /* forward ref */
 typedef int (cfs_write_proc_t)(struct file *file, const char *buffer,
                                unsigned long count, void *data);
+
+/*
+ * Parameters Tree
+ */
+typedef int (libcfs_param_read_t)(char *page, char **start, off_t off,
+                                  int count, int *eof, void *data);
+typedef int (libcfs_param_write_t)(struct file *file, const char *buffer,
+                                   unsigned long count, void *data);
 
 /*
  * Signal

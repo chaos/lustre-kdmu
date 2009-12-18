@@ -143,7 +143,7 @@ cfs_hash_ops_t pool_hash_operations = {
         .hs_put         = pool_hashrefcount_put,
 };
 
-#ifdef LPROCFS
+#ifdef __KERNEL__
 /* ifdef needed for liblustre support */
 /*
  * pool /proc seq_file methods
@@ -161,9 +161,9 @@ struct pool_iterator {
         int idx;        /* from 0 to pool_tgt_size - 1 */
 };
 
-static void *pool_proc_next(struct seq_file *s, void *v, loff_t *pos)
+static void *pool_proc_next(libcfs_seq_file_t *s, void *v, loff_t *pos)
 {
-        struct pool_iterator *iter = (struct pool_iterator *)s->private;
+        struct pool_iterator *iter = LIBCFS_SEQ_PRIVATE(s);
         int prev_idx;
 
         LASSERTF(iter->magic == POOL_IT_MAGIC, "%08X", iter->magic);
@@ -187,9 +187,9 @@ static void *pool_proc_next(struct seq_file *s, void *v, loff_t *pos)
         return iter;
 }
 
-static void *pool_proc_start(struct seq_file *s, loff_t *pos)
+static void *pool_proc_start(libcfs_seq_file_t *s, loff_t *pos)
 {
-        struct pool_desc *pool = (struct pool_desc *)s->private;
+        struct pool_desc *pool = LIBCFS_SEQ_PRIVATE(s);
         struct pool_iterator *iter;
 
         lov_pool_getref(pool);
@@ -211,23 +211,23 @@ static void *pool_proc_start(struct seq_file *s, loff_t *pos)
         /* we use seq_file private field to memorized iterator so
          * we can free it at stop() */
         /* /!\ do not forget to restore it to pool before freeing it */
-        s->private = iter;
+        LIBCFS_SEQ_PRIVATE(s) = iter;
         if (*pos > 0) {
                 loff_t i;
                 void *ptr;
 
                 i = 0;
                 do {
-                     ptr = pool_proc_next(s, &iter, &i);
+                        ptr = pool_proc_next(s, &iter, &i);
                 } while ((i < *pos) && (ptr != NULL));
                 return ptr;
         }
         return iter;
 }
 
-static void pool_proc_stop(struct seq_file *s, void *v)
+static void pool_proc_stop(libcfs_seq_file_t *s, void *v)
 {
-        struct pool_iterator *iter = (struct pool_iterator *)s->private;
+        struct pool_iterator *iter = LIBCFS_SEQ_PRIVATE(s);
 
         /* in some cases stop() method is called 2 times, without
          * calling start() method (see seq_read() from fs/seq_file.c)
@@ -235,17 +235,18 @@ static void pool_proc_stop(struct seq_file *s, void *v)
         if ((iter) && (iter->magic == POOL_IT_MAGIC)) {
                 /* we restore s->private so next call to pool_proc_start()
                  * will work */
-                s->private = iter->pool;
+                LIBCFS_SEQ_PRIVATE(s) = iter->pool;
                 lov_pool_putref(iter->pool);
                 OBD_FREE_PTR(iter);
         }
         return;
 }
 
-static int pool_proc_show(struct seq_file *s, void *v)
+static int pool_proc_show(libcfs_seq_file_t *seq, void *v)
 {
         struct pool_iterator *iter = (struct pool_iterator *)v;
         struct lov_tgt_desc *tgt;
+        int rc = 0;
 
         LASSERTF(iter->magic == POOL_IT_MAGIC, "%08X", iter->magic);
         LASSERT(iter->pool != NULL);
@@ -255,37 +256,43 @@ static int pool_proc_show(struct seq_file *s, void *v)
         tgt = pool_tgt(iter->pool, iter->idx);
         cfs_up_read(&pool_tgt_rw_sem(iter->pool));
         if (tgt)
-                seq_printf(s, "%s\n", obd_uuid2str(&(tgt->ltd_uuid)));
-
-        return 0;
+                rc = LIBCFS_SEQ_PRINTF(seq, "%s\n",
+                                obd_uuid2str(&(tgt->ltd_uuid)));
+        return rc;
 }
 
-static struct seq_operations pool_proc_ops = {
+libcfs_seq_ops_t pool_proc_sops = {
         .start          = pool_proc_start,
         .next           = pool_proc_next,
         .stop           = pool_proc_stop,
         .show           = pool_proc_show,
 };
 
-static int pool_proc_open(struct inode *inode, struct file *file)
+static int pool_proc_open(libcfs_inode_t *inode, libcfs_file_t *file)
 {
+        libcfs_param_dentry_t *dp = LIBCFS_PDE(inode);
+        libcfs_seq_file_t *seq;
         int rc;
 
-        rc = seq_open(file, &pool_proc_ops);
-        if (!rc) {
-                struct seq_file *s = file->private_data;
-                s->private = PROC_I(inode)->pde->data;
+        LPROCFS_ENTRY_AND_CHECK(dp);
+        LIBCFS_SEQ_OPEN(file, &pool_proc_sops, rc);
+        if (rc) {
+                LPROCFS_EXIT();
+                return rc;
         }
+        seq = LIBCFS_FILE_PRIVATE(file);
+        LIBCFS_SEQ_PRIVATE(seq) = LIBCFS_DENTRY_DATA(dp);
         return rc;
 }
 
-static struct file_operations pool_proc_operations = {
-        .open           = pool_proc_open,
-        .read           = seq_read,
-        .llseek         = seq_lseek,
-        .release        = seq_release,
+libcfs_file_ops_t pool_proc_operations = {
+        .owner   = THIS_MODULE,
+        .open    = pool_proc_open,
+        .read    = LIBCFS_SEQ_READ_COMMON,
+        .llseek  = LIBCFS_SEQ_LSEEK_COMMON,
+        .release = libcfs_param_seq_release_common,
 };
-#endif /* LPROCFS */
+#endif
 
 void lov_dump_pool(int level, struct pool_desc *pool)
 {
@@ -418,7 +425,6 @@ int lov_ost_pool_free(struct ost_pool *op)
         RETURN(0);
 }
 
-
 int lov_pool_new(struct obd_device *obd, char *poolname)
 {
         struct lov_obd *lov;
@@ -453,7 +459,7 @@ int lov_pool_new(struct obd_device *obd, char *poolname)
 
         CFS_INIT_HLIST_NODE(&new_pool->pool_hash);
 
-#ifdef LPROCFS
+#ifdef __KERNEL__
         /* we need this assert seq_file is not implementated for liblustre */
         /* get ref for /proc file */
         lov_pool_getref(new_pool);
@@ -465,6 +471,8 @@ int lov_pool_new(struct obd_device *obd, char *poolname)
                 CWARN("Cannot add proc pool entry "LOV_POOLNAMEF"\n", poolname);
                 new_pool->pool_proc_entry = NULL;
                 lov_pool_putref(new_pool);
+        } else {
+                lprocfs_put_lperef(new_pool->pool_proc_entry);
         }
         CDEBUG(D_INFO, "pool %p - proc %p\n", new_pool, new_pool->pool_proc_entry);
 #endif

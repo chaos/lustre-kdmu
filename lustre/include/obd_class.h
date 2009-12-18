@@ -119,14 +119,7 @@ void class_decref(struct obd_device *obd,
 void dump_exports(struct obd_device *obd, int locks);
 
 /*obdecho*/
-#ifdef LPROCFS
 extern void lprocfs_echo_init_vars(struct lprocfs_static_vars *lvars);
-#else
-static inline void lprocfs_echo_init_vars(struct lprocfs_static_vars *lvars)
-{
-        memset(lvars, 0, sizeof(*lvars));
-}
-#endif
 
 #define CFG_F_START     0x01   /* Set when we start updating from a log */
 #define CFG_F_MARKER    0x02   /* We are within a maker */
@@ -308,7 +301,7 @@ do {                                                            \
 } while (0)
 
 
-#ifdef LPROCFS
+#ifdef __KERNEL__
 #define OBD_COUNTER_OFFSET(op)                                  \
         ((offsetof(struct obd_ops, o_ ## op) -                  \
           offsetof(struct obd_ops, o_iocontrol))                \
@@ -361,14 +354,14 @@ do {                                                            \
                         lprocfs_counter_incr(                                \
                                 (export)->exp_md_stats, coffset);            \
         }
-
 #else
 #define OBD_COUNTER_OFFSET(op)
 #define OBD_COUNTER_INCREMENT(obd, op)
 #define EXP_COUNTER_INCREMENT(exp, op)
+#define MD_COUNTER_OFFSET(op)
 #define MD_COUNTER_INCREMENT(obd, op)
 #define EXP_MD_COUNTER_INCREMENT(exp, op)
-#endif
+#endif /* __KERNEL__ */
 
 #define OBD_CHECK_MD_OP(obd, op, err)                           \
 do {                                                            \
@@ -1583,7 +1576,7 @@ static inline int obd_quota_adjust_qunit(struct obd_export *exp,
                                          struct quota_adjust_qunit *oqaq,
                                          struct lustre_quota_ctxt *qctxt)
 {
-#if defined(LPROCFS) && defined(HAVE_QUOTA_SUPPORT)
+#if defined(__KERNEL__) && defined(HAVE_QUOTA_SUPPORT)
         struct timeval work_start;
         struct timeval work_end;
         long timediff;
@@ -1591,7 +1584,7 @@ static inline int obd_quota_adjust_qunit(struct obd_export *exp,
         int rc;
         ENTRY;
 
-#if defined(LPROCFS) && defined(HAVE_QUOTA_SUPPORT)
+#if defined(__KERNEL__) && defined(HAVE_QUOTA_SUPPORT)
         if (qctxt)
                 cfs_gettimeofday(&work_start);
 #endif
@@ -1600,7 +1593,7 @@ static inline int obd_quota_adjust_qunit(struct obd_export *exp,
 
         rc = OBP(exp->exp_obd, quota_adjust_qunit)(exp, oqaq, qctxt);
 
-#if defined(LPROCFS) && defined(HAVE_QUOTA_SUPPORT)
+#if defined(__KERNEL__) && defined(HAVE_QUOTA_SUPPORT)
         if (qctxt) {
                 cfs_gettimeofday(&work_end);
                 timediff = cfs_timeval_sub(&work_end, &work_start, NULL);
@@ -2158,6 +2151,7 @@ extern int (*ptlrpc_put_connection_superhack)(struct ptlrpc_connection *c);
 /* sysctl.c */
 extern void obd_sysctl_init (void);
 extern void obd_sysctl_clean (void);
+extern void obd_params_init (void);
 
 /* uuid.c  */
 typedef __u8 class_uuid_t[16];

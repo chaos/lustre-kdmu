@@ -42,36 +42,44 @@
 #include <lprocfs_status.h>
 #include "mds_internal.h"
 
-#ifdef LPROCFS
 static int lprocfs_mds_rd_mntdev(char *page, char **start, off_t off, int count,
                                  int *eof, void *data)
 {
-        struct obd_device* obd = (struct obd_device *)data;
+        struct obd_device* obd;
 
+        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         LASSERT(obd != NULL);
         LASSERT(obd->u.mds.mds_vfsmnt->mnt_devname);
         *eof = 1;
 
-        return snprintf(page, count, "%s\n",obd->u.mds.mds_vfsmnt->mnt_devname);
+        return libcfs_param_snprintf(page, count, data, LP_STR, "%s\n",
+                                     obd->u.mds.mds_vfsmnt->mnt_devname);
 }
 
 static int lprocfs_mds_rd_evictostnids(char *page, char **start, off_t off,
                                        int count, int *eof, void *data)
 {
-        struct obd_device* obd = (struct obd_device *)data;
+        struct obd_device* obd;
+        int temp;
 
+        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         LASSERT(obd != NULL);
+        *eof = 1;
+        temp = obd->u.mds.mds_evict_ost_nids;
 
-        return snprintf(page, count, "%d\n", obd->u.mds.mds_evict_ost_nids);
+        return libcfs_param_snprintf(page, count, data, LP_D32, "%d\n", temp);
 }
 
-static int lprocfs_mds_wr_evictostnids(struct file *file, const char *buffer,
+static int lprocfs_mds_wr_evictostnids(libcfs_file_t *file,
+                                       const char *buffer,
                                        unsigned long count, void *data)
 {
-        struct obd_device *obd = data;
+        struct obd_device *obd;
         int val, rc;
+        int flag = 0;
 
-        rc = lprocfs_write_helper(buffer, count, &val);
+        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        rc = lprocfs_write_helper(buffer, count, &val, flag);
         if (rc)
                 return rc;
 
@@ -80,15 +88,18 @@ static int lprocfs_mds_wr_evictostnids(struct file *file, const char *buffer,
         return count;
 }
 
-static int lprocfs_mds_wr_evict_client(struct file *file, const char *buffer,
+static int lprocfs_mds_wr_evict_client(libcfs_file_t *file,
+                                       const char *buffer,
                                        unsigned long count, void *data)
 {
-        struct obd_device *obd = data;
-        struct mds_obd *mds = &obd->u.mds;
+        struct obd_device *obd;
+        struct mds_obd *mds;
         char tmpbuf[sizeof(struct obd_uuid)];
         struct ptlrpc_request_set *set;
         int rc;
 
+        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        mds = &obd->u.mds;
         sscanf(buffer, "%40s", tmpbuf);
 
         if (strncmp(tmpbuf, "nid:", 4) != 0)
@@ -130,19 +141,23 @@ static int lprocfs_mds_wr_evict_client(struct file *file, const char *buffer,
         return count;
 }
 
-static int lprocfs_wr_atime_diff(struct file *file, const char *buffer,
+static int lprocfs_wr_atime_diff(libcfs_file_t *file, const char *buffer,
                                  unsigned long count, void *data)
 {
-        struct obd_device *obd = data;
-        struct mds_obd *mds = &obd->u.mds;
+        struct obd_device *obd;
+        struct mds_obd *mds;
         char kernbuf[20], *end;
         unsigned long diff = 0;
+        int flag = 0;
+        int rc;
 
+        LIBCFS_PARAM_GET_DATA(obd, data, &flag);
+        mds = &obd->u.mds;
         if (count > (sizeof(kernbuf) - 1))
                 return -EINVAL;
 
-        if (cfs_copy_from_user(kernbuf, buffer, count))
-                return -EFAULT;
+        if ((rc = libcfs_param_copy(flag, kernbuf, buffer, count)))
+                return rc;
 
         kernbuf[count] = '\0';
 
@@ -157,11 +172,15 @@ static int lprocfs_wr_atime_diff(struct file *file, const char *buffer,
 static int lprocfs_rd_atime_diff(char *page, char **start, off_t off,
                                  int count, int *eof, void *data)
 {
-        struct obd_device *obd = data;
-        struct mds_obd *mds = &obd->u.mds;
+        struct obd_device *obd;
+        struct mds_obd *mds;
 
+        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        mds = &obd->u.mds;
         *eof = 1;
-        return snprintf(page, count, "%lu\n", mds->mds_atime_diff);
+
+        return libcfs_param_snprintf(page, count, data, LP_U32,
+                                     "%lu\n", mds->mds_atime_diff);
 }
 
 struct lprocfs_vars lprocfs_mds_obd_vars[] = {
@@ -233,4 +252,3 @@ void lprocfs_mdt_init_vars(struct lprocfs_static_vars *lvars)
     lvars->module_vars = lprocfs_mdt_module_vars;
     lvars->obd_vars = lprocfs_mdt_obd_vars;
 }
-#endif

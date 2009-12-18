@@ -233,37 +233,105 @@ static cfs_sysctl_table_t kibnal_top_ctl_table[] = {
         },
         {0}
 };
+#endif
+
+static struct libcfs_param_ctl_table libcfs_param_kibnal_ctl_table[] = {
+        {
+                .name     = "ipif_basename",
+                .data     = &ipif_basename,
+                .mode     = 0444,
+                .read     = libcfs_param_string_read
+        },
+        {
+                .name     = "n_connd",
+                .data     = &n_connd,
+                .mode     = 0444,
+                .read     = libcfs_param_intvec_read
+        },
+        {
+                .name     = "min_reconnect_interval",
+                .data     = &min_reconnect_interval,
+                .mode     = 0644,
+                .read     = libcfs_param_intvec_read,
+                .write    = libcfs_param_intvec_write
+        },
+        {
+                .name     = "max_reconnect_interval",
+                .data     = &max_reconnect_interval,
+                .mode     = 0644,
+                .read     = libcfs_param_intvec_read,
+                .write    = libcfs_param_intvec_write
+        },
+        {
+                .name     = "concurrent_peers",
+                .data     = &concurrent_peers,
+                .mode     = 0444,
+                .read     = libcfs_param_intvec_read
+        },
+        {
+                .name     = "cksum",
+                .data     = &cksum,
+                .mode     = 0644,
+                .read     = libcfs_param_intvec_read,
+                .write    = libcfs_param_intvec_write
+        },
+        {
+                .name     = "timeout",
+                .data     = &timeout,
+                .mode     = 0644,
+                .read     = libcfs_param_intvec_read,
+                .write    = libcfs_param_intvec_write
+        },
+        {
+                .name     = "ntx",
+                .data     = &ntx,
+                .mode     = 0444,
+                .read     = libcfs_param_intvec_read
+        },
+        {
+                .name     = "credits",
+                .data     = &credits,
+                .mode     = 0444,
+                .read     = libcfs_param_intvec_read
+        },
+        {
+                .name     = "peer_credits",
+                .data     = &peer_credits,
+                .mode     = 0444,
+                .read     = libcfs_param_intvec_read
+        },
+        {
+                .name     = "keepalive",
+                .data     = &keepalive,
+                .mode     = 0644,
+                .read     = libcfs_param_intvec_read,
+                .write    = libcfs_param_intvec_write
+        },
+        {0}
+};
 
 int
 kibnal_tunables_init ()
 {
+        /* register sysctl table into params_tree */
+        libcfs_param_sysctl_init("openibnal", libcfs_param_kibnal_ctl_table,
+                                 libcfs_param_lnet_root);
+#if defined(CONFIG_SYSCTL) && !CFS_SYSFS_MODULE_PARM
         kibnal_tunables.kib_sysctl =
                 cfs_register_sysctl_table(kibnal_top_ctl_table, 0);
 
         if (kibnal_tunables.kib_sysctl == NULL)
                 CWARN("Can't setup /proc tunables\n");
-
+#endif
         return 0;
 }
 
 void
 kibnal_tunables_fini ()
 {
+        libcfs_param_sysctl_fini("openibnal", libcfs_param_lnet_root);
+#if defined(CONFIG_SYSCTL) && !CFS_SYSFS_MODULE_PARM
         if (kibnal_tunables.kib_sysctl != NULL)
                 cfs_unregister_sysctl_table(kibnal_tunables.kib_sysctl);
-}
-
-#else
-
-int
-kibnal_tunables_init ()
-{
-        return 0;
-}
-
-void
-kibnal_tunables_fini ()
-{
-}
-
 #endif
+}

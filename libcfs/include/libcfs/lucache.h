@@ -37,6 +37,12 @@
 #ifndef _UPCALL_CACHE_H
 #define _UPCALL_CACHE_H
 
+#ifndef EXPORT_SYMTAB
+# define EXPORT_SYMTAB
+#endif
+
+#include <libcfs/libcfs.h>
+
 #define UC_CACHE_NEW            0x01
 #define UC_CACHE_ACQUIRING      0x02
 #define UC_CACHE_INVALID        0x04

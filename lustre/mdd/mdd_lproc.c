@@ -90,6 +90,7 @@ int mdd_procfs_init(struct mdd_device *mdd, const char *name)
         rc = lu_time_init(&mdd->mdd_stats,
                           mdd->mdd_proc_entry,
                           mdd_counter_names, ARRAY_SIZE(mdd_counter_names));
+        lprocfs_put_lperef(mdd->mdd_proc_entry);
 
         EXIT;
 out:
@@ -121,18 +122,21 @@ void mdd_lprocfs_time_end(const struct lu_env *env, struct mdd_device *mdd,
         lu_lprocfs_time_end(env, mdd->mdd_stats, idx);
 }
 
-static int lprocfs_wr_atime_diff(struct file *file, const char *buffer,
+static int lprocfs_wr_atime_diff(libcfs_file_t *file, const char *buffer,
                                  unsigned long count, void *data)
 {
-        struct mdd_device *mdd = data;
+        struct mdd_device *mdd;
         char kernbuf[20], *end;
         unsigned long diff = 0;
+        int rc;
+        int flag = 0;
 
+        LIBCFS_PARAM_GET_DATA(mdd, data, &flag);
         if (count > (sizeof(kernbuf) - 1))
                 return -EINVAL;
 
-        if (cfs_copy_from_user(kernbuf, buffer, count))
-                return -EFAULT;
+        if ((rc = libcfs_param_copy(flag, kernbuf, buffer, count)))
+                return rc;
 
         kernbuf[count] = '\0';
 
@@ -147,10 +151,13 @@ static int lprocfs_wr_atime_diff(struct file *file, const char *buffer,
 static int lprocfs_rd_atime_diff(char *page, char **start, off_t off,
                                  int count, int *eof, void *data)
 {
-        struct mdd_device *mdd = data;
+        struct mdd_device *mdd;
 
+        LIBCFS_PARAM_GET_DATA(mdd, data, NULL);
         *eof = 1;
-        return snprintf(page, count, "%lu\n", mdd->mdd_atime_diff);
+
+        return libcfs_param_snprintf(page, count, data, LP_U32,
+                                     "%lu\n", mdd->mdd_atime_diff);
 }
 
 
@@ -158,9 +165,10 @@ static int lprocfs_rd_atime_diff(char *page, char **start, off_t off,
 static int lprocfs_rd_changelog_mask(char *page, char **start, off_t off,
                                      int count, int *eof, void *data)
 {
-        struct mdd_device *mdd = data;
+        struct mdd_device *mdd;
         int i = 0, rc = 0;
 
+        LIBCFS_PARAM_GET_DATA(mdd, data, NULL);
         *eof = 1;
         while (i < CL_LAST) {
                 if (mdd->mdd_cl.mc_mask & (1 << i))
@@ -168,23 +176,27 @@ static int lprocfs_rd_changelog_mask(char *page, char **start, off_t off,
                                        changelog_type2str(i));
                 i++;
         }
+        rc = libcfs_param_snprintf(page, count, data, LP_STR, NULL, NULL);
+
         return rc;
 }
 
-static int lprocfs_wr_changelog_mask(struct file *file, const char *buffer,
+static int lprocfs_wr_changelog_mask(libcfs_file_t *file, const char *buffer,
                                      unsigned long count, void *data)
 {
-        struct mdd_device *mdd = data;
+        struct mdd_device *mdd;
         char *kernbuf;
         int rc;
+        int flag = 0;
         ENTRY;
 
+        LIBCFS_PARAM_GET_DATA(mdd, data, &flag);
         if (count >= CFS_PAGE_SIZE)
                 RETURN(-EINVAL);
         OBD_ALLOC(kernbuf, CFS_PAGE_SIZE);
         if (kernbuf == NULL)
                 RETURN(-ENOMEM);
-        if (cfs_copy_from_user(kernbuf, buffer, count))
+        if (libcfs_param_copy(flag, kernbuf, buffer, count))
                 GOTO(out, rc = -EFAULT);
         kernbuf[count] = 0;
 
@@ -225,11 +237,12 @@ static int lprocfs_changelog_users_cb(struct llog_handle *llh,
 static int lprocfs_rd_changelog_users(char *page, char **start, off_t off,
                                       int count, int *eof, void *data)
 {
-        struct mdd_device *mdd = data;
+        struct mdd_device *mdd;
         struct llog_ctxt *ctxt;
         struct cucb_data cucb;
         __u64 cur;
 
+        LIBCFS_PARAM_GET_DATA(mdd, data, NULL);
         *eof = 1;
 
         ctxt = llog_get_context(mdd2obd_dev(mdd),LLOG_CHANGELOG_USER_ORIG_CTXT);
@@ -253,6 +266,7 @@ static int lprocfs_rd_changelog_users(char *page, char **start, off_t off,
 
         llog_cat_process(ctxt->loc_handle, lprocfs_changelog_users_cb,
                          &cucb, 0, 0);
+        cucb.idx = libcfs_param_snprintf(page, count, data, LP_STR, NULL, NULL);
 
         llog_ctxt_put(ctxt);
         return cucb.idx;
@@ -262,36 +276,51 @@ static int lprocfs_rd_changelog_users(char *page, char **start, off_t off,
 static int mdd_lprocfs_quota_rd_type(char *page, char **start, off_t off,
                                      int count, int *eof, void *data)
 {
-        struct mdd_device *mdd = data;
+        struct libcfs_param_cb_data tmp_data;
+        struct mdd_device *mdd;
+
+        LIBCFS_PARAM_GET_DATA(mdd, data, NULL);
+        *eof = 1;
+        memcpy(&tmp_data, data, sizeof tmp_data);
+        tmp_data.cb_data = mdd->mdd_obd_dev;
         return lprocfs_quota_rd_type(page, start, off, count, eof,
-                                     mdd->mdd_obd_dev);
+                                     &tmp_data);
 }
 
-static int mdd_lprocfs_quota_wr_type(struct file *file, const char *buffer,
+static int mdd_lprocfs_quota_wr_type(libcfs_file_t *file, const char *buffer,
                                      unsigned long count, void *data)
 {
-        struct mdd_device *mdd = data;
-        return lprocfs_quota_wr_type(file, buffer, count, mdd->mdd_obd_dev);
+        struct libcfs_param_cb_data tmp_data;
+        struct mdd_device *mdd;
+
+        LIBCFS_PARAM_GET_DATA(mdd, data, NULL);
+        memcpy(&tmp_data, data, sizeof tmp_data);
+        tmp_data.cb_data = mdd->mdd_obd_dev;
+        return lprocfs_quota_wr_type(file, buffer, count, &tmp_data);
 }
 #endif
 
 static int lprocfs_rd_sync_perm(char *page, char **start, off_t off,
                                 int count, int *eof, void *data)
 {
-        struct mdd_device *mdd = data;
+        struct mdd_device *mdd;
 
+        *eof = 1;
+        LIBCFS_PARAM_GET_DATA(mdd, data, NULL);
         LASSERT(mdd != NULL);
-        return snprintf(page, count, "%d\n", mdd->mdd_sync_permission);
+        return libcfs_param_snprintf(page, count, data, LP_D32,
+                                     "%d\n", mdd->mdd_sync_permission);
 }
 
-static int lprocfs_wr_sync_perm(struct file *file, const char *buffer,
+static int lprocfs_wr_sync_perm(libcfs_file_t *file, const char *buffer,
                                 unsigned long count, void *data)
 {
-        struct mdd_device *mdd = data;
-        int val, rc;
+        struct mdd_device *mdd;
+        int val, rc, flag;
 
+        LIBCFS_PARAM_GET_DATA(mdd, data, &flag);
         LASSERT(mdd != NULL);
-        rc = lprocfs_write_helper(buffer, count, &val);
+        rc = lprocfs_write_helper(buffer, count, &val, flag);
         if (rc)
                 return rc;
 

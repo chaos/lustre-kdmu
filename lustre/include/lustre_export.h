@@ -113,7 +113,7 @@ typedef struct nid_stat {
         cfs_hlist_node_t         nid_hash;
         cfs_list_t               nid_list;
         struct obd_device       *nid_obd;
-        struct proc_dir_entry   *nid_proc;
+        struct libcfs_param_entry      *nid_proc;
         struct lprocfs_stats    *nid_stats;
         struct lprocfs_stats    *nid_ldlm_stats;
         struct brw_stats        *nid_brw_stats;

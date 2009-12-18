@@ -86,6 +86,11 @@ lnet_selftest_init (void)
 {
         int	rc;
 
+#ifdef __KERNEL__
+        /* start params init */
+        lnet_sfw_sysctl_init();
+#endif
+
         rc = srpc_startup();
         if (rc != 0) {
                 CERROR("LST can't startup rpc\n");

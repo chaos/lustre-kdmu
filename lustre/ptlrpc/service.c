@@ -441,15 +441,14 @@ ptlrpc_server_post_idle_rqbds (struct ptlrpc_service *svc)
 
 struct ptlrpc_service *ptlrpc_init_svc_conf(struct ptlrpc_service_conf *c,
                                             svc_handler_t h, char *name,
-                                            struct proc_dir_entry *proc_entry,
+                                            struct libcfs_param_entry *proc_entry,
                                             svcreq_printfn_t prntfn,
                                             char *threadname)
 {
         return ptlrpc_init_svc(c->psc_nbufs, c->psc_bufsize,
                                c->psc_max_req_size, c->psc_max_reply_size,
                                c->psc_req_portal, c->psc_rep_portal,
-                               c->psc_watchdog_factor,
-                               h, name, proc_entry,
+                               c->psc_watchdog_factor, h, name, proc_entry,
                                prntfn, c->psc_min_threads, c->psc_max_threads,
                                threadname, c->psc_ctx_tags, NULL);
 }
@@ -467,8 +466,8 @@ static void ptlrpc_at_timer(unsigned long castmeharder)
 struct ptlrpc_service *
 ptlrpc_init_svc(int nbufs, int bufsize, int max_req_size, int max_reply_size,
                 int req_portal, int rep_portal, int watchdog_factor,
-                svc_handler_t handler, char *name,
-                cfs_proc_dir_entry_t *proc_entry,
+                svc_handler_t handler, char *name, 
+                struct libcfs_param_entry *proc_entry,
                 svcreq_printfn_t svcreq_printfn,
                 int min_threads, int max_threads,
                 char *threadname, __u32 ctx_tags,

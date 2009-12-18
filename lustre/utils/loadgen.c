@@ -59,6 +59,7 @@
 
 #include <lnet/lnetctl.h>
 #include <libcfs/libcfsutil.h>
+#include <lustre/liblustreapi.h>
 #include "obdctl.h"
 
 static char cmdname[512];
@@ -249,48 +250,33 @@ static int wait_for_threads()
 
 static int write_proc(char *proc_path, char *value)
 {
-        int fd, rc;
+        int rc;
 
-        fd = open(proc_path, O_WRONLY);
-        if (fd == -1) {
-                fprintf(stderr, "open('%s') failed: %s\n",
-                        proc_path, strerror(errno));
-                rc = errno;
-        } else {
-                rc = write(fd, value, strlen(value));
-                if (rc < 0) {
-                        fprintf(stderr, "write('%s') failed: %s\n",
-                                proc_path, strerror(errno));
-                }
-                close(fd);
+        rc = llapi_params_write(proc_path, strlen(proc_path),
+                                value, strlen(value), 0);
+        if (rc < 0) {
+                fprintf(stderr, "write('%s') failed: %s (%d)\n",
+                        proc_path, strerror(errno), errno);
         }
+
         return rc;
 }
 
 static int read_proc(char *proc_path,  unsigned long long *value)
 {
-        int fd, rc;
+        int rc = 0;
+        long long offset = 0;
         char buf[50];
 
-        fd = open(proc_path, O_RDONLY);
-        if (fd == -1) {
-                fprintf(stderr, "open('%s') failed: %s\n",
-                        proc_path, strerror(errno));
-                return (errno);
-        }
-
-        rc = read(fd, buf, sizeof(buf));
-        close(fd);
-        if (errno == EOPNOTSUPP) {
-                /* probably an echo server */
-                return rc;
-        }
+        rc = llapi_params_read(proc_path, strlen(proc_path), buf, 50,
+                               &offset, &rc);
         if (rc <= 0) {
                 fprintf(stderr, "read('%s') failed: %s (%d)\n",
-                        proc_path, strerror(errno), errno);
+                        proc_path, strerror(rc), rc);
                 return rc;
         }
         *value = strtoull(buf, NULL, 10);
+
         return 0;
 }
 
@@ -310,11 +296,11 @@ static int grant_estimate(int thread)
 
         /* Divide /proc/fs/lustre/osc/o_0001/kbytesavail
            by /proc/fs/lustre/osc/o_0001/cur_grant_bytes to find max clients */
-        sprintf(proc_path, "/proc/fs/lustre/osc/o%.5d/kbytesavail", thread);
+        sprintf(proc_path, "lustre/osc/o%.5d/kbytesavail", thread);
         rc = read_proc(proc_path, &avail);
         if (rc)
                 return rc;
-        sprintf(proc_path, "/proc/fs/lustre/osc/o%.5d/cur_grant_bytes", thread);
+        sprintf(proc_path, "lustre/osc/o%.5d/cur_grant_bytes", thread);
         rc = read_proc(proc_path, &grant);
         if (rc)
                 return rc;
@@ -392,9 +378,9 @@ static int echocli_setup(char *oname, char *ename, int *dev)
         /* Large grants cause ENOSPC to be reported, even though
            there's space left.  We can reduce the grant size by
            minimizing these */
-        sprintf(proc_path, "/proc/fs/lustre/osc/%s/max_dirty_mb", oname);
+        sprintf(proc_path, "lustre/osc/%s/max_dirty_mb", oname);
         rc = write_proc(proc_path, "1");
-        sprintf(proc_path, "/proc/fs/lustre/osc/%s/max_rpcs_in_flight", oname);
+        sprintf(proc_path, "lustre/osc/%s/max_rpcs_in_flight", oname);
         rc = write_proc(proc_path, "1");
 
         /* ECHO CLI */

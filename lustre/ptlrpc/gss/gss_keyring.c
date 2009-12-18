@@ -978,7 +978,7 @@ void gss_sec_gc_ctx_kr(struct ptlrpc_sec *sec)
 }
 
 static
-int gss_sec_display_kr(struct ptlrpc_sec *sec, struct seq_file *seq)
+int gss_sec_display_kr(struct ptlrpc_sec *sec, libcfs_seq_file_t *seq)
 {
         struct gss_sec_keyring *gsec_kr = sec2gsec_keyring(sec);
         cfs_hlist_node_t       *pos, *next;
@@ -1006,7 +1006,8 @@ int gss_sec_display_kr(struct ptlrpc_sec *sec, struct seq_file *seq)
                         snprintf(mech, sizeof(mech), "N/A");
                 mech[sizeof(mech) - 1] = '\0';
 
-                seq_printf(seq, "%p: uid %u, ref %d, expire %ld(%+ld), fl %s, "
+                LIBCFS_SEQ_PRINTF(seq,
+                           "%p: uid %u, ref %d, expire %ld(%+ld), fl %s, "
                            "seq %d, win %u, key %08x(ref %d), "
                            "hdl "LPX64":"LPX64", mech: %s\n",
                            ctx, ctx->cc_vcred.vc_uid,

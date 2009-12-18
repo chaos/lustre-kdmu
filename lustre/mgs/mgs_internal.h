@@ -113,28 +113,13 @@ int mgs_fs_setup(struct obd_device *obd, struct vfsmount *mnt);
 int mgs_fs_cleanup(struct obd_device *obddev);
 
 #define strsuf(buf, suffix) (strcmp((buf)+strlen(buf)-strlen(suffix), (suffix)))
-#ifdef LPROCFS
+/* mgs/lproc_mgs.c */
 int lproc_mgs_setup(struct obd_device *dev);
 int lproc_mgs_cleanup(struct obd_device *obd);
 int lproc_mgs_add_live(struct obd_device *obd, struct fs_db *fsdb);
 int lproc_mgs_del_live(struct obd_device *obd, struct fs_db *fsdb);
 void lprocfs_mgs_init_vars(struct lprocfs_static_vars *lvars);
-#else
-static inline int lproc_mgs_setup(struct obd_device *dev)
-{return 0;}
-static inline int lproc_mgs_cleanup(struct obd_device *obd)
-{return 0;}
-static inline int lproc_mgs_add_live(struct obd_device *obd, struct fs_db *fsdb)
-{return 0;}
-static inline int lproc_mgs_del_live(struct obd_device *obd, struct fs_db *fsdb)
-{return 0;}
-static void lprocfs_mgs_init_vars(struct lprocfs_static_vars *lvars)
-{
-        memset(lvars, 0, sizeof(*lvars));
-}
-#endif
 
-/* mgs/lproc_mgs.c */
 enum {
         LPROC_MGS_CONNECT = 0,
         LPROC_MGS_DISCONNECT,
@@ -145,5 +130,4 @@ enum {
 };
 void mgs_counter_incr(struct obd_export *exp, int opcode);
 void mgs_stats_counter_init(struct lprocfs_stats *stats);
-
 #endif /* _MGS_INTERNAL_H */

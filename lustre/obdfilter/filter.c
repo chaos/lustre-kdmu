@@ -76,7 +76,6 @@
 #include <linux/slab.h>
 #include <lustre_param.h>
 #include <lustre/ll_fiemap.h>
-
 #include "filter_internal.h"
 
 static struct lvfs_callback_ops filter_lvfs_ops;
@@ -212,32 +211,13 @@ void f_dput(struct dentry *dentry)
         dput(dentry);
 }
 
-static void init_brw_stats(struct brw_stats *brw_stats)
+void init_brw_stats(struct brw_stats *brw_stats)
 {
         int i;
         for (i = 0; i < BRW_LAST; i++)
                 cfs_spin_lock_init(&brw_stats->hist[i].oh_lock);
 }
 
-static int lprocfs_init_rw_stats(struct obd_device *obd,
-                                 struct lprocfs_stats **stats)
-{
-        int num_stats;
-
-        num_stats = (sizeof(*obd->obd_type->typ_dt_ops) / sizeof(void *)) +
-                                                        LPROC_FILTER_LAST - 1;
-        *stats = lprocfs_alloc_stats(num_stats, LPROCFS_STATS_FLAG_NOPERCPU);
-        if (*stats == NULL)
-                return -ENOMEM;
-
-        lprocfs_init_ops_stats(LPROC_FILTER_LAST, *stats);
-        lprocfs_counter_init(*stats, LPROC_FILTER_READ_BYTES,
-                             LPROCFS_CNTR_AVGMINMAX, "read_bytes", "bytes");
-        lprocfs_counter_init(*stats, LPROC_FILTER_WRITE_BYTES,
-                             LPROCFS_CNTR_AVGMINMAX, "write_bytes", "bytes");
-
-        return(0);
-}
 
 /* brw_stats are 2128, ops are 3916, ldlm are 204, so 6248 bytes per client,
    plus the procfs overhead :( */
@@ -261,47 +241,10 @@ static int filter_export_stats_init(struct obd_device *obd,
                 RETURN(rc);
         }
 
-        if (newnid) {
-                struct nid_stat *tmp = exp->exp_nid_stats;
-                LASSERT(tmp != NULL);
+        if (newnid)
+                rc = filter_nid_proc_stats_add(obd, exp);
 
-                OBD_ALLOC(tmp->nid_brw_stats, sizeof(struct brw_stats));
-                if (tmp->nid_brw_stats == NULL)
-                        GOTO(clean, rc = -ENOMEM);
-
-                init_brw_stats(tmp->nid_brw_stats);
-                rc = lprocfs_seq_create(exp->exp_nid_stats->nid_proc, "brw_stats",
-                                        0644, &filter_per_nid_stats_fops,
-                                        exp->exp_nid_stats);
-                if (rc)
-                        CWARN("Error adding the brw_stats file\n");
-
-                rc = lprocfs_init_rw_stats(obd, &exp->exp_nid_stats->nid_stats);
-                if (rc)
-                        GOTO(clean, rc);
-
-                rc = lprocfs_register_stats(tmp->nid_proc, "stats",
-                                            tmp->nid_stats);
-                if (rc)
-                        GOTO(clean, rc);
-                /* Always add in ldlm_stats */
-                tmp->nid_ldlm_stats = 
-                        lprocfs_alloc_stats(LDLM_LAST_OPC - LDLM_FIRST_OPC,
-                                            LPROCFS_STATS_FLAG_NOPERCPU);
-                if (tmp->nid_ldlm_stats == NULL)
-                        GOTO(clean, rc = -ENOMEM);
-
-                lprocfs_init_ldlm_stats(tmp->nid_ldlm_stats);
-                rc = lprocfs_register_stats(tmp->nid_proc, "ldlm_stats",
-                                            tmp->nid_ldlm_stats);
-                if (rc)
-                        GOTO(clean, rc);
-        }
-
-        RETURN(0);
- clean:
-        lprocfs_exp_cleanup(exp);
-        return rc;
+        RETURN(rc);
 }
 
 /* Add client data to the FILTER.  We use a bitmap to locate a free space
@@ -2176,6 +2119,7 @@ static int filter_setup(struct obd_device *obd, struct lustre_cfg* lcfg)
         unsigned long addr;
         struct page *page;
         int rc;
+        int register_exports = 0;
 
         CLASSERT(offsetof(struct obd_device, u.obt) ==
                  offsetof(struct obd_device, u.filter.fo_obt));
@@ -2227,12 +2171,18 @@ static int filter_setup(struct obd_device *obd, struct lustre_cfg* lcfg)
                         CERROR("error %d setting up lprocfs for %s\n",
                                rc, "exports");
                         obd->obd_proc_exports_entry = NULL;
+                } else {
+                        register_exports = 1;
                 }
         }
-        if (obd->obd_proc_exports_entry)
-                lprocfs_add_simple(obd->obd_proc_exports_entry, "clear",
-                                   lprocfs_nid_stats_clear_read,
-                                   lprocfs_nid_stats_clear_write, obd, NULL);
+        if (obd->obd_proc_exports_entry) {
+                struct libcfs_param_entry *temp;
+                temp = lprocfs_add_simple(obd->obd_proc_exports_entry, "clear",
+                                          lprocfs_nid_stats_clear_read,
+                                          lprocfs_nid_stats_clear_write,
+                                          obd, NULL);
+                lprocfs_put_lperef(temp);
+        }
 
         memcpy((void *)addr, lustre_cfg_buf(lcfg, 4),
                LUSTRE_CFG_BUFLEN(lcfg, 4));
@@ -2245,6 +2195,8 @@ static int filter_setup(struct obd_device *obd, struct lustre_cfg* lcfg)
                 lprocfs_free_obd_stats(obd);
                 lprocfs_obd_cleanup(obd);
         }
+        if (register_exports)
+                lprocfs_put_lperef(obd->obd_proc_exports_entry);
 
         return rc;
 }

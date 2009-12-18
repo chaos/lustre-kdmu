@@ -63,7 +63,7 @@
 
 #ifdef __KERNEL__
 
-struct proc_dir_entry *sptlrpc_proc_root = NULL;
+struct libcfs_param_entry *sptlrpc_proc_root = NULL;
 EXPORT_SYMBOL(sptlrpc_proc_root);
 
 char *sec_flags2str(unsigned long flags, char *buf, int bufsize)
@@ -85,9 +85,9 @@ char *sec_flags2str(unsigned long flags, char *buf, int bufsize)
         return buf;
 }
 
-static int sptlrpc_info_lprocfs_seq_show(struct seq_file *seq, void *v)
+static int sptlrpc_info_lprocfs_seq_show(libcfs_seq_file_t *seq, void *v)
 {
-        struct obd_device *dev = seq->private;
+        struct obd_device *dev = LIBCFS_SEQ_PRIVATE(seq);
         struct client_obd *cli = &dev->u.cli;
         struct ptlrpc_sec *sec = NULL;
         char               str[32];
@@ -103,18 +103,19 @@ static int sptlrpc_info_lprocfs_seq_show(struct seq_file *seq, void *v)
 
         sec_flags2str(sec->ps_flvr.sf_flags, str, sizeof(str));
 
-        seq_printf(seq, "rpc flavor:    %s\n",
+        LIBCFS_SEQ_PRINTF(seq, "rpc flavor:    %s\n",
                    sptlrpc_flavor2name_base(sec->ps_flvr.sf_rpc));
-        seq_printf(seq, "bulk flavor:   %s\n",
+        LIBCFS_SEQ_PRINTF(seq, "bulk flavor:   %s\n",
                    sptlrpc_flavor2name_bulk(&sec->ps_flvr, str, sizeof(str)));
-        seq_printf(seq, "flags:         %s\n",
+        LIBCFS_SEQ_PRINTF(seq, "flags:         %s\n",
                    sec_flags2str(sec->ps_flvr.sf_flags, str, sizeof(str)));
-        seq_printf(seq, "id:            %d\n", sec->ps_id);
-        seq_printf(seq, "refcount:      %d\n",
-                   cfs_atomic_read(&sec->ps_refcount));
-        seq_printf(seq, "nctx:          %d\n", cfs_atomic_read(&sec->ps_nctx));
-        seq_printf(seq, "gc internal    %ld\n", sec->ps_gc_interval);
-        seq_printf(seq, "gc next        %ld\n",
+        LIBCFS_SEQ_PRINTF(seq, "id:            %d\n", sec->ps_id);
+        LIBCFS_SEQ_PRINTF(seq, "refcount:      %d\n",
+                          cfs_atomic_read(&sec->ps_refcount));
+        LIBCFS_SEQ_PRINTF(seq, "nctx:          %d\n",
+                          cfs_atomic_read(&sec->ps_nctx));
+        LIBCFS_SEQ_PRINTF(seq, "gc internal    %ld\n", sec->ps_gc_interval);
+        LIBCFS_SEQ_PRINTF(seq, "gc next        %ld\n",
                    sec->ps_gc_interval ?
                    sec->ps_gc_next - cfs_time_current_sec() : 0);
 
@@ -124,9 +125,9 @@ out:
 }
 LPROC_SEQ_FOPS_RO(sptlrpc_info_lprocfs);
 
-static int sptlrpc_ctxs_lprocfs_seq_show(struct seq_file *seq, void *v)
+static int sptlrpc_ctxs_lprocfs_seq_show(libcfs_seq_file_t *seq, void *v)
 {
-        struct obd_device *dev = seq->private;
+        struct obd_device *dev = LIBCFS_SEQ_PRIVATE(seq);
         struct client_obd *cli = &dev->u.cli;
         struct ptlrpc_sec *sec = NULL;
 
@@ -198,6 +199,7 @@ int sptlrpc_lproc_init(void)
                 sptlrpc_proc_root = NULL;
                 return rc;
         }
+        lprocfs_put_lperef(sptlrpc_proc_root);
         return 0;
 }
 

@@ -136,7 +136,7 @@ int lov_connect_obd(struct obd_device *obd, __u32 index, int activate,
         static struct obd_uuid lov_osc_uuid = { "LOV_OSC_UUID" };
         struct obd_import *imp;
 #ifdef __KERNEL__
-        cfs_proc_dir_entry_t *lov_proc_dir;
+        struct libcfs_param_entry *lov_proc_dir;
 #endif
         int rc;
         ENTRY;
@@ -201,7 +201,7 @@ int lov_connect_obd(struct obd_device *obd, __u32 index, int activate,
         lov_proc_dir = lprocfs_srch(obd->obd_proc_entry, "target_obds");
         if (lov_proc_dir) {
                 struct obd_device *osc_obd = lov->lov_tgts[index]->ltd_exp->exp_obd;
-                cfs_proc_dir_entry_t *osc_symlink;
+                void *osc_symlink;
 
                 LASSERT(osc_obd != NULL);
                 LASSERT(osc_obd->obd_magic == OBD_DEVICE_MAGIC);
@@ -212,12 +212,15 @@ int lov_connect_obd(struct obd_device *obd, __u32 index, int activate,
                                                   "../../../%s/%s",
                                                   osc_obd->obd_type->typ_name,
                                                   osc_obd->obd_name);
+                lprocfs_put_lperef(lov_proc_dir);
                 if (osc_symlink == NULL) {
                         CERROR("could not register LOV target "
                                 "/proc/fs/lustre/%s/%s/target_obds/%s.",
                                 obd->obd_type->typ_name, obd->obd_name,
                                 osc_obd->obd_name);
                         lprocfs_remove(&lov_proc_dir);
+                } else {
+                        lprocfs_put_lperef(osc_symlink);
                 }
         }
 #endif
@@ -286,7 +289,7 @@ static int lov_connect(const struct lu_env *env,
 
 static int lov_disconnect_obd(struct obd_device *obd, struct lov_tgt_desc *tgt)
 {
-        cfs_proc_dir_entry_t *lov_proc_dir;
+        struct libcfs_param_entry *lov_proc_dir;
         struct lov_obd *lov = &obd->u.lov;
         struct obd_device *osc_obd;
         int rc;
@@ -304,16 +307,18 @@ static int lov_disconnect_obd(struct obd_device *obd, struct lov_tgt_desc *tgt)
 
         lov_proc_dir = lprocfs_srch(obd->obd_proc_entry, "target_obds");
         if (lov_proc_dir) {
-                cfs_proc_dir_entry_t *osc_symlink;
+                struct libcfs_param_entry *osc_symlink;
 
                 osc_symlink = lprocfs_srch(lov_proc_dir, osc_obd->obd_name);
                 if (osc_symlink) {
+                        lprocfs_put_lperef(osc_symlink);
                         lprocfs_remove(&osc_symlink);
                 } else {
                         CERROR("/proc/fs/lustre/%s/%s/target_obds/%s missing.",
                                obd->obd_type->typ_name, obd->obd_name,
                                osc_obd->obd_name);
                 }
+                lprocfs_put_lperef(lov_proc_dir);
         }
 
         if (osc_obd) {
@@ -818,19 +823,16 @@ int lov_setup(struct obd_device *obd, struct lustre_cfg *lcfg)
 
         lprocfs_lov_init_vars(&lvars);
         lprocfs_obd_setup(obd, lvars.obd_vars);
-#ifdef LPROCFS
-        {
-                int rc;
-
-                rc = lprocfs_seq_create(obd->obd_proc_entry, "target_obd",
-                                        0444, &lov_proc_target_fops, obd);
-                if (rc)
-                        CWARN("Error adding the target_obd file\n");
-        }
+#ifdef __KERNEL__
+        rc = lprocfs_seq_create(obd->obd_proc_entry, "target_obd", 0444,
+                                &lov_proc_target_fops, obd);
+        if (rc)
+                CWARN("Error adding the target_obd file\n");
 #endif
         lov->lov_pool_proc_entry = lprocfs_register("pools",
                                                     obd->obd_proc_entry,
                                                     NULL, NULL);
+        lprocfs_put_lperef(lov->lov_pool_proc_entry);
 
         RETURN(0);
 }
@@ -902,7 +904,6 @@ static int lov_cleanup(struct obd_device *obd)
                          lov->lov_tgt_size);
                 lov->lov_tgt_size = 0;
         }
-
         /* clear pools parent proc entry only after all pools is killed */
         lprocfs_obd_cleanup(obd);
 

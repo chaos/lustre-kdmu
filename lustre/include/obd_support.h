@@ -519,7 +519,7 @@ static inline void obd_race(__u32 id)
 
 extern cfs_atomic_t libcfs_kmemory;
 
-#ifdef LPROCFS
+#ifdef __KERNEL__
 #define obd_memory_add(size)                                                  \
         lprocfs_counter_add(obd_memory, OBD_MEMORY_STAT, (long)(size))
 #define obd_memory_sub(size)                                                  \
@@ -542,7 +542,6 @@ extern __u64 obd_memory_max(void);
 extern __u64 obd_pages_max(void);
 
 #else
-
 extern __u64 obd_alloc;
 extern __u64 obd_pages;
 
@@ -579,7 +578,7 @@ static inline void obd_pages_sub(int order)
 #define obd_memory_max() (obd_max_alloc)
 #define obd_pages_max() (obd_max_pages)
 
-#endif
+#endif /* __KERNEL__ */
 
 #define OBD_DEBUG_MEMUSAGE (1)
 

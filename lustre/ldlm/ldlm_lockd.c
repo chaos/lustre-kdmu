@@ -2302,8 +2302,7 @@ static int ldlm_setup(void)
         OBD_ALLOC(ldlm_state, sizeof(*ldlm_state));
         if (ldlm_state == NULL)
                 RETURN(-ENOMEM);
-
-#ifdef LPROCFS
+#ifdef __KERNEL__
         rc = ldlm_proc_setup();
         if (rc != 0)
                 GOTO(out_free, rc);
@@ -2412,7 +2411,7 @@ static int ldlm_setup(void)
 #endif
 
  out_proc:
-#ifdef LPROCFS
+#ifdef __KERNEL__
         ldlm_proc_cleanup();
  out_free:
 #endif

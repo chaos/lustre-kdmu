@@ -574,10 +574,15 @@ static int filter_procfs_init(struct filter_device *ofd)
                         obd->obd_proc_exports_entry = NULL;
                 }
         }
-        if (obd->obd_proc_exports_entry)
-                lprocfs_add_simple(obd->obd_proc_exports_entry, "clear",
+
+        if (obd->obd_proc_exports_entry) {
+                struct libcfs_param_entry *temp = lprocfs_add_simple(
+                                   obd->obd_proc_exports_entry, "clear",
                                    lprocfs_nid_stats_clear_read,
                                    lprocfs_nid_stats_clear_write, obd, NULL);
+                lprocfs_put_lperef(obd->obd_proc_exports_entry);
+                lprocfs_put_lperef(temp);
+        }
         return rc;
 }
 

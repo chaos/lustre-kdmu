@@ -189,10 +189,10 @@ enum {
 
 #endif
 
-#if defined(CONFIG_SYSCTL) && !CFS_SYSFS_MODULE_PARM
-
 static char hca_basename_space[32];
 static char ipif_basename_space[32];
+
+#if defined(CONFIG_SYSCTL) && !CFS_SYSFS_MODULE_PARM
 
 static cfs_sysctl_table_t kibnal_ctl_table[] = {
         {
@@ -363,6 +363,137 @@ static cfs_sysctl_table_t kibnal_top_ctl_table[] = {
         },
         {0}
 };
+#endif
+
+static struct libcfs_param_ctl_table libcfs_param_kibnal_ctl_table[] = {
+        {
+                .name     = "service_number",
+                .data     = &service_number,
+                .mode     = 0444,
+                .read     = libcfs_param_intvec_read
+        },
+        {
+                .name     = "min_reconnect_interval",
+                .data     = &min_reconnect_interval,
+                .mode     = 0644,
+                .read     = libcfs_param_intvec_read,
+                .write    = libcfs_param_intvec_write
+        },
+        {
+                .name     = "max_reconnect_interval",
+                .data     = &max_reconnect_interval,
+                .mode     = 0644,
+                .read     = libcfs_param_intvec_read,
+                .write    = libcfs_param_intvec_write
+        },
+        {
+                .name     = "concurrent_peers",
+                .data     = &concurrent_peers,
+                .mode     = 0444,
+                .read     = libcfs_param_intvec_read
+        },
+        {
+                .name     = "cksum",
+                .data     = &cksum,
+                .mode     = 0644,
+                .read     = libcfs_param_intvec_read,
+                .write    = libcfs_param_intvec_write
+        },
+        {
+                .name     = "timeout",
+                .data     = &timeout,
+                .mode     = 0644,
+                .read     = libcfs_param_intvec_read,
+                .write    = libcfs_param_intvec_write
+        },
+        {
+                .name     = "ntx",
+                .data     = &ntx,
+                .mode     = 0444,
+                .read     = libcfs_param_intvec_read
+        },
+        {
+                .name     = "credits",
+                .data     = &credits,
+                .mode     = 0444,
+                .read     = libcfs_param_intvec_read
+        },
+        {
+                .name     = "peer_credits",
+                .data     = &peer_credits,
+                .mode     = 0444,
+                .read     = libcfs_param_intvec_read
+        },
+        {
+                .name     = "arp_retries",
+                .data     = &arp_retries,
+                .mode     = 0644,
+                .read     = libcfs_param_intvec_read,
+                .write    = libcfs_param_intvec_write
+        },
+        {
+                .name     = "hca_basename",
+                .data     = hca_basename_space,
+                .mode     = 0444,
+                .read     = libcfs_param_string_read
+        },
+        {
+                .name     = "ipif_basename",
+                .data     = ipif_basename_space,
+                .mode     = 0444,
+                .read     = libcfs_param_string_read
+        },
+        {
+                .name     = "local_ack_timeout",
+                .data     = &local_ack_timeout,
+                .mode     = 0644,
+                .read     = libcfs_param_intvec_read,
+                .write    = libcfs_param_intvec_write
+        },
+        {
+                .name     = "retry_cnt",
+                .data     = &retry_cnt,
+                .mode     = 0644,
+                .read     = libcfs_param_intvec_read,
+                .write    = libcfs_param_intvec_write
+        },
+        {
+                .name     = "rnr_cnt",
+                .data     = &rnr_cnt,
+                .mode     = 0644,
+                .read     = libcfs_param_intvec_read,
+                .write    = libcfs_param_intvec_write
+        },
+        {
+                .name     = "rnr_nak_timer",
+                .data     = &rnr_nak_timer,
+                .mode     = 0644,
+                .read     = libcfs_param_intvec_read,
+                .write    = libcfs_param_intvec_write
+        },
+        {
+                .name     = "keepalive",
+                .data     = &keepalive,
+                .mode     = 0644,
+                .read     = libcfs_param_intvec_read,
+                .write    = libcfs_param_intvec_write
+        },
+        {
+                .name     = "concurrent_sends",
+                .data     = &concurrent_sends,
+                .mode     = 0444,
+                .read     = libcfs_param_intvec_read
+        },
+#if IBNAL_USE_FMR
+        {
+                .name     = "fmr_remaps",
+                .data     = &fmr_remaps,
+                .mode     = 0444,
+                .read     = libcfs_param_intvec_read
+        },
+#endif
+        {0}
+};
 
 void
 kibnal_initstrtunable(char *space, char *str, int size)
@@ -379,11 +510,16 @@ kibnal_tunables_init ()
         kibnal_initstrtunable(ipif_basename_space, ipif_basename,
                               sizeof(ipif_basename_space));
 
+        libcfs_param_sysctl_init("vibnal", libcfs_param_kibnal_ctl_table,
+                                 libcfs_param_lnet_root);
+
+#if defined(CONFIG_SYSCTL) && !CFS_SYSFS_MODULE_PARM
         kibnal_tunables.kib_sysctl =
                 cfs_register_sysctl_table(kibnal_top_ctl_table, 0);
 
         if (kibnal_tunables.kib_sysctl == NULL)
                 CWARN("Can't setup /proc tunables\n");
+#endif
 
         if (*kibnal_tunables.kib_concurrent_sends > IBNAL_RX_MSGS)
                 *kibnal_tunables.kib_concurrent_sends = IBNAL_RX_MSGS;
@@ -396,21 +532,9 @@ kibnal_tunables_init ()
 void
 kibnal_tunables_fini ()
 {
+        libcfs_param_sysctl_fini("vibnal", libcfs_param_lnet_root);
+#if defined(CONFIG_SYSCTL) && !CFS_SYSFS_MODULE_PARM
         if (kibnal_tunables.kib_sysctl != NULL)
                 cfs_unregister_sysctl_table(kibnal_tunables.kib_sysctl);
-}
-
-#else
-
-int
-kibnal_tunables_init ()
-{
-        return 0;
-}
-
-void
-kibnal_tunables_fini ()
-{
-}
-
 #endif
+}

@@ -209,10 +209,12 @@ int ksocknal_tunables_init(void)
                 *ksocknal_tunables.ksnd_zc_min_payload = (2 << 10);
 
         /* initialize platform-sepcific tunables */
+        ksocknal_lib_params_init();
         return ksocknal_lib_tunables_init();
 };
 
 void ksocknal_tunables_fini(void)
 {
         ksocknal_lib_tunables_fini();
+        ksocknal_lib_params_fini();
 }

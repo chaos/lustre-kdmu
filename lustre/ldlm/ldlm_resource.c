@@ -60,12 +60,12 @@ CFS_LIST_HEAD(ldlm_srv_namespace_list);
 cfs_semaphore_t ldlm_cli_namespace_lock;
 CFS_LIST_HEAD(ldlm_cli_namespace_list);
 
-cfs_proc_dir_entry_t *ldlm_type_proc_dir = NULL;
-cfs_proc_dir_entry_t *ldlm_ns_proc_dir = NULL;
-cfs_proc_dir_entry_t *ldlm_svc_proc_dir = NULL;
+struct libcfs_param_entry *ldlm_type_proc_dir = NULL;
+struct libcfs_param_entry *ldlm_ns_proc_dir = NULL;
+struct libcfs_param_entry *ldlm_svc_proc_dir = NULL;
 
-#ifdef LPROCFS
-static int ldlm_proc_dump_ns(struct file *file, const char *buffer,
+#ifdef __KERNEL__
+static int ldlm_proc_dump_ns(cfs_lproc_filep_t file, const char *buffer,
                              unsigned long count, void *data)
 {
         ldlm_dump_all_namespaces(LDLM_NAMESPACE_SERVER, D_DLMTRACE);
@@ -77,7 +77,7 @@ int ldlm_proc_setup(void)
 {
         int rc;
         struct lprocfs_vars list[] = {
-                { "dump_namespaces", NULL, ldlm_proc_dump_ns, NULL },
+                { "dump_namespaces", NULL, NULL, ldlm_proc_dump_ns, NULL },
                 { NULL }};
         ENTRY;
         LASSERT(ldlm_ns_proc_dir == NULL);
@@ -101,8 +101,8 @@ int ldlm_proc_setup(void)
         }
 
         ldlm_svc_proc_dir = lprocfs_register("services",
-                                            ldlm_type_proc_dir,
-                                            NULL, NULL);
+                                             ldlm_type_proc_dir,
+                                             NULL, NULL);
         if (IS_ERR(ldlm_svc_proc_dir)) {
                 CERROR("LProcFS failed in ldlm-init\n");
                 rc = PTR_ERR(ldlm_svc_proc_dir);
@@ -111,11 +111,17 @@ int ldlm_proc_setup(void)
 
         rc = lprocfs_add_vars(ldlm_type_proc_dir, list, NULL);
 
+        lprocfs_put_lperef(ldlm_type_proc_dir);
+        lprocfs_put_lperef(ldlm_ns_proc_dir);
+        lprocfs_put_lperef(ldlm_svc_proc_dir);
+
         RETURN(0);
 
 err_ns:
+        lprocfs_put_lperef(ldlm_ns_proc_dir);
         lprocfs_remove(&ldlm_ns_proc_dir);
 err_type:
+        lprocfs_put_lperef(ldlm_type_proc_dir);
         lprocfs_remove(&ldlm_type_proc_dir);
 err:
         ldlm_svc_proc_dir = NULL;
@@ -137,25 +143,34 @@ void ldlm_proc_cleanup(void)
 static int lprocfs_rd_lru_size(char *page, char **start, off_t off,
                                int count, int *eof, void *data)
 {
-        struct ldlm_namespace *ns = data;
-        __u32 *nr = &ns->ns_max_unused;
+        struct libcfs_param_cb_data tmp_data;
+        struct ldlm_namespace *ns;
+        __u32 *nr;
+
+        LIBCFS_PARAM_GET_DATA(ns, data, NULL);
+        nr = &ns->ns_max_unused;
 
         if (ns_connect_lru_resize(ns))
                 nr = &ns->ns_nr_unused;
-        return lprocfs_rd_uint(page, start, off, count, eof, nr);
+        memcpy(&tmp_data, data, sizeof tmp_data);
+        tmp_data.cb_data = nr;
+        return lprocfs_rd_uint(page, start, off, count, eof, &tmp_data);
 }
 
-static int lprocfs_wr_lru_size(struct file *file, const char *buffer,
+static int lprocfs_wr_lru_size(libcfs_file_t *file, const char *buffer,
                                unsigned long count, void *data)
 {
-        struct ldlm_namespace *ns = data;
+        struct ldlm_namespace *ns;
         char dummy[MAX_STRING_SIZE + 1], *end;
         unsigned long tmp;
         int lru_resize;
+        int flag = 0;
 
-        dummy[MAX_STRING_SIZE] = '\0';
-        if (cfs_copy_from_user(dummy, buffer, MAX_STRING_SIZE))
+        LIBCFS_PARAM_GET_DATA(ns, data, &flag);
+
+        if (libcfs_param_copy(flag, dummy, buffer, MAX_STRING_SIZE))
                 return -EFAULT;
+        dummy[MAX_STRING_SIZE] = '\0';
 
         if (strncmp(dummy, "clear", 5) == 0) {
                 CDEBUG(D_DLMTRACE,
@@ -310,8 +325,8 @@ void ldlm_proc_namespace(struct ldlm_namespace *ns)
 }
 #undef MAX_STRING_SIZE
 #else
-#define ldlm_proc_namespace(ns) do {} while (0)
-#endif /* LPROCFS */
+void ldlm_proc_namespace(struct ldlm_namespace *ns) {}
+#endif /* __KERNEL__ */
 
 struct ldlm_namespace *ldlm_namespace_new(struct obd_device *obd, char *name,
                                           ldlm_side_t client, ldlm_appetite_t apt)
@@ -627,6 +642,7 @@ void ldlm_namespace_free_prior(struct ldlm_namespace *ns,
  */
 void ldlm_namespace_free_post(struct ldlm_namespace *ns)
 {
+
         ENTRY;
         if (!ns) {
                 EXIT;
@@ -645,14 +661,15 @@ void ldlm_namespace_free_post(struct ldlm_namespace *ns)
          */
         ldlm_pool_fini(&ns->ns_pool);
 
-#ifdef LPROCFS
+#ifdef  __KERNEL__
         {
-                struct proc_dir_entry *dir;
+                struct libcfs_param_entry *dir;
                 dir = lprocfs_srch(ldlm_ns_proc_dir, ns->ns_name);
                 if (dir == NULL) {
-                        CERROR("dlm namespace %s has no procfs dir?\n",
+                        CERROR("ldlm namespace %s has no procfs dir?\n",
                                ns->ns_name);
                 } else {
+                        lprocfs_put_lperef(dir);
                         lprocfs_remove(&dir);
                 }
         }
@@ -670,7 +687,6 @@ void ldlm_namespace_free_post(struct ldlm_namespace *ns)
         ldlm_put_ref();
         EXIT;
 }
-
 
 /* Cleanup the resource, and free namespace.
  * bug 12864:

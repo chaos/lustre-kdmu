@@ -296,7 +296,7 @@ struct ldlm_pool {
         /**
          * Pool proc directory.
          */
-        cfs_proc_dir_entry_t  *pl_proc_dir;
+        struct libcfs_param_entry *pl_proc_dir;
         /**
          * Pool name, should be long enough to contain compound proc entry name.
          */
@@ -1008,11 +1008,7 @@ void ldlm_namespace_put_locked(struct ldlm_namespace *ns, int wakeup);
 void ldlm_namespace_get(struct ldlm_namespace *ns);
 void ldlm_namespace_put(struct ldlm_namespace *ns, int wakeup);
 int ldlm_proc_setup(void);
-#ifdef LPROCFS
 void ldlm_proc_cleanup(void);
-#else
-static inline void ldlm_proc_cleanup(void) {}
-#endif
 
 /* resource.c - internal */
 struct ldlm_resource *ldlm_resource_get(struct ldlm_namespace *ns,

@@ -164,7 +164,7 @@ struct mdt_device {
         int                        mdt_nosquash_strlen;
         cfs_rw_semaphore_t         mdt_squash_sem;
 
-        cfs_proc_dir_entry_t      *mdt_proc_entry;
+        void                      *mdt_proc_entry;
         struct lprocfs_stats      *mdt_stats;
         int                        mdt_sec_level;
 };
@@ -810,7 +810,6 @@ int mdt_procfs_fini(struct mdt_device *mdt);
 
 void mdt_time_start(const struct mdt_thread_info *info);
 void mdt_time_end(const struct mdt_thread_info *info, int idx);
-
 enum {
         LPROC_MDT_NR
 };

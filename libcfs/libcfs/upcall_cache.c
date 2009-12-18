@@ -37,39 +37,19 @@
  *
  * Supplementary groups cache.
  */
-
 #define DEBUG_SUBSYSTEM S_SEC
-
-#ifndef AUTOCONF_INCLUDED
-#include <linux/config.h>
-#endif
-#include <linux/module.h>
-#include <linux/kernel.h>
-#include <linux/mm.h>
-#include <linux/kmod.h>
-#include <linux/string.h>
-#include <linux/stat.h>
-#include <linux/errno.h>
-#include <linux/version.h>
-#include <linux/unistd.h>
 
 #include <asm/system.h>
 #include <asm/uaccess.h>
-
-#include <linux/fs.h>
-#include <linux/stat.h>
 #include <asm/uaccess.h>
-#include <linux/slab.h>
-
-#include <obd_support.h>
-#include <lustre_lib.h>
+#include <libcfs/lucache.h>
 
 static struct upcall_cache_entry *alloc_entry(struct upcall_cache *cache,
                                               __u64 key, void *args)
 {
         struct upcall_cache_entry *entry;
 
-        OBD_ALLOC_PTR(entry);
+        LIBCFS_ALLOC(entry, sizeof(*entry));
         if (!entry)
                 return NULL;
 
@@ -93,7 +73,7 @@ static void free_entry(struct upcall_cache *cache,
         cfs_list_del(&entry->ue_hash);
         CDEBUG(D_OTHER, "destroy cache entry %p for key "LPU64"\n",
                entry, entry->ue_key);
-        OBD_FREE_PTR(entry);
+        LIBCFS_FREE(entry, sizeof(*entry));
 }
 
 static inline int upcall_compare(struct upcall_cache *cache,
@@ -453,7 +433,7 @@ struct upcall_cache *upcall_cache_init(const char *name, const char *upcall,
         int i;
         ENTRY;
 
-        OBD_ALLOC(cache, sizeof(*cache));
+        LIBCFS_ALLOC(cache, sizeof(*cache));
         if (!cache)
                 RETURN(ERR_PTR(-ENOMEM));
 
@@ -477,6 +457,6 @@ void upcall_cache_cleanup(struct upcall_cache *cache)
         if (!cache)
                 return;
         upcall_cache_flush_all(cache);
-        OBD_FREE(cache, sizeof(*cache));
+        LIBCFS_FREE(cache, sizeof(*cache));
 }
 EXPORT_SYMBOL(upcall_cache_cleanup);

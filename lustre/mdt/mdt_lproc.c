@@ -102,12 +102,19 @@ int mdt_procfs_init(struct mdt_device *mdt, const char *name)
         if (rc)
                 return rc;
 
-        obd->obd_proc_exports_entry = proc_mkdir("exports",
-                                                 obd->obd_proc_entry);
-        if (obd->obd_proc_exports_entry)
-                lprocfs_add_simple(obd->obd_proc_exports_entry,
-                                   "clear", lprocfs_nid_stats_clear_read,
-                                   lprocfs_nid_stats_clear_write, obd, NULL);
+        obd->obd_proc_exports_entry = lprocfs_register("exports",
+                                                       obd->obd_proc_entry,
+                                                       NULL, NULL);
+        if (obd->obd_proc_exports_entry) {
+                struct libcfs_param_entry *temp;
+
+                temp = lprocfs_add_simple(obd->obd_proc_exports_entry, "clear",
+                                          lprocfs_nid_stats_clear_read,
+                                          lprocfs_nid_stats_clear_write,
+                                          obd, NULL);
+                lprocfs_put_lperef(obd->obd_proc_exports_entry);
+                lprocfs_put_lperef(temp);
+        }
         rc = lprocfs_alloc_md_stats(obd, LPROC_MDT_NR);
 
         RETURN(rc);
@@ -147,22 +154,28 @@ void mdt_time_end(const struct mdt_thread_info *info, int idx)
 static int lprocfs_rd_identity_expire(char *page, char **start, off_t off,
                                       int count, int *eof, void *data)
 {
-        struct obd_device *obd = data;
-        struct mdt_device *mdt = mdt_dev(obd->obd_lu_dev);
+        struct obd_device *obd;
+        struct mdt_device *mdt;
+        unsigned long temp;
 
+        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        mdt = mdt_dev(obd->obd_lu_dev);
         *eof = 1;
-        return snprintf(page, count, "%lu\n",
-                        mdt->mdt_identity_cache->uc_entry_expire / CFS_HZ);
+        temp = mdt->mdt_identity_cache->uc_entry_expire / HZ;
+
+        return libcfs_param_snprintf(page, count, data, LP_U32, "%lu\n", temp);
 }
 
-static int lprocfs_wr_identity_expire(struct file *file, const char *buffer,
+static int lprocfs_wr_identity_expire(libcfs_file_t *file, const char *buffer,
                                       unsigned long count, void *data)
 {
-        struct obd_device *obd = data;
-        struct mdt_device *mdt = mdt_dev(obd->obd_lu_dev);
-        int rc, val;
+        struct obd_device *obd;
+        struct mdt_device *mdt;
+        int rc, val, flag = 0;
 
-        rc = lprocfs_write_helper(buffer, count, &val);
+        LIBCFS_PARAM_GET_DATA(obd, data, &flag);
+        mdt = mdt_dev(obd->obd_lu_dev);
+        rc = lprocfs_write_helper(buffer, count, &val, flag);
         if (rc)
                 return rc;
 
@@ -174,24 +187,31 @@ static int lprocfs_rd_identity_acquire_expire(char *page, char **start,
                                               off_t off, int count, int *eof,
                                               void *data)
 {
-        struct obd_device *obd = data;
-        struct mdt_device *mdt = mdt_dev(obd->obd_lu_dev);
+        struct obd_device *obd;
+        struct mdt_device *mdt;
+        unsigned long temp;
 
+        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        mdt = mdt_dev(obd->obd_lu_dev);
         *eof = 1;
-        return snprintf(page, count, "%lu\n",
-                        mdt->mdt_identity_cache->uc_acquire_expire / CFS_HZ);
+        temp = mdt->mdt_identity_cache->uc_acquire_expire / HZ;
+
+        return libcfs_param_snprintf(page, count, data, LP_U32, "%lu\n", temp);
 }
 
-static int lprocfs_wr_identity_acquire_expire(struct file *file,
+static int lprocfs_wr_identity_acquire_expire(libcfs_file_t *file,
                                               const char *buffer,
                                               unsigned long count,
                                               void *data)
 {
-        struct obd_device *obd = data;
-        struct mdt_device *mdt = mdt_dev(obd->obd_lu_dev);
+        struct obd_device *obd;
+        struct mdt_device *mdt;
         int rc, val;
+        int flag = 0;
 
-        rc = lprocfs_write_helper(buffer, count, &val);
+        LIBCFS_PARAM_GET_DATA(obd, data, &flag);
+        mdt = mdt_dev(obd->obd_lu_dev);
+        rc = lprocfs_write_helper(buffer, count, &val, flag);
         if (rc)
                 return rc;
 
@@ -202,35 +222,45 @@ static int lprocfs_wr_identity_acquire_expire(struct file *file,
 static int lprocfs_rd_identity_upcall(char *page, char **start, off_t off,
                                       int count, int *eof, void *data)
 {
-        struct obd_device *obd = data;
-        struct mdt_device *mdt = mdt_dev(obd->obd_lu_dev);
-        struct upcall_cache *hash = mdt->mdt_identity_cache;
-        int len;
+        struct obd_device *obd;
+        struct mdt_device *mdt;
+        struct upcall_cache *hash;
+        int rc;
 
+        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        mdt = mdt_dev(obd->obd_lu_dev);
+        hash = mdt->mdt_identity_cache;
         *eof = 1;
         cfs_read_lock(&hash->uc_upcall_rwlock);
-        len = snprintf(page, count, "%s\n", hash->uc_upcall);
+        rc = libcfs_param_snprintf(page, count, data, LP_STR,
+                                   "%s\n", hash->uc_upcall);
         cfs_read_unlock(&hash->uc_upcall_rwlock);
-        return len;
+
+        return rc;
 }
 
-static int lprocfs_wr_identity_upcall(struct file *file, const char *buffer,
+static int lprocfs_wr_identity_upcall(libcfs_file_t *file, const char *buffer,
                                       unsigned long count, void *data)
 {
-        struct obd_device *obd = data;
-        struct mdt_device *mdt = mdt_dev(obd->obd_lu_dev);
-        struct upcall_cache *hash = mdt->mdt_identity_cache;
+        struct obd_device *obd;
+        struct mdt_device *mdt;
+        struct upcall_cache *hash;
         char kernbuf[UC_CACHE_UPCALL_MAXPATH] = { '\0' };
+        int rc, flag = 0;
 
+        LIBCFS_PARAM_GET_DATA(obd, data, &flag);
+        mdt = mdt_dev(obd->obd_lu_dev);
+        hash = mdt->mdt_identity_cache;
         if (count >= UC_CACHE_UPCALL_MAXPATH) {
                 CERROR("%s: identity upcall too long\n", obd->obd_name);
                 return -EINVAL;
         }
 
-        if (cfs_copy_from_user(kernbuf, buffer,
+        rc = libcfs_param_copy(flag, kernbuf, buffer,
                                min_t(unsigned long, count,
-                                     UC_CACHE_UPCALL_MAXPATH - 1)))
-                return -EFAULT;
+                               UC_CACHE_UPCALL_MAXPATH - 1));
+        if (rc < 0)
+                return rc;
 
         /* Remove any extraneous bits from the upcall (e.g. linefeeds) */
         cfs_write_lock(&hash->uc_upcall_rwlock);
@@ -249,14 +279,17 @@ static int lprocfs_wr_identity_upcall(struct file *file, const char *buffer,
         return count;
 }
 
-static int lprocfs_wr_identity_flush(struct file *file, const char *buffer,
+static int lprocfs_wr_identity_flush(libcfs_file_t *file, const char *buffer,
                                      unsigned long count, void *data)
 {
-        struct obd_device *obd = data;
-        struct mdt_device *mdt = mdt_dev(obd->obd_lu_dev);
+        struct obd_device *obd;
+        struct mdt_device *mdt;
         int rc, uid;
+        int flag = 0;
 
-        rc = lprocfs_write_helper(buffer, count, &uid);
+        LIBCFS_PARAM_GET_DATA(obd, data, &flag);
+        mdt = mdt_dev(obd->obd_lu_dev);
+        rc = lprocfs_write_helper(buffer, count, &uid, flag);
         if (rc)
                 return rc;
 
@@ -264,21 +297,24 @@ static int lprocfs_wr_identity_flush(struct file *file, const char *buffer,
         return count;
 }
 
-static int lprocfs_wr_identity_info(struct file *file, const char *buffer,
+static int lprocfs_wr_identity_info(libcfs_file_t *file, const char *buffer,
                                     unsigned long count, void *data)
 {
-        struct obd_device *obd = data;
-        struct mdt_device *mdt = mdt_dev(obd->obd_lu_dev);
+        struct obd_device *obd;
+        struct mdt_device *mdt;
         struct identity_downcall_data sparam, *param = &sparam;
-        int size = 0, rc = 0;
+        int size = 0, rc = 0, flag = 0;
 
+        LIBCFS_PARAM_GET_DATA(obd, data, &flag);
+        mdt = mdt_dev(obd->obd_lu_dev);
         if (count < sizeof(*param)) {
                 CERROR("%s: invalid data size %lu\n", obd->obd_name, count);
                 return count;
         }
 
-        if (cfs_copy_from_user(&sparam, buffer, sizeof(sparam))) {
-                CERROR("%s: bad identity data\n", obd->obd_name);
+        rc = libcfs_param_copy(flag, (char *)&sparam, buffer, sizeof(sparam));
+        if (rc < 0) {
+                CERROR("%s: bad identity data %d flag  \n", obd->obd_name,  flag);
                 GOTO(out, rc = -EFAULT);
         }
 
@@ -309,7 +345,7 @@ static int lprocfs_wr_identity_info(struct file *file, const char *buffer,
                                sparam.idd_uid, sparam.idd_ngroups);
                         param = &sparam;
                         param->idd_ngroups = 0;
-                } else if (cfs_copy_from_user(param, buffer, size)) {
+                } else if (libcfs_param_copy(flag, (char *)param,buffer,size)) {
                         CERROR("%s: uid %u bad supplementary group data\n",
                                obd->obd_name, sparam.idd_uid);
                         OBD_FREE(param, size);
@@ -332,22 +368,29 @@ out:
 static int lprocfs_rd_capa(char *page, char **start, off_t off,
                            int count, int *eof, void *data)
 {
-        struct obd_device *obd = data;
-        struct mdt_device *mdt = mdt_dev(obd->obd_lu_dev);
+        struct obd_device *obd;
+        struct mdt_device *mdt;
 
-        return snprintf(page, count, "capability on: %s %s\n",
-                        mdt->mdt_opts.mo_oss_capa ? "oss" : "",
-                        mdt->mdt_opts.mo_mds_capa ? "mds" : "");
+        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        mdt = mdt_dev(obd->obd_lu_dev);
+        *eof = 1;
+
+        return libcfs_param_snprintf(page, count, data, LP_STR,
+                      "capability on: %s %s\n",
+                      mdt->mdt_opts.mo_oss_capa ? "oss" : "",
+                      mdt->mdt_opts.mo_mds_capa ? "mds" : "");
 }
 
-static int lprocfs_wr_capa(struct file *file, const char *buffer,
+static int lprocfs_wr_capa(libcfs_file_t *file, const char *buffer,
                            unsigned long count, void *data)
 {
-        struct obd_device *obd = data;
-        struct mdt_device *mdt = mdt_dev(obd->obd_lu_dev);
-        int val, rc;
+        struct obd_device *obd;
+        struct mdt_device *mdt;
+        int val, rc, flag = 0;
 
-        rc = lprocfs_write_helper(buffer, count, &val);
+        LIBCFS_PARAM_GET_DATA(obd, data, &flag);
+        mdt = mdt_dev(obd->obd_lu_dev);
+        rc = lprocfs_write_helper(buffer, count, &val, flag);
         if (rc)
                 return rc;
 
@@ -382,37 +425,54 @@ static int lprocfs_wr_capa(struct file *file, const char *buffer,
 static int lprocfs_rd_capa_count(char *page, char **start, off_t off,
                                  int count, int *eof, void *data)
 {
-        return snprintf(page, count, "%d %d\n",
-                        capa_count[CAPA_SITE_CLIENT],
-                        capa_count[CAPA_SITE_SERVER]);
+        *eof = 1;
+        return libcfs_param_snprintf(page, count, data, LP_STR, "%d %d\n",
+                                     capa_count[CAPA_SITE_CLIENT],
+                                     capa_count[CAPA_SITE_SERVER]);
 }
 
 static int lprocfs_rd_site_stats(char *page, char **start, off_t off,
                                  int count, int *eof, void *data)
 {
-        struct obd_device *obd = data;
-        struct mdt_device *mdt = mdt_dev(obd->obd_lu_dev);
+        struct obd_device *obd;
+        struct mdt_device *mdt;
+        int rc;
 
-        return lu_site_stats_print(mdt_lu_site(mdt), page, count);
+        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        mdt = mdt_dev(obd->obd_lu_dev);
+        *eof = 1;
+        rc = lu_site_stats_print(mdt_lu_site(mdt), page, count);
+        if (rc > 0)
+                rc = libcfs_param_snprintf(page, count, data, LP_STR,
+                                           NULL, NULL);
+
+        return rc;
 }
 
 static int lprocfs_rd_capa_timeout(char *page, char **start, off_t off,
                                    int count, int *eof, void *data)
 {
-        struct obd_device *obd = data;
-        struct mdt_device *mdt = mdt_dev(obd->obd_lu_dev);
+        struct obd_device *obd;
+        struct mdt_device *mdt;
 
-        return snprintf(page, count, "%lu\n", mdt->mdt_capa_timeout);
+        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        mdt = mdt_dev(obd->obd_lu_dev);
+        *eof = 1;
+
+        return libcfs_param_snprintf(page, count, data, LP_U32,
+                                     "%lu\n", mdt->mdt_capa_timeout);
 }
 
-static int lprocfs_wr_capa_timeout(struct file *file, const char *buffer,
+static int lprocfs_wr_capa_timeout(libcfs_file_t *file, const char *buffer,
                                    unsigned long count, void *data)
 {
-        struct obd_device *obd = data;
-        struct mdt_device *mdt = mdt_dev(obd->obd_lu_dev);
-        int val, rc;
+        struct obd_device *obd;
+        struct mdt_device *mdt;
+        int val, rc, flag = 0;
 
-        rc = lprocfs_write_helper(buffer, count, &val);
+        LIBCFS_PARAM_GET_DATA(obd, data, &flag);
+        mdt = mdt_dev(obd->obd_lu_dev);
+        rc = lprocfs_write_helper(buffer, count, &val, flag);
         if (rc)
                 return rc;
 
@@ -424,20 +484,27 @@ static int lprocfs_wr_capa_timeout(struct file *file, const char *buffer,
 static int lprocfs_rd_ck_timeout(char *page, char **start, off_t off, int count,
                                  int *eof, void *data)
 {
-        struct obd_device *obd = data;
-        struct mdt_device *mdt = mdt_dev(obd->obd_lu_dev);
+        struct obd_device *obd;
+        struct mdt_device *mdt;
 
-        return snprintf(page, count, "%lu\n", mdt->mdt_ck_timeout);
+        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        mdt = mdt_dev(obd->obd_lu_dev);
+        *eof = 1;
+
+        return libcfs_param_snprintf(page, count, data, LP_U32, "%lu\n",
+                                     mdt->mdt_ck_timeout);
 }
 
-static int lprocfs_wr_ck_timeout(struct file *file, const char *buffer,
+static int lprocfs_wr_ck_timeout(libcfs_file_t *file, const char *buffer,
                                  unsigned long count, void *data)
 {
-        struct obd_device *obd = data;
-        struct mdt_device *mdt = mdt_dev(obd->obd_lu_dev);
-        int val, rc;
+        struct obd_device *obd;
+        struct mdt_device *mdt;
+        int val, rc, flag = 0;
 
-        rc = lprocfs_write_helper(buffer, count, &val);
+        LIBCFS_PARAM_GET_DATA(obd, data, &flag);
+        mdt = mdt_dev(obd->obd_lu_dev);
+        rc = lprocfs_write_helper(buffer, count, &val, flag);
         if (rc)
                 return rc;
 
@@ -446,7 +513,8 @@ static int lprocfs_wr_ck_timeout(struct file *file, const char *buffer,
         return count;
 }
 
-static int lprocfs_mdt_wr_evict_client(struct file *file, const char *buffer,
+static int lprocfs_mdt_wr_evict_client(libcfs_file_t *file,
+                                       const char *buffer,
                                        unsigned long count, void *data)
 {
         char tmpbuf[sizeof(struct obd_uuid)];
@@ -464,20 +532,28 @@ static int lprocfs_mdt_wr_evict_client(struct file *file, const char *buffer,
 static int lprocfs_rd_sec_level(char *page, char **start, off_t off,
                                 int count, int *eof, void *data)
 {
-        struct obd_device *obd = data;
-        struct mdt_device *mdt = mdt_dev(obd->obd_lu_dev);
+        struct obd_device *obd;
+        struct mdt_device *mdt;
 
-        return snprintf(page, count, "%d\n", mdt->mdt_sec_level);
+        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        mdt = mdt_dev(obd->obd_lu_dev);
+        *eof = 1;
+
+        return libcfs_param_snprintf(page, count, data, LP_D32, "%d\n",
+                                     mdt->mdt_sec_level);
 }
 
-static int lprocfs_wr_sec_level(struct file *file, const char *buffer,
+static int lprocfs_wr_sec_level(libcfs_file_t *file, const char *buffer,
                                 unsigned long count, void *data)
 {
-        struct obd_device *obd = data;
-        struct mdt_device *mdt = mdt_dev(obd->obd_lu_dev);
+        struct obd_device *obd;
+        struct mdt_device *mdt;
         int val, rc;
+        int flag = 0;
 
-        rc = lprocfs_write_helper(buffer, count, &val);
+        LIBCFS_PARAM_GET_DATA(obd, data, &flag);
+        mdt = mdt_dev(obd->obd_lu_dev);
+        rc = lprocfs_write_helper(buffer, count, &val, flag);
         if (rc)
                 return rc;
 
@@ -497,20 +573,28 @@ static int lprocfs_wr_sec_level(struct file *file, const char *buffer,
 static int lprocfs_rd_cos(char *page, char **start, off_t off,
                               int count, int *eof, void *data)
 {
-        struct obd_device *obd = data;
-        struct mdt_device *mdt = mdt_dev(obd->obd_lu_dev);
+        struct obd_device *obd;
+        struct mdt_device *mdt;
+        int temp;
 
-        return snprintf(page, count, "%u\n", mdt_cos_is_enabled(mdt));
+        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        mdt = mdt_dev(obd->obd_lu_dev);
+        *eof = 1;
+        temp = mdt_cos_is_enabled(mdt);
+
+        return libcfs_param_snprintf(page, count, data, LP_D32, "%u\n", temp);
 }
 
-static int lprocfs_wr_cos(struct file *file, const char *buffer,
+static int lprocfs_wr_cos(libcfs_file_t *file, const char *buffer,
                                   unsigned long count, void *data)
 {
-        struct obd_device *obd = data;
-        struct mdt_device *mdt = mdt_dev(obd->obd_lu_dev);
-        int val, rc;
+        struct obd_device *obd;
+        struct mdt_device *mdt;
+        int val, rc, flag = 0;
 
-        rc = lprocfs_write_helper(buffer, count, &val);
+        LIBCFS_PARAM_GET_DATA(obd, data, &flag);
+        mdt = mdt_dev(obd->obd_lu_dev);
+        rc = lprocfs_write_helper(buffer, count, &val, flag);
         if (rc)
                 return rc;
         mdt_enable_cos(mdt, val);
@@ -520,12 +604,16 @@ static int lprocfs_wr_cos(struct file *file, const char *buffer,
 static int lprocfs_rd_root_squash(char *page, char **start, off_t off,
                                   int count, int *eof, void *data)
 {
-        struct obd_device *obd = data;
-        struct mdt_device *mdt = mdt_dev(obd->obd_lu_dev);
+        struct obd_device *obd;
+        struct mdt_device *mdt;
         ENTRY;
 
-        return snprintf(page, count, "%u:%u\n", mdt->mdt_squash_uid,
-                        mdt->mdt_squash_gid);
+        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        mdt = mdt_dev(obd->obd_lu_dev);
+        *eof = 1;
+
+        return libcfs_param_snprintf(page, count, data, LP_STR, "%u:%u\n",
+                                     mdt->mdt_squash_uid, mdt->mdt_squash_gid);
 }
 
 static int safe_strtoul(const char *str, char **endp, unsigned long *res)
@@ -543,22 +631,24 @@ static int safe_strtoul(const char *str, char **endp, unsigned long *res)
         return 0;
 }
 
-static int lprocfs_wr_root_squash(struct file *file, const char *buffer,
+static int lprocfs_wr_root_squash(libcfs_file_t *file, const char *buffer,
                                   unsigned long count, void *data)
 {
-        struct obd_device *obd = data;
-        struct mdt_device *mdt = mdt_dev(obd->obd_lu_dev);
+        struct obd_device *obd;
+        struct mdt_device *mdt;
         int rc;
         char kernbuf[50], *tmp, *end, *errmsg;
         unsigned long uid, gid;
-        int nouid, nogid;
+        int nouid, nogid, flag = 0;
         ENTRY;
 
+        LIBCFS_PARAM_GET_DATA(obd, data, &flag);
+        mdt = mdt_dev(obd->obd_lu_dev);
         if (count >= sizeof(kernbuf)) {
                 errmsg = "string too long";
                 GOTO(failed, rc = -EINVAL);
         }
-        if (cfs_copy_from_user(kernbuf, buffer, count)) {
+        if (libcfs_param_copy(flag, kernbuf, buffer, count)) {
                 errmsg = "bad address";
                 GOTO(failed, rc = -EFAULT);
         }
@@ -604,30 +694,37 @@ static int lprocfs_wr_root_squash(struct file *file, const char *buffer,
 static int lprocfs_rd_nosquash_nids(char *page, char **start, off_t off,
                                     int count, int *eof, void *data)
 {
-        struct obd_device *obd = data;
-        struct mdt_device *mdt = mdt_dev(obd->obd_lu_dev);
+        struct obd_device *obd;
+        struct mdt_device *mdt;
 
+        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        mdt = mdt_dev(obd->obd_lu_dev);
+        *eof = 1;
         if (mdt->mdt_nosquash_str)
-                return snprintf(page, count, "%s\n", mdt->mdt_nosquash_str);
-        return snprintf(page, count, "NONE\n");
+                return libcfs_param_snprintf(page, count, data, LP_STR,
+                                             "%s\n", mdt->mdt_nosquash_str);
+        return libcfs_param_snprintf(page, count, data, LP_STR, "%s\n", "NONE");
 }
 
-static int lprocfs_wr_nosquash_nids(struct file *file, const char *buffer,
+static int lprocfs_wr_nosquash_nids(libcfs_file_t *file, const char *buffer,
                                     unsigned long count, void *data)
 {
-        struct obd_device *obd = data;
-        struct mdt_device *mdt = mdt_dev(obd->obd_lu_dev);
+        struct obd_device *obd;
+        struct mdt_device *mdt;
         int rc;
         char *kernbuf, *errmsg;
         cfs_list_t tmp;
+        int flag = 0;
         ENTRY;
 
+        LIBCFS_PARAM_GET_DATA(obd, data, &flag);
+        mdt = mdt_dev(obd->obd_lu_dev);
         OBD_ALLOC(kernbuf, count + 1);
         if (kernbuf == NULL) {
                 errmsg = "no memory";
                 GOTO(failed, rc = -ENOMEM);
         }
-        if (cfs_copy_from_user(kernbuf, buffer, count)) {
+        if (libcfs_param_copy(flag, kernbuf, buffer, count)) {
                 errmsg = "bad address";
                 GOTO(failed, rc = -EFAULT);
         }
@@ -681,11 +778,16 @@ static int lprocfs_wr_nosquash_nids(struct file *file, const char *buffer,
 static int lprocfs_rd_mdt_som(char *page, char **start, off_t off,
                               int count, int *eof, void *data)
 {
-        struct obd_device *obd = data;
-        struct mdt_device *mdt = mdt_dev(obd->obd_lu_dev);
+        struct obd_device *obd;
+        struct mdt_device *mdt;
 
-        return snprintf(page, count, "%sabled\n",
-                        mdt->mdt_som_conf ? "en" : "dis");
+        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        LASSERT(obd != NULL);
+        *eof = 1;
+        mdt = mdt_dev(obd->obd_lu_dev);
+
+        return libcfs_param_snprintf(page, count, data, LP_STR, "%sabled\n",
+                                     mdt->mdt_som_conf ? "en" : "dis");
 }
 
 #ifdef HAVE_QUOTA_SUPPORT
@@ -712,20 +814,23 @@ static int mdt_quota_off(struct mdt_device *mdt)
 }
 #endif
 
-static int lprocfs_wr_mdt_som(struct file *file, const char *buffer,
+static int lprocfs_wr_mdt_som(libcfs_file_t *file, const char *buffer,
                               unsigned long count, void *data)
 {
         struct obd_export *exp;
-        struct obd_device *obd = data;
-        struct mdt_device *mdt = mdt_dev(obd->obd_lu_dev);
+        struct obd_device *obd;
+        struct mdt_device *mdt;
         char kernbuf[16];
         unsigned long val = 0;
+        int flag = 0;
         int rc;
 
+        LIBCFS_PARAM_GET_DATA(obd, data, &flag);
+        mdt = mdt_dev(obd->obd_lu_dev);
         if (count > (sizeof(kernbuf) - 1))
                 return -EINVAL;
 
-        if (cfs_copy_from_user(kernbuf, buffer, count))
+        if (libcfs_param_copy(flag, kernbuf, buffer, count))
                 return -EFAULT;
 
         kernbuf[count] = '\0';

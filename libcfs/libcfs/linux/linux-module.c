@@ -40,43 +40,52 @@
 
 #define LNET_MINOR 240
 
-int libcfs_ioctl_getdata(char *buf, char *end, void *arg)
+#define LIBCFS_MAX_IOCTL_BUFFER 8192
+
+int libcfs_ioctl_getdata(char **buf, int *len, void *arg)
 {
-        struct libcfs_ioctl_hdr   *hdr;
-        struct libcfs_ioctl_data  *data;
+        struct libcfs_ioctl_hdr hdr;
+        struct libcfs_ioctl_data *data;
         int err;
         ENTRY;
 
-        hdr = (struct libcfs_ioctl_hdr *)buf;
-        data = (struct libcfs_ioctl_data *)buf;
+        
+        err = copy_from_user(&hdr, (void *)arg, sizeof(hdr));
 
-        err = copy_from_user(buf, (void *)arg, sizeof(*hdr));
-        if (err)
-                RETURN(err);
-
-        if (hdr->ioc_version != LIBCFS_IOCTL_VERSION) {
+        if (hdr.ioc_version != LIBCFS_IOCTL_VERSION) {
                 CERROR("PORTALS: version mismatch kernel vs application\n");
                 RETURN(-EINVAL);
         }
 
-        if (hdr->ioc_len + buf >= end) {
-                CERROR("PORTALS: user buffer exceeds kernel buffer\n");
+        if (hdr.ioc_len > LIBCFS_MAX_IOCTL_BUFFER) {
+                CERROR("User buffer len %d exceeds %d max buffer\n",
+                       hdr.ioc_len, LIBCFS_MAX_IOCTL_BUFFER);
                 RETURN(-EINVAL);
         }
 
-
-        if (hdr->ioc_len < sizeof(struct libcfs_ioctl_data)) {
+        if (hdr.ioc_len < sizeof(struct libcfs_ioctl_data)) {
                 CERROR("PORTALS: user buffer too small for ioctl\n");
                 RETURN(-EINVAL);
         }
 
-        err = copy_from_user(buf, (void *)arg, hdr->ioc_len);
+        /* XXX allocate this more intelligently, using kmalloc when
+         * appropriate */
+        LIBCFS_ALLOC(*buf, hdr.ioc_len);
+        if (*buf == NULL) {
+                CERROR("Cannot allocate control buffer of len %d\n",
+                       hdr.ioc_len);
+                RETURN(-EINVAL);
+        }
+        *len = hdr.ioc_len;
+        data = (struct libcfs_ioctl_data *)(*buf);
+
+        err = copy_from_user(*buf, (void *)arg, hdr.ioc_len);
         if (err)
-                RETURN(err);
+                GOTO(cleanup, err);
 
         if (libcfs_ioctl_is_invalid(data)) {
                 CERROR("PORTALS: ioctl not correctly formatted\n");
-                RETURN(-EINVAL);
+                GOTO(cleanup, err = -EINVAL);
         }
 
         if (data->ioc_inllen1)
@@ -85,8 +94,11 @@ int libcfs_ioctl_getdata(char *buf, char *end, void *arg)
         if (data->ioc_inllen2)
                 data->ioc_inlbuf2 = &data->ioc_bulk[0] +
                         cfs_size_round(data->ioc_inllen1);
+cleanup:
+        if (err && *buf != NULL)
+                LIBCFS_FREE(*buf, hdr.ioc_len);
 
-        RETURN(0);
+        RETURN(err);
 }
 
 int libcfs_ioctl_popdata(void *arg, void *data, int size)
@@ -94,6 +106,15 @@ int libcfs_ioctl_popdata(void *arg, void *data, int size)
 	if (copy_to_user((char *)arg, data, size))
 		return -EFAULT;
 	return 0;
+}
+
+void libcfs_ioctl_freedata(char *buf, int len)
+{       
+        ENTRY;
+        
+        LIBCFS_FREE(buf, len);
+        EXIT;
+        return;
 }
 
 extern struct cfs_psdev_ops          libcfs_psdev_ops;
@@ -109,7 +130,7 @@ libcfs_psdev_open(struct inode * inode, struct file * file)
 	pdu = (struct libcfs_device_userstate **)&file->private_data;
 	if (libcfs_psdev_ops.p_open != NULL)
 		rc = libcfs_psdev_ops.p_open(0, (void *)pdu);
-	else
+        else
 		return (-EPERM);
 	return rc;
 }
@@ -139,6 +160,9 @@ libcfs_ioctl(struct inode *inode, struct file *file,
 	int    rc = 0;
 
 	if (current_fsuid() != 0)
+        /* ioctl should be permitted for non-root users with read operation */
+	if (current->fsuid != 0 &&
+            (cmd != IOC_LIBCFS_GET_PARAM && cmd != IOC_LIBCFS_LIST_PARAM))
 		return -EACCES;
 
 	if ( _IOC_TYPE(cmd) != IOC_LIBCFS_TYPE ||

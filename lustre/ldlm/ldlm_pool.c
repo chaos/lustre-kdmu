@@ -143,7 +143,7 @@
 #define LDLM_POOL_MAX_AGE (36000)
 
 #ifdef __KERNEL__
-extern cfs_proc_dir_entry_t *ldlm_ns_proc_dir;
+extern void *ldlm_ns_proc_dir;
 #endif
 
 #define avg(src, add) \
@@ -643,15 +643,18 @@ int ldlm_pool_setup(struct ldlm_pool *pl, int limit)
 EXPORT_SYMBOL(ldlm_pool_setup);
 
 #ifdef __KERNEL__
+
 static int lprocfs_rd_pool_state(char *page, char **start, off_t off,
                                  int count, int *eof, void *data)
 {
         int granted, grant_rate, cancel_rate, grant_step;
         int nr = 0, grant_speed, grant_plan, lvf;
-        struct ldlm_pool *pl = data;
+        struct ldlm_pool *pl;
         __u64 slv, clv;
         __u32 limit;
 
+        LIBCFS_PARAM_GET_DATA(pl, data, NULL);
+        *eof = 1;
         cfs_spin_lock(&pl->pl_lock);
         slv = pl->pl_server_lock_volume;
         clv = pl->pl_client_lock_volume;
@@ -687,7 +690,8 @@ static int lprocfs_rd_pool_state(char *page, char **start, off_t off,
                        granted);
         nr += snprintf(page + nr, count - nr, "  L:   %d\n",
                        limit);
-        return nr;
+
+        return libcfs_param_snprintf(page, count, data, LP_STR, NULL, NULL);
 }
 
 LDLM_POOL_PROC_READER(grant_plan, int);
@@ -697,7 +701,7 @@ LDLM_POOL_PROC_WRITER(recalc_period, int);
 static int ldlm_pool_proc_init(struct ldlm_pool *pl)
 {
         struct ldlm_namespace *ns = ldlm_pl2ns(pl);
-        struct proc_dir_entry *parent_ns_proc;
+        struct libcfs_param_entry *parent_ns_proc;
         struct lprocfs_vars pool_vars[2];
         char *var_name = NULL;
         int rc = 0;
@@ -817,9 +821,12 @@ static int ldlm_pool_proc_init(struct ldlm_pool *pl)
                              LPROCFS_CNTR_AVGMINMAX | LPROCFS_CNTR_STDDEV,
                              "recalc_timing", "sec");
         lprocfs_register_stats(pl->pl_proc_dir, "stats", pl->pl_stats);
+        lprocfs_put_lperef(pl->pl_proc_dir);
 
         EXIT;
 out_free_name:
+        if (parent_ns_proc)
+                lprocfs_put_lperef(parent_ns_proc);
         OBD_FREE(var_name, MAX_STRING_SIZE + 1);
         return rc;
 }
@@ -836,6 +843,16 @@ static void ldlm_pool_proc_fini(struct ldlm_pool *pl)
         }
 }
 #else /* !__KERNEL__*/
+static inline
+int lprocfs_rd_pool_state(char *page, char **start, off_t off,
+                          int count, int *eof, void *data) { return 0; }
+static inline
+int lprocfs_rd_grant_plan(char *page, char **start, off_t off,
+                          int count, int *eof, void *data) { return 0; }
+static inline
+int lprocfs_rd_recalc_period(char *page, char **start, off_t off,
+                             int count, int *eof, void *data) { return 0; }
+
 #define ldlm_pool_proc_init(pl) (0)
 #define ldlm_pool_proc_fini(pl) while (0) {}
 #endif

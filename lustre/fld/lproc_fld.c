@@ -61,27 +61,31 @@
 #include <lustre_fld.h>
 #include "fld_internal.h"
 
-#ifdef LPROCFS
+#ifdef __KERNEL__
 static int
 fld_proc_read_targets(char *page, char **start, off_t off,
                       int count, int *eof, void *data)
 {
-        struct lu_client_fld *fld = (struct lu_client_fld *)data;
+        struct lu_client_fld *fld;
         struct lu_fld_target *target;
 	int total = 0, rc;
 	ENTRY;
 
+        LIBCFS_PARAM_GET_DATA(fld, data, NULL);
         LASSERT(fld != NULL);
 
+        *eof = 1;
         cfs_spin_lock(&fld->lcf_lock);
         cfs_list_for_each_entry(target,
                                 &fld->lcf_targets, ft_chain)
         {
-                rc = snprintf(page, count, "%s\n",
-                              fld_target_name(target));
-                page += rc;
-                count -= rc;
-                total += rc;
+                rc = libcfs_param_snprintf(page, count, data, LP_STR,
+                                           "%s\n", fld_target_name(target));
+                if (rc > 0) {
+                        page += rc;
+                        count -= rc;
+                        total += rc;
+                }
                 if (count == 0)
                         break;
         }
@@ -93,29 +97,32 @@ static int
 fld_proc_read_hash(char *page, char **start, off_t off,
                    int count, int *eof, void *data)
 {
-        struct lu_client_fld *fld = (struct lu_client_fld *)data;
+        struct lu_client_fld *fld;
 	int rc;
 	ENTRY;
 
+        LIBCFS_PARAM_GET_DATA(fld, data, NULL);
         LASSERT(fld != NULL);
 
+        *eof = 1;
         cfs_spin_lock(&fld->lcf_lock);
-        rc = snprintf(page, count, "%s\n",
-                      fld->lcf_hash->fh_name);
+        rc = libcfs_param_snprintf(page, count, data, LP_STR,
+                                   "%s\n", fld->lcf_hash->fh_name);
         cfs_spin_unlock(&fld->lcf_lock);
 
 	RETURN(rc);
 }
 
 static int
-fld_proc_write_hash(struct file *file, const char *buffer,
+fld_proc_write_hash(libcfs_file_t *file, const char *buffer,
                     unsigned long count, void *data)
 {
-        struct lu_client_fld *fld = (struct lu_client_fld *)data;
+        struct lu_client_fld *fld;
         struct lu_fld_hash *hash = NULL;
         int i;
 	ENTRY;
 
+        LIBCFS_PARAM_GET_DATA(fld, data, NULL);
         LASSERT(fld != NULL);
 
         for (i = 0; fld_hash[i].fh_name != NULL; i++) {
@@ -136,23 +143,24 @@ fld_proc_write_hash(struct file *file, const char *buffer,
                 CDEBUG(D_INFO, "%s: Changed hash to \"%s\"\n",
                        fld->lcf_name, hash->fh_name);
         }
-	
+
         RETURN(count);
 }
 
 static int
-fld_proc_write_cache_flush(struct file *file, const char *buffer,
+fld_proc_write_cache_flush(libcfs_file_t *file, const char *buffer,
                            unsigned long count, void *data)
 {
-        struct lu_client_fld *fld = (struct lu_client_fld *)data;
+        struct lu_client_fld *fld;
 	ENTRY;
 
+        LIBCFS_PARAM_GET_DATA(fld, data, NULL);
         LASSERT(fld != NULL);
 
         fld_cache_flush(fld->lcf_cache);
 
         CDEBUG(D_INFO, "%s: Lookup cache is flushed\n", fld->lcf_name);
-	
+
         RETURN(count);
 }
 
@@ -164,4 +172,4 @@ struct lprocfs_vars fld_client_proc_list[] = {
 	{ "hash",        fld_proc_read_hash, fld_proc_write_hash, NULL },
 	{ "cache_flush", NULL, fld_proc_write_cache_flush, NULL },
 	{ NULL }};
-#endif
+#endif /* __KERNEL__ */

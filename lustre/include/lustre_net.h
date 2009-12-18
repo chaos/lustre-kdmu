@@ -714,7 +714,7 @@ struct ptlrpc_request_buffer_desc {
 };
 
 typedef int (*svc_handler_t)(struct ptlrpc_request *req);
-typedef void (*svcreq_printfn_t)(void *, struct ptlrpc_request *);
+typedef int (*svcreq_printfn_t)(void *, int, struct ptlrpc_request *);
 typedef int (*svc_hpreq_handler_t)(struct ptlrpc_request *);
 
 #define PTLRPC_SVC_HP_RATIO 10
@@ -787,7 +787,7 @@ struct ptlrpc_service {
 
         cfs_spinlock_t        srv_lock;
 
-        cfs_proc_dir_entry_t *srv_procroot;
+        struct libcfs_param_entry  *srv_procroot;
         struct lprocfs_stats *srv_stats;
 
         /* List of free reply_states */
@@ -1055,7 +1055,7 @@ void ptlrpc_dispatch_difficult_reply (struct ptlrpc_reply_state *rs);
 void ptlrpc_schedule_difficult_reply (struct ptlrpc_reply_state *rs);
 struct ptlrpc_service *ptlrpc_init_svc_conf(struct ptlrpc_service_conf *c,
                                             svc_handler_t h, char *name,
-                                            struct proc_dir_entry *proc_entry,
+                                            struct libcfs_param_entry *proc_entry,
                                             svcreq_printfn_t prntfn,
                                             char *threadname);
 
@@ -1064,7 +1064,7 @@ struct ptlrpc_service *ptlrpc_init_svc(int nbufs, int bufsize, int max_req_size,
                                        int req_portal, int rep_portal,
                                        int watchdog_factor,
                                        svc_handler_t, char *name,
-                                       cfs_proc_dir_entry_t *proc_entry,
+                                       struct libcfs_param_entry *proc_entry, 
                                        svcreq_printfn_t,
                                        int min_threads, int max_threads,
                                        char *threadname, __u32 ctx_tags,
@@ -1380,7 +1380,7 @@ void ptlrpcd_decref(void);
 
 /* ptlrpc/lproc_ptlrpc.c */
 const char* ll_opcode2str(__u32 opcode);
-#ifdef LPROCFS
+#ifdef __KERNEL__
 void ptlrpc_lprocfs_register_obd(struct obd_device *obd);
 void ptlrpc_lprocfs_unregister_obd(struct obd_device *obd);
 void ptlrpc_lprocfs_brw(struct ptlrpc_request *req, int bytes);

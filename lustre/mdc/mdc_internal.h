@@ -40,7 +40,7 @@
 #include <lustre_mdc.h>
 #include <lustre_mds.h>
 
-#ifdef LPROCFS
+#ifdef __KERNEL__
 void lprocfs_mdc_init_vars(struct lprocfs_static_vars *lvars);
 #else
 static inline void lprocfs_mdc_init_vars(struct lprocfs_static_vars *lvars)

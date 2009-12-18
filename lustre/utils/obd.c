@@ -73,7 +73,7 @@
 #include <lustre/liblustreapi.h>
 
 #define MAX_STRING_SIZE 128
-#define DEVICES_LIST "/proc/fs/lustre/devices"
+#define DEVICES_LIST "lustre/devices"
 
 #if HAVE_LIBPTHREAD
 #include <sys/ipc.h>
@@ -933,33 +933,34 @@ static void print_obd_line(char *s)
 {
         char buf[MAX_STRING_SIZE];
         char obd_name[MAX_OBD_NAME];
-        FILE *fp = NULL;
+        int rc = 0;
+        char inbuf[MAX_STRING_SIZE];
+        long long offset = 0;
         char *ptr;
 
+        memset(buf, 0, MAX_STRING_SIZE);
         if (sscanf(s, " %*d %*s osc %s %*s %*d ", obd_name) == 0)
                 goto try_mdc;
-        snprintf(buf, sizeof(buf),
-                 "/proc/fs/lustre/osc/%s/ost_conn_uuid", obd_name);
-        if ((fp = fopen(buf, "r")) == NULL)
+        snprintf(buf, sizeof(buf), "lustre/osc/%s/ost_conn_uuid", obd_name);
+        memset(inbuf, 0, MAX_STRING_SIZE);
+        rc = llapi_params_read(buf, strlen(buf), inbuf,
+                               MAX_STRING_SIZE, &offset, &rc);
+        if (rc <= 0)
                 goto try_mdc;
         goto got_one;
 
 try_mdc:
         if (sscanf(s, " %*d %*s mdc %s %*s %*d ", obd_name) == 0)
                 goto fail;
-        snprintf(buf, sizeof(buf),
-                 "/proc/fs/lustre/mdc/%s/mds_conn_uuid", obd_name);
-        if ((fp = fopen(buf, "r")) == NULL)
+        snprintf(buf, sizeof(buf), "lustre/mdc/%s/mds_conn_uuid", obd_name);
+        offset = 0;
+        rc = llapi_params_read(buf, strlen(buf), inbuf,
+                               MAX_STRING_SIZE, &offset, &rc);
+        if (rc <= 0)
                 goto fail;
 
 got_one:
-        /* should not ignore fgets(3)'s return value */
-        if (!fgets(buf, sizeof(buf), fp)) {
-                fprintf(stderr, "reading from %s: %s", buf, strerror(errno));
-                fclose(fp);
-                return;
-        }
-        fclose(fp);
+        llapi_params_unpack(inbuf, buf, sizeof(buf));
 
         /* trim trailing newlines */
         ptr = strrchr(buf, '\n');
@@ -1017,7 +1018,9 @@ int jt_obd_list(int argc, char **argv)
 {
         int rc;
         char buf[MAX_STRING_SIZE];
-        FILE *fp = NULL;
+        char inbuf[CFS_PAGE_SIZE];
+        int pos = 0, eof = 0;
+        long long offset = 0;
         int print_obd = 0;
 
         if (argc > 2)
@@ -1029,20 +1032,23 @@ int jt_obd_list(int argc, char **argv)
                         return CMD_HELP;
         }
 
-        fp = fopen(DEVICES_LIST, "r");
-        if (fp == NULL) {
-                fprintf(stderr, "error: %s: %s opening "DEVICES_LIST"\n",
-                        jt_cmdname(argv[0]), strerror(rc =  errno));
-                return jt_obd_list_ioctl(argc, argv);
+        while (!eof) {
+                memset(inbuf, 0, CFS_PAGE_SIZE);
+                rc = llapi_params_read(DEVICES_LIST, strlen(DEVICES_LIST),
+                                       inbuf, CFS_PAGE_SIZE, &offset, &eof);
+                if (rc <= 0)
+                        break;
+                offset = rc;
+                while ((rc = llapi_params_unpack(inbuf + pos,
+                                                 buf, sizeof(buf)))) {
+                        if (print_obd)
+                                print_obd_line(buf);
+                        else
+                                printf("%s", buf);
+                       pos += rc;
+                }
         }
 
-        while (fgets(buf, sizeof(buf), fp) != NULL)
-                if (print_obd)
-                        print_obd_line(buf);
-                else
-                        printf("%s", buf);
-
-        fclose(fp);
         return 0;
 }
 

@@ -224,15 +224,95 @@ static cfs_sysctl_table_t kqswnal_top_ctl_table[] = {
         },
         {0}
 };
+#endif
+
+static struct libcfs_param_ctl_table libcfs_param_kqswnal_ctl_table[] = {
+        {
+                .name     = "tx_maxcontig",
+                .data     = &tx_maxcontig,
+                .mode     = 0444,
+                .read     = libcfs_param_intvec_read
+        },
+        {
+                .name     = "ntxmsgs",
+                .data     = &ntxmsgs,
+                .mode     = 0444,
+                .read     = libcfs_param_intvec_read
+        },
+        {
+                .name     = "credits",
+                .data     = &credits,
+                .mode     = 0444,
+                .read     = libcfs_param_intvec_read
+        },
+        {
+                .name     = "peer_credits",
+                .data     = &peer_credits,
+                .mode     = 0444,
+                .read     = libcfs_param_intvec_read
+        },
+        {
+                .name     = "nrxmsgs_large",
+                .data     = &nrxmsgs_large,
+                .mode     = 0444,
+                .read     = libcfs_param_intvec_read
+        },
+        {
+                .name     = "ep_envelopes_large",
+                .data     = &ep_envelopes_large,
+                .mode     = 0444,
+                .read     = libcfs_param_intvec_read
+        },
+        {
+                .name     = "nrxmsgs_small",
+                .data     = &nrxmsgs_small,
+                .mode     = 0444,
+                .read     = libcfs_param_intvec_read
+        },
+        {
+                .name     = "ep_envelopes_small",
+                .data     = &ep_envelopes_small,
+                .mode     = 0444,
+                .read     = libcfs_param_intvec_read
+        },
+        {
+                .name     = "optimized_puts",
+                .data     = &optimized_puts,
+                .mode     = 0644,
+                .read     = libcfs_param_intvec_read,
+                .write    = libcfs_param_intvec_write
+        },
+        {
+                .name     = "optimized_gets",
+                .data     = &optimized_gets,
+                .mode     = 0644,
+                .read     = libcfs_param_intvec_read,
+                .write    = libcfs_param_intvec_write
+        },
+#if KQSW_CKSUM
+        {
+                .name     = "inject_csum_error",
+                .data     = &inject_csum_error,
+                .mode     = 0644,
+                .read     = libcfs_param_intvec_read,
+                .write    = libcfs_param_intvec_write
+        },
+#endif
+        {0}
+};
 
 int
 kqswnal_tunables_init ()
 {
+        libcfs_param_sysctl_init("qswnal", libcfs_param_kqswnal_ctl_table,
+                                 libcfs_param_lnet_root);
+#if defined(CONFIG_SYSCTL) && !CFS_SYSFS_MODULE_PARM
         kqswnal_tunables.kqn_sysctl =
                 cfs_register_sysctl_table(kqswnal_top_ctl_table, 0);
 
         if (kqswnal_tunables.kqn_sysctl == NULL)
                 CWARN("Can't setup /proc tunables\n");
+#endif
 
         return 0;
 }
@@ -240,18 +320,9 @@ kqswnal_tunables_init ()
 void
 kqswnal_tunables_fini ()
 {
+        libcfs_param_sysctl_fini("qswnal", libcfs_param_lnet_root);
+#if defined(CONFIG_SYSCTL) && !CFS_SYSFS_MODULE_PARM
         if (kqswnal_tunables.kqn_sysctl != NULL)
                 cfs_unregister_sysctl_table(kqswnal_tunables.kqn_sysctl);
-}
-#else
-int
-kqswnal_tunables_init ()
-{
-        return 0;
-}
-
-void
-kqswnal_tunables_fini ()
-{
-}
 #endif
+}

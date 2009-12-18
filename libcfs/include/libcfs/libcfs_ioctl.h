@@ -122,6 +122,9 @@ struct libcfs_ioctl_handler {
 #define IOC_LIBCFS_LWT_LOOKUP_STRING       _IOWR('e', 35, IOCTL_LIBCFS_TYPE)
 #define IOC_LIBCFS_MEMHOG                  _IOWR('e', 36, IOCTL_LIBCFS_TYPE)
 #define IOC_LIBCFS_PING_TEST               _IOWR('e', 37, IOCTL_LIBCFS_TYPE)
+#define IOC_LIBCFS_GET_PARAM               _IOWR('e', 38, IOCTL_LIBCFS_TYPE)
+#define IOC_LIBCFS_SET_PARAM               _IOWR('e', 39, IOCTL_LIBCFS_TYPE)
+#define IOC_LIBCFS_LIST_PARAM              _IOWR('e', 40, IOCTL_LIBCFS_TYPE)
 /* lnet ioctls */
 #define IOC_LIBCFS_GET_NI                  _IOWR('e', 50, IOCTL_LIBCFS_TYPE)
 #define IOC_LIBCFS_FAIL_NID                _IOWR('e', 51, IOCTL_LIBCFS_TYPE)
@@ -221,7 +224,8 @@ static inline int libcfs_ioctl_is_invalid(struct libcfs_ioctl_data *data)
 
 extern int libcfs_register_ioctl(struct libcfs_ioctl_handler *hand);
 extern int libcfs_deregister_ioctl(struct libcfs_ioctl_handler *hand);
-extern int libcfs_ioctl_getdata(char *buf, char *end, void *arg);
+extern int libcfs_ioctl_getdata(char **buf, int *len, void *arg);
+extern void libcfs_ioctl_freedata(char *buf, int len);
 extern int libcfs_ioctl_popdata(void *arg, void *buf, int size);
 
 #endif 

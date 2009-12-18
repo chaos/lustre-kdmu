@@ -47,6 +47,7 @@
 
 #ifdef __KERNEL__
 # include <libcfs/libcfs.h>
+# include <libcfs/params_tree.h>
 #else
 # include <liblustre.h>
 #endif
@@ -304,26 +305,31 @@ void lu_ref_del_at(struct lu_ref *ref, struct lu_ref_link *link,
 }
 EXPORT_SYMBOL(lu_ref_del_at);
 
-#if defined(__KERNEL__) && defined(LPROCFS)
-
-static void *lu_ref_seq_start(struct seq_file *seq, loff_t *pos)
+#ifdef __KERNEL__
+static void *lu_ref_seq_start(libcfs_seq_file_t *seq, loff_t *pos)
 {
-        struct lu_ref *ref = seq->private;
+        struct lu_ref *ref = LIBCFS_SEQ_PRIVATE(seq);
 
-        cfs_spin_lock(&lu_ref_refs_guard);
-        if (cfs_list_empty(&ref->lf_linkage))
-                ref = NULL;
-        cfs_spin_unlock(&lu_ref_refs_guard);
-
+        if (*pos != 0) {
+                if (list_empty(&ref->lf_linkage))
+                        ref = NULL;
+        } else {
+                spin_lock(&lu_ref_refs_guard);
+                if (!list_empty(&ref->lf_linkage) || list_empty(&lu_ref_refs))
+                        ref = NULL;
+                else
+                        list_add(&ref->lf_linkage, &lu_ref_refs);
+                spin_unlock(&lu_ref_refs_guard);
+        }
         return ref;
 }
 
-static void *lu_ref_seq_next(struct seq_file *seq, void *p, loff_t *pos)
+static void *lu_ref_seq_next(libcfs_seq_file_t *seq, void *p, loff_t *pos)
 {
         struct lu_ref *ref = p;
         struct lu_ref *next;
 
-        LASSERT(seq->private == p);
+        LASSERT(LIBCFS_SEQ_PRIVATE(seq) == p);
         LASSERT(!cfs_list_empty(&ref->lf_linkage));
 
         cfs_spin_lock(&lu_ref_refs_guard);
@@ -338,16 +344,24 @@ static void *lu_ref_seq_next(struct seq_file *seq, void *p, loff_t *pos)
         return p;
 }
 
-static void lu_ref_seq_stop(struct seq_file *seq, void *p)
+static void lu_ref_seq_stop(libcfs_seq_file_t *seq, void *p)
 {
-        /* Nothing to do */
+        struct lu_ref *ref = LIBCFS_SEQ_PRIVATE(seq);
+
+        if (p != NULL)
+                return;
+
+        cfs_spin_lock(&lu_ref_refs_guard);
+        cfs_list_del_init(&ref->lf_linkage);
+        cfs_spin_unlock(&lu_ref_refs_guard);
+
+        return;
 }
 
-
-static int lu_ref_seq_show(struct seq_file *seq, void *p)
+static int lu_ref_seq_show(libcfs_seq_file_t *seq, void *p)
 {
         struct lu_ref *ref  = p;
-        struct lu_ref *next; 
+        struct lu_ref *next;
 
         cfs_spin_lock(&lu_ref_refs_guard);
         next = cfs_list_entry(ref->lf_linkage.next, struct lu_ref, lf_linkage);
@@ -359,17 +373,17 @@ static int lu_ref_seq_show(struct seq_file *seq, void *p)
         /* print the entry */
 
         cfs_spin_lock(&next->lf_guard);
-        seq_printf(seq, "lu_ref: %p %d %d %s:%d\n",
+        LIBCFS_SEQ_PRINTF(seq, "lu_ref: %p %d %d %s:%d\n",
                    next, next->lf_refs, next->lf_failed,
                    next->lf_func, next->lf_line);
         if (next->lf_refs > 64) {
-                seq_printf(seq, "  too many references, skip\n");
+                LIBCFS_SEQ_PRINTF(seq, "  too many references, skip\n");
         } else {
                 struct lu_ref_link *link;
                 int i = 0;
 
                 cfs_list_for_each_entry(link, &next->lf_list, ll_linkage)
-                        seq_printf(seq, "  #%d link: %s %p\n",
+                        LIBCFS_SEQ_PRINTF(seq, "  #%d link: %s %p\n",
                                    i++, link->ll_scope, link->ll_source);
         }
         cfs_spin_unlock(&next->lf_guard);
@@ -378,59 +392,43 @@ static int lu_ref_seq_show(struct seq_file *seq, void *p)
         return 0;
 }
 
-static struct seq_operations lu_ref_seq_ops = {
+static libcfs_seq_ops_t lu_ref_seq_ops = {
         .start = lu_ref_seq_start,
         .stop  = lu_ref_seq_stop,
         .next  = lu_ref_seq_next,
         .show  = lu_ref_seq_show
 };
 
-static int lu_ref_seq_open(struct inode *inode, struct file *file)
+static int lu_ref_seq_open(libcfs_inode_t *inode, libcfs_file_t *file)
 {
-        struct lu_ref *marker = &lu_ref_marker;
+        libcfs_seq_file_t       *seq;
+        struct lu_ref           *marker = &lu_ref_marker;
         int result = 0;
+#ifdef LPROCFS
+        libcfs_param_dentry_t   *dp = LIBCFS_PDE(inode);
 
-        result = seq_open(file, &lu_ref_seq_ops);
-        if (result == 0) {
-                cfs_spin_lock(&lu_ref_refs_guard);
-                if (!cfs_list_empty(&marker->lf_linkage))
-                        result = -EAGAIN;
-                else
-                        cfs_list_add(&marker->lf_linkage, &lu_ref_refs);
-                cfs_spin_unlock(&lu_ref_refs_guard);
+        LPROCFS_ENTRY_AND_CHECK(dp);
+#endif
+        LIBCFS_SEQ_OPEN(file, &lu_ref_seq_ops, result);
+        if (result != 0)
+                GOTO(out, result);
 
-                if (result == 0) {
-                        struct seq_file *f = file->private_data;
-                        f->private = marker;
-                } else {
-                        seq_release(inode, file);
-                }
-        }
-
+        seq = LIBCFS_FILE_PRIVATE(file);
+        LIBCFS_SEQ_PRIVATE(seq) = marker;
+out:
+        if (result != 0)
+                LPROCFS_EXIT();
         return result;
 }
 
-static int lu_ref_seq_release(struct inode *inode, struct file *file)
-{
-        struct lu_ref *ref = ((struct seq_file *)file->private_data)->private;
-
-        cfs_spin_lock(&lu_ref_refs_guard);
-        cfs_list_del_init(&ref->lf_linkage);
-        cfs_spin_unlock(&lu_ref_refs_guard);
-
-        return seq_release(inode, file);
-}
-
-static struct file_operations lu_ref_dump_fops = {
+libcfs_file_ops_t lu_ref_dump_fops = {
         .owner   = THIS_MODULE,
         .open    = lu_ref_seq_open,
-        .read    = seq_read,
-        .llseek  = seq_lseek,
-        .release = lu_ref_seq_release
+        .read    = LIBCFS_SEQ_READ_COMMON,
+        .llseek  = LIBCFS_SEQ_LSEEK_COMMON,
+        .release = libcfs_param_seq_release_common,
 };
-
 #endif
-
 int lu_ref_global_init(void)
 {
         int result;
@@ -442,7 +440,7 @@ int lu_ref_global_init(void)
         cfs_spin_lock_init(&lu_ref_refs_guard);
         result = lu_kmem_init(lu_ref_caches);
 
-#if defined(__KERNEL__) && defined(LPROCFS)
+#ifdef __KERNEL__
         if (result == 0) {
                 result = lprocfs_seq_create(proc_lustre_root, "lu_refs",
                                             0444, &lu_ref_dump_fops, NULL);
@@ -456,7 +454,7 @@ int lu_ref_global_init(void)
 
 void lu_ref_global_fini(void)
 {
-#if defined(__KERNEL__) && defined(LPROCFS)
+#ifdef __KERNEL__
         lprocfs_remove_proc_entry("lu_refs", proc_lustre_root);
 #endif
         lu_kmem_fini(lu_ref_caches);

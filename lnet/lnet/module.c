@@ -45,6 +45,22 @@ CFS_MODULE_PARM(config_on_load, "i", int, 0444,
                 "configure network at module load");
 
 static cfs_semaphore_t lnet_config_mutex;
+static struct libcfs_param_ctl_table libcfs_param_module_ctl_table[] = {
+        {
+                .name     = "config_on_load",
+                .data     = &config_on_load,
+                .mode     = 0444,
+                .read     = libcfs_param_intvec_read
+        },
+        {0}
+};
+
+void lnet_module_sysctl_init()
+{
+        libcfs_param_sysctl_init("lnet", libcfs_param_module_ctl_table,
+                                 libcfs_param_lnet_root);
+}
+
 
 int
 lnet_configure (void *arg)
@@ -118,6 +134,13 @@ init_lnet(void)
 {
         int                  rc;
         ENTRY;
+
+        /* initialize lnet parameters exported with CFS_MODULE_PARAM */
+        lnet_apini_sysctl_init();
+        lnet_module_sysctl_init();
+        lnet_router_sysctl_init();
+        lnet_libmove_sysctl_init();
+        lnet_acceptor_sysctl_init();
 
         cfs_init_mutex(&lnet_config_mutex);
 

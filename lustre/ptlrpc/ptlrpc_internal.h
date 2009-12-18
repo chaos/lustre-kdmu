@@ -64,20 +64,25 @@ void ptlrpc_initiate_recovery(struct obd_import *imp);
 
 int lustre_unpack_req_ptlrpc_body(struct ptlrpc_request *req, int offset);
 int lustre_unpack_rep_ptlrpc_body(struct ptlrpc_request *req, int offset);
-
-#ifdef LPROCFS
-void ptlrpc_lprocfs_register_service(struct proc_dir_entry *proc_entry,
+#ifdef __KERNEL__
+void ptlrpc_lprocfs_register_service(void *proc_entry,
                                      struct ptlrpc_service *svc);
 void ptlrpc_lprocfs_unregister_service(struct ptlrpc_service *svc);
 void ptlrpc_lprocfs_rpc_sent(struct ptlrpc_request *req, long amount);
 void ptlrpc_lprocfs_do_request_stat (struct ptlrpc_request *req,
                                      long q_usec, long work_usec);
 #else
-#define ptlrpc_lprocfs_register_service(params...) do{}while(0)
-#define ptlrpc_lprocfs_unregister_service(params...) do{}while(0)
-#define ptlrpc_lprocfs_rpc_sent(params...) do{}while(0)
-#define ptlrpc_lprocfs_do_request_stat(params...) do{}while(0)
-#endif /* LPROCFS */
+static inline void ptlrpc_lprocfs_register_service(void *proc_entry,
+                                     struct ptlrpc_service *svc) {}
+static inline
+void ptlrpc_lprocfs_unregister_service(struct ptlrpc_service *svc) {}
+static inline void ptlrpc_lprocfs_rpc_sent(struct ptlrpc_request *req,
+                                           long amount) {}
+static inline
+void ptlrpc_lprocfs_do_request_stat (struct ptlrpc_request *req,
+                                     long q_usec, long work_usec) {}
+#endif
+
 
 /* recovd_thread.c */
 
@@ -117,6 +122,8 @@ int  sptlrpc_enc_pool_init(void);
 void sptlrpc_enc_pool_fini(void);
 int sptlrpc_proc_read_enc_pool(char *page, char **start, off_t off, int count,
                                int *eof, void *data);
+int sptlrpc_params_read_enc_pool(char *page, char **start, off_t off, int count,
+                                 int *eof, void *data);
 
 /* sec_lproc.c */
 int  sptlrpc_lproc_init(void);
@@ -147,4 +154,5 @@ static inline int ll_rpc_recoverable_error(int rc)
 {
         return (rc == -ENOTCONN || rc == -ENODEV);
 }
+
 #endif /* PTLRPC_INTERNAL_H */

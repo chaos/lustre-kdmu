@@ -125,7 +125,7 @@ struct mdd_device {
         struct dt_device_param           mdd_dt_conf;
         struct dt_object                *mdd_orphans;
         struct dt_txn_callback           mdd_txn_cb;
-        cfs_proc_dir_entry_t            *mdd_proc_entry;
+        struct libcfs_param_entry       *mdd_proc_entry;
         struct lprocfs_stats            *mdd_stats;
         struct mdd_txn_op_descr          mdd_tod[MDD_TXN_LAST_OP];
         struct mdd_changelog             mdd_cl;
@@ -370,7 +370,6 @@ int mdd_procfs_fini(struct mdd_device *mdd);
 void mdd_lprocfs_time_start(const struct lu_env *env);
 void mdd_lprocfs_time_end(const struct lu_env *env,
                           struct mdd_device *mdd, int op);
-
 /* mdd_object.c */
 int mdd_get_flags(const struct lu_env *env, struct mdd_object *obj);
 struct lu_buf *mdd_buf_alloc(const struct lu_env *env, ssize_t len);

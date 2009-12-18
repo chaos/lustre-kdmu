@@ -361,75 +361,6 @@ extern cfs_psdev_t obd_psdev;
 void *obd_psdev = NULL;
 #endif
 
-EXPORT_SYMBOL(obd_devs);
-EXPORT_SYMBOL(obd_print_fail_loc);
-EXPORT_SYMBOL(obd_race_waitq);
-EXPORT_SYMBOL(obd_race_state);
-EXPORT_SYMBOL(obd_debug_peer_on_timeout);
-EXPORT_SYMBOL(obd_dump_on_timeout);
-EXPORT_SYMBOL(obd_dump_on_eviction);
-EXPORT_SYMBOL(obd_timeout);
-EXPORT_SYMBOL(ldlm_timeout);
-EXPORT_SYMBOL(obd_max_dirty_pages);
-EXPORT_SYMBOL(obd_dirty_pages);
-EXPORT_SYMBOL(obd_dirty_transit_pages);
-EXPORT_SYMBOL(at_min);
-EXPORT_SYMBOL(at_max);
-EXPORT_SYMBOL(at_extra);
-EXPORT_SYMBOL(at_early_margin);
-EXPORT_SYMBOL(at_history);
-EXPORT_SYMBOL(ptlrpc_put_connection_superhack);
-
-EXPORT_SYMBOL(proc_lustre_root);
-
-EXPORT_SYMBOL(class_register_type);
-EXPORT_SYMBOL(class_unregister_type);
-EXPORT_SYMBOL(class_get_type);
-EXPORT_SYMBOL(class_put_type);
-EXPORT_SYMBOL(class_name2dev);
-EXPORT_SYMBOL(class_name2obd);
-EXPORT_SYMBOL(class_uuid2dev);
-EXPORT_SYMBOL(class_uuid2obd);
-EXPORT_SYMBOL(class_find_client_obd);
-EXPORT_SYMBOL(class_devices_in_group);
-EXPORT_SYMBOL(class_conn2export);
-EXPORT_SYMBOL(class_exp2obd);
-EXPORT_SYMBOL(class_conn2obd);
-EXPORT_SYMBOL(class_exp2cliimp);
-EXPORT_SYMBOL(class_conn2cliimp);
-EXPORT_SYMBOL(class_disconnect);
-EXPORT_SYMBOL(class_num2obd);
-
-/* uuid.c */
-EXPORT_SYMBOL(class_uuid_unparse);
-EXPORT_SYMBOL(lustre_uuid_to_peer);
-
-EXPORT_SYMBOL(class_handle_hash);
-EXPORT_SYMBOL(class_handle_unhash);
-EXPORT_SYMBOL(class_handle_hash_back);
-EXPORT_SYMBOL(class_handle2object);
-EXPORT_SYMBOL(class_handle_free_cb);
-
-/* obd_config.c */
-EXPORT_SYMBOL(class_incref);
-EXPORT_SYMBOL(class_decref);
-EXPORT_SYMBOL(class_get_profile);
-EXPORT_SYMBOL(class_del_profile);
-EXPORT_SYMBOL(class_del_profiles);
-EXPORT_SYMBOL(class_process_config);
-EXPORT_SYMBOL(class_process_proc_param);
-EXPORT_SYMBOL(class_config_parse_llog);
-EXPORT_SYMBOL(class_config_dump_llog);
-EXPORT_SYMBOL(class_attach);
-EXPORT_SYMBOL(class_setup);
-EXPORT_SYMBOL(class_cleanup);
-EXPORT_SYMBOL(class_detach);
-EXPORT_SYMBOL(class_manual_cleanup);
-
-/* mea.c */
-EXPORT_SYMBOL(mea_name2idx);
-EXPORT_SYMBOL(raw_name2idx);
-
 #define OBD_INIT_CHECK
 #ifdef OBD_INIT_CHECK
 int obd_init_checks(void)
@@ -503,9 +434,245 @@ int obd_init_checks(void)
 #define obd_init_checks() do {} while(0)
 #endif
 
+#ifdef __KERNEL__
+int obd_proc_read_version(char *page, char **start, off_t off, int count,
+                          int *eof, void *data)
+{
+        *eof = 1;
+#ifdef HAVE_VFS_INTENT_PATCHES
+        return libcfs_param_snprintf(page, count, data, LP_STR,
+                      "lustre: %s\nkernel: %u\nbuild:  %s\n",
+                      LUSTRE_VERSION_STRING, LUSTRE_KERNEL_VERSION,
+                      BUILD_VERSION);
+#else
+        return libcfs_param_snprintf(page, count, data, LP_STR,
+                      "lustre: %s\nkernel: %s\nbuild:  %s\n",
+                      LUSTRE_VERSION_STRING, "patchless", BUILD_VERSION);
+#endif
+}
+
+int obd_proc_read_pinger(char *page, char **start, off_t off, int count,
+                         int *eof, void *data)
+{
+        *eof = 1;
+        return libcfs_param_snprintf(page, count, data, LP_STR, "%s",
+#ifdef ENABLE_PINGER
+                        "on"
+#else
+                        "off"
+#endif
+                       );
+}
+
+/**
+ * Check all obd devices health
+ *
+ * \param page
+ * \param start
+ * \param off
+ * \param count
+ * \param eof
+ * \param data
+ *                  proc read function parameters, please refer to kernel
+ *                  code fs/proc/generic.c proc_file_read()
+ * \param data [in] unused
+ *
+ * \retval number of characters printed
+ */
+static int obd_proc_read_health(char *page, char **start, off_t off,
+                                int count, int *eof, void *data)
+{
+        int rc = 0, i;
+        *eof = 1;
+
+        if (libcfs_catastrophe)
+                rc += snprintf(page + rc, count - rc, "LBUG\n");
+
+        spin_lock(&obd_dev_lock);
+        for (i = 0; i < class_devno_max(); i++) {
+                struct obd_device *obd;
+
+                obd = class_num2obd(i);
+                if (obd == NULL || !obd->obd_attached || !obd->obd_set_up)
+                        continue;
+
+                LASSERT(obd->obd_magic == OBD_DEVICE_MAGIC);
+                if (obd->obd_stopping)
+                        continue;
+
+                class_incref(obd, __FUNCTION__, cfs_current());
+                spin_unlock(&obd_dev_lock);
+
+                if (obd_health_check(obd)) {
+                        rc += snprintf(page + rc, count - rc,
+                                       "device %s reported unhealthy\n",
+                                       obd->obd_name);
+                }
+                class_decref(obd, __FUNCTION__, cfs_current());
+                spin_lock(&obd_dev_lock);
+        }
+        spin_unlock(&obd_dev_lock);
+
+        if (rc == 0)
+                return libcfs_param_snprintf(page, count, data, LP_STR,
+                                             "%s", "healthy\n");
+
+        rc += snprintf(page + rc, count - rc, "NOT HEALTHY\n");
+        rc = libcfs_param_snprintf(page, count, data, LP_STR, NULL, NULL);
+
+        return rc;
+}
+
+/* Root for /proc/fs/lustre */
+struct libcfs_param_entry *proc_lustre_root = NULL;
+
+struct lprocfs_vars lprocfs_base[] = {
+        { "version", obd_proc_read_version, NULL, NULL },
+        { "pinger", obd_proc_read_pinger, NULL, NULL },
+        { "health_check", obd_proc_read_health, NULL, NULL },
+        { 0 }
+};
+
+static void *obd_device_list_seq_start(libcfs_seq_file_t *p, loff_t *pos)
+{
+        if (*pos >= class_devno_max())
+                return NULL;
+
+        return pos;
+}
+
+static void obd_device_list_seq_stop(libcfs_seq_file_t *p, void *v)
+{
+}
+
+static void *obd_device_list_seq_next(libcfs_seq_file_t *p, void *v, loff_t *pos)
+{
+        ++*pos;
+        if (*pos >= class_devno_max())
+                return NULL;
+
+        return pos;
+}
+
+static int obd_device_list_seq_show(libcfs_seq_file_t *p, void *v)
+{
+        loff_t index = *(loff_t *)v;
+        struct obd_device *obd = class_num2obd((int)index);
+        char *status;
+
+        if (obd == NULL)
+                return 0;
+
+        LASSERT(obd->obd_magic == OBD_DEVICE_MAGIC);
+        if (obd->obd_stopping)
+                status = "ST";
+        else if (obd->obd_inactive)
+                status = "IN";
+        else if (obd->obd_set_up)
+                status = "UP";
+        else if (obd->obd_attached)
+                status = "AT";
+        else
+                status = "--";
+
+        return LIBCFS_SEQ_PRINTF(p, "%3d %s %s %s %s %d\n",
+                          (int)index, status, obd->obd_type->typ_name,
+                          obd->obd_name, obd->obd_uuid.uuid,
+                          atomic_read(&obd->obd_refcount));
+}
+
+libcfs_seq_ops_t obd_device_list_sops = {
+        .start = obd_device_list_seq_start,
+        .stop = obd_device_list_seq_stop,
+        .next = obd_device_list_seq_next,
+        .show = obd_device_list_seq_show,
+};
+
+static int obd_device_list_open(libcfs_inode_t *inode, libcfs_file_t *file)
+{
+        libcfs_param_dentry_t *dp = LIBCFS_PDE(inode);
+        libcfs_seq_file_t *seq;
+        int rc;
+
+        LPROCFS_ENTRY_AND_CHECK(dp);
+        LIBCFS_SEQ_OPEN(file, &obd_device_list_sops, rc);
+        if (rc) {
+                LPROCFS_EXIT();
+                return rc;
+        }
+
+        seq = LIBCFS_FILE_PRIVATE(file);
+        LIBCFS_SEQ_PRIVATE(seq) = LIBCFS_DENTRY_DATA(dp);
+        return rc;
+}
+
+libcfs_file_ops_t obd_device_list_fops = {
+        .owner   = THIS_MODULE,
+        .open    = obd_device_list_open,
+        .read    = LIBCFS_SEQ_READ_COMMON, 
+        .llseek  = LIBCFS_SEQ_LSEEK_COMMON,
+        .release = libcfs_param_seq_release_common,
+};
+
+static int class_procfs_clean(void)
+{
+        ENTRY;
+        if (proc_lustre_root) {
+                lprocfs_remove(&proc_lustre_root);
+        }
+        RETURN(0);
+}
+
+static int class_procfs_init(void)
+{
+        struct libcfs_param_entry *root;
+        struct libcfs_param_entry *lustre_root;
+        int rc;
+        ENTRY;
+
+        root = libcfs_param_get_root();
+        libcfs_param_get(root);
+        lustre_root = libcfs_param_mkdir("lustre", root);
+        if (!lustre_root) {
+                libcfs_param_put(root);
+                CERROR("can not setup params tree interface for lustre\n");
+                GOTO(out, rc = -EINVAL);
+        }
+        proc_lustre_root = lustre_root;
+#ifdef LPROCFS
+        lustre_root->lpe_proc = proc_mkdir("fs/lustre", NULL);
+        if (!lustre_root->lpe_proc)
+                CERROR("mkdir /proc/fs/lustre failed, disable procfs \n"); 
+#endif
+        libcfs_param_put(root);
+        rc = lprocfs_add_vars(lustre_root, lprocfs_base, NULL);
+        if (rc) {
+                lprocfs_put_lperef(lustre_root);
+                CERROR("error for adding lustre root \n");
+                GOTO(out, rc);
+        }
+
+        rc = lprocfs_seq_create(lustre_root, "devices", 0444,
+                                &obd_device_list_fops, NULL);
+        if (rc) {
+                lprocfs_put_lperef(lustre_root);
+                CERROR("error adding /proc/fs/lustre/devices file\n");
+                GOTO(out, rc);
+        }
+        lprocfs_put_lperef(lustre_root);
+
+        obd_sysctl_init();
+        obd_params_init();
+        EXIT;
+out:
+        if (rc)
+                class_procfs_clean();
+        return rc;
+}
+
+#endif
+
 extern cfs_spinlock_t obd_types_lock;
-extern int class_procfs_init(void);
-extern int class_procfs_clean(void);
 
 #ifdef __KERNEL__
 static int __init init_obdclass(void)
@@ -528,7 +695,7 @@ int init_obdclass(void)
         cfs_spin_lock_init(&obd_types_lock);
         cfs_waitq_init(&obd_race_waitq);
         obd_zombie_impexp_init();
-#ifdef LPROCFS
+#ifdef  __KERNEL__
         obd_memory = lprocfs_alloc_stats(OBD_STATS_NUM,
                                          LPROCFS_STATS_FLAG_NONE);
         if (obd_memory == NULL) {
@@ -650,3 +817,73 @@ MODULE_LICENSE("GPL");
 
 cfs_module(obdclass, LUSTRE_VERSION_STRING, init_obdclass, cleanup_obdclass);
 #endif
+
+EXPORT_SYMBOL(obd_devs);
+EXPORT_SYMBOL(obd_print_fail_loc);
+EXPORT_SYMBOL(obd_race_waitq);
+EXPORT_SYMBOL(obd_race_state);
+EXPORT_SYMBOL(obd_debug_peer_on_timeout);
+EXPORT_SYMBOL(obd_dump_on_timeout);
+EXPORT_SYMBOL(obd_dump_on_eviction);
+EXPORT_SYMBOL(obd_timeout);
+EXPORT_SYMBOL(ldlm_timeout);
+EXPORT_SYMBOL(obd_max_dirty_pages);
+EXPORT_SYMBOL(obd_dirty_pages);
+EXPORT_SYMBOL(obd_dirty_transit_pages);
+EXPORT_SYMBOL(at_min);
+EXPORT_SYMBOL(at_max);
+EXPORT_SYMBOL(at_extra);
+EXPORT_SYMBOL(at_early_margin);
+EXPORT_SYMBOL(at_history);
+EXPORT_SYMBOL(ptlrpc_put_connection_superhack);
+
+EXPORT_SYMBOL(proc_lustre_root);
+
+EXPORT_SYMBOL(class_register_type);
+EXPORT_SYMBOL(class_unregister_type);
+EXPORT_SYMBOL(class_get_type);
+EXPORT_SYMBOL(class_put_type);
+EXPORT_SYMBOL(class_name2dev);
+EXPORT_SYMBOL(class_name2obd);
+EXPORT_SYMBOL(class_uuid2dev);
+EXPORT_SYMBOL(class_uuid2obd);
+EXPORT_SYMBOL(class_find_client_obd);
+EXPORT_SYMBOL(class_devices_in_group);
+EXPORT_SYMBOL(class_conn2export);
+EXPORT_SYMBOL(class_exp2obd);
+EXPORT_SYMBOL(class_conn2obd);
+EXPORT_SYMBOL(class_exp2cliimp);
+EXPORT_SYMBOL(class_conn2cliimp);
+EXPORT_SYMBOL(class_disconnect);
+EXPORT_SYMBOL(class_num2obd);
+
+/* uuid.c */
+EXPORT_SYMBOL(class_uuid_unparse);
+EXPORT_SYMBOL(lustre_uuid_to_peer);
+
+EXPORT_SYMBOL(class_handle_hash);
+EXPORT_SYMBOL(class_handle_unhash);
+EXPORT_SYMBOL(class_handle_hash_back);
+EXPORT_SYMBOL(class_handle2object);
+EXPORT_SYMBOL(class_handle_free_cb);
+
+/* obd_config.c */
+EXPORT_SYMBOL(class_incref);
+EXPORT_SYMBOL(class_decref);
+EXPORT_SYMBOL(class_get_profile);
+EXPORT_SYMBOL(class_del_profile);
+EXPORT_SYMBOL(class_del_profiles);
+EXPORT_SYMBOL(class_process_config);
+EXPORT_SYMBOL(class_process_proc_param);
+EXPORT_SYMBOL(class_config_parse_llog);
+EXPORT_SYMBOL(class_config_dump_llog);
+EXPORT_SYMBOL(class_attach);
+EXPORT_SYMBOL(class_setup);
+EXPORT_SYMBOL(class_cleanup);
+EXPORT_SYMBOL(class_detach);
+EXPORT_SYMBOL(class_manual_cleanup);
+
+/* mea.c */
+EXPORT_SYMBOL(mea_name2idx);
+EXPORT_SYMBOL(raw_name2idx);
+

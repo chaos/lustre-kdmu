@@ -103,18 +103,18 @@ open_ioc_dev(int dev_id)
 }
 
 
-static int 
+static int
 do_ioctl(int dev_id, unsigned int opc, void *buf)
 {
         int fd, rc;
-        
+
         fd = open_ioc_dev(dev_id);
-        if (fd < 0) 
+        if (fd < 0)
                 return fd;
 
         rc = cfs_proc_ioctl(fd, opc, buf);
+
         return rc;
-        
 }
 
 static FILE *

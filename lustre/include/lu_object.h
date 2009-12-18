@@ -270,7 +270,7 @@ struct lu_device {
          * Stack this device belongs to.
          */
         struct lu_site                    *ld_site;
-        struct proc_dir_entry             *ld_proc_entry;
+        struct libcfs_param_entry         *ld_proc_entry;
 
         /** \todo XXX: temporary back pointer into obd. */
         struct obd_device                 *ld_obd;

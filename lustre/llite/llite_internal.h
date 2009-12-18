@@ -345,7 +345,7 @@ struct ll_sb_info {
         struct obd_uuid           ll_sb_uuid;
         struct obd_export        *ll_md_exp;
         struct obd_export        *ll_dt_exp;
-        struct proc_dir_entry*    ll_proc_root;
+        struct libcfs_param_entry *ll_proc_root;
         struct lu_fid             ll_root_fid; /* root object fid */
 
         int                       ll_flags;
@@ -518,7 +518,7 @@ struct lov_stripe_md;
 
 extern cfs_spinlock_t inode_lock;
 
-extern struct proc_dir_entry *proc_lustre_fs_root;
+extern struct libcfs_param_entry *proc_lustre_fs_root;
 
 static inline struct inode *ll_info2i(struct ll_inode_info *lli)
 {
@@ -544,23 +544,11 @@ void ll_ra_read_ex(struct file *f, struct ll_ra_read *rar);
 struct ll_ra_read *ll_ra_read_get(struct file *f);
 
 /* llite/lproc_llite.c */
-#ifdef LPROCFS
-int lprocfs_register_mountpoint(struct proc_dir_entry *parent,
-                                struct super_block *sb, char *osc, char *mdc);
+int lprocfs_register_mountpoint(void *parent, struct super_block *sb,
+                                char *osc, char *mdc);
 void lprocfs_unregister_mountpoint(struct ll_sb_info *sbi);
 void ll_stats_ops_tally(struct ll_sb_info *sbi, int op, int count);
 void lprocfs_llite_init_vars(struct lprocfs_static_vars *lvars);
-#else
-static inline int lprocfs_register_mountpoint(struct proc_dir_entry *parent,
-                        struct super_block *sb, char *osc, char *mdc){return 0;}
-static inline void lprocfs_unregister_mountpoint(struct ll_sb_info *sbi) {}
-static void ll_stats_ops_tally(struct ll_sb_info *sbi, int op, int count) {}
-static void lprocfs_llite_init_vars(struct lprocfs_static_vars *lvars)
-{
-        memset(lvars, 0, sizeof(*lvars));
-}
-#endif
-
 
 /* llite/dir.c */
 static inline void ll_put_page(struct page *page)

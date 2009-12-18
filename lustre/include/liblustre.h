@@ -516,6 +516,8 @@ static inline void set_fs(mm_segment_t seg)
 #include <lustre_lib.h>
 #include <lustre_import.h>
 #include <lustre_export.h>
+#include <libcfs/params_tree.h>
+#include <lprocfs_status.h>
 #include <lustre_net.h>
 
 #endif

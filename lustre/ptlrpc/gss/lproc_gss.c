@@ -63,8 +63,8 @@
 #include "gss_internal.h"
 #include "gss_api.h"
 
-static struct proc_dir_entry *gss_proc_root = NULL;
-static struct proc_dir_entry *gss_proc_lk = NULL;
+static void *gss_proc_root = NULL;
+static void *gss_proc_lk = NULL;
 
 /*
  * statistic of "out-of-sequence-window"
@@ -105,33 +105,30 @@ void gss_stat_oos_record_svc(int phase, int replay)
 static int gss_proc_read_oos(char *page, char **start, off_t off, int count,
                              int *eof, void *data)
 {
-        int written;
-
-        written = snprintf(page, count,
-                        "seqwin:                %u\n"
-                        "backwin:               %u\n"
-                        "client fall behind seqwin\n"
-                        "  occurrence:          %d\n"
-                        "  max seq behind:      %d\n"
-                        "server replay detected:\n"
-                        "  phase 0:             %d\n"
-                        "  phase 1:             %d\n"
-                        "  phase 2:             %d\n"
-                        "server verify ok:\n"
-                        "  phase 2:             %d\n",
-                        GSS_SEQ_WIN_MAIN,
-                        GSS_SEQ_WIN_BACK,
-                        cfs_atomic_read(&gss_stat_oos.oos_cli_count),
-                        gss_stat_oos.oos_cli_behind,
-                        cfs_atomic_read(&gss_stat_oos.oos_svc_replay[0]),
-                        cfs_atomic_read(&gss_stat_oos.oos_svc_replay[1]),
-                        cfs_atomic_read(&gss_stat_oos.oos_svc_replay[2]),
-                        cfs_atomic_read(&gss_stat_oos.oos_svc_pass[2]));
-
-        return written;
+        *eof = 1;
+        return libcfs_param_snprintf(page, count, data, LP_STR,
+                      "seqwin:                %u\n"
+                      "backwin:               %u\n"
+                      "client fall behind seqwin\n"
+                      "  occurrence:          %d\n"
+                      "  max seq behind:      %d\n"
+                      "server replay detected:\n"
+                      "  phase 0:             %d\n"
+                      "  phase 1:             %d\n"
+                      "  phase 2:             %d\n"
+                      "server verify ok:\n"
+                      "  phase 2:             %d\n",
+                      GSS_SEQ_WIN_MAIN,
+                      GSS_SEQ_WIN_BACK,
+                      cfs_atomic_read(&gss_stat_oos.oos_cli_count),
+                      gss_stat_oos.oos_cli_behind,
+                      cfs_atomic_read(&gss_stat_oos.oos_svc_replay[0]),
+                      cfs_atomic_read(&gss_stat_oos.oos_svc_replay[1]),
+                      cfs_atomic_read(&gss_stat_oos.oos_svc_replay[2]),
+                      cfs_atomic_read(&gss_stat_oos.oos_svc_pass[2]));
 }
 
-static int gss_proc_write_secinit(struct file *file, const char *buffer,
+static int gss_proc_write_secinit(libcfs_file_t *file, const char *buffer,
                                   unsigned long count, void *data)
 {
         int rc;
@@ -161,15 +158,19 @@ static int gss_lk_debug_level = 1;
 static int gss_lk_proc_read_dl(char *page, char **start, off_t off,
                                int count, int *eof, void *data)
 {
-        return snprintf(page, count, "%u\n", gss_lk_debug_level);
+        *eof = 1;
+        return libcfs_param_snprintf(page, count, data, LP_U32, "%u\n",
+                                     gss_lk_debug_level);
 }
 
-static int gss_lk_proc_write_dl(struct file *file, const char *buffer,
+static int gss_lk_proc_write_dl(libcfs_file_t *file, const char *buffer,
                                 unsigned long count, void *data)
 {
-        int     val, rc;
+        int  val, rc, flag = 0;
+        void *cb_data;
 
-        rc = lprocfs_write_helper(buffer, count, &val);
+        LIBCFS_PARAM_GET_DATA(cb_data, data, &flag);
+        rc = lprocfs_write_helper(buffer, count, &val, flag);
         if (rc < 0)
                 return rc;
 
@@ -188,12 +189,12 @@ static struct lprocfs_vars gss_lk_lprocfs_vars[] = {
 void gss_exit_lproc(void)
 {
         if (gss_proc_lk) {
-                lprocfs_remove(&gss_proc_lk);
+                lprocfs_remove((void *)&gss_proc_lk);
                 gss_proc_lk = NULL;
         }
 
         if (gss_proc_root) {
-                lprocfs_remove(&gss_proc_root);
+                lprocfs_remove((void *)&gss_proc_root);
                 gss_proc_root = NULL;
         }
 }
@@ -217,10 +218,13 @@ int gss_init_lproc(void)
                 gss_proc_lk = NULL;
                 GOTO(err_out, rc = PTR_ERR(gss_proc_root));
         }
+        lprocfs_put_lperef(gss_proc_root);
+        lprocfs_put_lperef(gss_proc_lk);
 
         return 0;
 
 err_out:
+        lprocfs_put_lperef(gss_proc_root);
         CERROR("failed to initialize gss lproc entries: %d\n", rc);
         gss_exit_lproc();
         return rc;

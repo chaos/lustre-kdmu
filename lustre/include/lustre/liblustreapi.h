@@ -38,6 +38,7 @@
 #define _LIBLUSTREAPI_H_
 
 #include <lustre/lustre_user.h>
+#include <libcfs/params_tree.h>
 
 /* Initially allocate for these many OSTs, realloc if needed */
 #define INIT_ALLOC_NUM_OSTS     1024
@@ -211,6 +212,25 @@ extern int llapi_changelog_free(struct changelog_rec **rech);
 /* Allow records up to endrec to be destroyed; requires registered id. */
 extern int llapi_changelog_clear(const char *mdtname, const char *idstr,
                                  long long endrec);
+
+#define PTREE_PREFIX      "params_root/"
+#define PTREE_PRELEN       strlen(PTREE_PREFIX)
+/* parameter entry list */
+struct params_entry_list {
+        int pel_name_len;
+        char *pel_name;  /* full pathname of the entry */
+        int pel_mode;    /* entry mode */
+        struct params_entry_list *pel_next;
+};
+extern int llapi_params_list(const char *pattern,
+                             struct params_entry_list **pel_ptr);
+extern int llapi_params_read(char *path, int path_len, char *read_buf,
+                             int buf_len, long long *offset, int *eof);
+extern int llapi_params_write(char *path, int path_len, char *write_buf,
+                              int buf_len, int offset);
+extern int llapi_params_unpack(char *inbuf, char *outbuf, int outbuf_len);
+extern int llapi_params_value_output(struct libcfs_param_data data, char *outbuf);
+extern void llapi_params_free_entrylist(struct params_entry_list *entry_list);
 
 /* HSM copytool interface.  priv is private state, managed internally
    by these functions */

@@ -186,7 +186,6 @@ int class_register_type(struct obd_ops *dt_ops, struct md_ops *md_ops,
         strcpy(type->typ_name, name);
         cfs_spin_lock_init(&type->obd_type_lock);
 
-#ifdef LPROCFS
         type->typ_procroot = lprocfs_register(type->typ_name, proc_lustre_root,
                                               vars, type);
         if (IS_ERR(type->typ_procroot)) {
@@ -194,7 +193,8 @@ int class_register_type(struct obd_ops *dt_ops, struct md_ops *md_ops,
                 type->typ_procroot = NULL;
                 GOTO (failed, rc);
         }
-#endif
+        lprocfs_put_lperef(type->typ_procroot);
+
         if (ldt != NULL) {
                 type->typ_lu = ldt;
                 rc = lu_device_type_init(ldt);
@@ -215,6 +215,9 @@ int class_register_type(struct obd_ops *dt_ops, struct md_ops *md_ops,
                 OBD_FREE_PTR(type->typ_md_ops);
         if (type->typ_dt_ops != NULL)
                 OBD_FREE_PTR(type->typ_dt_ops);
+        if (type->typ_procroot != NULL)
+                lprocfs_remove(&type->typ_procroot);
+
         OBD_FREE(type, sizeof(*type));
         RETURN(rc);
 }

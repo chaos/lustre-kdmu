@@ -96,8 +96,7 @@ void lu_time_global_fini(void)
 }
 
 int lu_time_named_init(struct lprocfs_stats **stats, const char *name,
-                       cfs_proc_dir_entry_t *entry,
-                       const char **names, int nr)
+                       struct libcfs_param_entry *entry, const char **names, int nr)
 {
         int result;
         int i;
@@ -128,7 +127,7 @@ int lu_time_named_init(struct lprocfs_stats **stats, const char *name,
 }
 EXPORT_SYMBOL(lu_time_named_init);
 
-int lu_time_init(struct lprocfs_stats **stats, cfs_proc_dir_entry_t *entry,
+int lu_time_init(struct lprocfs_stats **stats, struct libcfs_param_entry *entry,
                  const char **names, int nr)
 {
         return lu_time_named_init(stats, "stats", entry, names, nr);

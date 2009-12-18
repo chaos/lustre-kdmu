@@ -238,7 +238,7 @@ int LL_PROC_PROTO(proc_max_dirty_pages_in_mb)
         if (write) {
                 rc = lprocfs_write_frac_helper(buffer, *lenp,
                                                (unsigned int*)table->data,
-                                               1 << (20 - CFS_PAGE_SHIFT));
+                                               1 << (20 - CFS_PAGE_SHIFT), 0);
                 /* Don't allow them to let dirty pages exceed 90% of system
                  * memory and set a hard minimum of 4MB. */
                 if (obd_max_dirty_pages > ((cfs_num_physpages / 10) * 9)) {
@@ -281,7 +281,7 @@ int LL_PROC_PROTO(proc_alloc_fail_rate)
         if (write) {
                 rc = lprocfs_write_frac_helper(buffer, *lenp,
                                                (unsigned int*)table->data,
-                                               OBD_ALLOC_FAIL_MULT);
+                                               OBD_ALLOC_FAIL_MULT, 0);
         } else {
                 char buf[21];
                 int  len;

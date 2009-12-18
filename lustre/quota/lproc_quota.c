@@ -46,26 +46,31 @@
 
 #ifdef HAVE_QUOTA_SUPPORT
 
-#ifdef LPROCFS
 int lprocfs_quota_rd_bunit(char *page, char **start, off_t off, int count,
                            int *eof, void *data)
 {
-        struct obd_device *obd = (struct obd_device *)data;
-        LASSERT(obd != NULL);
+        struct obd_device *obd;
 
-        return snprintf(page, count, "%lu\n",
-                        obd->u.obt.obt_qctxt.lqc_bunit_sz);
+        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        LASSERT(obd != NULL);
+        *eof = 1;
+
+        return libcfs_param_snprintf(page, count, data, LP_U32, "%lu\n",
+                            obd->u.obt.obt_qctxt.lqc_bunit_sz);
 }
 EXPORT_SYMBOL(lprocfs_quota_rd_bunit);
 
-int lprocfs_quota_wr_bunit(struct file *file, const char *buffer,
+int lprocfs_quota_wr_bunit(libcfs_file_t *file, const char *buffer,
                            unsigned long count, void *data)
 {
-        struct obd_device *obd = (struct obd_device *)data;
-        int val, rc;
+        struct obd_device *obd;
+        int val, rc, flag = 0;
+
+
+        LIBCFS_PARAM_GET_DATA(obd, data, &flag);
         LASSERT(obd != NULL);
 
-        rc = lprocfs_write_helper(buffer, count, &val);
+        rc = lprocfs_write_helper(buffer, count, &val, flag);
         if (rc)
                 return rc;
 
@@ -81,22 +86,27 @@ EXPORT_SYMBOL(lprocfs_quota_wr_bunit);
 int lprocfs_quota_rd_btune(char *page, char **start, off_t off, int count,
                            int *eof, void *data)
 {
-        struct obd_device *obd = (struct obd_device *)data;
-        LASSERT(obd != NULL);
+        struct obd_device *obd;
 
-        return snprintf(page, count, "%lu\n",
-                        obd->u.obt.obt_qctxt.lqc_btune_sz);
+        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        LASSERT(obd != NULL);
+        *eof = 1;
+
+        return libcfs_param_snprintf(page, count, data, LP_U32, "%lu\n",
+                            obd->u.obt.obt_qctxt.lqc_btune_sz);
 }
 EXPORT_SYMBOL(lprocfs_quota_rd_btune);
 
-int lprocfs_quota_wr_btune(struct file *file, const char *buffer,
+int lprocfs_quota_wr_btune(libcfs_file_t *file, const char *buffer,
                            unsigned long count, void *data)
 {
-        struct obd_device *obd = (struct obd_device *)data;
-        int val, rc;
+        struct obd_device *obd;
+        int val, rc, flag = 0;
+
+        LIBCFS_PARAM_GET_DATA(obd, data, &flag);
         LASSERT(obd != NULL);
 
-        rc = lprocfs_write_helper(buffer, count, &val);
+        rc = lprocfs_write_helper(buffer, count, &val, flag);
         if (rc)
                 return rc;
 
@@ -112,22 +122,27 @@ EXPORT_SYMBOL(lprocfs_quota_wr_btune);
 int lprocfs_quota_rd_iunit(char *page, char **start, off_t off, int count,
                            int *eof, void *data)
 {
-        struct obd_device *obd = (struct obd_device *)data;
-        LASSERT(obd != NULL);
+        struct obd_device *obd;
 
-        return snprintf(page, count, "%lu\n",
-                        obd->u.obt.obt_qctxt.lqc_iunit_sz);
+        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        LASSERT(obd != NULL);
+        *eof = 1;
+
+        return libcfs_param_snprintf(page, count, data, LP_U32, "%lu\n",
+                            obd->u.obt.obt_qctxt.lqc_iunit_sz);
 }
 EXPORT_SYMBOL(lprocfs_quota_rd_iunit);
 
-int lprocfs_quota_wr_iunit(struct file *file, const char *buffer,
+int lprocfs_quota_wr_iunit(libcfs_file_t *file, const char *buffer,
                            unsigned long count, void *data)
 {
-        struct obd_device *obd = (struct obd_device *)data;
-        int val, rc;
+        struct obd_device *obd;
+        int val, rc, flag = 0;
+
+        LIBCFS_PARAM_GET_DATA(obd, data, &flag);
         LASSERT(obd != NULL);
 
-        rc = lprocfs_write_helper(buffer, count, &val);
+        rc = lprocfs_write_helper(buffer, count, &val, flag);
         if (rc)
                 return rc;
 
@@ -142,22 +157,26 @@ EXPORT_SYMBOL(lprocfs_quota_wr_iunit);
 int lprocfs_quota_rd_itune(char *page, char **start, off_t off, int count,
                            int *eof, void *data)
 {
-        struct obd_device *obd = (struct obd_device *)data;
-        LASSERT(obd != NULL);
+        struct obd_device *obd;
 
-        return snprintf(page, count, "%lu\n",
-                        obd->u.obt.obt_qctxt.lqc_itune_sz);
+        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        LASSERT(obd != NULL);
+        *eof = 1;
+
+        return libcfs_param_snprintf(page, count, data, LP_U32, "%lu\n",
+                            obd->u.obt.obt_qctxt.lqc_itune_sz);
 }
 EXPORT_SYMBOL(lprocfs_quota_rd_itune);
 
-int lprocfs_quota_wr_itune(struct file *file, const char *buffer,
+int lprocfs_quota_wr_itune(libcfs_file_t *file, const char *buffer,
                            unsigned long count, void *data)
 {
-        struct obd_device *obd = (struct obd_device *)data;
-        int val, rc;
-        LASSERT(obd != NULL);
+        struct obd_device *obd;
+        int val, rc, flag = 0;
 
-        rc = lprocfs_write_helper(buffer, count, &val);
+        LIBCFS_PARAM_GET_DATA(obd, data, &flag);
+        LASSERT(obd != NULL);
+        rc = lprocfs_write_helper(buffer, count, &val, flag);
         if (rc)
                 return rc;
 
@@ -178,11 +197,12 @@ EXPORT_SYMBOL(lprocfs_quota_wr_itune);
 int lprocfs_quota_rd_type(char *page, char **start, off_t off, int count,
                           int *eof, void *data)
 {
-        struct obd_device *obd = (struct obd_device *)data;
+        struct obd_device *obd;
         char stype[MAX_STYPE_SIZE + 1] = "";
         int oq_type;
         struct obd_device_target *obt;
 
+        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         LASSERT(obd != NULL);
 
         obt = &obd->u.obt;
@@ -197,8 +217,9 @@ int lprocfs_quota_rd_type(char *page, char **start, off_t off, int count,
                 strcat(stype, "g");
 
         strcat(stype, "3");
+        *eof = 1;
 
-        return snprintf(page, count, "%s\n", stype);
+        return libcfs_param_snprintf(page, count, data, LP_STR, "%s\n", stype);
 }
 EXPORT_SYMBOL(lprocfs_quota_rd_type);
 
@@ -288,15 +309,17 @@ out:
         return rc;
 }
 
-int lprocfs_quota_wr_type(struct file *file, const char *buffer,
+int lprocfs_quota_wr_type(libcfs_file_t *file, const char *buffer,
                           unsigned long count, void *data)
 {
-        struct obd_device *obd = (struct obd_device *)data;
+        struct obd_device *obd;
         struct obd_device_target *obt;
         int type = 0, is_mds;
         unsigned long i;
         char stype[MAX_STYPE_SIZE + 1] = "";
+        int rc, flag = 0;
 
+        LIBCFS_PARAM_GET_DATA(obd, data, &flag);
         LASSERT(obd != NULL);
 
         obt = &obd->u.obt;
@@ -306,8 +329,8 @@ int lprocfs_quota_wr_type(struct file *file, const char *buffer,
         if (count > MAX_STYPE_SIZE)
                 return -EINVAL;
 
-        if (cfs_copy_from_user(stype, buffer, count))
-                return -EFAULT;
+        if ((rc = libcfs_param_copy(flag, stype, buffer, count)))
+                return rc;
 
         for (i = 0 ; i < count ; i++) {
                 switch (stype[i]) {
@@ -342,22 +365,26 @@ EXPORT_SYMBOL(lprocfs_quota_wr_type);
 int lprocfs_quota_rd_switch_seconds(char *page, char **start, off_t off,
                                     int count, int *eof, void *data)
 {
-        struct obd_device *obd = (struct obd_device *)data;
-        LASSERT(obd != NULL);
+        struct obd_device *obd;
 
-        return snprintf(page, count, "%d\n",
-                        obd->u.obt.obt_qctxt.lqc_switch_seconds);
+        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        LASSERT(obd != NULL);
+        *eof = 1;
+
+        return libcfs_param_snprintf(page, count, data, LP_D32, "%d\n",
+                            obd->u.obt.obt_qctxt.lqc_switch_seconds);
 }
 EXPORT_SYMBOL(lprocfs_quota_rd_switch_seconds);
 
-int lprocfs_quota_wr_switch_seconds(struct file *file, const char *buffer,
+int lprocfs_quota_wr_switch_seconds(libcfs_file_t *file, const char *buffer,
                                     unsigned long count, void *data)
 {
-        struct obd_device *obd = (struct obd_device *)data;
-        int val, rc;
-        LASSERT(obd != NULL);
+        struct obd_device *obd;
+        int val, rc, flag = 0;
 
-        rc = lprocfs_write_helper(buffer, count, &val);
+        LIBCFS_PARAM_GET_DATA(obd, data, &flag);
+        LASSERT(obd != NULL);
+        rc = lprocfs_write_helper(buffer, count, &val, flag);
         if (rc)
                 return rc;
 
@@ -372,22 +399,26 @@ EXPORT_SYMBOL(lprocfs_quota_wr_switch_seconds);
 int lprocfs_quota_rd_sync_blk(char *page, char **start, off_t off,
                               int count, int *eof, void *data)
 {
-        struct obd_device *obd = (struct obd_device *)data;
-        LASSERT(obd != NULL);
+        struct obd_device *obd;
 
-        return snprintf(page, count, "%d\n",
-                        obd->u.obt.obt_qctxt.lqc_sync_blk);
+        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        LASSERT(obd != NULL);
+        *eof = 1;
+
+        return libcfs_param_snprintf(page, count, data, LP_D32, "%d\n",
+                            obd->u.obt.obt_qctxt.lqc_sync_blk);
 }
 EXPORT_SYMBOL(lprocfs_quota_rd_sync_blk);
 
-int lprocfs_quota_wr_sync_blk(struct file *file, const char *buffer,
+int lprocfs_quota_wr_sync_blk(libcfs_file_t *file, const char *buffer,
                               unsigned long count, void *data)
 {
-        struct obd_device *obd = (struct obd_device *)data;
-        int val, rc;
-        LASSERT(obd != NULL);
+        struct obd_device *obd;
+        int val, rc, flag = 0;
 
-        rc = lprocfs_write_helper(buffer, count, &val);
+        LIBCFS_PARAM_GET_DATA(obd, data, &flag);
+        LASSERT(obd != NULL);
+        rc = lprocfs_write_helper(buffer, count, &val, flag);
         if (rc)
                 return rc;
 
@@ -402,23 +433,28 @@ EXPORT_SYMBOL(lprocfs_quota_wr_sync_blk);
 int lprocfs_quota_rd_switch_qs(char *page, char **start, off_t off,
                                int count, int *eof, void *data)
 {
-        struct obd_device *obd = (struct obd_device *)data;
-        LASSERT(obd != NULL);
+        struct obd_device *obd;
 
-        return snprintf(page, count, "changing qunit size is %s\n",
-                        obd->u.obt.obt_qctxt.lqc_switch_qs ?
-                        "enabled" : "disabled");
+        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        LASSERT(obd != NULL);
+        *eof = 1;
+        return libcfs_param_snprintf(page, count, data, LP_STR,
+                      "changing qunit size is %s\n",
+                      obd->u.obt.obt_qctxt.lqc_switch_qs ?
+                      "enabled" : "disabled");
 }
 EXPORT_SYMBOL(lprocfs_quota_rd_switch_qs);
 
-int lprocfs_quota_wr_switch_qs(struct file *file, const char *buffer,
+int lprocfs_quota_wr_switch_qs(libcfs_file_t *file, const char *buffer,
+
                                unsigned long count, void *data)
 {
-        struct obd_device *obd = (struct obd_device *)data;
-        int val, rc;
-        LASSERT(obd != NULL);
+        struct obd_device *obd;
+        int val, rc, flag = 0;
 
-        rc = lprocfs_write_helper(buffer, count, &val);
+        LIBCFS_PARAM_GET_DATA(obd, data, &flag);
+        LASSERT(obd != NULL);
+        rc = lprocfs_write_helper(buffer, count, &val, flag);
         if (rc)
                 return rc;
 
@@ -434,23 +470,26 @@ EXPORT_SYMBOL(lprocfs_quota_wr_switch_qs);
 int lprocfs_quota_rd_boundary_factor(char *page, char **start, off_t off,
                                      int count, int *eof, void *data)
 {
-        struct obd_device *obd = (struct obd_device *)data;
+        struct obd_device *obd;
+
+        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         LASSERT(obd != NULL);
+        *eof = 1;
 
-
-        return snprintf(page, count, "%lu\n",
-                        obd->u.obt.obt_qctxt.lqc_cqs_boundary_factor);
+        return libcfs_param_snprintf(page, count, data, LP_U32, "%lu\n",
+                            obd->u.obt.obt_qctxt.lqc_cqs_boundary_factor);
 }
 EXPORT_SYMBOL(lprocfs_quota_rd_boundary_factor);
 
-int lprocfs_quota_wr_boundary_factor(struct file *file, const char *buffer,
+int lprocfs_quota_wr_boundary_factor(libcfs_file_t *file, const char *buffer,
                                      unsigned long count, void *data)
 {
-        struct obd_device *obd = (struct obd_device *)data;
-        int val, rc;
-        LASSERT(obd != NULL);
+        struct obd_device *obd;
+        int val, rc, flag = 0;
 
-        rc = lprocfs_write_helper(buffer, count, &val);
+        LIBCFS_PARAM_GET_DATA(obd, data, &flag);
+        LASSERT(obd != NULL);
+        rc = lprocfs_write_helper(buffer, count, &val, flag);
         if (rc)
                 return rc;
 
@@ -465,23 +504,26 @@ EXPORT_SYMBOL(lprocfs_quota_wr_boundary_factor);
 int lprocfs_quota_rd_least_bunit(char *page, char **start, off_t off,
                                  int count, int *eof, void *data)
 {
-        struct obd_device *obd = (struct obd_device *)data;
+        struct obd_device *obd;
+
+        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         LASSERT(obd != NULL);
+        *eof = 1;
 
-
-        return snprintf(page, count, "%lu\n",
-                        obd->u.obt.obt_qctxt.lqc_cqs_least_bunit);
+        return libcfs_param_snprintf(page, count, data, LP_U32, "%lu\n",
+                            obd->u.obt.obt_qctxt.lqc_cqs_least_bunit);
 }
 EXPORT_SYMBOL(lprocfs_quota_rd_least_bunit);
 
-int lprocfs_quota_wr_least_bunit(struct file *file, const char *buffer,
+int lprocfs_quota_wr_least_bunit(libcfs_file_t *file, const char *buffer,
                                  unsigned long count, void *data)
 {
-        struct obd_device *obd = (struct obd_device *)data;
-        int val, rc;
-        LASSERT(obd != NULL);
+        struct obd_device *obd;
+        int val, rc, flag = 0;
 
-        rc = lprocfs_write_helper(buffer, count, &val);
+        LIBCFS_PARAM_GET_DATA(obd, data, &flag);
+        LASSERT(obd != NULL);
+        rc = lprocfs_write_helper(buffer, count, &val, flag);
         if (rc)
                 return rc;
 
@@ -497,23 +539,26 @@ EXPORT_SYMBOL(lprocfs_quota_wr_least_bunit);
 int lprocfs_quota_rd_least_iunit(char *page, char **start, off_t off,
                                  int count, int *eof, void *data)
 {
-        struct obd_device *obd = (struct obd_device *)data;
+        struct obd_device *obd;
+
+        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         LASSERT(obd != NULL);
+        *eof = 1;
 
-
-        return snprintf(page, count, "%lu\n",
-                        obd->u.obt.obt_qctxt.lqc_cqs_least_iunit);
+        return libcfs_param_snprintf(page, count, data, LP_U32, "%lu\n",
+                            obd->u.obt.obt_qctxt.lqc_cqs_least_iunit);
 }
 EXPORT_SYMBOL(lprocfs_quota_rd_least_iunit);
 
-int lprocfs_quota_wr_least_iunit(struct file *file, const char *buffer,
+int lprocfs_quota_wr_least_iunit(libcfs_file_t *file, const char *buffer,
                                  unsigned long count, void *data)
 {
-        struct obd_device *obd = (struct obd_device *)data;
-        int val, rc;
-        LASSERT(obd != NULL);
+        struct obd_device *obd;
+        int val, rc, flag = 0;
 
-        rc = lprocfs_write_helper(buffer, count, &val);
+        LIBCFS_PARAM_GET_DATA(obd, data, &flag);
+        LASSERT(obd != NULL);
+        rc = lprocfs_write_helper(buffer, count, &val, flag);
         if (rc)
                 return rc;
 
@@ -528,23 +573,27 @@ EXPORT_SYMBOL(lprocfs_quota_wr_least_iunit);
 int lprocfs_quota_rd_qs_factor(char *page, char **start, off_t off,
                                int count, int *eof, void *data)
 {
-        struct obd_device *obd = (struct obd_device *)data;
+        struct obd_device *obd;
+
+        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         LASSERT(obd != NULL);
+        *eof = 1;
 
-
-        return snprintf(page, count, "%lu\n",
-                        obd->u.obt.obt_qctxt.lqc_cqs_qs_factor);
+        return libcfs_param_snprintf(page, count, data, LP_U32, "%lu\n",
+                            obd->u.obt.obt_qctxt.lqc_cqs_qs_factor);
 }
 EXPORT_SYMBOL(lprocfs_quota_rd_qs_factor);
 
-int lprocfs_quota_wr_qs_factor(struct file *file, const char *buffer,
+int lprocfs_quota_wr_qs_factor(libcfs_file_t *file, const char *buffer,
                                unsigned long count, void *data)
 {
-        struct obd_device *obd = (struct obd_device *)data;
-        int val, rc;
+        struct obd_device *obd;
+        int val, rc, flag = 0;
+
+        LIBCFS_PARAM_GET_DATA(obd, data, &flag);
         LASSERT(obd != NULL);
 
-        rc = lprocfs_write_helper(buffer, count, &val);
+        rc = lprocfs_write_helper(buffer, count, &val, flag);
         if (rc)
                 return rc;
 
@@ -668,10 +717,12 @@ int lquota_proc_setup(struct obd_device *obd, int is_master)
                              LPROCFS_CNTR_AVGMINMAX, "adjust_qunit", "us");
 
         lprocfs_register_stats(qctxt->lqc_proc_dir, "stats", qctxt->lqc_stats);
+        lprocfs_put_lperef(qctxt->lqc_proc_dir);
 
         RETURN(rc);
 
 out_free_proc:
+        lprocfs_put_lperef(qctxt->lqc_proc_dir);
         lprocfs_remove(&qctxt->lqc_proc_dir);
 out:
         RETURN(rc);
@@ -689,5 +740,4 @@ int lquota_proc_cleanup(struct lustre_quota_ctxt *qctxt)
         return 0;
 }
 
-#endif  /* LPROCFS */
 #endif

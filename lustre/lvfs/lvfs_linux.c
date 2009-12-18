@@ -581,7 +581,6 @@ EXPORT_SYMBOL(obd_pages_max);
 EXPORT_SYMBOL(obd_memory_max);
 EXPORT_SYMBOL(obd_memory);
 
-#ifdef LPROCFS
 __s64 lprocfs_read_helper(struct lprocfs_counter *lc,
                           enum lprocfs_fields_flags field)
 {
@@ -624,7 +623,6 @@ __s64 lprocfs_read_helper(struct lprocfs_counter *lc,
         RETURN(ret);
 }
 EXPORT_SYMBOL(lprocfs_read_helper);
-#endif /* LPROCFS */
 
 MODULE_AUTHOR("Sun Microsystems, Inc. <http://www.lustre.org/>");
 MODULE_DESCRIPTION("Lustre VFS Filesystem Helper v0.1");

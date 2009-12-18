@@ -45,6 +45,7 @@
 #include "tracefile.h"
 
 #include <libcfs/libcfs.h>
+#include <libcfs/params_tree.h>
 
 /* XXX move things up to the top, comment */
 union cfs_trace_data_union (*cfs_trace_data[TCD_MAX_TYPES])[CFS_NR_CPUS] __cacheline_aligned;
@@ -744,16 +745,18 @@ void cfs_trace_flush_pages(void)
 }
 
 int cfs_trace_copyin_string(char *knl_buffer, int knl_buffer_nob,
-                            const char *usr_buffer, int usr_buffer_nob)
+                            const char *usr_buffer, int usr_buffer_nob, int flag)
 {
         int    nob;
+        int    rc;
 
         if (usr_buffer_nob > knl_buffer_nob)
                 return -EOVERFLOW;
 
-        if (cfs_copy_from_user((void *)knl_buffer,
-                           (void *)usr_buffer, usr_buffer_nob))
-                return -EFAULT;
+        rc = libcfs_param_copy(flag, (void *)knl_buffer,
+                               (void *)usr_buffer, usr_buffer_nob);
+        if (rc < 0)
+                return rc;
 
         nob = strnlen(knl_buffer, usr_buffer_nob);
         while (nob-- >= 0)                      /* strip trailing whitespace */
@@ -812,7 +815,7 @@ void cfs_trace_free_string_buffer(char *str, int nob)
         cfs_free(str);
 }
 
-int cfs_trace_dump_debug_buffer_usrstr(void *usr_str, int usr_str_nob)
+int cfs_trace_dump_debug_buffer_usrstr(void *usr_str, int usr_str_nob, int flag)
 {
         char         *str;
         int           rc;
@@ -822,7 +825,7 @@ int cfs_trace_dump_debug_buffer_usrstr(void *usr_str, int usr_str_nob)
                 return rc;
 
         rc = cfs_trace_copyin_string(str, usr_str_nob + 1,
-                                     usr_str, usr_str_nob);
+                                     usr_str, usr_str_nob, flag);
         if (rc != 0)
                 goto out;
 
@@ -878,7 +881,7 @@ int cfs_trace_daemon_command(char *str)
         return rc;
 }
 
-int cfs_trace_daemon_command_usrstr(void *usr_str, int usr_str_nob)
+int cfs_trace_daemon_command_usrstr(void *usr_str, int usr_str_nob, int flag)
 {
         char *str;
         int   rc;
@@ -888,7 +891,7 @@ int cfs_trace_daemon_command_usrstr(void *usr_str, int usr_str_nob)
                 return rc;
 
         rc = cfs_trace_copyin_string(str, usr_str_nob + 1,
-                                 usr_str, usr_str_nob);
+                                 usr_str, usr_str_nob, flag);
         if (rc == 0)
                 rc = cfs_trace_daemon_command(str);
 
@@ -926,12 +929,13 @@ int cfs_trace_set_debug_mb(int mb)
         return 0;
 }
 
-int cfs_trace_set_debug_mb_usrstr(void *usr_str, int usr_str_nob)
+int cfs_trace_set_debug_mb_usrstr(void *usr_str, int usr_str_nob, int flag)
 {
         char     str[32];
         int      rc;
 
-        rc = cfs_trace_copyin_string(str, sizeof(str), usr_str, usr_str_nob);
+        rc = cfs_trace_copyin_string(str, sizeof(str),
+                                     usr_str, usr_str_nob, flag);
         if (rc < 0)
                 return rc;
 

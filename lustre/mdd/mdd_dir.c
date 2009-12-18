@@ -1154,6 +1154,7 @@ static int mdd_name_insert(const struct lu_env *env,
         struct thandle *handle;
         int is_dir = S_ISDIR(ma->ma_attr.la_mode);
 #ifdef HAVE_QUOTA_SUPPORT
+        struct mdd_device *mdd = mdo2mdd(pobj);
         struct md_ucred *uc = md_ucred(env);
         struct obd_device *obd = mdo2mdd(pobj)->mdd_obd_dev;
         struct obd_export *exp = md_quota(env)->mq_exp;
