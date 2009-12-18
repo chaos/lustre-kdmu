@@ -11,6 +11,7 @@
  *  - how lod_alloc_qos() can learn OST slowness w/o obd_precreate()
  *  - improve locking in lod_qos_statfs_update()
  *  - lod_qos_statfs_update() to recalculate space with fixed block size
+ *  - do we need read/write support in LOD ?
 
  * OSP TODO
  *  - shutdown
