@@ -12,6 +12,7 @@
  *  - improve locking in lod_qos_statfs_update()
  *  - lod_qos_statfs_update() to recalculate space with fixed block size
  *  - do we need read/write support in LOD ?
+ *  - mbo_stripenr can change in QoS, how do we release correct mbo_stripe ?
 
  * OSP TODO
  *  - shutdown
@@ -29,4 +30,11 @@
  *  - llog_process() to get a cursor to skip non-committed-yet changes
  *  - a mechanism to learn committness ASAP?
  *  - what ->statfs() returns when connection is down?
+
+
+Questions:
+ *   - what do we do when none of OSP can provide with an object ?
+ *   - what do we do if number of objects we can get at the moment is
+       less when required for the given pattern?
+ *   - what happens if administrator deactivates OST between declare and create?
 
