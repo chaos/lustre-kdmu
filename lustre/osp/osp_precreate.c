@@ -491,7 +491,7 @@ int osp_init_precreate(struct osp_device *d)
          * Initialize statfs-related things
          */
         d->opd_statfs_fresh_till = cfs_time_shift(-1000);
-        CERROR("current %Lu, fresh till %Lu\n",
+        CDEBUG(D_OTHER, "current %Lu, fresh till %Lu\n",
                (unsigned long long) cfs_time_current(),
                (unsigned long long) d->opd_statfs_fresh_till);
         cfs_timer_init(&d->opd_statfs_timer, osp_statfs_timer_cb, d);
