@@ -84,6 +84,7 @@
 
 #define MAX_LOOP_DEVICES 16
 #define L_BLOCK_SIZE 4096
+#define INDEX_UNASSIGNED 0xFFFF
 #define MO_IS_LOOP     0x01
 #define MO_FORCEFORMAT 0x02
 
@@ -830,7 +831,7 @@ void print_ldd(char *str, struct lustre_disk_data *ldd)
 {
         printf("\n   %s:\n", str);
         printf("Target:     %s\n", ldd->ldd_svname);
-        if (ldd->ldd_flags & LDD_F_NEED_INDEX)
+        if (ldd->ldd_svindex & INDEX_UNASSIGNED)
                 printf("Index:      unassigned\n");
         else
                 printf("Index:      %d\n", ldd->ldd_svindex);
@@ -1209,7 +1210,7 @@ void set_defaults(struct mkfs_opts *mop)
         else
                 mop->mo_ldd.ldd_mount_type = LDD_MT_ZFS;
 
-        mop->mo_ldd.ldd_svindex = 0;
+        mop->mo_ldd.ldd_svindex = INDEX_UNASSIGNED;
         mop->mo_stripe_count = 1;
         mop->mo_pool_vdevs = NULL;
 }
