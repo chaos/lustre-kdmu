@@ -369,12 +369,18 @@ static int osp_init_last_used(const struct lu_env *env, struct osp_device *m)
 
         m->opd_last_used_file = o;
 
-        lb.lb_buf = &tmp;
-        lb.lb_len = sizeof(tmp);
-        off = sizeof(tmp) * m->opd_index;
-        rc = o->do_body_ops->dbo_read(env, o, &lb, &off, BYPASS_CAPA);
-        if (rc < 0)
-                RETURN(rc);
+        rc = dt_attr_get(env, o, &attr, NULL);
+        if (rc)
+                GOTO(out, rc);
+
+        if (attr.la_size >= sizeof(tmp) * (m->opd_index + 1)) {
+                lb.lb_buf = &tmp;
+                lb.lb_len = sizeof(tmp);
+                off = sizeof(tmp) * m->opd_index;
+                rc = o->do_body_ops->dbo_read(env, o, &lb, &off, BYPASS_CAPA);
+                if (rc < 0)
+                        GOTO(out, rc);
+        }
 
         if (rc == sizeof(tmp)) {
                 m->opd_last_used_id = le64_to_cpu(tmp);
@@ -382,6 +388,10 @@ static int osp_init_last_used(const struct lu_env *env, struct osp_device *m)
                 /* XXX: is this that simple? what if the file got corrupted? */
                 m->opd_last_used_id = 0;
         }
+        rc = 0;
+
+out:
+        /* object will be released in device cleanup path */
 
         RETURN(rc);
 }
