@@ -13,8 +13,9 @@
  *  - lod_qos_statfs_update() to recalculate space with fixed block size
  *  - do we need read/write support in LOD ?
  *  - mbo_stripenr can change in QoS, how do we release correct mbo_stripe ?
-
- * OSP TODO
+ *  - qos_add_tgt() to learn configuration
+ 
+* OSP TODO
  *  - shutdown
  *  - global lu_idif_build()
  *  - ->do_create() to set initial attributes
@@ -30,6 +31,8 @@
  *  - llog_process() to get a cursor to skip non-committed-yet changes
  *  - a mechanism to learn committness ASAP?
  *  - what ->statfs() returns when connection is down?
+ *  - osp_statfs() to return number of precreated objects in f_ffiles
+
 
 
 Questions:
