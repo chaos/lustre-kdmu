@@ -40,4 +40,4 @@ Questions:
  *   - what do we do if number of objects we can get at the moment is
        less when required for the given pattern?
  *   - what happens if administrator deactivates OST between declare and create?
-
+ *   - how do we control ltd_active?
