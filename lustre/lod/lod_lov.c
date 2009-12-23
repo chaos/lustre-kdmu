@@ -163,6 +163,8 @@ static int lov_add_target(struct lov_obd *lov, struct obd_device *tgt_obd,
         /* XXX - add a sanity check on the generation number. */
         tgt->ltd_gen = gen;
         tgt->ltd_index = index;
+        /* XXX: how do we control active? */
+        tgt->ltd_active = active;
         tgt->ltd_activate = active;
         lov->lov_tgts[index] = tgt;
         if (index >= lov->desc.ld_tgt_count)
@@ -219,6 +221,12 @@ int lod_lov_add_device(const struct lu_env *env, struct lod_device *m,
                 GOTO(out, rc);
         }
 
+        rc = qos_add_tgt(m->mbd_obd, index);
+        if (rc) {
+                CERROR("can't add: %d\n", rc);
+                GOTO(out, rc);
+        }
+
         if (m->mbd_ost[index] == NULL) {
                 /* XXX: grab reference on the device */
                 m->mbd_ost[index] = d;
@@ -233,76 +241,6 @@ int lod_lov_add_device(const struct lu_env *env, struct lod_device *m,
 out:
         mutex_up(&m->mbd_mutex);
 
-        RETURN(rc);
-}
-
-/*
- * 
- */
-int lod_create_striping(const struct lu_env *env, struct lod_object *mo,
-                         struct lu_attr *attr, struct dt_allocation_hint *hint,
-                         struct dt_object_format *dof)
-{
-        struct lod_device *md = lu2lod_dev(mo->mbo_obj.do_lu.lo_dev);
-        struct lu_device   *nd;
-        int                 i, rc = 0;
-        ENTRY;
-
-        LASSERT(!dt_object_exists(&mo->mbo_obj));
-
-        /* no OST available */
-        if (md->mbd_ostnr == 0)
-                GOTO(out, rc = -EIO);
-
-        /*
-         * decide on # of stripes
-         */
-        /* XXX: stripe over all OSTs for a while */
-        mo->mbo_stripenr = md->mbd_ostnr;
-
-        /*
-         * choose specific OSTs
-         */
-
-        /*
-         * reserve objects on selected OSTs
-         */
-
-        /*
-         * assign fids and allocate in-core objects representing stripes
-         */
-        i = sizeof(struct dt_object *) * mo->mbo_stripenr;
-        OBD_ALLOC(mo->mbo_stripe, i);
-        if (mo->mbo_stripe == NULL)
-                GOTO(out, rc = -ENOMEM);
-
-        for (i = 0; i < mo->mbo_stripenr; i++) {
-                struct lu_object *o, *n;
-
-                /* XXX: an index can be non-used */
-                LASSERT(md->mbd_ost[i]);
-                nd = &md->mbd_ost[i]->dd_lu_dev;
-
-                /* 
-                 * allocate anonymous object with zero fid, real fid
-                 * will be assigned by OSP within transaction
-                 * XXX: to be fixed with fully-functional OST fids
-                 */
-                o = lu_object_anon(env, nd, NULL);
-                if (IS_ERR(o))
-                        GOTO(out, rc = PTR_ERR(o));
-
-                n = lu_object_locate(o->lo_header, nd->ld_type);
-                if (unlikely(n == NULL)) {
-                        CERROR("can't find slice\n");
-                        lu_object_put(env, o);
-                        GOTO(out, rc = -EINVAL);
-                }
-
-                mo->mbo_stripe[i] = container_of(n, struct dt_object, do_lu);
-        }
-
-out:
         RETURN(rc);
 }
 

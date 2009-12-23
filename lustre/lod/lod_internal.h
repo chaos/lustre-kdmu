@@ -162,9 +162,6 @@ int lod_lov_add_device(const struct lu_env *env, struct lod_device *m,
                         char *osp, unsigned index, unsigned gen);
 int lod_lov_del_device(const struct lu_env *env, struct lod_device *m,
                         char *osp, unsigned gen);
-int lod_create_striping(const struct lu_env *env, struct lod_object *mo,
-                         struct lu_attr *attr, struct dt_allocation_hint *hint,
-                         struct dt_object_format *dof);
 int lod_generate_and_set_lovea(const struct lu_env *env,
                                 struct lod_object *mo,
                                 struct thandle *th);
@@ -179,6 +176,12 @@ int lov_ost_pool_extend(struct ost_pool *op, unsigned int min_count);
 struct pool_desc *lov_find_pool(struct lov_obd *lov, char *poolname);
 void lov_pool_putref(struct pool_desc *pool);
 int lov_ost_pool_free(struct ost_pool *op);
+
+/* lod_qos.c */
+int lod_qos_prep_create(const struct lu_env *env, struct lod_object *lo,
+                        struct lu_attr *attr, struct thandle *th);
+int qos_add_tgt(struct obd_device *obd, __u32 index);
+
 
 #endif
 

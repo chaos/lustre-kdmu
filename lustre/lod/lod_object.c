@@ -45,7 +45,6 @@
 #endif
 #define DEBUG_SUBSYSTEM S_MDS
 
-#include <linux/module.h>
 #include <obd.h>
 #include <obd_class.h>
 #include <lustre_ver.h>
@@ -54,7 +53,6 @@
 
 #include <lustre_disk.h>
 #include <lustre_fid.h>
-#include <lustre_mds.h>
 #include <lustre/lustre_idl.h>
 #include <lustre_param.h>
 #include <lustre_fid.h>
@@ -440,12 +438,18 @@ static int lod_declare_striped_object(const struct lu_env *env,
                                        struct thandle *th)
 {
         struct dt_object   *next = dt_object_child(dt);
-        struct lod_object *mo = lod_dt_obj(dt);
+        struct lod_object  *mo = lod_dt_obj(dt);
+        struct lod_device  *md = lu2lod_dev(mo->mbo_obj.do_lu.lo_dev);
         int                 lmm_size;
         int                 rc, i;
         ENTRY;
 
         LASSERT(dof->dof_type == DFT_REGULAR);
+        LASSERT(!dt_object_exists(&mo->mbo_obj));
+
+        /* no OST available */
+        if (md->mbd_ostnr == 0)
+                GOTO(out, rc = -EIO);
 
         /*
          * choose 
@@ -456,32 +460,19 @@ static int lod_declare_striped_object(const struct lu_env *env,
          *    f) declare creation of these objects
          */
 
+        /*
+         * decide on # of stripes
+         */
+        /* XXX: stripe over all OSTs for a while */
+        mo->mbo_stripenr = md->mbd_ostnr;
+
+        i = sizeof(struct dt_object *) * mo->mbo_stripenr;
+        OBD_ALLOC(mo->mbo_stripe, i);
+        if (mo->mbo_stripe == NULL)
+                GOTO(out, rc = -ENOMEM);
+
         /* choose OST and generate appropriate objects */
-        rc = lod_create_striping(env, mo, attr, hint, dof);
-        if (rc) {
-                CERROR("can't create striping: %d\n", rc);
-                GOTO(out, rc);
-        }
-
-        /* declare all underlying objects to be created */
-        for (i = 0; i < mo->mbo_stripenr; i++) {
-                LASSERT(mo->mbo_stripe[i]);
-
-repeat:
-                rc = dt_declare_create(env, mo->mbo_stripe[i],
-                                       attr, NULL, dof, th);
-
-                if (rc == -EAGAIN) {
-                        /* XXX: currently just wait on this OSP */
-                        CERROR("OSP can't provide with object yet\n");
-                        ll_sleep(1);
-                        goto repeat;
-
-                }
-
-                /* XXX: can't proceed with this OST? */
-                LASSERTF(rc == 0, "can't declare creation: %d\n", rc);
-        }
+        rc = lod_qos_prep_create(env, mo, attr, th);
 
         /*
          * declare storage for striping data
