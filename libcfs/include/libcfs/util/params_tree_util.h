@@ -33,25 +33,36 @@
  * This file is part of Lustre, http://www.lustre.org/
  * Lustre is a trademark of Sun Microsystems, Inc.
  *
- * libcfs/include/libcfs/libcfsutil.h
+ * libcfs/include/libcfs/util/params_tree_util.h
  *
- * A library used for userspace utilities.
+ * params_tree userspace APIs.
+ *
+ * Author: LiuYing <emoly.liu@sun.com>
  *
  */
 
-#ifndef __LIBCFSUTIL_H__
-#define __LIBCFSUTIL_H__
+#ifndef _PARAMS_TREE_UTIL_H_
+#define _PARAMS_TREE_UTIL_H_
 
-#ifndef LUSTRE_UTILS
-#define LUSTRE_UTILS 1
+#include <libcfs/params_tree.h>
+
+#define PTREE_PREFIX      "params_root/"
+#define PTREE_PRELEN       strlen(PTREE_PREFIX)
+
+/* parameter entry list */
+struct params_entry_list {
+        int pel_name_len;
+        char *pel_name;  /* full pathname of the entry */
+        int pel_mode;    /* entry mode */
+        struct params_entry_list *pel_next;
+};
+int params_list(const char *pattern, struct params_entry_list **pel_ptr);
+int params_read(char *path, int path_len, char *read_buf, int buf_len,
+                long long *offset, int *eof);
+int params_write(char *path, int path_len, char *write_buf, int buf_len,
+                 int offset);
+int params_unpack(char *inbuf, char *outbuf, int outbuf_len);
+int params_value_output(struct libcfs_param_data data, char *outbuf);
+void params_free_entrylist(struct params_entry_list *entry_list);
+
 #endif
-
-#include <libcfs/libcfs.h>
-
-#include <libcfs/util/platform.h>
-#include <libcfs/util/parser.h>
-#include <libcfs/util/libcfsutil_ioctl.h>
-#include <libcfs/util/params_tree_util.h>
-
-
-#endif	/* __LIBCFSUTIL_H__ */

@@ -74,41 +74,7 @@ static const char *libcfs_debug_masks[] =
          "rpctrace", "vfstrace", "reada", "mmap",
          "config", "console", "quota", "sec", NULL};
 
-#ifdef __linux__
-
-#define DAEMON_CTL_NAME         "/proc/sys/lnet/daemon_file"
-#define SUBSYS_DEBUG_CTL_NAME   "/proc/sys/lnet/subsystem_debug"
-#define DEBUG_CTL_NAME          "/proc/sys/lnet/debug"
-#define DUMP_KERNEL_CTL_NAME    "/proc/sys/lnet/dump_kernel"
-
-static int
-dbg_open_ctlhandle(const char *str)
-{
-        int fd;
-        fd = open(str, O_WRONLY);
-        if (fd < 0) {
-                fprintf(stderr, "open %s failed: %s\n", str,
-                        strerror(errno));
-                return -1;
-        }
-        return fd;
-}
-
-static void
-dbg_close_ctlhandle(int fd)
-{
-        close(fd);
-}
-
-static int
-dbg_write_cmd(int fd, char *str, int len)
-{
-        int    rc  = write(fd, str, len);
-
-        return (rc == len ? 0 : 1);
-}
-
-#elif defined(__DARWIN__)
+#if defined(__DARWIN__)
 
 #define DAEMON_CTL_NAME         "lnet.trace_daemon"
 #define SUBSYS_DEBUG_CTL_NAME   "lnet.subsystem_debug"
@@ -184,7 +150,47 @@ dbg_write_cmd(int fd, char *str, int len)
 }
 
 #else
-#error - Unknown sysctl convention.
+
+#define DAEMON_CTL_NAME         "lnet/daemon_file"
+#define SUBSYS_DEBUG_CTL_NAME   "lnet/subsystem_debug"
+#define DEBUG_CTL_NAME          "lnet/debug"
+#define DUMP_KERNEL_CTL_NAME    "lnet/dump_kernel"
+#define PARAMS_NUM              4
+#define PARAMS_LEN              24
+
+char params_name[PARAMS_NUM][PARAMS_LEN] = {
+        "lnet/daemon_file\0",
+        "lnet/subsystem_debug\0",
+        "lnet/debug\0",
+        "lnet/dump_kernel\0" };
+static int
+dbg_open_ctlhandle(const char *str)
+{
+        int i;
+
+        for (i = 0; i < PARAMS_NUM; i ++)
+                if (!strcmp(str, params_name[i]))
+                        return i;
+
+        return -1;
+}
+
+static void
+dbg_close_ctlhandle(int fd) {}
+
+static int
+dbg_write_cmd(int fd, char *str, int len)
+{
+        int rc;
+
+        if (fd < 0 || fd >= PARAMS_NUM)
+                return 1;
+        rc = params_write(params_name[fd], strlen(params_name[fd]),
+                          str, len, 0);
+
+        return (rc == (len + 1) ? 0 : 1);
+}
+
 #endif
 
 static int do_debug_mask(char *name, int enable)
