@@ -943,8 +943,8 @@ static void print_obd_line(char *s)
                 goto try_mdc;
         snprintf(buf, sizeof(buf), "lustre/osc/%s/ost_conn_uuid", obd_name);
         memset(inbuf, 0, MAX_STRING_SIZE);
-        rc = llapi_params_read(buf, strlen(buf), inbuf,
-                               MAX_STRING_SIZE, &offset, &rc);
+        rc = params_read(buf, strlen(buf), inbuf, MAX_STRING_SIZE,
+                         &offset, &rc);
         if (rc <= 0)
                 goto try_mdc;
         goto got_one;
@@ -954,13 +954,13 @@ try_mdc:
                 goto fail;
         snprintf(buf, sizeof(buf), "lustre/mdc/%s/mds_conn_uuid", obd_name);
         offset = 0;
-        rc = llapi_params_read(buf, strlen(buf), inbuf,
-                               MAX_STRING_SIZE, &offset, &rc);
+        rc = params_read(buf, strlen(buf), inbuf, MAX_STRING_SIZE,
+                         &offset, &rc);
         if (rc <= 0)
                 goto fail;
 
 got_one:
-        llapi_params_unpack(inbuf, buf, sizeof(buf));
+        params_unpack(inbuf, buf, sizeof(buf));
 
         /* trim trailing newlines */
         ptr = strrchr(buf, '\n');
@@ -1034,13 +1034,12 @@ int jt_obd_list(int argc, char **argv)
 
         while (!eof) {
                 memset(inbuf, 0, CFS_PAGE_SIZE);
-                rc = llapi_params_read(DEVICES_LIST, strlen(DEVICES_LIST),
-                                       inbuf, CFS_PAGE_SIZE, &offset, &eof);
+                rc = params_read(DEVICES_LIST, strlen(DEVICES_LIST),
+                                 inbuf, CFS_PAGE_SIZE, &offset, &eof);
                 if (rc <= 0)
                         break;
                 offset = rc;
-                while ((rc = llapi_params_unpack(inbuf + pos,
-                                                 buf, sizeof(buf)))) {
+                while ((rc = params_unpack(inbuf + pos, buf, sizeof(buf)))) {
                         if (print_obd)
                                 print_obd_line(buf);
                         else

@@ -572,8 +572,7 @@ static void params_show(int show_path, char *buf)
         int rc =0, pos = 0;
 
         memset(outbuf, 0, CFS_PAGE_SIZE);
-        while ((rc = llapi_params_unpack(buf + pos, outbuf,
-                                        sizeof(outbuf)))) {
+        while ((rc = params_unpack(buf + pos, outbuf, sizeof(outbuf)))) {
                 /* start from a new line if there are multi-lines */
                 if (show_path &&
                     strstr(outbuf, "\n") != (outbuf + strlen(outbuf) - 1))
@@ -591,7 +590,7 @@ static int params_listparam_display(struct params_opts *popt, char *pattern)
         struct params_entry_list *pel = NULL;
         struct params_entry_list *pel_head = NULL;
 
-        if ((rc = llapi_params_list(pattern, &pel)) < 0)
+        if ((rc = params_list(pattern, &pel)) < 0)
                 goto out;
         pel_head = pel;
         pel = pel_head->pel_next;
@@ -607,7 +606,7 @@ static int params_listparam_display(struct params_opts *popt, char *pattern)
         }
 out:
         if (pel_head)
-                llapi_params_free_entrylist(pel_head);
+                params_free_entrylist(pel_head);
 
         return rc;
 }
@@ -623,7 +622,7 @@ static int params_getparam_display(struct params_opts *popt, char *pattern)
         struct params_entry_list *pel = NULL;
         struct params_entry_list *pel_head = NULL;
 
-        if ((rc = llapi_params_list(pattern, &pel)) < 0)
+        if ((rc = params_list(pattern, &pel)) < 0)
                 goto out;
         pel_head = pel;
         pel = pel_head->pel_next;
@@ -659,7 +658,7 @@ static int params_getparam_display(struct params_opts *popt, char *pattern)
                 while (!eof) {
                         memset(buf, 0, CFS_PAGE_SIZE);
                         params_count =
-                                llapi_params_read(pel->pel_name + PTREE_PRELEN,
+                                params_read(pel->pel_name + PTREE_PRELEN,
                                              pel->pel_name_len - PTREE_PRELEN,
                                              buf, CFS_PAGE_SIZE, &offset, &eof);
                         if (params_count > 0) {
@@ -683,7 +682,7 @@ out:
         if (buf)
                 free(buf);
         if (pel_head)
-                llapi_params_free_entrylist(pel_head);
+                params_free_entrylist(pel_head);
         return rc;
 }
 
@@ -696,7 +695,7 @@ static int params_setparam_display(struct params_opts *popt,
         struct params_entry_list *pel = NULL;
         struct params_entry_list *pel_head = NULL;
 
-        if ((rc = llapi_params_list(pattern, &pel)) < 0)
+        if ((rc = params_list(pattern, &pel)) < 0)
                 goto out;
         pel_head = pel;
         pel = pel_head->pel_next;
@@ -719,9 +718,9 @@ static int params_setparam_display(struct params_opts *popt,
                         goto next;
                 }
                 offset = 0;
-                rc = llapi_params_write(pel->pel_name + PTREE_PRELEN,
-                                        pel->pel_name_len - PTREE_PRELEN,
-                                        value, strlen(value), offset);
+                rc = params_write(pel->pel_name + PTREE_PRELEN,
+                                  pel->pel_name_len - PTREE_PRELEN,
+                                  value, strlen(value), offset);
                 if (rc >= 0 && popt->show_path)
                         printf("%s=%s\n", valuename, value);
 next:
@@ -730,7 +729,7 @@ next:
 out:
         rc = rc > 0 ? 0 : rc;
         if (pel_head)
-                llapi_params_free_entrylist(pel_head);
+                params_free_entrylist(pel_head);
 
         return rc;
 }

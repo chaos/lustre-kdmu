@@ -61,7 +61,6 @@
 #include <sys/xattr.h>
 #include <fnmatch.h>
 #include <glob.h>
-#include <regex.h>
 #ifdef HAVE_LINUX_UNISTD_H
 #include <linux/unistd.h>
 #else
@@ -70,7 +69,6 @@
 #include <poll.h>
 
 #include <libcfs/libcfsutil.h>  /* l_ioctl */
-#include <libcfs/params_tree.h>
 #include <liblustre.h>
 #include <lnet/lnetctl.h>
 #include <obd.h>
@@ -271,14 +269,14 @@ static int find_target_obdpath(char *fsname, char *path)
         int rc;
 
         snprintf(pattern, PATH_MAX, "lov/%s-*/target_obd", fsname);
-        rc = llapi_params_list(pattern, &pel);
+        rc = params_list(pattern, &pel);
         if (rc < 0)
                 return rc;
         if (pel->pel_next == NULL)
                 return -ENOENT;
         strcpy(path, pel->pel_next->pel_name + PTREE_PRELEN);
         if(pel != NULL)
-                llapi_params_free_entrylist(pel);
+                params_free_entrylist(pel);
 
         return 0;
 }
@@ -291,7 +289,7 @@ static int find_poolpath(char *fsname, char *poolname, char *poolpath)
 
         snprintf(pattern, PATH_MAX, "lov/%s-*/pools/%s",
                  fsname, poolname);
-        rc = llapi_params_list(pattern, &pel);
+        rc = params_list(pattern, &pel);
         /* If no pools, make sure the lov is available */
         if ((pel->pel_next == NULL) &&
             (find_target_obdpath(fsname, poolpath) == -ENODEV))
@@ -300,7 +298,7 @@ static int find_poolpath(char *fsname, char *poolname, char *poolpath)
                 return -EINVAL;
         strcpy(poolpath, pel->pel_next->pel_name + PTREE_PRELEN);
         if (pel != NULL)
-                llapi_params_free_entrylist(pel);
+                params_free_entrylist(pel);
 
         return 0;
 }
@@ -331,8 +329,8 @@ int llapi_search_ost(char *fsname, char *poolname, char *ostname)
                 return rc;
 
         while (!eof) {
-                rc = llapi_params_read(buffer, strlen(buffer), inbuf,
-                                       CFS_PAGE_SIZE, &offset, &eof);
+                rc = params_read(buffer, strlen(buffer), inbuf,
+                                 CFS_PAGE_SIZE, &offset, &eof);
                 if (rc == 0)
                         return rc;
                         //return EEXIST;
@@ -341,8 +339,8 @@ int llapi_search_ost(char *fsname, char *poolname, char *ostname)
                         return rc;
                 }
                 offset = rc;
-                while ((rc = llapi_params_unpack(inbuf + pos, buffer,
-                                                 sizeof(buffer)))) {
+                while ((rc = params_unpack(inbuf + pos, buffer,
+                                           sizeof(buffer)))) {
                         if (poolname == NULL) {
                                 char *ptr;
                                 /* Search for an ostname in the list of OSTs
@@ -626,14 +624,14 @@ static int first_match(char *pattern, char *buffer)
         struct params_entry_list *pel = NULL;
         int rc;
 
-        rc = llapi_params_list(pattern, &pel);
+        rc = params_list(pattern, &pel);
         if (rc < 0)
                return rc;
         if (pel->pel_next == NULL)
                 return -ENOENT;
         strcpy(buffer, pel->pel_next->pel_name + PTREE_PRELEN);
         if (pel != NULL)
-                llapi_params_free_entrylist(pel);
+                params_free_entrylist(pel);
 
         return 0;
 }
@@ -717,8 +715,8 @@ int llapi_get_poolmembers(const char *poolname, char **members,
         llapi_printf(LLAPI_MSG_NORMAL, "Pool: %s.%s\n", fsname, pool);
         sprintf(path, "%s/%s", pathname, pool);
         while (!eof) {
-                rc = llapi_params_read(path, strlen(path), inbuf,
-                                       CFS_PAGE_SIZE, &offset, &eof);
+                rc = params_read(path, strlen(path), inbuf,
+                                 CFS_PAGE_SIZE, &offset, &eof);
                 if (rc == 0)
                         return rc;
                 if (rc < 0) {
@@ -726,8 +724,7 @@ int llapi_get_poolmembers(const char *poolname, char **members,
                         return rc;
                 }
                 offset = rc;
-                while ((rc = llapi_params_unpack(inbuf + pos, buf,
-                                                 sizeof(buf)))) {
+                while ((rc = params_unpack(inbuf + pos, buf, sizeof(buf)))) {
                         pos += rc;
                         if (nb_entries >= list_size) {
                                 rc = -EOVERFLOW;
@@ -813,14 +810,14 @@ int llapi_get_poollist(const char *name, char **poollist, int list_size,
 
         llapi_printf(LLAPI_MSG_NORMAL, "Pools from %s:\n", fsname);
         /* open pool list */
-        if ((rc = llapi_params_list(pathname + strlen("lustre/"), &pel)) < 0) {
+        if ((rc = params_list(pathname + strlen("lustre/"), &pel)) < 0) {
                 llapi_err(LLAPI_MSG_ERROR, "Could not open pool list for '%s'",
                           name);
                 return rc;
         }
         /* check the pools in pool list */
         strcat(pathname, "/*");
-        if ((rc = llapi_params_list(pathname + strlen("lustre/"), &pel)) < 0)
+        if ((rc = params_list(pathname + strlen("lustre/"), &pel)) < 0)
                 return nb_entries;
 
         pel_head = pel;
@@ -841,7 +838,7 @@ int llapi_get_poollist(const char *name, char **poollist, int list_size,
                 pel = pel->pel_next;
         }
         if (pel_head != NULL)
-                llapi_params_free_entrylist(pel_head);
+                params_free_entrylist(pel_head);
 
         return nb_entries;
 }
@@ -1160,15 +1157,14 @@ int llapi_lov_get_uuids(int fd, struct obd_uuid *uuidp, int *ost_count)
         snprintf(buf, sizeof(buf), "lustre/lov/%s/target_obd",
                  lov_name.uuid);
         while (!eof) {
-                rc = llapi_params_read(buf, strlen(buf), inbuf,
-                                       CFS_PAGE_SIZE, &offset, &eof);
+                rc = params_read(buf, strlen(buf), inbuf,
+                                 CFS_PAGE_SIZE, &offset, &eof);
                 if (rc <= 0) {
                         llapi_err(LLAPI_MSG_ERROR, "error: accessing '%s'", buf);
                         return rc;
                 }
                 offset = rc;
-                while ((rc = llapi_params_unpack(inbuf + pos, buf,
-                                                 sizeof(buf)))) {
+                while ((rc = params_unpack(inbuf + pos, buf, sizeof(buf)))) {
                         if (uuidp && (index < *ost_count)) {
                                 if (sscanf(buf, "%d: %s", &index, uuidp[index].uuid) <2)
                                         break;
@@ -1254,8 +1250,8 @@ static int setup_obd_uuid(DIR *dir, char *dname, struct find_param *param)
         /* Now get the ost uuids */
         snprintf(buf, sizeof(buf), "lustre/lov/%s/target_obd", lov_uuid.uuid);
         while (!eof) {
-                rc = llapi_params_read(buf, strlen(buf), inbuf,
-                                       CFS_PAGE_SIZE, &offset, &eof);
+                rc = params_read(buf, strlen(buf), inbuf,
+                                 CFS_PAGE_SIZE, &offset, &eof);
                 if (rc <= 0) {
                         llapi_err(LLAPI_MSG_ERROR, "error: accessing '%s'", buf);
                         return rc;
@@ -1264,8 +1260,7 @@ static int setup_obd_uuid(DIR *dir, char *dname, struct find_param *param)
                         llapi_printf(LLAPI_MSG_NORMAL, "OBDS:\n");
 
                 offset = rc;
-                while ((rc = llapi_params_unpack(inbuf + pos, buf,
-                                                 sizeof(buf)))) {
+                while ((rc = params_unpack(inbuf + pos, buf, sizeof(buf)))) {
                         if (sscanf(buf, "%d: %s", &index, uuid) < 2)
                                 break;
 
@@ -2087,7 +2082,7 @@ int llapi_ping(char *obd_type, char *obd_name)
 
         snprintf(path, MAX_STRING_SIZE, "lustre/%s/%s/ping",
                  obd_type, obd_name);
-        rc = llapi_params_write(path, strlen(path), buf, 1, 0);
+        rc = params_write(path, strlen(path), buf, 1, 0);
 
         if (rc == 1)
                 return 0;
@@ -2104,14 +2099,13 @@ int llapi_target_iterate(int type_num, char **obd_type,void *args,llapi_cb_t cb)
 
         while (!eof) {
                 memset(inbuf, 0, CFS_PAGE_SIZE);
-                rc = llapi_params_read(DEVICES_LIST, strlen(DEVICES_LIST),
-                                       inbuf, CFS_PAGE_SIZE, &offset, &eof);
+                rc = params_read(DEVICES_LIST, strlen(DEVICES_LIST),
+                                 inbuf, CFS_PAGE_SIZE, &offset, &eof);
                 if (rc <= 0)
                         return rc;
                 offset = rc;
                 memset(buf, 0, sizeof(buf));
-                while ((rc = llapi_params_unpack(inbuf + pos,
-                                                 buf, sizeof(buf)))) {
+                while ((rc = params_unpack(inbuf + pos, buf, sizeof(buf)))) {
                         char *obd_type_name = NULL;
                         char *obd_name = NULL;
                         char *obd_uuid = NULL;
@@ -2742,8 +2736,8 @@ int llapi_changelog_start(void **priv, int flags, const char *device,
                    got shipped through lnl (or error).  So we trigger it
                    from a child process here, allowing the llapi call to
                    return and wait for the lnl messages. */
-                rc = llapi_params_write(trigger, strlen(trigger),
-                                        (char *)&cs, sizeof(cs) - 1, 0);
+                rc = params_write(trigger, strlen(trigger),
+                                  (char *)&cs, sizeof(cs) - 1, 0);
                 exit(rc);
         }
 
@@ -2972,681 +2966,6 @@ int llapi_path2fid(const char *path, lustre_fid *fid)
 
         close(fd);
         return rc;
-}
-
-/* Parameters Tree APIs */
-/* Introduction to how to list/get/set_param from params_tree without glob.
- *
- * Since params_tree is platform independent structure, we can't access it
- * as procfs with posix system calls(open/close/read/write/glob).
- * In order to access it in lctl, we implement param pattern matching with
- * GNU regular expression lib.
- * The main steps include:
- * 1. analyse the input pattern (x.y.z) and create its compiled regexp list
- *    with some necessary semantic convertion (a->b->c).
- * 2. read parameter entry names from params_tree as readdir does, one level
- *    each time.
- * 3. match all parameter names in the same level with the corresponding regexp.
- *    if (matched && regexp_list_end), return this parameter;
- *    if (matched && !regexp_list_end), keep reading and matching;
- *    if (!matched), go out.
- * 4. copy all the matched parameters information into params_entry_list,
- *    including full pathname, mode.
- * Till now, list_param is done.
- *
- * 5. If get/set_param value is needed, continue to lookup the parameters by
- *    their full pathname, then call read/write callback functions.
- */
-#define MAX_PARAMS_BUFLEN       8192
-
-/* regular expression list */
-struct params_preg_list {
-        regex_t preg;
-        struct params_preg_list *next;
-};
-
-/* Free preg_list */
-static void params_free_preglist(struct params_preg_list *pr_list) {
-        struct params_preg_list *temp;
-
-        while (pr_list != NULL) {
-                temp = pr_list;
-                pr_list = pr_list->next;
-                regfree(&(temp->preg));
-                free(temp);
-        }
-}
-
-/* Wildcards in shell have different meanings from regular expression,
- * so we have to translate them to keep the semantic correctness. */
-static void pattern2regexp(const char *pattern, char *regexp)
-{
-        /* apply GNU regular expression lib to parse the path pattern
-         * wildcard translation:
-         *      *                       -> .*
-         *      ?                       -> .
-         * beginning of the string      -> ^
-         * end of the string            -> $
-         */
-        char *temp = NULL;
-
-        if (!regexp)
-                return;
-        temp = regexp;
-        *temp = '^';
-        temp ++;
-        while (*pattern != '\0') {
-                switch (*pattern) {
-                        case '*':
-                                *temp = '.';
-                                temp ++;
-                                *temp = '*';
-                                break;
-                        case '?':
-                                *temp = '.';
-                                break;
-                        default:
-                                *temp = *pattern;
-                                break;
-                }
-                temp ++;
-                pattern ++;
-        }
-        *temp = '$';
-        temp ++;
-        *temp = '\0';
-}
-
-/* create the regular expression list according to the path pattern */
-static struct params_preg_list *preg_list_create(const char *pattern)
-{
-#define REGEXP_LEN      64
-        int rc = 0;
-        char *path_pt = NULL;
-        char *temp_path = NULL;
-        char *dir_pt;
-        char regexp[REGEXP_LEN];
-        struct params_preg_list *preg_head = NULL;
-        struct params_preg_list *preg_list = NULL;
-        struct params_preg_list *preg_temp;
-
-        /* compile GNU regexp filter list */
-        path_pt = strdup(pattern);
-        temp_path = path_pt;
-        preg_head = malloc(sizeof(*preg_head));
-        if (!preg_head) {
-                llapi_err(LLAPI_MSG_ERROR,
-                          "error: %s: no memory for regexp_list!",
-                          __FUNCTION__);
-                rc = -ENOMEM;
-                goto out;
-        }
-        memset(preg_head, 0, sizeof(*preg_head));
-        /* add '*' because we need to match {lustre,lnet} first by default */
-        pattern2regexp("*", regexp);
-        if (regcomp(&(preg_head->preg), regexp, 0)) {
-                llapi_err(LLAPI_MSG_ERROR,
-                          "error: %s: regcomp failed!", __FUNCTION__);
-                rc = -EINVAL;
-                goto out;
-        }
-        preg_list = preg_head;
-        while ((dir_pt = strsep(&path_pt, "/"))) {
-                if (!strcmp(dir_pt, ""))
-                        continue;
-                pattern2regexp(dir_pt, regexp);
-                preg_temp = malloc(sizeof(*preg_temp));
-                if (!preg_temp) {
-                        llapi_err(LLAPI_MSG_ERROR,
-                                  "error: %s: no memory for preg_list!",
-                                  __FUNCTION__);
-                        rc = -ENOMEM;
-                        goto out;
-                }
-                memset(preg_temp, 0, sizeof(*preg_temp));
-                if (regcomp(&(preg_temp->preg), regexp, 0)) {
-                        llapi_err(LLAPI_MSG_ERROR,
-                                  "error: %s: regcomp failed!", __FUNCTION__);
-                        rc = -EINVAL;
-                        goto out;
-                }
-                preg_list->next = preg_temp;
-                preg_list = preg_list->next;
-        }
-out:
-        if (temp_path)
-                free(temp_path);
-        if (rc < 0)
-                if (preg_head)
-                        params_free_preglist(preg_head);
-
-        return preg_head;
-}
-
-/* receive params from kernel by pipe */
-static int
-params_pipe_recv(int fd, void *buf, int buflen, struct params_entry_list **pel)
-{
-        struct libcfs_param_pipe_hdr *lpph = buf;
-        struct libcfs_param_info *lpi;
-        struct params_entry_list *temp = NULL;
-        char *ptr;
-        int rc;
-
-        rc = read(fd, lpph, buflen);
-        if (rc < 0)
-                return rc;
-        /* Handle generic messages */
-        if (lpph->lpph_magic != LPPH_MAGIC) {
-                llapi_err(LLAPI_MSG_ERROR | LLAPI_MSG_NO_ERRNO,
-                          "Unknown magic type %d\n",
-                          lpph->lpph_magic);
-                return -EPROTO;
-        }
-        if (lpph->lpph_msgtype == LPPH_MSG_SHUTDOWN)
-                return 0;
-
-        lpi = (struct libcfs_param_info *)(lpph + 1);
-        temp = malloc(sizeof(*temp) + lpi->lpi_name_len + 1);
-        if (temp == NULL) {
-                llapi_err(LLAPI_MSG_ERROR,
-                          "error: %s: No memory for pel.\n",
-                          __FUNCTION__);
-                return -ENOMEM;
-        }
-        temp->pel_next = NULL;
-        temp->pel_name_len = lpi->lpi_name_len;
-        temp->pel_mode = lpi->lpi_mode;
-        ptr = (char *)temp + sizeof(struct params_entry_list);
-        strcpy(ptr, lpi->lpi_name);
-        temp->pel_name = ptr;
-        *pel = temp;
-
-        return rc;
-}
-
-/* client sends req{path, pfd[1]} to kernel by ioctl,
- * then kernel sends data back by pipe */
-static int send_req_to_kernel(int fd, char *path)
-{
-        struct libcfs_ioctl_data data = { 0 };
-        int ioc_data_buflen = 0;
-        char *ioc_data_buf = NULL;
-        char *buf;
-        int rc;
-
-        /* pack the parameters to ioc_data */
-        data.ioc_inllen1 = strlen(path) + 1;
-        data.ioc_inlbuf1 = path;
-        data.ioc_u32[0] = fd;
-        /* if MAX_PARAMS_BUFLEN is not large enough,
-         * we should avoid buflen < packlen */
-        ioc_data_buflen = libcfs_ioctl_packlen(&data);
-        if (ioc_data_buflen <= MAX_PARAMS_BUFLEN)
-                ioc_data_buflen = MAX_PARAMS_BUFLEN;
-        ioc_data_buf = malloc(ioc_data_buflen);
-        if (ioc_data_buf == NULL) {
-                llapi_err(LLAPI_MSG_ERROR,
-                          "error: %s: No memory for ioc_data.", __FUNCTION__);
-                rc = -ENOMEM;
-                return rc;
-        }
-        memset(ioc_data_buf, 0, ioc_data_buflen);
-        /* list params through libcfs_ioctl */
-        buf = ioc_data_buf;
-        rc = libcfs_ioctl_pack(&data, &buf, ioc_data_buflen);
-        if (rc) {
-                llapi_err(LLAPI_MSG_ERROR,
-                          "error: %s: Failed to pack libcfs_ioctl data (%d).",
-                          __FUNCTION__, rc);
-                rc = -rc;
-                goto out;
-        }
-        /* XXX: lreplicate can't recognize LNET_DEV_ID */
-        register_ioc_dev(LNET_DEV_ID, LNET_DEV_PATH,
-                         LNET_DEV_MAJOR, LNET_DEV_MINOR);
-        rc = l_ioctl(LNET_DEV_ID, IOC_LIBCFS_LIST_PARAM, buf);
-        if (rc) {
-                llapi_err(LLAPI_MSG_ERROR,
-                          "error: %s: IOC_LIBCFS_LIST_PARAM failed.",
-                          __FUNCTION__);
-                goto out;
-        }
-        rc = ((struct libcfs_ioctl_data *)buf)->ioc_u32[0];
-        if (rc < 0) {
-                goto out;
-        }
-out:
-        if (ioc_data_buf)
-                free(ioc_data_buf);
-        return rc;
-}
-
-/* list params entry as proc_readdir does. */
-static int params_readdir(char *parent_path, struct params_entry_list **pel)
-{
-        struct params_entry_list *temp = NULL;
-        char *buffer = NULL;
-        int pfd[2];
-        int len = 0;
-        int rc = 0;
-
-        /* reads from pfd[0], write to pfd[1] */
-        rc = pipe(pfd);
-        if (rc < 0) {
-                llapi_err(LLAPI_MSG_ERROR,
-                          "error: %s: Failed to open pipe file (%d).",
-                          __FUNCTION__, rc);
-                return rc;
-        }
-        /* send pfd[1] to kernel */
-        rc = send_req_to_kernel(pfd[1], parent_path);
-        if (rc < 0)
-                return rc;
-        /* prepare read buffer */
-        len = sizeof(struct libcfs_param_pipe_hdr) +
-              sizeof(struct libcfs_param_info) + LPE_NAME_MAXLEN;
-        buffer = malloc(len);
-        if (buffer == NULL) {
-                llapi_err(LLAPI_MSG_ERROR,
-                          "error: %s: Failed to malloc pipe read buf.",
-                          __FUNCTION__);
-                return -ENOMEM;
-        }
-        /* pipe read */
-        while (1) {
-                rc = params_pipe_recv(pfd[0], buffer, len, &temp);
-                if (rc == 0)
-                        /* pipe write is over */
-                        break;
-                if (rc < 0) {
-                        llapi_err(LLAPI_MSG_ERROR,
-                                  "error: Message receive: %s", strerror(-rc));
-                        break;
-                }
-                temp->pel_next = NULL;
-                (*pel)->pel_next = temp;
-                (*pel) = (*pel)->pel_next;
-        }
-        close(pfd[0]);
-        close(pfd[1]);
-        free(buffer);
-
-        return rc;
-}
-
-void llapi_params_free_entrylist(struct params_entry_list *entry_list);
-/* match the entry list with the regular expression list */
-static int params_match(char *parent_path, struct params_preg_list *pregl,
-                        struct params_entry_list **pel)
-{
-        int pel_name_len = 0;
-        int rc = 0;
-        char *pel_name = NULL;
-        struct params_entry_list *curdir = NULL;
-        struct params_entry_list *curdir_list = NULL;
-        struct params_entry_list *new_pel;
-
-        curdir = malloc(sizeof(*curdir));
-        if (!curdir) {
-                llapi_err(LLAPI_MSG_ERROR,
-                          "error: %s: No memory for curdir.", __FUNCTION__);
-                rc = -ENOMEM;
-                goto out;
-        }
-        memset(curdir, 0, sizeof(*curdir));
-        curdir_list = curdir;
-        rc = params_readdir(parent_path, &curdir);
-        if (rc < 0)
-                goto out;
-        curdir = curdir_list->pel_next;
-        while (curdir) {
-                /* unmatched */
-                if (regexec(&(pregl->preg), curdir->pel_name, 0, 0, 0)) {
-                        curdir = curdir->pel_next;
-                        continue;
-                }
-                /* matched: copy full path */
-                pel_name_len = strlen(parent_path) + 1 + curdir->pel_name_len;
-                pel_name = malloc(pel_name_len + 1);
-                if (!pel_name) {
-                        llapi_err(LLAPI_MSG_ERROR,
-                                  "error: %s: No memory for pel_name.",
-                                  __FUNCTION__);
-                        rc = -ENOMEM;
-                        goto out;
-                }
-                memset(pel_name, 0, pel_name_len + 1);
-                strncpy(pel_name, parent_path, strlen(parent_path));
-                pel_name[strlen(parent_path)] = '/';
-                strncpy(pel_name + strlen(parent_path) + 1,
-                        curdir->pel_name, curdir->pel_name_len);
-                /* if reach the end of preg list, copy the matched results;
-                 * otherwise, if the current entry is a dir or symlink,
-                 * read through its children. */
-                if (!pregl->next) {
-                        new_pel = malloc(sizeof(*new_pel));
-                        if (!new_pel) {
-                                llapi_err(LLAPI_MSG_ERROR,
-                                          "error: %s: No memory for pel.",
-                                          __FUNCTION__);
-                                rc = -ENOMEM;
-                                goto out;
-                        }
-                        memset(new_pel, 0, sizeof(*new_pel));
-                        new_pel->pel_name_len = pel_name_len;
-                        new_pel->pel_name = pel_name;
-                        new_pel->pel_mode = curdir->pel_mode;
-                        new_pel->pel_next = NULL;
-                        if (*pel != NULL) {
-                                (*pel)->pel_next = new_pel;
-                                *pel = new_pel;
-                        } else {
-                                *pel = new_pel;
-                        }
-                } else if (S_ISDIR(curdir->pel_mode) || S_ISLNK(curdir->pel_mode)){
-                        params_match(pel_name, pregl->next, pel);
-                        free(pel_name);
-                        pel_name = NULL;
-                }
-                curdir = curdir->pel_next;
-        }
-out:
-        if (curdir_list)
-                llapi_params_free_entrylist(curdir_list);
-
-        return rc;
-}
-
-/* list the matched entries */
-int llapi_params_list(const char *pattern, struct params_entry_list **pel_ptr)
-{
-        /* 1. create regular expression list according to the pattern
-         * 2. read the params entry back
-         * 3. match the entries with regexp and return
-         */
-        int rc = 0;
-        struct params_preg_list *preg_head = NULL;
-        struct params_entry_list *pel = NULL;
-
-        if (pattern == NULL) {
-                llapi_err(LLAPI_MSG_ERROR,
-                          "error: %s: Null path pattern.", __FUNCTION__);
-                return -EINVAL;
-        }
-
-        *pel_ptr = malloc(sizeof(struct params_entry_list));
-        if (*pel_ptr == NULL) {
-                llapi_err(LLAPI_MSG_ERROR,
-                          "error: %s: No memory for pel_list.",
-                          __FUNCTION__);
-                return -ENOMEM;
-        }
-        memset(*pel_ptr, 0, sizeof(struct params_entry_list));
-        pel = *pel_ptr;
-
-        preg_head = preg_list_create(pattern);
-        if (preg_head) {
-                rc = params_match("params_root", preg_head, &pel);
-                params_free_preglist(preg_head);
-                if ((*pel_ptr)->pel_next == NULL) {
-                        llapi_err(LLAPI_MSG_NO_ERRNO,
-                                  "param \"%s\" not found!", pattern);
-                        rc = -ESRCH;
-                }
-        }
-
-        return rc;
-}
-
-/* Get parameters from the params tree */
-int llapi_params_read(char *path, int path_len, char *read_buf,
-                      int buf_len, long long *offset, int *eof)
-{
-        struct libcfs_ioctl_data data = { 0 };
-        int rc = 0;
-        int ioc_data_buflen = 0;
-        char *ioc_data_buf = NULL;
-        char *pathname = NULL;
-        char *buf;
-
-        if (!path || path_len <= 0) {
-                llapi_err(LLAPI_MSG_ERROR,
-                          "error: %s: Path is null.", __FUNCTION__);
-                rc = -EINVAL;
-                goto out;
-        }
-        memset(read_buf, 0, buf_len);
-        /* pack the parameters to ioc_data */
-        data.ioc_inllen1 = path_len + 1;
-        pathname = malloc(path_len + 1);
-        if (!pathname) {
-                llapi_err(LLAPI_MSG_ERROR,
-                          "error: %s: No memory for path name.",
-                          __FUNCTION__);
-                rc = -ENOMEM;
-                goto out;
-        }
-        /* can't remove this memset because it will cause
-         * libcfs_ioctl_is_invalid() failure:inlbuf1 not 0 terminated*/
-        memset(pathname, 0, path_len + 1);
-        strncpy(pathname, path, path_len);
-        data.ioc_inlbuf1 = pathname;
-        data.ioc_u64[0] = *offset;
-        data.ioc_plen1 = buf_len;
-        data.ioc_pbuf1 = read_buf;
-        /* avoid buflen < packlen */
-        ioc_data_buflen = libcfs_ioctl_packlen(&data);
-        if (ioc_data_buflen <= MAX_PARAMS_BUFLEN)
-                ioc_data_buflen = MAX_PARAMS_BUFLEN;
-        ioc_data_buf = malloc(ioc_data_buflen);
-        if (ioc_data_buf == NULL) {
-                llapi_err(LLAPI_MSG_ERROR,
-                          "error: %s: No memory for ioc_data.", __FUNCTION__);
-                rc = -ENOMEM;
-                goto out;
-        }
-        memset(ioc_data_buf, 0, ioc_data_buflen);
-        /* read params values through libcfs_ioctl */
-        buf = ioc_data_buf;
-        rc = libcfs_ioctl_pack(&data, &buf, ioc_data_buflen);
-        if (rc) {
-                llapi_err(LLAPI_MSG_ERROR,
-                          "error: %s: Failed to pack libcfs_ioctl data (%d).",
-                          __FUNCTION__, rc);
-                rc = -rc;
-                goto out;
-        }
-        register_ioc_dev(LNET_DEV_ID, LNET_DEV_PATH,
-                         LNET_DEV_MAJOR, LNET_DEV_MINOR);
-        rc = l_ioctl(LNET_DEV_ID, IOC_LIBCFS_GET_PARAM, buf);
-        if (rc) {
-                llapi_err(LLAPI_MSG_ERROR,
-                          "error: %s: IOC_LIBCFS_GET_PARAM failed.",
-                          __FUNCTION__);
-                goto out;
-        }
-        *offset = ((struct libcfs_ioctl_data*)buf)->ioc_u64[0];
-        *eof = ((struct libcfs_ioctl_data*)buf)->ioc_u32[1];
-        rc = ((struct libcfs_ioctl_data*)buf)->ioc_u32[0];
-out:
-        if (pathname)
-                free(pathname);
-        if (ioc_data_buf)
-                free(ioc_data_buf);
-
-        return rc;
-}
-
-int llapi_params_write(char *path, int path_len, char *write_buf, int buf_len,
-                       int offset)
-{
-        struct libcfs_ioctl_data data = { 0 };
-        int rc = 0;
-        int ioc_data_buflen = 0;
-        char *ioc_data_buf = NULL;
-        char *pathname = NULL;
-        char *buf;
-
-        if (!path || path_len <= 0) {
-                llapi_err(LLAPI_MSG_ERROR,
-                          "error: %s: Path is null.", __FUNCTION__);
-                rc = -EINVAL;
-                goto out;
-        }
-
-        /* pack the parameters to data first */
-        data.ioc_inllen1 = path_len + 1;
-        pathname = malloc(path_len + 1);
-        if (!pathname) {
-                llapi_err(LLAPI_MSG_ERROR,
-                          "error: %s: No memory for path name.",
-                          __FUNCTION__);
-                rc = -ENOMEM;
-                goto out;
-        }
-        /* can't remove this memset because it will cause
-         * libcfs_ioctl_is_invalid() failure:inlbuf1 not 0 terminated*/
-        memset(pathname, 0, path_len + 1);
-        strncpy(pathname, path, path_len);
-        data.ioc_inlbuf1 = pathname;
-        data.ioc_inlbuf2 = write_buf;
-        data.ioc_inllen2 = buf_len + 1;
-        /* avoid buflen < packlen */
-        ioc_data_buflen = libcfs_ioctl_packlen(&data);
-        if (ioc_data_buflen <= MAX_PARAMS_BUFLEN)
-                ioc_data_buflen = MAX_PARAMS_BUFLEN;
-        ioc_data_buf = malloc(ioc_data_buflen);
-        if (ioc_data_buf == NULL) {
-                llapi_err(LLAPI_MSG_ERROR,
-                          "error: %s: No memory for ioc_data.",
-                          __FUNCTION__);
-                rc = -ENOMEM;
-                goto out;
-        }
-        memset(ioc_data_buf, 0, ioc_data_buflen);
-        /* write params values through libcfs_ioctl */
-        buf = ioc_data_buf;
-        rc = libcfs_ioctl_pack(&data, &buf, ioc_data_buflen);
-        if (rc) {
-                llapi_err(LLAPI_MSG_ERROR,
-                          "error: %s: Failed to pack libcfs_ioctl data (%d).",
-                          __FUNCTION__, rc);
-                rc = -rc;
-                goto out;
-        }
-        /* XXX: l_getidentity can't recognize LNET_DEV_ID */
-        register_ioc_dev(LNET_DEV_ID, LNET_DEV_PATH,
-                         LNET_DEV_MAJOR, LNET_DEV_MINOR);
-        rc = l_ioctl(LNET_DEV_ID, IOC_LIBCFS_SET_PARAM, buf);
-        if (rc) {
-                llapi_err(LLAPI_MSG_ERROR,
-                          "error: %s: IOC_LIBCFS_SET_PARAM failed.",
-                          __FUNCTION__);
-                goto out;
-        }
-        rc = ((struct libcfs_ioctl_data*)buf)->ioc_u32[0];
-out:
-        if (pathname)
-                free(pathname);
-        if (ioc_data_buf)
-                free(ioc_data_buf);
-
-        return rc;
-}
-
-int llapi_params_value_output(struct libcfs_param_data data, char *outbuf)
-{
-        switch (data.param_type) {
-                case LP_D16: {
-                        short temp;
-                        memcpy(&temp, data.param_value, data.param_value_len);
-                        sprintf(outbuf, "%d", temp);
-                        break; }
-                case LP_D32: {
-                        int temp;
-                        memcpy(&temp, data.param_value, data.param_value_len);
-                        sprintf(outbuf, "%d", temp);
-                        break; }
-                case LP_D64: {
-                        long long temp;
-                        memcpy(&temp, data.param_value, data.param_value_len);
-                        sprintf(outbuf, "%lld", temp);
-                        break; }
-                case LP_U8: {
-                        __u8 temp;
-                        memcpy(&temp, data.param_value, data.param_value_len);
-                        sprintf(outbuf, "%u", temp);
-                        break; }
-                case LP_U16: {
-                        __u16 temp;
-                        memcpy(&temp, data.param_value, data.param_value_len);
-                        sprintf(outbuf, "%u", temp);
-                        break; }
-                case LP_U32: {
-                        __u32 temp;
-                        memcpy(&temp, data.param_value, data.param_value_len);
-                        sprintf(outbuf, "%u", temp);
-                        break; }
-                case LP_U64: {
-                        __u64 temp;
-                        memcpy(&temp, data.param_value, data.param_value_len);
-                        sprintf(outbuf, "%llu", temp);
-                        break; }
-                case LP_DB:
-                case LP_STR:
-                        if (data.param_value[data.param_value_len - 1] == '\n')
-                                data.param_value[data.param_value_len - 1]='\0';
-                        sprintf(outbuf, "%s", data.param_value);
-                        break;
-                default:
-                        llapi_err(LLAPI_MSG_WARN,
-                                  "warning: %s: unknown libcfs_param_data_type",
-                                  " (%d).", __FUNCTION__, data.param_type);
-                        return 0;
-        }
-
-        return strlen(outbuf);
-}
-
-/* one record each time */
-int llapi_params_unpack(char *inbuf, char *outbuf, int outbuf_len)
-{
-        struct libcfs_param_data data;
-
-        if (*inbuf == '\0')
-                return 0;
-
-        if (!libcfs_param_unpack(&data, inbuf)) {
-                if (data.param_name) {
-                        sprintf(outbuf, "%s\t", data.param_name);
-                        outbuf += data.param_name_len + 1;
-                }
-                if (data.param_value)
-                        outbuf += llapi_params_value_output(data, outbuf);
-                if (data.param_unit) {
-                        sprintf(outbuf, "%s\n", data.param_unit);
-                        outbuf += data.param_unit_len + 1;
-                } else {
-                        sprintf(outbuf, "%s", "\n");
-                        outbuf += 1;
-                }
-                libcfs_param_free_value(&data);
-        }
-
-        return libcfs_param_packlen(&data);
-}
-
-/* Free params_entry_list */
-void llapi_params_free_entrylist(struct params_entry_list *entry_list)
-{
-        struct params_entry_list *pel;
-
-        while (entry_list != NULL) {
-                pel = entry_list;
-                entry_list = entry_list->pel_next;
-                free(pel);
-        }
 }
 
 /****** HSM Copytool API ********/
