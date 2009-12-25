@@ -13,7 +13,7 @@
  *  - lod_qos_statfs_update() to recalculate space with fixed block size
  *  - do we need read/write support in LOD ?
  *  - mbo_stripenr can change in QoS, how do we release correct mbo_stripe ?
- *  - qos_add_tgt() to learn configuration
+ *  - qos_add_tgt() to learn configuration (how OSTs map OSSs)
  
 * OSP TODO
  *  - shutdown
@@ -22,12 +22,14 @@
  *  - send uid/gid changes immediately?
  *  - adaptive precreation (shouldn't block in most cases)
  *  - support for CMD (group = mds #)
+ *  - object reservation in ->do_declare_create()
  *  - release object reservation when object is created or released
  *  - start orphan cleanup when recovery is over
  *  - negotiate proper connect data
  *  - how to handle precreation failure
  *  - ost_precreate_reserve() to return -EIO if connection is broken
  *  - bulk RPC to OST
+ *  - many return codes for bulk?
  *  - llog_process() to get a cursor to skip non-committed-yet changes
  *  - a mechanism to learn committness ASAP?
  *  - what ->statfs() returns when connection is down?
@@ -41,3 +43,6 @@ Questions:
        less when required for the given pattern?
  *   - what happens if administrator deactivates OST between declare and create?
  *   - how do we control ltd_active?
+ *   - how to test QoS/RR
+ *   - how do we block in creation till at least one OST is connected?
+
