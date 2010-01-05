@@ -100,10 +100,11 @@ ssize_t cfs_write_fd(int fd, const char *buf, size_t count, loff_t *offset)
 				fd, (int)PTR_ERR(filp));
                 return -EIO;
         }
-        while (count > 0) {
+        while ((ssize_t)count > 0) {
                 size = filp->f_op->write(filp, (char *)buf, count, offset);
                 if (size < 0)
                         break;
+                buf += size;
                 count -= size;
                 size = 0;
         }
