@@ -1519,8 +1519,7 @@ void lustre_swab_obdo (struct obdo  *o)
         __swab32s (&o->o_nlink);
         __swab32s (&o->o_generation);
         __swab32s (&o->o_misc);
-        __swab32s (&o->o_easize);
-        __swab32s (&o->o_mds);
+        __swab64s (&o->o_ioepoch);
         __swab32s (&o->o_stripe_idx);
         __swab32s (&o->o_padding_1);
         /* o_inline is opaque */
@@ -1649,7 +1648,7 @@ void lustre_swab_mdt_body (struct mdt_body *b)
         __swab32s (&b->padding_4);
 }
 
-void lustre_swab_mdt_epoch (struct mdt_epoch *b)
+void lustre_swab_mdt_ioepoch (struct mdt_ioepoch *b)
 {
         /* handle is opaque */
          __swab64s (&b->ioepoch);
@@ -2030,10 +2029,8 @@ void dump_obdo(struct obdo *oa)
         if (valid & OBD_MD_FLGENER)
                 CDEBUG(D_RPCTRACE, "obdo: o_generation = %u\n",
                        oa->o_generation);
-        if (valid & OBD_MD_FLEASIZE)
-                CDEBUG(D_RPCTRACE, "obdo: o_easize = %u\n", oa->o_easize);
         else if (valid & OBD_MD_FLEPOCH)
-                CDEBUG(D_RPCTRACE, "obdo: o_epoc (o_easize) = %u\n", oa->o_easize);
+                CDEBUG(D_RPCTRACE, "obdo: o_ioepoch = "LPD64"\n", oa->o_ioepoch);
         if (valid & OBD_MD_FLID)
                 CDEBUG(D_RPCTRACE, "obdo: o_stripe_idx = %u\n", oa->o_stripe_idx);
         if (valid & OBD_MD_FLHANDLE)

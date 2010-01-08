@@ -1533,6 +1533,76 @@ int parse_opts(int argc, char *const argv[], struct mkfs_opts *mop,
         return 0;
 }
 
+/* Search for opt in mntlist, returning true if found.
+ */
+static int in_mntlist(char *opt, char *mntlist)
+{
+        char *ml, *mlp, *item, *ctx = NULL;
+
+        if (!(ml = strdup(mntlist))) {
+                fprintf(stderr, "%s: out of memory\n", progname);
+                exit(1);
+        }
+        mlp = ml;
+        while ((item = strtok_r(mlp, ",", &ctx))) {
+                if (!strcmp(opt, item))
+                        break;
+                mlp = NULL;
+        }
+        free(ml);
+        return (item != NULL);
+}
+
+/* Issue a message on stderr for every item in wanted_mountopts that is not
+ * present in mountopts.  The justwarn boolean toggles between error and
+ * warning message.  Return an error count.
+ */
+static int check_mountfsoptions(char *mountopts, char *wanted_mountopts,
+                                int justwarn)
+{
+        char *ml, *mlp, *item, *ctx = NULL;
+        int errors = 0;
+
+        if (!(ml = strdup(wanted_mountopts))) {
+                fprintf(stderr, "%s: out of memory\n", progname);
+                exit(1);
+        }
+        mlp = ml;
+        while ((item = strtok_r(mlp, ",", &ctx))) {
+                if (!in_mntlist(item, mountopts)) {
+                        fprintf(stderr, "%s: %s mount option `%s' is missing\n",
+                                progname, justwarn ? "Warning: default"
+                                : "Error: mandatory", item);
+                        errors++;
+                }
+                mlp = NULL;
+        }
+        free(ml);
+        return errors;
+}
+
+/* Trim embedded white space, leading and trailing commas from string s.
+ */
+static void trim_mountfsoptions(char *s)
+{
+        char *p;
+
+        for (p = s; *p; ) {
+                if (isspace(*p)) {
+                        memmove(p, p + 1, strlen(p + 1) + 1);
+                        continue;
+                }
+                p++;
+        }
+
+        while (s[0] == ',')
+                memmove(&s[0], &s[1], strlen(&s[1]) + 1);
+
+        p = s + strlen(s) - 1;
+        while (p >= s && *p == ',')
+                *p-- = '\0';
+}
+
 int main(int argc, char *const argv[])
 {
         struct mkfs_opts mop;

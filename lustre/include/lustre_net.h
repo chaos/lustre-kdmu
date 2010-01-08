@@ -371,7 +371,8 @@ struct ptlrpc_request {
                 rq_packed_final:1,  /* packed final reply */
                 rq_hp:1,            /* high priority RPC */
                 rq_at_linked:1,     /* link into service's srv_at_array */
-                rq_reply_truncate:1;
+                rq_reply_truncate:1,
+                rq_committed:1;
 
         enum rq_phase rq_phase; /* one of RQ_PHASE_* */
         enum rq_phase rq_next_phase; /* one of RQ_PHASE_* to be used next */
@@ -1206,7 +1207,7 @@ ptlrpc_rqphase_move(struct ptlrpc_request *req, enum rq_phase new_phase)
                         atomic_dec(&req->rq_import->imp_unregistering);
         }
 
-        DEBUG_REQ(D_RPCTRACE, req, "move req \"%s\" -> \"%s\"",
+        DEBUG_REQ(D_INFO, req, "move req \"%s\" -> \"%s\"",
                   ptlrpc_rqphase2str(req), ptlrpc_phase2str(new_phase));
 
         req->rq_phase = new_phase;

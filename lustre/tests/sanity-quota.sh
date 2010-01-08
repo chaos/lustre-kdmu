@@ -1583,7 +1583,7 @@ test_18b() {
 	# check if watchdog is triggered
 	do_facet ost1 dmesg > $TMP/lustre-log-${TESTNAME}.log
 	watchdog=`awk '/test 18b/ {start = 1;}
-	               /Watchdog triggered/ {
+	               /Service thread pid/ && /was inactive/ {
 			       if (start) {
 				       print;
 			       }
@@ -2061,30 +2061,6 @@ test_28() {
 }
 run_test_with_stat 28 "test for consistency for qunit when setquota (18574) ==========="
 
-test_30()
-{
-        local output
-        local LIMIT=1024
-        local TESTFILE="$DIR/$tdir/$tfile"
-        local GRACE=10
-
-        mkdir -p $DIR/$tdir
-        chmod 0777 $DIR/$tdir
-
-        $LFS setquota -t -u --block-grace $GRACE --inode-grace $MAX_IQ_TIME $DIR
-        $LFS setquota -u $TSTUSR -b $LIMIT -B 0 -i 0 -I 0 $DIR
-        $RUNAS dd if=/dev/zero of=$TESTFILE bs=1024 count=$((LIMIT * 2)) || true
-        cancel_lru_locks osc
-        sleep 5
-        $LFS setquota -u $TSTUSR -B 0 $DIR
-        output=`$SHOW_QUOTA_USER | grep $MOUNT | awk '{ print $5 }' | tr -d s`
-        [ "$output" -le "$((GRACE - 5))" ] || error "grace times were reset or unexpectedly high latency"
-        rm -f $TESTFILE
-        resetquota -u $TSTUSR
-        $LFS setquota -t -u --block-grace $MAX_DQ_TIME --inode-grace $MAX_IQ_TIME $DIR
-}
-run_test_with_stat 30 "hard limit updates should not reset grace times ================"
-
 test_29()
 {
         local BLK_LIMIT=$((100 * 1024 * 1024)) # 100G
@@ -2125,6 +2101,79 @@ test_29()
         resetquota -u $TSTUSR
 }
 run_test_with_stat 29 "unhandled quotactls must not hang lustre client (19778) ========"
+
+test_30()
+{
+        local output
+        local LIMIT=1024
+        local TESTFILE="$DIR/$tdir/$tfile"
+        local GRACE=10
+
+        mkdir -p $DIR/$tdir
+        chmod 0777 $DIR/$tdir
+
+        $LFS setquota -t -u --block-grace $GRACE --inode-grace $MAX_IQ_TIME $DIR
+        $LFS setquota -u $TSTUSR -b $LIMIT -B 0 -i 0 -I 0 $DIR
+        $RUNAS dd if=/dev/zero of=$TESTFILE bs=1024 count=$((LIMIT * 2)) || true
+        cancel_lru_locks osc
+        sleep 5
+        $LFS setquota -u $TSTUSR -B 0 $DIR
+        $SHOW_QUOTA_USER
+        output=`$SHOW_QUOTA_USER | grep $MOUNT | awk '{ print $5 }' | tr -d s`
+        [ "$output" -le "$((GRACE - 5))" ] || error "grace times were reset or unexpectedly high latency"
+        rm -f $TESTFILE
+        resetquota -u $TSTUSR
+        $LFS setquota -t -u --block-grace $MAX_DQ_TIME --inode-grace $MAX_IQ_TIME $DIR
+}
+run_test_with_stat 30 "hard limit updates should not reset grace times ================"
+
+# test duplicate quota releases b=18630
+test_31() {
+        mkdir -p $DIR/$tdir
+        chmod 0777 $DIR/$tdir
+
+        LIMIT=$(( $BUNIT_SZ * $(($OSTCOUNT + 1)) * 10)) # 10 bunits each sever
+        TESTFILE="$DIR/$tdir/$tfile-0"
+        TESTFILE2="$DIR/$tdir/$tfile-1"
+
+        wait_delete_completed
+
+        log "   User quota (limit: $LIMIT kbytes)"
+        $LFS setquota -u $TSTUSR -b 0 -B $LIMIT -i 0 -I 0 $DIR
+
+        $LFS setstripe $TESTFILE -i 0 -c 1
+        chown $TSTUSR.$TSTUSR $TESTFILE
+        $LFS setstripe $TESTFILE2 -i 0 -c 1
+        chown $TSTUSR.$TSTUSR $TESTFILE2
+
+        log "   step1: write out of block quota ..."
+        $RUNAS dd if=/dev/zero of=$TESTFILE bs=$BLK_SZ count=5120
+        $RUNAS dd if=/dev/zero of=$TESTFILE2 bs=$BLK_SZ count=5120
+
+        #define OBD_FAIL_QUOTA_DELAY_SD      0xA04
+        #define OBD_FAIL_SOME        0x10000000 /* fail N times */
+        lustre_fail ost $((0x00000A04 | 0x10000000)) 1
+
+        log "   step2: delete two files so that triggering duplicate quota release ..."
+        rm -f $TESTFILE $TESTFILE2
+        sync; sleep 5; sync      #  OBD_FAIL_QUOTA_DELAY_SD will delay for 5 seconds
+        wait_delete_completed
+
+        log "   step3: verify if the ost failed"
+        do_facet ost1 dmesg > $TMP/lustre-log-${TESTNAME}.log
+        watchdog=`awk '/test 31/ {start = 1;}
+                       /release quota error/ {
+                               if (start) {
+                                       print;
+                               }
+                       }' $TMP/lustre-log-${TESTNAME}.log`
+        [ "$watchdog" ] && error "$watchdog"
+        rm -f $TMP/lustre-log-${TESTNAME}.log
+
+        lustre_fail ost 0
+        resetquota -u $TSTUSR
+}
+run_test_with_stat 31 "test duplicate quota releases ==="
 
 # turn off quota
 quota_fini()

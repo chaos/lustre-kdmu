@@ -1250,6 +1250,12 @@ test_27y() {
         [ "$OSTCOUNT" -lt "2" ] && skip_env "$OSTCOUNT < 2 OSTs -- skipping" && return
         remote_mds_nodsh && skip "remote MDS with nodsh" && return
 
+        local last_id=$(do_facet $SINGLEMDS lctl get_param -n osc.*0000-osc-MDT0000.prealloc_last_id)
+        local next_id=$(do_facet $SINGLEMDS lctl get_param -n osc.*0000-osc-MDT0000.prealloc_next_id)
+        local fcount=$((last_id - next_id))
+        [ $fcount -eq 0 ] && skip "not enough space on OST0" && return
+        [ $fcount -gt $OSTCOUNT ] && fcount=$OSTCOUNT
+
         MDS_OSCS=`do_facet mds lctl dl | awk '/[oO][sS][cC].*md[ts]/ { print $4 }'`
         OFFSET=$(($OSTCOUNT-1))
         OST=-1
@@ -1268,7 +1274,7 @@ test_27y() {
 
         do_facet ost$OSTIDX lctl set_param -n obdfilter.$OST.degraded 1
         sleep_maxage
-        createmany -o $DIR/$tdir/$tfile $OSTCOUNT
+        createmany -o $DIR/$tdir/$tfile $fcount
         do_facet ost$OSTIDX lctl set_param -n obdfilter.$OST.degraded 0
 
         for i in `seq 0 $OFFSET`; do
@@ -5940,8 +5946,11 @@ test_132() { #1028, SOM
         stat $DIR/$tfile >/dev/null
         gl2=$(get_ost_param "ldlm_glimpse_enqueue")
         echo "====> SOM is "$som1", "$((gl2 - gl1))" glimpse RPC occured"
-        cancel_lru_locks osc
+        rm $DIR/$tfile
         som_mode_switch $som1 $gl1 $gl2
+
+        dd if=/dev/zero of=$DIR/$tfile count=1 2>/dev/null
+        cancel_lru_locks osc
 
         som2=$(do_facet $mymds "$LCTL get_param mdt.*.som" |  awk -F= ' {print $2}' | head -n 1)
         if [ $som1 == $som2 ]; then

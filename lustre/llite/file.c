@@ -77,10 +77,15 @@ void ll_pack_inode2opdata(struct inode *inode, struct md_op_data *op_data,
         op_data->op_attr_blocks = inode->i_blocks;
         ((struct ll_iattr *)&op_data->op_attr)->ia_attr_flags = inode->i_flags;
         op_data->op_ioepoch = ll_i2info(inode)->lli_ioepoch;
-        memcpy(&op_data->op_handle, fh, sizeof(op_data->op_handle));
+        if (fh)
+                op_data->op_handle = *fh;
         op_data->op_capa1 = ll_mdscapa_get(inode);
 }
 
+/**
+ * Closes the IO epoch and packs all the attributes into @op_data for
+ * the CLOSE rpc.
+ */
 static void ll_prepare_close(struct inode *inode, struct md_op_data *op_data,
                              struct obd_client_handle *och)
 {
@@ -92,13 +97,15 @@ static void ll_prepare_close(struct inode *inode, struct md_op_data *op_data,
         if (!(och->och_flags & FMODE_WRITE))
                 goto out;
 
-        if (!(exp_connect_som(ll_i2mdexp(inode))) || !S_ISREG(inode->i_mode))
+        if (!exp_connect_som(ll_i2mdexp(inode)) || !S_ISREG(inode->i_mode))
                 op_data->op_attr.ia_valid |= ATTR_SIZE | ATTR_BLOCKS;
         else
-                ll_epoch_close(inode, op_data, &och, 0);
+                ll_ioepoch_close(inode, op_data, &och, 0);
 
 out:
         ll_pack_inode2opdata(inode, op_data, &och->och_fh);
+        ll_prep_md_op_data(op_data, inode, NULL, NULL,
+                           0, 0, LUSTRE_OPC_ANY, NULL);
         EXIT;
 }
 
@@ -124,14 +131,6 @@ static int ll_close_inode_openhandle(struct obd_export *md_exp,
                 GOTO(out, rc = 0);
         }
 
-        /*
-         * here we check if this is forced umount. If so this is called on
-         * canceling "open lock" and we do not call md_close() in this case, as
-         * it will not be successful, as import is already deactivated.
-         */
-        if (obd->obd_force)
-                GOTO(out, rc = 0);
-
         OBD_ALLOC_PTR(op_data);
         if (op_data == NULL)
                 GOTO(out, rc = -ENOMEM); // XXX We leak openhandle and request here.
@@ -144,8 +143,7 @@ static int ll_close_inode_openhandle(struct obd_export *md_exp,
                 LASSERT(epoch_close);
                 /* MDS has instructed us to obtain Size-on-MDS attribute from
                  * OSTs and send setattr to back to MDS. */
-                rc = ll_sizeonmds_update(inode, &och->och_fh,
-                                         op_data->op_ioepoch);
+                rc = ll_som_update(inode, op_data);
                 if (rc) {
                         CERROR("inode %lu mdc Size-on-MDS update failed: "
                                "rc = %d\n", inode->i_ino, rc);
@@ -167,7 +165,7 @@ static int ll_close_inode_openhandle(struct obd_export *md_exp,
         EXIT;
 out:
 
-        if ((exp->exp_connect_flags & OBD_CONNECT_SOM) && !epoch_close &&
+        if (exp_connect_som(exp) && !epoch_close &&
             S_ISREG(inode->i_mode) && (och->och_flags & FMODE_WRITE)) {
                 ll_queue_done_writing(inode, LLIF_DONE_WRITING);
         } else {
@@ -405,6 +403,11 @@ out:
         RETURN(rc);
 }
 
+/**
+ * Assign an obtained @ioepoch to client's inode. No lock is needed, MDS does
+ * not believe attributes if a few ioepoch holders exist. Attributes for
+ * previous ioepoch if new one is opened are also skipped by MDS.
+ */
 void ll_ioepoch_open(struct ll_inode_info *lli, __u64 ioepoch)
 {
         if (ioepoch && lli->lli_ioepoch != ioepoch) {
@@ -684,7 +687,8 @@ out_openerr:
 
 /* Fills the obdo with the attributes for the lsm */
 static int ll_lsm_getattr(struct lov_stripe_md *lsm, struct obd_export *exp,
-                          struct obd_capa *capa, struct obdo *obdo)
+                          struct obd_capa *capa, struct obdo *obdo,
+                          __u64 ioepoch, int sync)
 {
         struct ptlrpc_request_set *set;
         struct obd_info            oinfo = { { { 0 } } };
@@ -699,12 +703,17 @@ static int ll_lsm_getattr(struct lov_stripe_md *lsm, struct obd_export *exp,
         oinfo.oi_oa->o_id = lsm->lsm_object_id;
         oinfo.oi_oa->o_gr = lsm->lsm_object_gr;
         oinfo.oi_oa->o_mode = S_IFREG;
+        oinfo.oi_oa->o_ioepoch = ioepoch;
         oinfo.oi_oa->o_valid = OBD_MD_FLID | OBD_MD_FLTYPE |
                                OBD_MD_FLSIZE | OBD_MD_FLBLOCKS |
                                OBD_MD_FLBLKSZ | OBD_MD_FLATIME |
                                OBD_MD_FLMTIME | OBD_MD_FLCTIME |
-                               OBD_MD_FLGROUP;
+                               OBD_MD_FLGROUP | OBD_MD_FLEPOCH;
         oinfo.oi_capa = capa;
+        if (sync) {
+                oinfo.oi_oa->o_valid |= OBD_MD_FLFLAGS;
+                oinfo.oi_oa->o_flags |= OBD_FL_SRVLOCK;
+        }
 
         set = ptlrpc_prep_set();
         if (set == NULL) {
@@ -723,15 +732,20 @@ static int ll_lsm_getattr(struct lov_stripe_md *lsm, struct obd_export *exp,
         RETURN(rc);
 }
 
-/* Fills the obdo with the attributes for the inode defined by lsm */
-int ll_inode_getattr(struct inode *inode, struct obdo *obdo)
+/**
+  * Performs the getattr on the inode and updates its fields.
+  * If @sync != 0, perform the getattr under the server-side lock.
+  */
+int ll_inode_getattr(struct inode *inode, struct obdo *obdo,
+                     __u64 ioepoch, int sync)
 {
         struct ll_inode_info *lli  = ll_i2info(inode);
         struct obd_capa      *capa = ll_mdscapa_get(inode);
         int rc;
         ENTRY;
 
-        rc = ll_lsm_getattr(lli->lli_smd, ll_i2dtexp(inode), capa, obdo);
+        rc = ll_lsm_getattr(lli->lli_smd, ll_i2dtexp(inode),
+                            capa, obdo, ioepoch, sync);
         capa_put(capa);
         if (rc == 0) {
                 obdo_refresh_inode(inode, obdo, obdo->o_valid);
@@ -773,7 +787,7 @@ int ll_glimpse_ioctl(struct ll_sb_info *sbi, struct lov_stripe_md *lsm,
         struct obdo obdo = { 0 };
         int rc;
 
-        rc = ll_lsm_getattr(lsm, sbi->ll_dt_exp, NULL, &obdo);
+        rc = ll_lsm_getattr(lsm, sbi->ll_dt_exp, NULL, &obdo, 0, 0);
         if (rc == 0) {
                 st->st_size   = obdo.o_size;
                 st->st_blocks = obdo.o_blocks;
@@ -791,7 +805,7 @@ void ll_io_init(struct cl_io *io, const struct file *file, int write)
         memset(io, 0, sizeof *io);
         io->u.ci_rw.crw_nonblock = file->f_flags & O_NONBLOCK;
         if (write)
-                io->u.ci_wr.wr_append = file->f_flags & O_APPEND;
+                io->u.ci_wr.wr_append = !!(file->f_flags & O_APPEND);
         io->ci_obj     = ll_i2info(inode)->lli_clob;
         io->ci_lockreq = CILR_MAYBE;
         if (ll_file_nolock(file)) {
@@ -2101,14 +2115,12 @@ int __ll_inode_revalidate_it(struct dentry *dentry, struct lookup_intent *it,
                    here to preserve get_cwd functionality on 2.6.
                    Bug 10503 */
                 if (!dentry->d_inode->i_nlink) {
-                        spin_lock(&ll_lookup_lock);
                         spin_lock(&dcache_lock);
                         ll_drop_dentry(dentry);
                         spin_unlock(&dcache_lock);
-                        spin_unlock(&ll_lookup_lock);
                 }
 
-                ll_lookup_finish_locks(&oit, dentry);
+                ll_finish_locks(&oit, dentry);
         } else if (!ll_have_md_lock(dentry->d_inode, ibits)) {
 
                 struct ll_sb_info *sbi = ll_i2sbi(dentry->d_inode);

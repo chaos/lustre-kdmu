@@ -110,7 +110,7 @@ static int filter_quota_setinfo(struct obd_device *obd, void *data)
                         CDEBUG(D_WARNING, "%s: lqc_import(%p) of obd(%p) was "
                                "activated already.\n", obd->obd_name, imp, obd);
                 else
-                        CDEBUG(D_ERROR, "%s: lqc_import(%p:%p) of obd(%p) was "
+                        CERROR("%s: lqc_import(%p:%p) of obd(%p) was "
                                "activated by others.\n", obd->obd_name,
                                qctxt->lqc_import, imp, obd);
         } else {
@@ -190,10 +190,8 @@ static int filter_quota_getflag(struct obd_device *obd, struct obdo *oa)
                 RETURN(0);
 
         OBD_ALLOC_PTR(oqctl);
-        if (!oqctl) {
-                CERROR("Not enough memory!");
+        if (!oqctl)
                 RETURN(-ENOMEM);
-        }
 
         /* set over quota flags for a uid/gid */
         oa->o_valid |= OBD_MD_FLUSRQUOTA | OBD_MD_FLGRPQUOTA;
@@ -206,6 +204,12 @@ static int filter_quota_getflag(struct obd_device *obd, struct obdo *oa)
                                        qctxt, 0);
                 if (lqs == NULL || IS_ERR(lqs)) {
                         rc = PTR_ERR(lqs);
+                        if (rc)
+                                CDEBUG(D_QUOTA, "search lqs for %s %d failed, "
+                                       "(rc = %d)\n",
+                                       cnt == USRQUOTA ? "user" : "group",
+                                       cnt == USRQUOTA ? oa->o_uid : oa->o_gid,
+                                       rc);
                         break;
                 } else {
                         spin_lock(&lqs->lqs_lock);
@@ -236,14 +240,22 @@ static int filter_quota_getflag(struct obd_device *obd, struct obdo *oa)
                                 rc = err;
                         oa->o_valid &= ~((cnt == USRQUOTA) ? OBD_MD_FLUSRQUOTA :
                                                              OBD_MD_FLGRPQUOTA);
+                        CDEBUG(D_QUOTA, "fsfilt getquota for %s %d failed, "
+                               "(rc = %d)\n",
+                               cnt == USRQUOTA ? "user" : "group",
+                               cnt == USRQUOTA ? oa->o_uid : oa->o_gid, err);
                         continue;
                 }
 
                 if (oqctl->qc_dqblk.dqb_bhardlimit &&
                    (toqb(oqctl->qc_dqblk.dqb_curspace) >=
-                    oqctl->qc_dqblk.dqb_bhardlimit))
+                    oqctl->qc_dqblk.dqb_bhardlimit)) {
                         oa->o_flags |= (cnt == USRQUOTA) ?
                                 OBD_FL_NO_USRQUOTA : OBD_FL_NO_GRPQUOTA;
+                        CDEBUG(D_QUOTA, "out of quota for %s %d\n",
+                               cnt == USRQUOTA ? "user" : "group",
+                               cnt == USRQUOTA ? oa->o_uid : oa->o_gid);
+                }
         }
         OBD_FREE_PTR(oqctl);
         RETURN(rc);
@@ -309,9 +321,9 @@ static int quota_check_common(struct obd_device *obd, const unsigned int id[],
                                         rc = fsfilt_get_mblk(obd, qctxt->lqc_sb,
                                                              &mb, inode,frags);
                                         if (rc)
-                                                CDEBUG(D_ERROR,
-                                                       "can't get extra "
-                                                       "meta blocks.\n");
+                                                CERROR("%s: can't get extra "
+                                                       "meta blocks\n",
+                                                       obd->obd_name);
                                         else
                                                 pending[i] += mb;
                                 }
@@ -645,7 +657,8 @@ static int mds_quota_setup(struct obd_device *obd)
         sema_init(&mds->mds_qonoff_sem, 1);
         rc = qctxt_init(obd, dqacq_handler);
         if (rc) {
-                CERROR("initialize quota context failed! (rc:%d)\n", rc);
+                CERROR("%s: initialize quota context failed! (rc:%d)\n",
+                       obd->obd_name, rc);
                 RETURN(rc);
         }
         mds->mds_quota = 1;
@@ -809,6 +822,9 @@ int osc_quota_chkdq(struct client_obd *cli, const unsigned int qid[])
         }
         spin_unlock(&qinfo_list_lock);
 
+        if (rc == NO_QUOTA)
+                CDEBUG(D_QUOTA, "chkdq found noquota for %s %d\n",
+                       cnt == USRQUOTA ? "user" : "group", id);
         RETURN(rc);
 }
 
@@ -833,26 +849,32 @@ int osc_quota_setdq(struct client_obd *cli, const unsigned int qid[],
                     (flags & OBD_FL_NO_USRQUOTA) : (flags & OBD_FL_NO_GRPQUOTA);
 
                 oqi = alloc_qinfo(cli, id, cnt);
-                if (oqi) {
-                        spin_lock(&qinfo_list_lock);
-
-                        old = find_qinfo(cli, id, cnt);
-                        if (old && !noquota)
-                                remove_qinfo_hash(old);
-                        else if (!old && noquota)
-                                insert_qinfo_hash(oqi);
-
-                        spin_unlock(&qinfo_list_lock);
-
-                        if (old || !noquota)
-                                free_qinfo(oqi);
-                        if (old && !noquota)
-                                free_qinfo(old);
-                } else {
-                        CERROR("not enough mem!\n");
+                if (!oqi) {
                         rc = -ENOMEM;
+                        CDEBUG(D_QUOTA, "setdq for %s %d failed, (rc = %d)\n",
+                               cnt == USRQUOTA ? "user" : "group", id, rc);
                         break;
                 }
+
+                spin_lock(&qinfo_list_lock);
+                old = find_qinfo(cli, id, cnt);
+                if (old && !noquota)
+                        remove_qinfo_hash(old);
+                else if (!old && noquota)
+                        insert_qinfo_hash(oqi);
+                spin_unlock(&qinfo_list_lock);
+
+                if (old || !noquota)
+                        free_qinfo(oqi);
+                if (old && !noquota)
+                        free_qinfo(old);
+
+                if (old && !noquota)
+                        CDEBUG(D_QUOTA, "setdq to remove for %s %d\n",
+                               cnt == USRQUOTA ? "user" : "group", id);
+                else if (!old && noquota)
+                        CDEBUG(D_QUOTA, "setdq to insert for %s %d\n",
+                               cnt == USRQUOTA ? "user" : "group", id);
         }
 
         RETURN(rc);

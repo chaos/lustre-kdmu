@@ -368,20 +368,31 @@ static int mdt_statfs(struct mdt_thread_info *info)
         RETURN(rc);
 }
 
-void mdt_pack_size2body(struct mdt_thread_info *info, struct mdt_object *o)
+/**
+ * Pack SOM attributes into the reply.
+ * Call under a DLM UPDATE lock.
+ */
+static void mdt_pack_size2body(struct mdt_thread_info *info,
+                               struct mdt_object *mo)
 {
         struct mdt_body *b;
-        struct lu_attr *attr = &info->mti_attr.ma_attr;
+        struct md_attr *ma = &info->mti_attr;
 
+        LASSERT(ma->ma_attr.la_valid & LA_MODE);
         b = req_capsule_server_get(info->mti_pill, &RMF_MDT_BODY);
 
-        /* Check if Size-on-MDS is enabled. */
-        if ((mdt_conn_flags(info) & OBD_CONNECT_SOM) &&
-            S_ISREG(attr->la_mode) && mdt_sizeonmds_enabled(o)) {
-                b->valid |= (OBD_MD_FLSIZE | OBD_MD_FLBLOCKS);
-                b->size = attr->la_size;
-                b->blocks = attr->la_blocks;
-        }
+        /* Check if Size-on-MDS is supported, if this is a regular file,
+         * if SOM is enabled on the object and if SOM cache exists and valid.
+         * Otherwise do not pack Size-on-MDS attributes to the reply. */
+        if (!(mdt_conn_flags(info) & OBD_CONNECT_SOM) ||
+            !S_ISREG(ma->ma_attr.la_mode) ||
+            !mdt_object_is_som_enabled(mo) ||
+            !(ma->ma_valid & MA_SOM))
+                return;
+
+        b->valid |= OBD_MD_FLSIZE | OBD_MD_FLBLOCKS;
+        b->size = ma->ma_som->msd_size;
+        b->blocks = ma->ma_som->msd_blocks;
 }
 
 void mdt_pack_attr2body(struct mdt_thread_info *info, struct mdt_body *b,
@@ -433,7 +444,7 @@ static inline int mdt_body_has_lov(const struct lu_attr *la,
 }
 
 static int mdt_getattr_internal(struct mdt_thread_info *info,
-                                struct mdt_object *o)
+                                struct mdt_object *o, int ma_need)
 {
         struct md_object        *next = mdt_object_child(o);
         const struct mdt_body   *reqbody = info->mti_body;
@@ -484,6 +495,10 @@ static int mdt_getattr_internal(struct mdt_thread_info *info,
                 /* get default stripe info for this dir. */
                 ma->ma_need |= MA_LOV_DEF;
         }
+        ma->ma_need |= ma_need;
+        if (ma->ma_need & MA_SOM)
+                ma->ma_som = &info->mti_u.som.data;
+
         rc = mo_attr_get(env, next, ma);
         if (unlikely(rc)) {
                 CERROR("getattr error for "DFID": %d\n",
@@ -693,7 +708,7 @@ static int mdt_getattr(struct mdt_thread_info *info)
          * remote obj, and at that time no capability is available.
          */
         mdt_set_capainfo(info, 1, &reqbody->fid1, BYPASS_CAPA);
-        rc = mdt_getattr_internal(info, obj);
+        rc = mdt_getattr_internal(info, obj, 0);
         if (reqbody->valid & OBD_MD_FLRMTPERM)
                 mdt_exit_ucred(info);
         EXIT;
@@ -792,6 +807,7 @@ static int mdt_getattr_name_lock(struct mdt_thread_info *info,
         struct ldlm_lock       *lock;
         struct ldlm_res_id     *res_id;
         int                     is_resent;
+        int                     ma_need = 0;
         int                     rc;
 
         ENTRY;
@@ -886,7 +902,7 @@ static int mdt_getattr_name_lock(struct mdt_thread_info *info,
                         /* Finally, we can get attr for child. */
                         mdt_set_capainfo(info, 0, mdt_object_fid(child),
                                          BYPASS_CAPA);
-                        rc = mdt_getattr_internal(info, child);
+                        rc = mdt_getattr_internal(info, child, 0);
                         if (unlikely(rc != 0))
                                 mdt_object_unlock(info, child, lhc, 1);
                 }
@@ -991,38 +1007,34 @@ relock:
                         GOTO(out_child, rc);
         }
 
+        lock = ldlm_handle2lock(&lhc->mlh_reg_lh);
+        /* Get MA_SOM attributes if update lock is given. */
+        if (lock &&
+            lock->l_policy_data.l_inodebits.bits & MDS_INODELOCK_UPDATE &&
+            S_ISREG(lu_object_attr(&mdt_object_child(child)->mo_lu)))
+                ma_need = MA_SOM;
+
         /* finally, we can get attr for child. */
         mdt_set_capainfo(info, 1, child_fid, BYPASS_CAPA);
-        rc = mdt_getattr_internal(info, child);
+        rc = mdt_getattr_internal(info, child, ma_need);
         if (unlikely(rc != 0)) {
                 mdt_object_unlock(info, child, lhc, 1);
-        } else {
-                lock = ldlm_handle2lock(&lhc->mlh_reg_lh);
-                if (lock) {
-                        struct mdt_body *repbody;
-
-                        /* Debugging code. */
-                        res_id = &lock->l_resource->lr_name;
-                        LDLM_DEBUG(lock, "Returning lock to client");
-                        LASSERTF(fid_res_name_eq(mdt_object_fid(child),
-                                                 &lock->l_resource->lr_name),
-                                 "Lock res_id: %lu/%lu/%lu, Fid: "DFID".\n",
-                                 (unsigned long)res_id->name[0],
-                                 (unsigned long)res_id->name[1],
-                                 (unsigned long)res_id->name[2],
-                                 PFID(mdt_object_fid(child)));
-                        /*
-                         * Pack Size-on-MDS inode attributes to the body if
-                         * update lock is given.
-                         */
-                        repbody = req_capsule_server_get(info->mti_pill,
-                                                         &RMF_MDT_BODY);
-                        if (lock->l_policy_data.l_inodebits.bits &
-                            MDS_INODELOCK_UPDATE)
-                                mdt_pack_size2body(info, child);
-                        LDLM_LOCK_PUT(lock);
-                }
+        } else if (lock) {
+                /* Debugging code. */
+                res_id = &lock->l_resource->lr_name;
+                LDLM_DEBUG(lock, "Returning lock to client");
+                LASSERTF(fid_res_name_eq(mdt_object_fid(child),
+                                         &lock->l_resource->lr_name),
+                         "Lock res_id: %lu/%lu/%lu, Fid: "DFID".\n",
+                         (unsigned long)res_id->name[0],
+                         (unsigned long)res_id->name[1],
+                         (unsigned long)res_id->name[2],
+                         PFID(mdt_object_fid(child)));
+                mdt_pack_size2body(info, child);
         }
+        if (lock)
+                LDLM_LOCK_PUT(lock);
+
         EXIT;
 out_child:
         mdt_object_put(info->mti_env, child);
@@ -4375,15 +4387,9 @@ static void mdt_fini(const struct lu_env *env, struct mdt_device *m)
          */
         mdt_stack_fini(env, m, md2lu_dev(m->mdt_child));
 
-        mdt_procfs_fini(m);
-        if (obd->obd_proc_exports_entry) {
-                lprocfs_remove_proc_entry("clear", obd->obd_proc_exports_entry);
-                obd->obd_proc_exports_entry = NULL;
-        }
         lprocfs_free_per_client_stats(obd);
         lprocfs_free_obd_stats(obd);
-        ptlrpc_lprocfs_unregister_obd(obd);
-        lprocfs_obd_cleanup(obd);
+        mdt_procfs_fini(m);
 
         if (ls) {
                 struct md_site *mite;
@@ -4471,7 +4477,6 @@ int mdt_postrecov(const struct lu_env *, struct mdt_device *);
 static int mdt_init0(const struct lu_env *env, struct mdt_device *m,
                      struct lu_device_type *ldt, struct lustre_cfg *cfg)
 {
-        struct lprocfs_static_vars lvars;
         struct mdt_thread_info    *info;
         struct obd_device         *obd;
         const char                *dev = lustre_cfg_string(cfg, 0);
@@ -4570,26 +4575,11 @@ static int mdt_init0(const struct lu_env *env, struct mdt_device *m,
                 GOTO(err_free_site, rc);
         }
 
-        lprocfs_mdt_init_vars(&lvars);
-        rc = lprocfs_obd_setup(obd, lvars.obd_vars);
-        if (rc) {
-                CERROR("Can't init lprocfs, rc %d\n", rc);
-                GOTO(err_fini_site, rc);
-        }
-        ptlrpc_lprocfs_register_obd(obd);
-
         rc = mdt_procfs_init(m, dev);
         if (rc) {
                 CERROR("Can't init MDT lprocfs, rc %d\n", rc);
                 GOTO(err_fini_proc, rc);
         }
-
-        obd->obd_proc_exports_entry = proc_mkdir("exports",
-                                                 obd->obd_proc_entry);
-        if (obd->obd_proc_exports_entry)
-                lprocfs_add_simple(obd->obd_proc_exports_entry,
-                                   "clear", lprocfs_nid_stats_clear_read,
-                                   lprocfs_nid_stats_clear_write, obd, NULL);
 
         /* set server index */
         lu_site2md(s)->ms_node_id = node_id;
@@ -4739,13 +4729,6 @@ err_fini_stack:
         mdt_stack_fini(env, m, md2lu_dev(m->mdt_child));
 err_fini_proc:
         mdt_procfs_fini(m);
-        if (obd->obd_proc_exports_entry) {
-                lprocfs_remove_proc_entry("clear", obd->obd_proc_exports_entry);
-                obd->obd_proc_exports_entry = NULL;
-        }
-        ptlrpc_lprocfs_unregister_obd(obd);
-        lprocfs_obd_cleanup(obd);
-err_fini_site:
         lu_site_fini(s);
 err_free_site:
         OBD_FREE_PTR(mite);
@@ -4829,6 +4812,7 @@ static struct lu_object *mdt_object_alloc(const struct lu_env *env,
                 lu_object_init(o, h, d);
                 lu_object_add_top(h, o);
                 o->lo_ops = &mdt_obj_ops;
+                sema_init(&mo->mot_ioepoch_sem, 1);
                 RETURN(o);
         } else
                 RETURN(NULL);
@@ -4879,7 +4863,7 @@ static int mdt_object_print(const struct lu_env *env, void *cookie,
         return (*p)(env, cookie, LUSTRE_MDT_NAME"-object@%p(ioepoch=%llu "
                     "flags=%llx, epochcount=%d, writecount=%d)",
                     mdto, mdto->mot_ioepoch, mdto->mot_flags,
-                    mdto->mot_epochcount, mdto->mot_writecount);
+                    mdto->mot_ioepoch_count, mdto->mot_writecount);
 }
 
 static const struct lu_device_operations mdt_lu_ops = {
@@ -4959,9 +4943,8 @@ static int mdt_connect_internal(struct obd_export *exp,
                 return -EBADE;
         }
 
-        if (mdt->mdt_som_conf &&
-            !(exp->exp_connect_flags & OBD_CONNECT_MDS_MDS) &&
-            !(exp->exp_connect_flags & OBD_CONNECT_SOM)) {
+        if (mdt->mdt_som_conf && !exp_connect_som(exp) &&
+            !(exp->exp_connect_flags & OBD_CONNECT_MDS_MDS)) {
                 CWARN("%s: MDS has SOM enabled, but client does not support "
                       "it\n", mdt->mdt_md_dev.md_lu_dev.ld_obd->obd_name);
                 return -EBADE;
