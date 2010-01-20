@@ -54,7 +54,7 @@ struct filter_client_data {
 
 /* per-client-per-object persistent state (LRU) */
 struct filter_mod_data {
-        struct list_head fmd_list;      /* linked to fed_mod_list */
+        cfs_list_t       fmd_list;      /* linked to fed_mod_list */
         struct lu_fid    fmd_fid;       /* FID being written to */
         __u64            fmd_mactime_xid;/* xid highest {m,a,c}time setattr */
         cfs_time_t       fmd_expire;    /* time when the fmd should expire */
@@ -133,7 +133,7 @@ struct filter_device {
 
         /* transaction callbacks */
         struct dt_txn_callback   ofd_txn_cb;
-        spinlock_t               ofd_transno_lock;
+        cfs_spinlock_t           ofd_transno_lock;
         __u64                    ofd_last_transno;
 
         /* last_rcvd file */
@@ -143,8 +143,8 @@ struct filter_device {
 
         int                      ofd_subdir_count;
 
-        struct list_head         ofd_llog_list;
-        spinlock_t               ofd_llog_list_lock;
+        cfs_list_t               ofd_llog_list;
+        cfs_spinlock_t           ofd_llog_list_lock;
         void                    *ofd_lcm;
 
         /* XXX: make the following dynamic */
@@ -152,29 +152,29 @@ struct filter_device {
         obd_id                   ofd_last_objids[FILTER_MAX_GROUPS];
         struct semaphore         ofd_create_locks[FILTER_MAX_GROUPS];
         struct dt_object        *ofd_lastid_obj[FILTER_MAX_GROUPS];
-        spinlock_t               ofd_objid_lock;
+        cfs_spinlock_t           ofd_objid_lock;
         unsigned long            ofd_destroys_in_progress;
 
         /* grants: all values in bytes */
-        spinlock_t               ofd_grant_lock;
+        cfs_spinlock_t           ofd_grant_lock;
         obd_size                 ofd_tot_dirty;
         obd_size                 ofd_tot_granted;
         obd_size                 ofd_tot_pending;
         int                      ofd_tot_granted_clients;
-        struct semaphore         ofd_grant_sem;
+        cfs_semaphore_t          ofd_grant_sem;
 
         /* filter mod data: filter_device wide values */
         int                      ofd_fmd_max_num; /* per ofd filter_mod_data */
         cfs_duration_t           ofd_fmd_max_age; /* time to fmd expiry */
 
         /* sptlrpc stuff */
-        rwlock_t                 ofd_sptlrpc_lock;
+        cfs_rwlock_t             ofd_sptlrpc_lock;
         struct sptlrpc_rule_set  ofd_sptlrpc_rset;
 
         /* capability related */
         unsigned int             ofd_fl_oss_capa;
-        struct list_head         ofd_capa_keys;
-        struct hlist_head       *ofd_capa_hash;
+        cfs_list_t               ofd_capa_keys;
+        cfs_hlist_head_t        *ofd_capa_hash;
 };
 
 #define ofd_last_rcvd ofd_lut.lut_last_rcvd

@@ -112,12 +112,12 @@ static int filter_parse_connect_data(const struct lu_env *env,
         if (exp->exp_connect_flags & OBD_CONNECT_GRANT) {
                 obd_size left, want;
 
-                mutex_down(&ofd->ofd_grant_sem);
+                cfs_mutex_down(&ofd->ofd_grant_sem);
                 left = filter_grant_space_left(env, exp);
                 want = data->ocd_grant;
                 filter_grant(env, exp, fed->fed_grant, want, left);
                 data->ocd_grant = fed->fed_grant;
-                mutex_up(&ofd->ofd_grant_sem);
+                cfs_mutex_up(&ofd->ofd_grant_sem);
 
                 CDEBUG(D_CACHE, "%s: cli %s/%p ocd_grant: %d want: "
                        LPU64" left: "LPU64"\n", exp->exp_obd->obd_name,
@@ -477,9 +477,9 @@ static int filter_set_info_async(struct obd_export *exp, __u32 keylen,
         if (KEY_IS(KEY_GRANT_SHRINK)) {
                 struct ost_body *body = (struct ost_body *)val;
                 /* handle shrink grant */
-                mutex_down(&ofd->ofd_grant_sem);
+                cfs_mutex_down(&ofd->ofd_grant_sem);
                 filter_grant_incoming(&env, exp, &body->oa);
-                mutex_up(&ofd->ofd_grant_sem);
+                cfs_mutex_up(&ofd->ofd_grant_sem);
                 GOTO(out, rc = 0);
         }
 
@@ -904,7 +904,7 @@ static int filter_orphans_destroy(const struct lu_env *env,
         LASSERT(exp != NULL);
         skip_orphan = !!(exp->exp_connect_flags & OBD_CONNECT_SKIP_ORPHAN);
 
-        //LASSERT(mutex_try_down(&ofd->ofd_create_locks[gr]) != 0);
+        //LASSERT(cfs_mutex_try_down(&ofd->ofd_create_locks[gr]) != 0);
 
         last = filter_last_id(ofd, gr);
         CWARN("%s: deleting orphan objects from "LPU64" to "LPU64"\n",
@@ -983,7 +983,7 @@ static int filter_create(struct obd_export *exp,
                 }
                 /* This causes inflight precreates to abort and drop lock */
                 set_bit(group, &ofd->ofd_destroys_in_progress);
-                mutex_down(&ofd->ofd_create_locks[group]);
+                cfs_mutex_down(&ofd->ofd_create_locks[group]);
                 if (!test_bit(group, &ofd->ofd_destroys_in_progress)) {
                         CERROR("%s:["LPU64"] destroys_in_progress already cleared\n",
                                exp->exp_obd->obd_name, group);
@@ -1003,7 +1003,7 @@ static int filter_create(struct obd_export *exp,
                         clear_bit(group, &ofd->ofd_destroys_in_progress);
                 }
         } else {
-                mutex_down(&ofd->ofd_create_locks[group]);
+                cfs_mutex_down(&ofd->ofd_create_locks[group]);
                 if (oti->oti_conn_cnt < exp->exp_conn_cnt) {
                         CERROR("%s: dropping old precreate request\n",
                                filter_obd(ofd)->obd_name);
@@ -1045,7 +1045,7 @@ static int filter_create(struct obd_export *exp,
 
         filter_info2oti(info, oti);
 out:
-        mutex_up(&ofd->ofd_create_locks[group]);
+        cfs_mutex_up(&ofd->ofd_create_locks[group]);
         lu_env_fini(&env);
         return rc;
 }

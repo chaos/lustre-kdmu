@@ -241,7 +241,7 @@ void obdo_refresh_inode(struct inode *dst, struct obdo *src, obd_flag valid)
                 i_size_write(dst, src->o_size);
         /* optimum IO size */
         if (valid & OBD_MD_FLBLKSZ && src->o_blksize > (1 << dst->i_blkbits)) {
-                dst->i_blkbits = ffs(src->o_blksize) - 1;
+                dst->i_blkbits = cfs_ffs(src->o_blksize) - 1;
 #ifdef HAVE_INODE_BLKSIZE
                 dst->i_blksize = src->o_blksize;
 #endif
@@ -289,7 +289,7 @@ void obdo_to_inode(struct inode *dst, struct obdo *src, obd_flag valid)
 
         }
         if (valid & OBD_MD_FLBLKSZ) {
-                dst->i_blkbits = ffs(src->o_blksize)-1;
+                dst->i_blkbits = cfs_ffs(src->o_blksize)-1;
 #ifdef HAVE_INODE_BLKSIZE
                 dst->i_blksize = src->o_blksize;
 #endif

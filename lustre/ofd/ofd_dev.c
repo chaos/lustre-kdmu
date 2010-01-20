@@ -784,6 +784,8 @@ static void filter_fini(const struct lu_env *env, struct filter_device *m)
          * The three references that should be remaining are the
          * obd_self_export and the attach and setup references.
          */
+#if 0
+        /* XXX */
         while (atomic_read(&obd->obd_refcount) > 3) {
                 cfs_schedule_timeout(CFS_TASK_UNINT, cfs_time_seconds(1));
                 ++waited;
@@ -794,6 +796,7 @@ static void filter_fini(const struct lu_env *env, struct filter_device *m)
                                       " %d. Is it stuck there?\n",
                                       waited, atomic_read(&obd->obd_refcount));
         }
+#endif
         target_recovery_fini(obd);
 
 #if 0
