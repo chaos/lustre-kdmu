@@ -327,11 +327,11 @@ static void filter_revimp_update(struct obd_export *exp)
 
 static int filter_init_export(struct obd_export *exp)
 {
-        spin_lock_init(&exp->exp_filter_data.fed_lock);
+        cfs_spin_lock_init(&exp->exp_filter_data.fed_lock);
         CFS_INIT_LIST_HEAD(&exp->exp_filter_data.fed_mod_list);
-        spin_lock(&exp->exp_lock);
+        cfs_spin_lock(&exp->exp_lock);
         exp->exp_connecting = 1;
-        spin_unlock(&exp->exp_lock);
+        cfs_spin_unlock(&exp->exp_lock);
 
         return ldlm_init_export(exp);
 }
@@ -494,10 +494,10 @@ static int filter_set_info_async(struct obd_export *exp, __u32 keylen,
                 group = (int)(*(__u32 *)val);
                 LASSERT(group >= FILTER_GROUP_MDS0);
                 sema_init(&ofd->ofd_create_locks[group], 1);
-                spin_lock(&ofd->ofd_objid_lock);
+                cfs_spin_lock(&ofd->ofd_objid_lock);
                 if (group > ofd->ofd_max_group)
                         ofd->ofd_max_group = group;
-                spin_unlock(&ofd->ofd_objid_lock);
+                cfs_spin_unlock(&ofd->ofd_objid_lock);
         } else {
                 /* XXX: protocol incompatibility 1.6 vs. 1.8 */
                 group = 0;

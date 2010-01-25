@@ -614,13 +614,13 @@ static int filter_init0(const struct lu_env *env, struct filter_device *m,
                 /* this filesystem doesn't support fsfilt */
         }
 
-        spin_lock_init(&m->ofd_transno_lock);
+        cfs_spin_lock_init(&m->ofd_transno_lock);
 
         m->ofd_fmd_max_num = FILTER_FMD_MAX_NUM_DEFAULT;
         m->ofd_fmd_max_age = FILTER_FMD_MAX_AGE_DEFAULT;
 
         /* grant data */
-        spin_lock_init(&m->ofd_grant_lock);
+        cfs_spin_lock_init(&m->ofd_grant_lock);
         sema_init(&m->ofd_grant_sem, 1);
         m->ofd_tot_dirty = 0;
         m->ofd_tot_granted = 0;
@@ -634,7 +634,7 @@ static int filter_init0(const struct lu_env *env, struct filter_device *m,
         rwlock_init(&filter->fo_sptlrpc_lock);
         sptlrpc_rule_set_init(&filter->fo_sptlrpc_rset);
 #endif
-        spin_lock_init(&filter->fo_obt.obt_translock);
+        cfs_spin_lock_init(&filter->fo_obt.obt_translock);
 
         m->ofd_fl_oss_capa = 0;
         CFS_INIT_LIST_HEAD(&m->ofd_capa_keys);
@@ -643,7 +643,7 @@ static int filter_init0(const struct lu_env *env, struct filter_device *m,
                 RETURN(-ENOMEM);
 
         CFS_INIT_LIST_HEAD(&m->ofd_llog_list);
-        spin_lock_init(&m->ofd_llog_list_lock);
+        cfs_spin_lock_init(&m->ofd_llog_list_lock);
         m->ofd_lcm = NULL;
 
         OBD_ALLOC_PTR(s);

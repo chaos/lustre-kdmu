@@ -104,9 +104,9 @@ repeat:
          * export */
         /*
         mdt_trans_add_cb(th, mdt_cb_new_client, mti->mti_exp);
-        spin_lock(&mti->mti_exp->exp_lock);
+        cfs_spin_lock(&mti->mti_exp->exp_lock);
         mti->mti_exp->exp_need_sync = 1;
-        spin_unlock(&mti->mti_exp->exp_lock);
+        cfs_spin_unlock(&mti->mti_exp->exp_lock);
         */
 
         err = filter_last_rcvd_write(env, ofd, lcd, &off, th);

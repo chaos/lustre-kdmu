@@ -75,7 +75,7 @@ struct llog_superblock_ondisk {
 struct llog_name {
         struct llog_logid ln_logid;
         char              ln_name[128];
-        struct list_head  ln_list;
+        cfs_list_t        ln_list;
 };
 
 /*
@@ -88,20 +88,20 @@ struct llog_superblock {
         struct dt_device       *lsb_dev;
         struct dt_object       *lsb_obj;
         /* all initialized llog systems on this node linked by this */
-        struct list_head        lsb_list;
+        cfs_list_t              lsb_list;
 
         /* data used to generate new fids */
-        spinlock_t              lsb_id_lock;
+        cfs_spinlock_t          lsb_id_lock;
         __u64                   lsb_seq;
         __u64                   lsb_last_oid;
 
         /* named llogs support */
-        struct list_head        lsb_named_list;
+        cfs_list_t              lsb_named_list;
 };
 
 /* all initialized llog systems on this node linked on this */
-static LIST_HEAD(lsb_list_head);
-static DEFINE_MUTEX(lsb_list_mutex);
+static CFS_LIST_HEAD(lsb_list_head);
+static CFS_DEFINE_MUTEX(lsb_list_mutex);
 
 static void logid_to_fid(struct llog_logid *id, struct lu_fid *fid)
 {
@@ -131,8 +131,8 @@ static struct llog_superblock *llog_osd_get_sb(const struct lu_env *env,
         loff_t                         pos;
         int                            rc;
 
-        mutex_lock(&lsb_list_mutex);
-        list_for_each_entry(lsb, &lsb_list_head, lsb_list) {
+        cfs_mutex_lock(&lsb_list_mutex);
+        cfs_list_for_each_entry(lsb, &lsb_list_head, lsb_list) {
                 if (lsb->lsb_dev == dev) {
                         atomic_inc(&lsb->lsb_refcount);
                         GOTO(out, lsb);
@@ -145,10 +145,10 @@ static struct llog_superblock *llog_osd_get_sb(const struct lu_env *env,
                 GOTO(out, lsb = ERR_PTR(-ENOMEM));
 
         atomic_set(&lsb->lsb_refcount, 1);
-        spin_lock_init(&lsb->lsb_id_lock);
+        cfs_spin_lock_init(&lsb->lsb_id_lock);
         lsb->lsb_dev = dev;
         CFS_INIT_LIST_HEAD(&lsb->lsb_named_list);
-        list_add(&lsb->lsb_list, &lsb_list_head);
+        cfs_list_add(&lsb->lsb_list, &lsb_list_head);
 
         /* initialize data allowing to generate new fids,
          * literally we need a sequece */
@@ -210,7 +210,7 @@ static struct llog_superblock *llog_osd_get_sb(const struct lu_env *env,
         lsb->lsb_obj = o;
 
 out:
-        mutex_unlock(&lsb_list_mutex);
+        cfs_mutex_unlock(&lsb_list_mutex);
 
         return lsb;
 }
@@ -220,7 +220,7 @@ static int llog_osd_lookup(struct llog_superblock *lsb, char *name,
 {
         struct llog_name *ln;
 
-        list_for_each_entry(ln, &lsb->lsb_named_list, ln_list) {
+        cfs_list_for_each_entry(ln, &lsb->lsb_named_list, ln_list) {
                 if (!strcmp(name, ln->ln_name)) {
                         *logid = ln->ln_logid;
                         return 0;
@@ -243,15 +243,15 @@ static void llog_osd_add_name(struct llog_superblock *lsb, char *name,
         strcpy(ln->ln_name, name);
         ln->ln_logid = *logid;
 
-        list_add(&ln->ln_list, &lsb->lsb_named_list);
+        cfs_list_add(&ln->ln_list, &lsb->lsb_named_list);
 }
 
 static void llog_osd_put_names(struct llog_superblock *lsb)
 {
         struct llog_name *ln, *tmp;
 
-        list_for_each_entry_safe(ln, tmp, &lsb->lsb_named_list, ln_list) {
-                list_del(&ln->ln_list);
+        cfs_list_for_each_entry_safe(ln, tmp, &lsb->lsb_named_list, ln_list) {
+                cfs_list_del(&ln->ln_list);
                 OBD_FREE_PTR(ln);
         }
 }
@@ -259,15 +259,15 @@ static void llog_osd_put_names(struct llog_superblock *lsb)
 static void llog_osd_put_sb(const struct lu_env *env, struct llog_superblock *lsb)
 {
         if (atomic_dec_and_test(&lsb->lsb_refcount)) {
-                mutex_lock(&lsb_list_mutex);
+                cfs_mutex_lock(&lsb_list_mutex);
                 if (atomic_read(&lsb->lsb_refcount) == 0) {
                         if (lsb->lsb_obj)
                                 lu_object_put(env, &lsb->lsb_obj->do_lu);
-                        list_del(&lsb->lsb_list);
+                        cfs_list_del(&lsb->lsb_list);
                         llog_osd_put_names(lsb);
                         OBD_FREE_PTR(lsb);
                 }
-                mutex_unlock(&lsb_list_mutex);
+                cfs_mutex_unlock(&lsb_list_mutex);
         }
 }
 
@@ -285,10 +285,10 @@ static int llog_osd_generate_fid(const struct lu_env *env,
         int                            rc;
         ENTRY;
 
-        spin_lock(&lsb->lsb_id_lock);
+        cfs_spin_lock(&lsb->lsb_id_lock);
         fid->f_seq = lsb->lsb_seq;
         fid->f_oid = lsb->lsb_last_oid++;
-        spin_unlock(&lsb->lsb_id_lock);
+        cfs_spin_unlock(&lsb->lsb_id_lock);
         fid->f_ver = 0;
 
         dev = lsb->lsb_dev;

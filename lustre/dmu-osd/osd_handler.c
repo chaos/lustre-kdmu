@@ -649,7 +649,7 @@ int osd_statfs(const struct lu_env *env, struct dt_device *d, struct kstatfs *sf
         struct kstatfs *kfs = &osd->od_kstatfs;
         int rc = 0;
 
-        spin_lock(&osd->od_osfs_lock);
+        cfs_spin_lock(&osd->od_osfs_lock);
         /* cache 1 second */
         if (cfs_time_before_64(osd->od_osfs_age, cfs_time_shift_64(-1))) {
                 rc = udmu_objset_statfs(&osd->od_objset, (struct statfs64 *) kfs);
@@ -670,7 +670,7 @@ int osd_statfs(const struct lu_env *env, struct dt_device *d, struct kstatfs *sf
                 }
         }
         *sfs = *kfs;
-        spin_unlock(&osd->od_osfs_lock);
+        cfs_spin_unlock(&osd->od_osfs_lock);
 
         RETURN (rc);
 }
@@ -2049,14 +2049,14 @@ static int capa_is_sane(const struct lu_env *env,
                 RETURN(rc);
         }
 
-        spin_lock(&capa_lock);
+        cfs_spin_lock(&capa_lock);
         for (i = 0; i < 2; i++) {
                 if (keys[i].lk_keyid == capa->lc_keyid) {
                         oti->oti_capa_key = keys[i];
                         break;
                 }
         }
-        spin_unlock(&capa_lock);
+        cfs_spin_unlock(&capa_lock);
 
         if (i == 2) {
                 DEBUG_CAPA(D_ERROR, capa, "no matched capa key");
@@ -2154,9 +2154,9 @@ static struct obd_capa *osd_capa_get(const struct lu_env *env,
                 RETURN(oc);
         }
 
-        spin_lock(&capa_lock);
+        cfs_spin_lock(&capa_lock);
         *key = dev->od_capa_keys[1];
-        spin_unlock(&capa_lock);
+        cfs_spin_unlock(&capa_lock);
 
         capa->lc_keyid = key->lk_keyid;
         capa->lc_expiry = cfs_time_current_sec() + dev->od_capa_timeout;
@@ -2742,7 +2742,7 @@ static struct lu_device *osd_device_alloc(const struct lu_env *env,
                         l = osd2lu_dev(o);
                         l->ld_ops = &osd_lu_ops;
                         o->od_dt_dev.dd_ops = &osd_dt_ops;
-                        spin_lock_init(&o->od_osfs_lock);
+                        cfs_spin_lock_init(&o->od_osfs_lock);
                         o->od_osfs_age = cfs_time_shift_64(-1000);
                 } else
                         l = ERR_PTR(result);
