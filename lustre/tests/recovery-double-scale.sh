@@ -17,7 +17,8 @@ CLEANUP=${CLEANUP:-""}
 init_test_env $@
 
 . ${CONFIG:=$LUSTRE/tests/cfg/$NAME.sh}
-TESTSUITELOG=${TESTSUITELOG:-$TMP/recovery-double-scale}
+init_logging
+TESTSUITELOG=${TESTSUITELOG:-$TMP/$(basename $0 .sh)}
 DEBUGLOG=$TESTSUITELOG.debug
 exec 2>$DEBUGLOG
 echo "--- env ---" >&2

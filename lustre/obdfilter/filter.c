@@ -1564,7 +1564,7 @@ static int filter_prepare_destroy(struct obd_device *obd, obd_id objid,
 static void filter_fini_destroy(struct obd_device *obd,
                                 struct lustre_handle *lockh)
 {
-        if (lockh->cookie)
+        if (lustre_handle_is_used(lockh))
                 ldlm_lock_decref(lockh, LCK_PW);
 }
 
@@ -3432,21 +3432,12 @@ int filter_setattr(struct obd_export *exp, struct obd_info *oinfo,
         filter = &exp->exp_obd->u.filter;
         push_ctxt(&saved, &exp->exp_obd->obd_lvfs_ctxt, NULL);
 
-        /*
-         * We need to be atomic against a concurrent write
-         * (which takes the semaphore for reading). fmd_mactime_xid
-         * checks will have no effect if a write request with lower
-         * xid starts just before a setattr and finishes later than
-         * the setattr (see bug 21489, comment 27).
-         */
         if (oa->o_valid &
             (OBD_MD_FLMTIME | OBD_MD_FLATIME | OBD_MD_FLCTIME)) {
-                down_write(&dentry->d_inode->i_alloc_sem);
                 fmd = filter_fmd_get(exp, oa->o_id, oa->o_gr);
                 if (fmd && fmd->fmd_mactime_xid < oti->oti_xid)
                         fmd->fmd_mactime_xid = oti->oti_xid;
                 filter_fmd_put(exp, fmd);
-                up_write(&dentry->d_inode->i_alloc_sem);
         }
 
         /* setting objects attributes (including owner/group) */
@@ -4098,7 +4089,9 @@ int filter_destroy(struct obd_export *exp, struct obdo *oa,
                 GOTO(cleanup, rc = -ENOENT);
         }
 
-        filter_prepare_destroy(obd, oa->o_id, oa->o_gr, &lockh);
+        rc = filter_prepare_destroy(obd, oa->o_id, oa->o_gr, &lockh);
+        if (rc)
+                GOTO(cleanup, rc);
 
         /* Our MDC connection is established by the MDS to us */
         if (oa->o_valid & OBD_MD_FLCOOKIE) {
