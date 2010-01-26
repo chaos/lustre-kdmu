@@ -599,6 +599,32 @@ static void ptlrpc_server_free_request(struct ptlrpc_request *req)
 }
 
 /**
+ * increment the number of active requests consuming service threads.
+ */
+void ptlrpc_server_active_request_inc(struct ptlrpc_request *req)
+{
+        struct ptlrpc_request_buffer_desc *rqbd = req->rq_rqbd;
+        struct ptlrpc_service *svc = rqbd->rqbd_service;
+
+        cfs_spin_lock(&svc->srv_lock);
+        svc->srv_n_active_reqs++;
+        cfs_spin_unlock(&svc->srv_lock);
+}
+
+/**
+ * decrement the number of active requests consuming service threads.
+ */
+void ptlrpc_server_active_request_dec(struct ptlrpc_request *req)
+{
+        struct ptlrpc_request_buffer_desc *rqbd = req->rq_rqbd;
+        struct ptlrpc_service *svc = rqbd->rqbd_service;
+
+        cfs_spin_lock(&svc->srv_lock);
+        svc->srv_n_active_reqs--;
+        cfs_spin_unlock(&svc->srv_lock);
+}
+
+/**
  * drop a reference count of the request. if it reaches 0, we either
  * put it into history list, or free it immediately.
  */
@@ -1603,7 +1629,7 @@ put_conn:
         timediff = cfs_timeval_sub(&work_end, &work_start, NULL);
         CDEBUG(D_RPCTRACE, "Handled RPC pname:cluuid+ref:pid:xid:nid:opc "
                "%s:%s+%d:%d:x"LPU64":%s:%d Request procesed in "
-               "%lds (%lds total) trans "LPU64" rc %d/%d\n",
+               "%ldus (%ldus total) trans "LPU64" rc %d/%d\n",
                 cfs_curproc_comm(),
                 (request->rq_export ?
                  (char *)request->rq_export->exp_client_uuid.uuid : "0"),
