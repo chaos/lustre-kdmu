@@ -876,6 +876,7 @@ int mds_lov_connect(struct obd_device *obd, char * lov_name)
 #endif
         data->ocd_version = LUSTRE_VERSION_CODE;
         data->ocd_group = mdt_to_obd_objseq(mds->mds_id);
+
         /* send max bytes per rpc */
         data->ocd_brw_size = PTLRPC_MAX_BRW_PAGES << CFS_PAGE_SHIFT;
         /* send the list of supported checksum types */

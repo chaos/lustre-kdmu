@@ -178,10 +178,8 @@ int fld_index_create(struct lu_server_fld *fld,
                      const struct lu_seq_range *range,
                      struct thandle *th)
 {
-#if 0
         /* XXX: DMU/DMU OSD don't support binary keys yet */
         struct dt_object *dt_obj = fld->lsf_obj;
-#endif
         struct dt_device *dt_dev;
         seqno_t start;
         int rc;
@@ -192,15 +190,11 @@ int fld_index_create(struct lu_server_fld *fld,
         LASSERT(range_is_sane(range));
         dt_dev = lu2dt_dev(fld->lsf_obj->do_lu.lo_dev);
 
-#if 0
         /* XXX: DMU/DMU OSD don't support binary keys yet */
         rc = dt_obj->do_index_ops->dio_insert(env, dt_obj,
                                               fld_rec(env, range),
                                               fld_key(env, start),
                                               th, BYPASS_CAPA, 1);
-#else
-        rc = 0;
-#endif
         CDEBUG(D_INFO, "%s: insert given range : "DRANGE" rc = %d\n",
                fld->lsf_name, PRANGE(range), rc);
         RETURN(rc);
@@ -277,13 +271,14 @@ int fld_index_lookup(struct lu_server_fld *fld,
                         rc = -ENOENT;
         }
 
+#if 0
         /* XXX: ZAP doesn't support natural ordered keys yet
          * XXX: no CMD support */
         range->lsr_start = 0;
         range->lsr_end = ~0ULL;
         range->lsr_mdt = 0;
         rc = 0;
-
+#endif
         CDEBUG(D_INFO, "%s: lookup seq = "LPX64" range : "DRANGE" rc = %d\n",
                fld->lsf_name, seq, PRANGE(range), rc);
 

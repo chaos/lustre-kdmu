@@ -437,7 +437,9 @@ ssize_t ll_getxattr(struct dentry *dentry, const char *name,
                                                       dentry->d_name.name, &lmm,
                                                       &lmmsize, &request);
                 } else if (S_ISDIR(inode->i_mode)) {
-                        rc = ll_dir_getstripe(inode, &lmm, &lmmsize, &request);
+                        /* XXX: Assume to get default lov */
+                        rc = ll_dir_getstripe(inode, (void**)&lmm, &lmmsize,
+                                              &request, OBD_MD_FLDIREA);
                 } else {
                         rc = -ENODATA;
                 }
@@ -491,7 +493,8 @@ ssize_t ll_listxattr(struct dentry *dentry, char *buffer, size_t size)
                 if (lsm == NULL)
                         rc2 = -1;
         } else if (S_ISDIR(inode->i_mode)) {
-                rc2 = ll_dir_getstripe(inode, &lmm, &lmmsize, &request);
+                rc2 = ll_dir_getstripe(inode, (void **)&lmm, &lmmsize,
+                                       &request, OBD_MD_FLDIREA);
         }
 
         if (rc2 < 0) {

@@ -1332,4 +1332,11 @@ int  lu_kmem_init(struct lu_kmem_descr *caches);
 void lu_kmem_fini(struct lu_kmem_descr *caches);
 
 /** @} lu */
+
+enum md_object_event {
+        MD_OBJECT_INIT = 0,
+        MD_OBJECT_LOCATE,
+        MD_OBJECT_FINI
+};
+
 #endif /* __LUSTRE_LU_OBJECT_H */

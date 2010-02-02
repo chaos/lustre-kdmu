@@ -1842,8 +1842,8 @@ static inline int md_create(struct obd_export *exp, struct md_op_data *op_data,
         ENTRY;
         EXP_CHECK_MD_OP(exp, create);
         EXP_MD_COUNTER_INCREMENT(exp, create);
-        rc = MDP(exp->exp_obd, create)(exp, op_data, data, datalen, mode,
-                                       uid, gid, cap_effective, rdev, request);
+        rc = MDP(exp->exp_obd, create)(exp, op_data, data, datalen, mode, uid,
+                                       gid, cap_effective, rdev, request);
         RETURN(rc);
 }
 
@@ -1968,16 +1968,39 @@ static inline int md_sync(struct obd_export *exp, const struct lu_fid *fid,
         RETURN(rc);
 }
 
-static inline int md_readpage(struct obd_export *exp, const struct lu_fid *fid,
-                              struct obd_capa *oc, __u64 offset,
-                              struct page *page,
-                              struct ptlrpc_request **request)
+static inline int md_readpage(struct obd_export *exp, struct md_op_data *op_data,
+                              struct md_page_callback *cb_op,
+                              struct ptlrpc_request **request,
+                              struct page **page)
+
 {
         int rc;
         ENTRY;
         EXP_CHECK_MD_OP(exp, readpage);
         EXP_MD_COUNTER_INCREMENT(exp, readpage);
-        rc = MDP(exp->exp_obd, readpage)(exp, fid, oc, offset, page, request);
+        rc = MDP(exp->exp_obd, readpage)(exp, op_data, cb_op, request, page);
+        RETURN(rc);
+}
+
+static inline int md_cancel_page(struct obd_export *exp, struct lmv_stripe_md *lsm,
+                                 struct lu_fid *match_fid, struct lmv_oinfo *lmo)
+{
+        int rc;
+        ENTRY;
+        EXP_CHECK_MD_OP(exp, cancel_page);
+        EXP_MD_COUNTER_INCREMENT(exp, cancel_page);
+        rc = MDP(exp->exp_obd, cancel_page)(exp, lsm, match_fid, lmo);
+        RETURN(rc);
+}
+
+static inline int md_put_page(struct obd_export *exp, struct md_op_data *op_data,
+                              struct page *page)
+{
+        int rc;
+        ENTRY;
+        EXP_CHECK_MD_OP(exp, put_page);
+        EXP_MD_COUNTER_INCREMENT(exp, put_page);
+        rc = MDP(exp->exp_obd, put_page)(exp, op_data, page);
         RETURN(rc);
 }
 
@@ -2173,6 +2196,18 @@ static inline int md_revalidate_lock(struct obd_export *exp,
         RETURN(rc);
 }
 
+static inline int md_notify_object(struct obd_export *exp,
+                                   struct lu_fid *fid,
+                                   enum md_object_event event,
+                                   void *data)
+{
+        int rc;
+        ENTRY;
+        EXP_CHECK_MD_OP(exp, notify_object);
+        EXP_MD_COUNTER_INCREMENT(exp, notify_object);
+        rc = MDP(exp->exp_obd, notify_object)(exp, fid, event, data);
+        RETURN(rc);
+}
 
 /* OBD Metadata Support */
 
@@ -2227,6 +2262,7 @@ void class_exit_uuidlist(void);
 /* mea.c */
 int mea_name2idx(struct lmv_stripe_md *mea, const char *name, int namelen);
 int raw_name2idx(int hashtype, int count, const char *name, int namelen);
+int raw_hash2idx(int hashtype, int count, __u64 hash);
 
 /* prng.c */
 #define ll_generate_random_uuid(uuid_out) cfs_get_random_bytes(uuid_out, sizeof(class_uuid_t))

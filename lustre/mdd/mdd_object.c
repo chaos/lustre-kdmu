@@ -220,27 +220,47 @@ struct llog_cookie *mdd_max_cookie_get(const struct lu_env *env,
         return mti->mti_max_cookie;
 }
 
-struct lov_mds_md *mdd_max_lmm_get(const struct lu_env *env,
-                                   struct mdd_device *mdd)
+void mdd_max_lmm_get(const struct lu_env *env, struct mdd_device *mdd,
+                     struct lov_mds_md **lmm, struct lmv_mds_md **lmv)
 {
         struct mdd_thread_info *mti = mdd_env_info(env);
         int                     max_lmm_size;
+        int                     max_lmv_size;
+ 
+        if (lmm != NULL) {
+                max_lmm_size = mdd_lov_mdsize(env, mdd);
+                if (unlikely(mti->mti_max_lmm_size < max_lmm_size)) {
+                        if (mti->mti_max_lmm)
+                                OBD_FREE(mti->mti_max_lmm, mti->mti_max_lmm_size);
+                        mti->mti_max_lmm = NULL;
+                        mti->mti_max_lmm_size = 0;
+                }
+                if (unlikely(mti->mti_max_lmm == NULL)) {
+                        OBD_ALLOC(mti->mti_max_lmm, max_lmm_size);
+                        if (unlikely(mti->mti_max_lmm != NULL))
+                                mti->mti_max_lmm_size = max_lmm_size;
+                }
+                *lmm = mti->mti_max_lmm;
+        }
 
-        max_lmm_size = mdd_lov_mdsize(env, mdd);
-        if (unlikely(mti->mti_max_lmm_size < max_lmm_size)) {
-                if (mti->mti_max_lmm)
-                        OBD_FREE(mti->mti_max_lmm, mti->mti_max_lmm_size);
-                mti->mti_max_lmm = NULL;
-                mti->mti_max_lmm_size = 0;
+        /* max_lmv_size will only be used for default dir stripe, and
+         * this max_lmv_size should be given by cmm layer actually */
+        if (lmv != NULL) { 
+                max_lmv_size = sizeof (struct lmv_user_md);
+                if (unlikely(mti->mti_max_lmv_size < max_lmv_size)) {
+                        if (mti->mti_max_lmv)
+                                OBD_FREE(mti->mti_max_lmv, mti->mti_max_lmv_size);
+                        mti->mti_max_lmv = NULL;
+                        mti->mti_max_lmv_size = 0;
+                }
+                if (unlikely(mti->mti_max_lmv == NULL)) {
+                        OBD_ALLOC(mti->mti_max_lmv, max_lmv_size);
+                        if (unlikely(mti->mti_max_lmv != NULL))
+                                mti->mti_max_lmv_size = max_lmv_size;
+                }
+                *lmv = mti->mti_max_lmv;
         }
-        if (unlikely(mti->mti_max_lmm == NULL)) {
-                OBD_ALLOC(mti->mti_max_lmm, max_lmm_size);
-                if (unlikely(mti->mti_max_lmm != NULL))
-                        mti->mti_max_lmm_size = max_lmm_size;
-        }
-        return mti->mti_max_lmm;
 }
-
 struct lu_object *mdd_object_alloc(const struct lu_env *env,
                                    const struct lu_object_header *hdr,
                                    struct lu_device *d)
@@ -659,10 +679,10 @@ int mdd_lmm_get_locked(const struct lu_env *env, struct mdd_object *mdd_obj,
 static int __mdd_lmv_get(const struct lu_env *env,
                          struct mdd_object *mdd_obj, struct md_attr *ma)
 {
-        int rc;
+        int rc = 0;
         ENTRY;
 
-        if (ma->ma_valid & MA_LMV)
+        if (((ma->ma_valid & MA_LMV) && (ma->ma_need & MA_LMV)))
                 RETURN(0);
 
         rc = mdd_get_md(env, mdd_obj, ma->ma_lmv, &ma->ma_lmv_size,
@@ -673,6 +693,27 @@ static int __mdd_lmv_get(const struct lu_env *env,
         }
         RETURN(rc);
 }
+
+/* get lmv EA only*/
+static int __mdd_defaultlmv_get(const struct lu_env *env,
+                                struct mdd_object *mdd_obj, struct md_attr *ma)
+{
+        int rc = 0;
+        ENTRY;
+
+        if((ma->ma_valid & MA_LMV_DEF) && (ma->ma_need & MA_LMV_DEF))
+                RETURN(0);
+
+        rc = mdd_get_md(env, mdd_obj, ma->ma_defaultlmv, &ma->ma_defaultlmv_size,
+                        XATTR_NAME_DEFAULT_LMV);
+        if (rc > 0) {
+                ma->ma_valid |= MA_LMV_DEF;
+                rc = 0;
+        }
+
+        RETURN(rc);
+}
+
 
 static int __mdd_lma_get(const struct lu_env *env, struct mdd_object *mdd_obj,
                          struct md_attr *ma)
@@ -740,9 +781,13 @@ static int mdd_attr_get_internal(const struct lu_env *env,
                     S_ISDIR(mdd_object_type(mdd_obj)))
                         rc = __mdd_lmm_get(env, mdd_obj, ma);
         }
-        if (rc == 0 && ma->ma_need & MA_LMV) {
+        if (rc == 0 && (ma->ma_need & MA_LMV)) {
                 if (S_ISDIR(mdd_object_type(mdd_obj)))
                         rc = __mdd_lmv_get(env, mdd_obj, ma);
+        }
+        if (rc == 0 && ma->ma_need & MA_LMV_DEF) {
+                if (S_ISDIR(mdd_object_type(mdd_obj)))
+                        rc = __mdd_defaultlmv_get(env, mdd_obj, ma);
         }
         if (rc == 0 && ma->ma_need & (MA_HSM | MA_SOM)) {
                 if (S_ISREG(mdd_object_type(mdd_obj)))
@@ -764,7 +809,7 @@ int mdd_attr_get_internal_locked(const struct lu_env *env,
 {
         int rc;
         int needlock = ma->ma_need &
-                       (MA_LOV | MA_LMV | MA_ACL_DEF | MA_HSM | MA_SOM);
+                  (MA_LOV | MA_LMV | MA_ACL_DEF | MA_LMV_DEF | MA_HSM | MA_SOM);
 
         if (needlock)
                 mdd_read_lock(env, mdd_obj, MOR_TGT_CHILD);
@@ -777,8 +822,8 @@ int mdd_attr_get_internal_locked(const struct lu_env *env,
 /*
  * No permission check is needed.
  */
-static int mdd_attr_get(const struct lu_env *env, struct md_object *obj,
-                        struct md_attr *ma)
+int mdd_attr_get(const struct lu_env *env, struct md_object *obj,
+                 struct md_attr *ma)
 {
         struct mdd_object *mdd_obj = md2mdd_obj(obj);
         int                rc;
@@ -1418,7 +1463,7 @@ static int mdd_attr_set(const struct lu_env *env, struct md_object *obj,
         if (S_ISREG(mdd_object_type(mdd_obj)) &&
             ma->ma_attr.la_valid & (LA_UID | LA_GID)) {
                 lmm_size = mdd_lov_mdsize(env, mdd);
-                lmm = mdd_max_lmm_get(env, mdd);
+                mdd_max_lmm_get(env, mdd, &lmm, NULL);
                 if (lmm == NULL)
                         RETURN(rc = -ENOMEM);
 
@@ -1510,6 +1555,16 @@ static int mdd_attr_set(const struct lu_env *env, struct md_object *obj,
                 }
 
         }
+
+        if (rc == 0 && ma->ma_valid & MA_LMV_DEF) {
+                rc = mdd_xattr_set_txn(env, mdd_obj,
+                                      mdd_buf_get_const(env, ma->ma_defaultlmv,
+                                                        ma->ma_defaultlmv_size),
+                                      XATTR_NAME_DEFAULT_LMV, 0, handle);
+                if (rc)
+                        GOTO(cleanup, rc);
+        }
+
         if (rc == 0 && ma->ma_valid & (MA_HSM | MA_SOM)) {
                 cfs_umode_t mode;
 
@@ -1562,7 +1617,7 @@ int mdd_xattr_set_txn(const struct lu_env *env, struct mdd_object *obj,
 }
 
 static int mdd_xattr_sanity_check(const struct lu_env *env,
-                                  struct mdd_object *obj)
+                                  struct mdd_object *obj, const char *name)
 {
         struct lu_attr  *tmp_la = &mdd_env_info(env)->mti_la;
         struct md_ucred *uc     = md_ucred(env);
@@ -1579,7 +1634,13 @@ static int mdd_xattr_sanity_check(const struct lu_env *env,
         if ((uc->mu_fsuid != tmp_la->la_uid) &&
             !mdd_capable(uc, CFS_CAP_FOWNER))
                 RETURN(-EPERM);
-
+ 
+        if (name && !strncmp(XATTR_NAME_LMV, name, strlen(XATTR_NAME_LMV))) {
+                if (mdd_dir_is_empty(env, obj) != 0) {
+                        CERROR("Set stripe for a non-empty dir\n");
+                        RETURN(-EINVAL);
+                }
+        }
         RETURN(rc);
 }
 
@@ -1597,7 +1658,7 @@ static int mdd_xattr_set(const struct lu_env *env, struct md_object *obj,
         int  rc;
         ENTRY;
 
-        rc = mdd_xattr_sanity_check(env, mdd_obj);
+        rc = mdd_xattr_sanity_check(env, mdd_obj, name);
         if (rc)
                 RETURN(rc);
 
@@ -1643,7 +1704,7 @@ int mdd_xattr_del(const struct lu_env *env, struct md_object *obj,
         int  rc;
         ENTRY;
 
-        rc = mdd_xattr_sanity_check(env, mdd_obj);
+        rc = mdd_xattr_sanity_check(env, mdd_obj, name);
         if (rc)
                 RETURN(rc);
 
@@ -1787,6 +1848,67 @@ static int mdd_oc_sanity_check(const struct lu_env *env,
         RETURN(rc);
 }
 
+static int mdd_declare_create_obj(const struct lu_env *env,
+                                  struct mdd_object *mdd_obj,
+                                  const struct md_op_spec *spec,
+                                  struct md_attr *ma,
+                                  struct thandle *handle)
+{
+        int rc;
+        int easize;
+        ENTRY;
+
+        rc = mdo_declare_create_obj(env, mdd_obj, &ma->ma_attr, NULL, NULL,
+                                    handle);
+        if (rc)
+                RETURN(rc);
+
+        if (spec->sp_cr_flags & MDS_CREATE_SLAVE_OBJ) {
+                easize = spec->u.sp_ea.lmvdatalen;
+
+                rc = mdo_declare_xattr_set(env, mdd_obj, easize,
+                                           XATTR_NAME_LMV, 0, handle);
+                if (rc)
+                        RETURN(rc);
+
+                rc = mdo_declare_attr_set(env, mdd_obj, &ma->ma_attr, handle);
+                if (rc)
+                        RETURN(rc);
+
+                easize = spec->u.sp_ea.lmvdefdatalen;
+                if (easize > 0) {
+                        rc = mdo_declare_xattr_set(env, mdd_obj, easize,
+                                           XATTR_NAME_DEFAULT_LMV, 0, handle);
+                        if (rc)
+                                RETURN(rc);
+                }
+
+                easize = spec->u.sp_ea.lovdatalen;
+                if (easize > 0) {
+                        rc = mdo_declare_xattr_set(env, mdd_obj, easize,
+                                           XATTR_NAME_LOV, 0, handle);
+                        if (rc)
+                                RETURN(rc);
+                }
+        } else {
+                easize = spec->u.sp_ea.lmvdefdatalen;
+                if (easize > 0) {
+                        rc = mdo_declare_xattr_set(env, mdd_obj, easize,
+                                     XATTR_NAME_DEFAULT_LMV, 0, handle);
+                        if (rc)
+                                RETURN(rc);
+                }
+                easize = spec->u.sp_ea.lovdatalen;
+                if (easize > 0) {
+                        rc = mdo_declare_xattr_set(env, mdd_obj, easize,
+                                     XATTR_NAME_LOV, 0, handle);
+                        if (rc)
+                                RETURN(rc);
+                }
+        }
+        return 0;
+}
+
 static int mdd_object_create(const struct lu_env *env,
                              struct md_object *obj,
                              const struct md_op_spec *spec,
@@ -1838,7 +1960,7 @@ static int mdd_object_create(const struct lu_env *env,
         if (IS_ERR(handle))
                 GOTO(out_pending, rc = PTR_ERR(handle));
 
-        rc = mdo_declare_create_obj(env, mdd_obj, &ma->ma_attr, NULL, NULL, handle);
+        rc = mdd_declare_create_obj(env, mdd_obj, spec, ma, handle);
         if (rc)
                 GOTO(unlock, rc);
 
@@ -1857,10 +1979,10 @@ static int mdd_object_create(const struct lu_env *env,
 
         if (spec->sp_cr_flags & MDS_CREATE_SLAVE_OBJ) {
                 /* If creating the slave object, set slave EA here. */
-                int lmv_size = spec->u.sp_ea.eadatalen;
+                int lmv_size = spec->u.sp_ea.lmvdatalen;
                 struct lmv_stripe_md *lmv;
 
-                lmv = (struct lmv_stripe_md *)spec->u.sp_ea.eadata;
+                lmv = (struct lmv_stripe_md *)spec->u.sp_ea.lmvdata;
                 LASSERT(lmv != NULL && lmv_size > 0);
 
                 rc = __mdd_xattr_set(env, mdd_obj,
@@ -1871,7 +1993,37 @@ static int mdd_object_create(const struct lu_env *env,
 
                 rc = mdd_attr_set_internal(env, mdd_obj, &ma->ma_attr,
                                            handle, 0);
+                if (rc)
+                        GOTO(unlock, rc);
+
+                if (spec->u.sp_ea.lmvdefdatalen > 0 &&
+                    spec->u.sp_ea.lmvdefdata != NULL) {
+                        int size = spec->u.sp_ea.lmvdefdatalen;
+                        struct lmv_user_md *deflmv;
+
+                        deflmv = (struct lmv_user_md *)spec->u.sp_ea.lmvdefdata;
+                        rc = __mdd_xattr_set(env, mdd_obj,
+                                     mdd_buf_get_const(env, deflmv, size),
+                                     XATTR_NAME_DEFAULT_LMV, 0, handle);
+                        if (rc)
+                                GOTO(unlock, rc);
+                }
+
+                if (spec->u.sp_ea.lovdatalen > 0 &&
+                    spec->u.sp_ea.lovdata != NULL) {
+                        int size = spec->u.sp_ea.lovdatalen;
+                        struct lov_mds_md *lmm;
+
+                        lmm = (struct lov_mds_md *)spec->u.sp_ea.lovdata;
+                        rc = __mdd_xattr_set(env, mdd_obj,
+                                     mdd_buf_get_const(env, lmm, size),
+                                     XATTR_NAME_LOV, 0, handle);
+                        if (rc)
+                                GOTO(unlock, rc);
+                }
         } else {
+                void *eadata;
+                int easize;
 #ifdef CONFIG_FS_POSIX_ACL
                 if (spec->sp_cr_flags & MDS_CREATE_RMT_ACL) {
                         struct lu_buf *buf = &mdd_env_info(env)->mti_buf;
@@ -1891,9 +2043,31 @@ static int mdd_object_create(const struct lu_env *env,
                         pfid = spec->u.sp_ea.fid;
                 }
 #endif
-                rc = mdd_object_initialize(env, pfid, NULL, mdd_obj, ma, handle,
-                                           spec);
+
+                eadata = (void*)spec->u.sp_ea.lmvdefdata;
+                easize = spec->u.sp_ea.lmvdefdatalen;
+                if (easize > 0) {
+                        rc = __mdd_xattr_set(env, mdd_obj,
+                                     mdd_buf_get_const(env, eadata, easize),
+                                     XATTR_NAME_DEFAULT_LMV, 0, handle);
+                        if (rc)
+                                GOTO(unlock, rc);
+                }
+
+                eadata = (void*)spec->u.sp_ea.lovdata;
+                easize = spec->u.sp_ea.lovdatalen;
+                if (easize > 0) {
+                        rc = __mdd_xattr_set(env, mdd_obj,
+                                     mdd_buf_get_const(env, eadata, easize),
+                                     XATTR_NAME_LOV, 0, handle);
+                        if (rc)
+                                GOTO(unlock, rc);
+                }
+
         }
+
+        rc = mdd_object_initialize(env, pfid, NULL, mdd_obj, ma, handle,
+                                   spec);
         EXIT;
 unlock:
         if (rc == 0)
@@ -2214,6 +2388,7 @@ static int mdd_dir_page_build(const struct lu_env *env, struct mdd_device *mdd,
         int                     result;
         __u64                   hash = 0;
         struct lu_dirent       *ent;
+        ENTRY;
 
         if (first) {
                 memset(area, 0, sizeof (struct lu_dirpage));
@@ -2277,7 +2452,7 @@ next:
 
 out:
         *end = hash;
-        return result;
+        RETURN(result);
 }
 
 static int __mdd_readpage(const struct lu_env *env, struct mdd_object *obj,
@@ -2452,6 +2627,12 @@ static void mdd_version_set(const struct lu_env *env, struct md_object *obj,
         do_version_set(env, mdd_object_child(mdd_obj), version);
 }
 
+static int mdd_is_empty(const struct lu_env *env, struct md_object *obj)
+{
+        struct mdd_object *mdd_obj = md2mdd_obj(obj);
+        return mdd_dir_is_empty(env, mdd_obj);
+}
+
 const struct md_object_operations mdd_obj_ops = {
         .moo_permission    = mdd_permission,
         .moo_attr_get      = mdd_attr_get,
@@ -2472,4 +2653,5 @@ const struct md_object_operations mdd_obj_ops = {
         .moo_version_get   = mdd_version_get,
         .moo_version_set   = mdd_version_set,
         .moo_path          = mdd_path,
+        .moo_is_empty      = mdd_is_empty,
 };

@@ -153,7 +153,6 @@ void usage(FILE *out)
                 "\t\t--reformat: overwrite an existing disk\n"
                 "\t\t--force-create : force the creation of a ZFS pool\n"
                 "\t\t--stripe-count-hint=#N : used for optimizing MDT inode size\n"
-                "\t\t--iam-dir: make use of IAM directory format on backfs, incompatible with ext3.\n"
 #else
                 "\t\t--erase-params : erase all old parameter settings\n"
                 "\t\t--nomgs: turn off MGS service on this MDT\n"
@@ -877,7 +876,7 @@ void print_ldd(char *str, struct lustre_disk_data *ldd)
         printf("Lustre FS:  %s\n", ldd->ldd_fsname);
         printf("Mount type: %s\n", MT_STR(ldd));
         printf("Flags:      %#x\n", ldd->ldd_flags);
-        printf("              (%s%s%s%s%s%s%s%s%s)\n",
+        printf("              (%s%s%s%s%s%s%s%s)\n",
                IS_MDT(ldd) ? "MDT ":"",
                IS_OST(ldd) ? "OST ":"",
                IS_MGS(ldd) ? "MGS ":"",
@@ -885,30 +884,12 @@ void print_ldd(char *str, struct lustre_disk_data *ldd)
                ldd->ldd_flags & LDD_F_VIRGIN     ? "first_time ":"",
                ldd->ldd_flags & LDD_F_UPDATE     ? "update ":"",
                ldd->ldd_flags & LDD_F_WRITECONF  ? "writeconf ":"",
-               ldd->ldd_flags & LDD_F_IAM_DIR  ? "IAM_dir_format ":"",
                ldd->ldd_flags & LDD_F_UPGRADE14  ? "upgrade1.4 ":"");
         printf("Persistent mount opts: %s\n", ldd->ldd_mount_opts);
         printf("Parameters:%s\n", ldd->ldd_params);
         if (ldd->ldd_userdata[0])
                 printf("Comment: %s\n", ldd->ldd_userdata);
         printf("\n");
-}
-
-static int touch_file(char *filename)
-{
-        int fd;
-
-        if (filename == NULL) {
-                return 1;
-        }
-
-        fd = open(filename, O_CREAT | O_TRUNC, 0600);
-        if (fd < 0) {
-                return 1;
-        } else {
-                close(fd);
-                return 0;
-        }
 }
 
 /* keep it less than LL_FID_NAMELEN */
@@ -918,27 +899,6 @@ static int touch_file(char *filename)
 /* Need to add these many entries to this directory to make HTREE dir. */
 #define MIN_ENTRIES_REQ_FOR_HTREE       ((L_BLOCK_SIZE / EXT3_DIRENT_SIZE))
 
-static int add_dummy_files(char *dir)
-{
-        char fpname[PATH_MAX];
-        int i;
-        int rc;
-
-        for (i = 0; i < MIN_ENTRIES_REQ_FOR_HTREE; i++) {
-                snprintf(fpname, PATH_MAX, "%s/%0*d", dir,
-                         DUMMY_FILE_NAME_LEN, i);
-
-                rc = touch_file(fpname);
-                if (rc && rc != -EEXIST) {
-                        fprintf(stderr,
-                                "%s: Can't create dummy file %s: %s\n",
-                                progname, fpname , strerror(errno));
-                        return rc;
-                }
-        }
-        return 0;
-}
-
 static int __l_mkdir(char * filepnm, int mode , struct mkfs_opts *mop)
 {
         int ret;
@@ -947,11 +907,6 @@ static int __l_mkdir(char * filepnm, int mode , struct mkfs_opts *mop)
         if (ret && ret != -EEXIST)
                 return ret;
 
-        /* IAM mode supports ext3 directories of HTREE type only. So add dummy
-         * entries to new directory to create htree type of container for
-         * this directory. */
-        if (mop->mo_ldd.ldd_flags & LDD_F_IAM_DIR)
-                return add_dummy_files(filepnm);
         return 0;
 }
 
@@ -1328,7 +1283,6 @@ int parse_opts(int argc, char *const argv[], struct mkfs_opts *mop,
                char **mountopts)
 {
         static struct option long_opt[] = {
-                {"iam-dir", 0, 0, 'a'},
                 {"backfstype", 1, 0, 'b'},
                 {"stripe-count-hint", 1, 0, 'c'},
                 {"comment", 1, 0, 'u'},
@@ -1368,11 +1322,6 @@ int parse_opts(int argc, char *const argv[], struct mkfs_opts *mop,
         while ((opt = getopt_long(argc, argv, optstring, long_opt, &longidx)) !=
                EOF) {
                 switch (opt) {
-                case 'a': {
-                        if (IS_MDT(&mop->mo_ldd))
-                                mop->mo_ldd.ldd_flags |= LDD_F_IAM_DIR;
-                        break;
-                }
                 case 'b': {
                         int i = 0;
                         while (i < LDD_MT_LAST) {

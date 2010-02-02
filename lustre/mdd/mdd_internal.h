@@ -182,6 +182,8 @@ struct mdd_thread_info {
         struct dt_allocation_hint mti_hint;
         struct lov_mds_md        *mti_max_lmm;
         int                       mti_max_lmm_size;
+        struct lmv_mds_md        *mti_max_lmv;
+        int                       mti_max_lmv_size;
         struct llog_cookie       *mti_max_cookie;
         int                       mti_max_cookie_size;
         struct dt_object_format   mti_dof;
@@ -192,12 +194,12 @@ extern const char orph_index_name[];
 
 extern const struct dt_index_features orph_index_features;
 
-struct lov_mds_md *mdd_max_lmm_get(const struct lu_env *env,
-                                   struct mdd_device *mdd);
-
+void mdd_max_lmm_get(const struct lu_env *env, struct mdd_device *mdd,
+                     struct lov_mds_md **lmm, struct lmv_mds_md **lmv);
 struct llog_cookie *mdd_max_cookie_get(const struct lu_env *env,
                                        struct mdd_device *mdd);
-
+int mdd_attr_get(const struct lu_env *env, struct md_object *obj,
+                 struct md_attr *ma);
 int mdd_init_obd(const struct lu_env *env, struct mdd_device *mdd,
                  struct lustre_cfg *cfg);
 int mdd_fini_obd(const struct lu_env *env, struct mdd_device *mdd,
@@ -316,6 +318,8 @@ struct lu_buf *mdd_links_get(const struct lu_env *env,
                              struct mdd_object *mdd_obj);
 void mdd_lee_unpack(const struct link_ea_entry *lee, int *reclen,
                     struct lu_name *lname, struct lu_fid *pfid);
+
+int mdd_dir_is_empty(const struct lu_env *env, struct mdd_object *dir);
 
 /* mdd_lov.c */
 int mdd_unlink_log(const struct lu_env *env, struct mdd_device *mdd,

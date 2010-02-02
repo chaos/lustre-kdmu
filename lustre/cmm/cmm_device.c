@@ -91,14 +91,25 @@ static int cmm_statfs(const struct lu_env *env, struct md_device *md,
         RETURN (rc);
 }
 
-static int cmm_maxsize_get(const struct lu_env *env, struct md_device *md,
-                           int *md_size, int *cookie_size)
+int cmm_maxsize_get(const struct lu_env *env, struct md_device *md,
+                    int *md_size, int *cookie_size)
 {
         struct cmm_device *cmm_dev = md2cmm_dev(md);
-        int rc;
+        int rc, lmv_md_size;
         ENTRY;
+        
+        if (!md_size && !cookie_size)
+                RETURN(0);
+ 
         rc = cmm_child_ops(cmm_dev)->mdo_maxsize_get(env, cmm_dev->cmm_child,
                                                      md_size, cookie_size);
+
+        lmv_md_size = lmv_mds_md_size(cmm_dev->cmm_tgt_count + 1, 
+                      LMV_MAGIC_V1);
+
+        if (md_size && *md_size < lmv_md_size)
+                *md_size = lmv_md_size;
+                 
         RETURN(rc);
 }
 
@@ -537,6 +548,7 @@ static int cmm_add_mdc(const struct lu_env *env,
 #endif
         /* Set max md size for the mdc. */
         rc = cmm_post_init_mdc(env, cm);
+
         RETURN(rc);
 }
 

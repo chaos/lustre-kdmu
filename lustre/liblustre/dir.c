@@ -62,7 +62,8 @@
 
 /* (new) readdir implementation overview can be found in lustre/llite/dir.c */
 
-static int llu_dir_do_readpage(struct inode *inode, struct page *page)
+static int llu_dir_do_readpage(struct inode *inode, __u64 hash, __u32 stripe_offset,
+                               struct page *page)
 {
         struct llu_inode_info *lli = llu_i2info(inode);
         struct intnl_stat     *st = llu_i2stat(inode);
@@ -73,7 +74,6 @@ static int llu_dir_do_readpage(struct inode *inode, struct page *page)
         struct lookup_intent   it = { .it_op = IT_READDIR };
         struct md_op_data      op_data = {{ 0 }};
         ldlm_policy_data_t policy = { .l_inodebits = { MDS_INODELOCK_UPDATE } };
-        __u64 offset;
         int rc = 0;
         ENTRY;
 
@@ -100,9 +100,15 @@ static int llu_dir_do_readpage(struct inode *inode, struct page *page)
         }
         ldlm_lock_dump_handle(D_OTHER, &lockh);
 
-        offset = (__u64)hash_x_index(page->index);
-        rc = md_readpage(sbi->ll_md_exp, &lli->lli_fid, NULL,
-                         offset, page, &request);
+        /**
+         *FIXME choose the start offset of the readdir
+         */
+        op_data.op_stripe_offset = stripe_offset;
+        op_data.op_hash_offset = hash;
+        op_data.op_mea1 = lli->lli_mea;
+        op_data.op_fid1 = lli->lli_fid;
+
+        rc = md_readpage(sbi->ll_md_exp, &op_data, NULL, &request, &page);
         if (!rc) {
                 body = req_capsule_server_get(&request->rq_pill, &RMF_MDT_BODY);
                 LASSERT(body != NULL);         /* checked by md_readpage() */
@@ -120,7 +126,8 @@ static int llu_dir_do_readpage(struct inode *inode, struct page *page)
 }
 
 static cfs_page_t *llu_dir_read_page(struct inode *ino, __u64 hash,
-                                     int exact, struct ll_dir_chain *chain)
+                                     __u32 stripe_offset,
+                                     struct ll_dir_chain *chain)
 {
         cfs_page_t *page;
         int rc;
@@ -129,9 +136,8 @@ static cfs_page_t *llu_dir_read_page(struct inode *ino, __u64 hash,
         OBD_PAGE_ALLOC(page, 0);
         if (!page)
                 RETURN(ERR_PTR(-ENOMEM));
-        page->index = hash_x_index(hash);
 
-        rc = llu_dir_do_readpage(ino, page);
+        rc = llu_dir_do_readpage(ino, hash, stripe_offset, page);
         if (rc) {
                 OBD_PAGE_FREE(page);
                 RETURN(ERR_PTR(rc));
@@ -199,6 +205,7 @@ ssize_t llu_iop_filldirentries(struct inode *dir, _SYSIO_OFF_T *basep,
         int done;
         int shift;
         __u16 type;
+        __u32 stripe_offset = 0;
         ENTRY;
 
         liblustre_wait_event(0);
@@ -219,7 +226,7 @@ ssize_t llu_iop_filldirentries(struct inode *dir, _SYSIO_OFF_T *basep,
         shift = 0;
         ll_dir_chain_init(&chain);
 
-        page = llu_dir_read_page(dir, pos, 0, &chain);
+        page = llu_dir_read_page(dir, pos, stripe_offset, &chain);
         while (rc == 0 && !done) {
                 struct lu_dirpage *dp;
                 struct lu_dirent  *ent;
@@ -269,19 +276,26 @@ ssize_t llu_iop_filldirentries(struct inode *dir, _SYSIO_OFF_T *basep,
                         OBD_PAGE_FREE(page);
                         if (!done) {
                                 pos = next;
-                                if (pos == DIR_END_OFF)
+                                if (pos == DIR_END_OFF &&
+                                    (lli->lli_mea == NULL ||
+                                     lli->lli_mea->mea_count ==
+                                          (stripe_offset + 1))){
                                         /*
                                          * End of directory reached.
                                          */
                                         done = 1;
-                                else if (1 /* chain is exhausted*/)
+
+                                } else if (1 /* chain is exhausted*/) {
                                         /*
                                          * Normal case: continue to the next
                                          * page.
                                          */
-                                        page = llu_dir_read_page(dir, pos, 1,
-                                                               &chain);
-                                else {
+                                        if (pos == DIR_END_OFF)
+                                                stripe_offset ++;
+                                        page = llu_dir_read_page(dir, pos,
+                                                                 stripe_offset, &chain);
+
+                                } else {
                                         /*
                                          * go into overflow page.
                                          */

@@ -62,7 +62,8 @@ CREATETEST=${CREATETEST:-createtest}
 LFS=${LFS:-lfs}
 SETSTRIPE=${SETSTRIPE:-"$LFS setstripe"}
 GETSTRIPE=${GETSTRIPE:-"$LFS getstripe"}
-LSTRIPE=${LSTRIPE:-"$LFS setstripe"}
+SETDIRSTRIPE=${SETDIRSTRIPE:-"$LFS setdirstripe"}
+GETDIRSTRIPE=${GETDIRSTRIPE:-"$LFS getdirstripe"}
 LFIND=${LFIND:-"$LFS find"}
 LVERIFY=${LVERIFY:-ll_dirstripe_verify}
 LCTL=${LCTL:-lctl}
@@ -140,7 +141,9 @@ assert_DIR
 MDT0=$($LCTL get_param -n mdc.*.mds_server_uuid | \
     awk '{gsub(/_UUID/,""); print $1}' | head -1)
 LOVNAME=$($LCTL get_param -n llite.*.lov.common_name | tail -n 1)
+LMVNAME=$($LCTL get_param -n llite.*.lmv.common_name | tail -n 1)
 OSTCOUNT=$($LCTL get_param -n lov.$LOVNAME.numobd)
+MDTCOUNT=$($LCTL get_param -n lmv.$LMVNAME.numobd)
 STRIPECOUNT=$($LCTL get_param -n lov.$LOVNAME.stripecount)
 STRIPESIZE=$($LCTL get_param -n lov.$LOVNAME.stripesize)
 ORIGFREE=$($LCTL get_param -n lov.$LOVNAME.kbytesavail)
@@ -1237,8 +1240,9 @@ test_27v() { # bug 4900
 run_test 27v "skip object creation on slow OST ================="
 
 test_27w() { # bug 10997
+        set -vx
         mkdir -p $DIR/$tdir || error "mkdir failed"
-        $LSTRIPE $DIR/$tdir/f0 -s 65536 || error "lstripe failed"
+        $SETSTRIPE $DIR/$tdir/f0 -s 65536 || error "lstripe failed"
         size=`$GETSTRIPE $DIR/$tdir/f0 -s`
         [ $size -ne 65536 ] && error "stripe size $size != 65536" || true
         gsdir=$($LFS getstripe -d $DIR/$tdir)
@@ -1247,7 +1251,7 @@ test_27w() { # bug 10997
         [ "$OSTCOUNT" -lt "2" ] && skip_env "skipping multiple stripe count/offset test" && return
         for i in `seq 1 $OSTCOUNT`; do
                 offset=$(($i-1))
-                $LSTRIPE $DIR/$tdir/f$i -c $i -i $offset || error "lstripe -c $i -i $offset failed"
+                $SETSTRIPE $DIR/$tdir/f$i -c $i -i $offset || error "lstripe -c $i -i $offset failed"
                 count=`$GETSTRIPE -c $DIR/$tdir/f$i`
                 index=`$GETSTRIPE -o $DIR/$tdir/f$i`
                 [ $count -ne $i ] && error "stripe count $count != $i" || true
@@ -3208,7 +3212,7 @@ setup_56_special() {
 }
 
 test_56g() {
-        $LSTRIPE -d $DIR
+        $SETSTRIPE -d $DIR
 
         setup_56 $NUMFILES $NUMDIRS
 
@@ -3224,7 +3228,7 @@ test_56g() {
 run_test 56g "check lfs find -name ============================="
 
 test_56h() {
-        $LSTRIPE -d $DIR
+        $SETSTRIPE -d $DIR
 
         setup_56 $NUMFILES $NUMDIRS
 
@@ -3672,7 +3676,8 @@ test_65j() { # bug6367
 	sync; sleep 1
 	# if we aren't already remounting for each test, do so for this test
 	if [ "$CLEANUP" = ":" -a "$I_MOUNTED" = "yes" ]; then
-		cleanup || error "failed to unmount"
+                #export MDSCOUNT=$MDTCOUNT
+                cleanup || error "failed to unmount"
 		setup
 	fi
 	$SETSTRIPE -d $MOUNT || error "setstripe failed"
@@ -5153,7 +5158,7 @@ reset_async() {
 	FILE=$DIR/reset_async
 
 	# Ensure all OSCs are cleared
-	$LSTRIPE -c -1 $FILE
+	$SETSTRIPE -c -1 $FILE
         dd if=/dev/zero of=$FILE bs=64k count=$OSTCOUNT
 	sync
         rm $FILE
@@ -7609,6 +7614,160 @@ test_216() { # bug 20317
         rm $DIR/$tfile
 }
 run_test 216 "check lockless direct write works and updates file size and kms correctly"
+
+#
+# tests dirstripe 
+# 
+test_300a() {
+	[ "$MDTCOUNT" -lt "2" ] && skip "skipping 4-stripe MDT test" && return
+
+        $SETDIRSTRIPE -c $MDTCOUNT $DIR/d300 || error "setstripe dir failed"
+        count=`$GETDIRSTRIPE -c $DIR/d300` 
+        [ $count -ne $MDTCOUNT ] && error "dir stripe count $count != $MDTCOUNT"
+
+        #create file under the striped dir
+        for ((i=0;i<10;i++))  do
+                $OPENFILE -f O_CREAT:O_WRONLY $DIR/d300/f_${i} >/dev/null 2>&1 || error "open/create failed" || return 1 
+                $CHECKSTAT -t file $DIR/d300/f_${i} >/dev/null 2>&1 || error "checkstat failed" || return 1
+        done 
+        
+        #unlink file under the striped dir
+        for ((i=0;i<10;i++))  do
+                rm -f $DIR/d300/f_${i} 
+                $CHECKSTAT -t file $DIR/d300/f_${i} > /dev/null 2>&1 && error "checkstat failed" 
+        done
+        true
+}
+run_test 300a "create/unlink under striped dir"
+
+test_300b() {
+       	[ "$MDTCOUNT" -lt "2" ] && skip "skipping multi-stripe MDT test" && return
+       
+        [ -e $DIR/d300 ] || $SETDIRSTRIPE -c $MDTCOUNT $DIR/d300 || error "setstripe dir failed"
+        count=`$GETDIRSTRIPE -c $DIR/d300` 
+        [ $count -ne $MDTCOUNT ] && error "dir stripe count $count != $MDTCOUNT"
+
+        #mkdir under the striped dir
+        for ((i=0;i<10;i++))  do
+                mkdir -p $DIR/d300/d_${i} || error "open/create failed" 
+                $OPENFILE -f O_CREAT:O_WRONLY $DIR/d300/d_${i}/f_${i}  >/dev/null 2>&1 || error "open/create failed" || return 1
+                $CHECKSTAT -t dir $DIR/d300/d_${i}  >/dev/null 2>&1 || error "checkstat failed" || return 1
+                $CHECKSTAT -t file $DIR/d300/d_${i}/f_${i}  >/dev/null 2>&1 || error "checkstat failed" || return 1
+        done
+
+        #rmdir under the striped dir
+        for ((i=0;i<10;i++))  do
+                rm -rf $DIR/d300/d_${i} ; ret=$?
+                $CHECKSTAT -t dir $DIR/d300/d_${i} >/dev/null 2>&1 && error "checkstat failed"
+        done 
+        true
+}
+
+run_test 300b "mkdir/rmdir under striped dir"
+
+test_300c() {
+       	[ "$MDTCOUNT" -lt "2" ] && skip "skipping multi-stripe MDT test" && return
+        [ -e $DIR/d300 ] || $SETDIRSTRIPE -c $MDTCOUNT $DIR/d300 || error "setstripe dir failed"
+        count=`$GETDIRSTRIPE -c $DIR/d300` 
+        [ $count -ne $MDTCOUNT ] && error "dir stripe count $count != $MDTCOUNT"
+
+        #create stripe dir under the striped dir
+        for ((i=0;i<10;i++))  do
+                $SETDIRSTRIPE -c $MDTCOUNT $DIR/d300/d_${i}  >/dev/null 2>&1 || error "setstripe dir failed" || return 1
+	        count=`$GETDIRSTRIPE -c $DIR/d300/d_${i}` 
+                [ $count -eq $MDTCOUNT ] || error "dir stripe count $count != $MDTCOUNT" || return 1 
+        done
+
+        #unlink stripe dir under the striped dir
+        for ((i=0;i<10;i++))  do
+                rm -rf $DIR/d300/d_${i} || error "remove dir failed d_${i}"
+                $CHECKSTAT -t dir $DIR/d300/d_${i} >/dev/null 2>&1 && error "checkstat failed"
+        done
+        true
+}
+
+run_test 300c "set dirstripe under striped dir"
+
+default_stripedir_test() {
+        local TESTDIR=$1
+        local DEFAULT_DIR_STRIPCOUNT=$2
+        local DEFAULT_DIR_STRIPINDEX=$3
+        local DEFAULT_FILE_STRIPSIZE=$4
+	for ((i=0;i<10;i++)); do
+        	#inherit default stripe information from parent
+                mkdir ${TESTDIR}/dir_300b_default_${i} 
+        	count=`$GETDIRSTRIPE -c ${TESTDIR}/dir_300b_default_${i}`
+        	[ $count -eq $DEFAULT_DIR_STRIPCOUNT ] || error "dir_300b_default_${i} stripe count $count != $DEFAULT_DIR_STRIPCOUNT" || return 1 
+        	count=`$GETDIRSTRIPE -D -c ${TESTDIR}/dir_300b_default_${i}`
+         	[ $count -eq $DEFAULT_DIR_STRIPCOUNT ] || error "dir_300b_default_${i} stripe count $count != $DEFAULT_DIR_STRIPCOUNT" || return 1 
+        	index=`$GETDIRSTRIPE -i ${TESTDIR}/dir_300b_default_${i}`
+        	[ $index -eq $DEFAULT_DIR_STRIPINDEX ] || error "dir_300b_default_${i} stripe index $index != $DEFAULT_DIR_STRIPINDEX" || return 1 
+        	index=`$GETDIRSTRIPE -D -i ${TESTDIR}/dir_300b_default_${i}`
+         	[ $index -eq $DEFAULT_DIR_STRIPINDEX ] || error "dir_300b_default_${i} default stripe index $index != $DEFAULT_DIR_STRIPINDEX" || return 1 
+
+                #Not inherit default dirstripe from parent, when using setdirstripe
+                $SETDIRSTRIPE -c 2 -i 1 ${TESTDIR}/dir_300b_${i} || error "setstripe dir failed" || return 1
+        	count=`$GETDIRSTRIPE -c ${TESTDIR}/dir_300b_${i}`
+        	[ $count -eq 2 ] || error "dir_300b_${i} stripe count $count != 2" || return 1 
+        	count=`$GETDIRSTRIPE -D -c ${TESTDIR}/dir_300b_${i}`
+         	[ $count -eq $DEFAULT_STRIPCOUNT ] || error "dir_300b_${i} stripe count $count != $DEFAULT_STRIPCOUNT" || return 1 
+                index=`$GETDIRSTRIPE -i ${TESTDIR}/dir_300b_${i}`
+        	[ $index -eq 1 ] || error "dir_300b_${i} stripe index $index != 1" || return 1 
+                index=`$GETDIRSTRIPE -D -i ${TESTDIR}/dir_300b_${i}`
+        	[ $index -eq $DEFAULT_STRIP_INDEX ] || error "dir_300b_${i} stripe index $index != $DEFAULT_STRIP_INDEX" || return 1 
+
+                #Test default file stripe
+                $OPENFILE -f O_CREAT:O_WRONLY ${TESTDIR}/f_300b_${i}  >/dev/null 2>&1 || error "open/create failed" || return 1
+        	size=`$GETSTRIPE -s ${TESTDIR}/f_300b_${i}`
+         	[ $size -eq $DEFAULT_FILE_STRIPSIZE ] || error "f_300b_${i} stripe_size != $DEFAULT_FILE_STRIPSIZE" || return 1 
+
+                $SETSTRIPE -c $OSTCOUNT -s 131072 ${TESTDIR}/dir_300b_${i} || error "setstripe failed" || return 1
+                $OPENFILE -f O_CREAT:O_WRONLY ${TESTDIR}/dir_300b_${i}/f_300b_${i}  >/dev/null 2>&1 || error "open/create failed" || return 1
+        	size=`$GETSTRIPE -s ${TESTDIR}/dir_300b_${i}/f_300b_${i}`
+         	[ $size -eq 131072 ] || error "f_300b_${i} stripe_size != 131072" || return 1 
+        done
+}
+
+test_300d()
+{
+       	local DEFAULT_STRIPCOUNT=2
+       	local DEFAULT_STRIP_INDEX=2
+        local DEFAULT_FILE_STRIPSIZE=65536
+        [ "$MDTCOUNT" -lt "2" ] && skip "skipping multi-stripe MDT test" && return
+
+        #Test default stripe on normal directory
+        mkdir -p $DIR/d300
+        $SETDIRSTRIPE -c $DEFAULT_STRIPCOUNT -i $DEFAULT_STRIP_INDEX -D $DIR/d300 || error "setstripe dir failed"
+        count=`$GETDIRSTRIPE -D -c $DIR/d300`
+        [ $count -ne $DEFAULT_STRIPCOUNT ] && error "dir stripe count $count != $DEFAULT_STRIPCOUNT"
+        index=`$GETDIRSTRIPE -D -i $DIR/d300`
+        [ $index -ne $DEFAULT_STRIP_INDEX ] && error "dir stripe index $index != $DEFAULT_STRIP_INDEX"
+        $SETSTRIPE -c $OSTCOUNT -s $DEFAULT_FILE_STRIPSIZE $DIR/d300 || error "setstripe dir failed"
+        default_stripedir_test $DIR/d300 ${DEFAULT_STRIPCOUNT} ${DEFAULT_STRIP_INDEX} ${DEFAULT_FILE_STRIPSIZE} || error "test failed" 
+}
+run_test 300d "test default dir stripe information under normal dir"
+
+test_300e() {
+       	local DEFAULT_STRIPCOUNT=2
+       	local DEFAULT_STRIP_INDEX=2
+        local DEFAULT_FILE_STRIPSIZE=65536
+        [ "$MDTCOUNT" -lt "2" ] && skip "skipping multi-stripe MDT test" && return
+
+        [ -e $DIR/d300 ] && rm -rf $DIR/d300 
+        $SETDIRSTRIPE -c $MDTCOUNT -i $DEFAULT_STRIP_INDEX  $DIR/d300 || error "setstripe dir failed"
+        count=`$GETDIRSTRIPE -c $DIR/d300`
+        [ $count -ne $MDTCOUNT ] && error "dir stripe count $count != $MDTCOUNT"
+        index=`$GETDIRSTRIPE -i $DIR/d300`
+        [ $index -ne $DEFAULT_STRIP_INDEX ] && error "dir stripe index $index != $DEFAULT_STRIP_INDEX"
+        $SETDIRSTRIPE -c $DEFAULT_STRIPCOUNT -i $DEFAULT_STRIP_INDEX -D $DIR/d300 || error "setstripe dir failed"
+        count=`$GETDIRSTRIPE -D -c $DIR/d300`
+        [ $count -ne $DEFAULT_STRIPCOUNT ] && error "dir default stripe count $count != $DEFAULT_STRIPCOUNT"
+        index=`$GETDIRSTRIPE -D -i $DIR/d300`
+        [ $index -ne $DEFAULT_STRIP_INDEX ] && error "dir stripe index $index != $DEFAULT_STRIP_INDEX"
+        $SETSTRIPE -c $OSTCOUNT -s $DEFAULT_FILE_STRIPSIZE $DIR/d300 || error "setstripe dir failed"
+        default_stripedir_test $DIR/d300 ${DEFAULT_STRIPCOUNT} ${DEFAULT_STRIP_INDEX} ${DEFAULT_FILE_STRIPSIZE} || error "test failed"
+}
+run_test 300e "test default stripe information under stripe dir (set stripedir, set default_EA"
 
 #
 # tests that do cleanup/setup should be run at the end

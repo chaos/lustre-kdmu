@@ -330,27 +330,8 @@ int mdd_lov_set_md(const struct lu_env *env, struct mdd_object *pobj,
                                                XATTR_NAME_LOV, 0, handle);
                 }
         } else if (S_ISDIR(mode)) {
-                if (lmmp == NULL && lmm_size == 0) {
-                        struct mdd_device *mdd = mdd_obj2mdd_dev(child);
-                        struct lov_mds_md *lmm = mdd_max_lmm_get(env, mdd);
-                        int size = sizeof(struct lov_mds_md_v3);
-
-                        /* Get parent dir stripe and set */
-                        if (pobj != NULL)
-                                rc = mdd_get_md_locked(env, pobj, lmm, &size,
-                                                       XATTR_NAME_LOV);
-                        if (rc > 0) {
-                                buf = mdd_buf_get(env, lmm, size);
-                                rc = mdd_xattr_set_txn(env, child, buf,
-                                               XATTR_NAME_LOV, 0, handle);
-                                if (rc)
-                                        CERROR("error on copy stripe info: rc "
-                                                "= %d\n", rc);
-                        }
-                } else {
-                        LASSERT(lmmp != NULL && lmm_size > 0);
-                        rc = mdd_lov_set_dir_md(env, child, buf, handle);
-                }
+                LASSERT(lmmp != NULL && lmm_size > 0);
+                rc = mdd_lov_set_dir_md(env, child, buf, handle);
         }
         CDEBUG(D_INFO, "Set lov md %p size %d for fid "DFID" rc %d\n",
                         lmmp, lmm_size, PFID(mdo2fid(child)), rc);
@@ -437,11 +418,11 @@ int mdd_lov_create(const struct lu_env *env, struct mdd_device *mdd,
                                 GOTO(out_oti, rc);
                 } else if (parent != NULL) {
                         /* get lov ea from parent and set to lov */
-                        struct lov_mds_md *_lmm;
+                        struct lov_mds_md *_lmm = NULL;
                         int _lmm_size;
 
                         _lmm_size = mdd_lov_mdsize(env, mdd);
-                        _lmm = mdd_max_lmm_get(env, mdd);
+                        mdd_max_lmm_get(env, mdd, &_lmm, NULL);
 
                         if (_lmm == NULL)
                                 GOTO(out_oti, rc = -ENOMEM);
@@ -622,7 +603,8 @@ int mdd_lov_destroy(const struct lu_env *env, struct mdd_device *mdd,
         }
 
         ma->ma_lmm_size = mdd_lov_mdsize(env, mdd);
-        ma->ma_lmm = mdd_max_lmm_get(env, mdd);
+        ma->ma_lmm = NULL;
+        mdd_max_lmm_get(env, mdd, &ma->ma_lmm, NULL);
         ma->ma_cookie_size = mdd_lov_cookiesize(env, mdd);
         ma->ma_cookie = mdd_max_cookie_get(env, mdd);
         if (ma->ma_lmm == NULL || ma->ma_cookie == NULL)

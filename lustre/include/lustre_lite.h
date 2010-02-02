@@ -150,10 +150,6 @@ static inline void ll_dir_chain_fini(struct ll_dir_chain *chain)
 {
 }
 
-static inline unsigned long hash_x_index(unsigned long value)
-{
-        return ~0UL - value;
-}
 
 /** @} lite */
 

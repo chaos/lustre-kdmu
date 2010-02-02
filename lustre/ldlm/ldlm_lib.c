@@ -684,8 +684,8 @@ int target_handle_connect(struct ptlrpc_request *req)
         }
 
         if (target->obd_no_conn) {
-                LCONSOLE_WARN("%s: temporarily refusing client connection "
-                              "from %s\n", target->obd_name,
+                LCONSOLE_WARN("%s:%p temporarily refusing client connection "
+                              "from %s\n", target->obd_name, target,
                               libcfs_nid2str(req->rq_peer.nid));
                 GOTO(out, rc = -EAGAIN);
         }

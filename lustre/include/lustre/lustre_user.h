@@ -142,6 +142,8 @@ struct obd_statfs {
 #define LL_IOC_PATH2FID                 _IOR ('f', 173, long)
 #define LL_IOC_GET_CONNECT_FLAGS        _IOWR('f', 174, __u64 *)
 #define LL_IOC_GET_MDTIDX               _IOR ('f', 175, int)
+#define LL_IOC_LMV_SETSTRIPE            _IOR ('f', 176, long)
+#define LL_IOC_LMV_GETSTRIPE            _IOR ('f', 177, long)
 
 #define LL_IOC_HSM_CT_START             _IOW ('f', 178, struct lustre_kernelcomm *)
 
@@ -169,6 +171,7 @@ struct obd_statfs {
 #define LOV_USER_MAGIC    LOV_USER_MAGIC_V1
 #define LOV_USER_MAGIC_JOIN_V1 0x0BD20BD0
 #define LOV_USER_MAGIC_V3 0x0BD30BD0
+#define LMV_USER_MAGIC    0x0BD40BD0
 
 #define LOV_PATTERN_RAID0 0x001
 #define LOV_PATTERN_RAID1 0x002
@@ -229,6 +232,16 @@ struct lov_user_mds_data_v3 {
         struct lov_user_md_v3 lmd_lmm;  /* LOV EA V3 user data */
 } __attribute__((packed));
 #endif
+
+enum {
+        LMV_HASH_SANDWICH  = 0,
+        LMV_HASH_TEA       = 1, 
+        LMV_HASH_PREFIX    = 2, 
+        LMV_HASH_LAST_CHAR = 3,
+        LMV_HASH_ALL_CHARS = 4,
+        LMV_HASH_MAX
+};
+
 
 struct ll_recreate_obj {
         __u64 lrc_id;

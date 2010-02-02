@@ -238,7 +238,7 @@ int fld_server_create(struct lu_server_fld *fld,
                         rc = -EIO;
                         GOTO(out, rc);
                 }
-        
+
                 /* merge with next range */
                 rc = fld_index_delete(fld, env, erange, th);
                 if (rc == 0) {
@@ -296,7 +296,8 @@ int fld_server_lookup(struct lu_server_fld *fld,
                  * This is temporary solution, long term solution is fld
                  * replication on all mdt servers.
                  */
-                rc = fld_client_rpc(fld->lsf_control_exp,
+		range->lsr_start = seq;
+		rc = fld_client_rpc(fld->lsf_control_exp,
                                     range, FLD_LOOKUP);
         }
 
@@ -332,7 +333,7 @@ static int fld_server_handle(struct lu_server_fld *fld,
 
         CDEBUG(D_INFO, "%s: FLD req handle: error %d (opc: %d, range: "
                DRANGE"\n", fld->lsf_name, rc, opc, PRANGE(range));
-        
+
         RETURN(rc);
 
 }
@@ -427,22 +428,17 @@ int fid_is_local(const struct lu_env *env,
 {
         int result;
         struct md_site *msite;
-        struct lu_seq_range *range;
-        struct fld_thread_info *info;
         ENTRY;
-
-        info = lu_context_key_get(&env->le_ctx, &fld_thread_key);
-        range = &info->fti_lrange;
 
         result = 1; /* conservatively assume fid is local */
         msite = lu_site2md(site);
         if (msite->ms_client_fld != NULL) {
-                int rc;
+                int rc, mdsno;
 
-                rc = fld_cache_lookup(msite->ms_client_fld->lcf_cache,
-                                      fid_seq(fid), range);
+                rc = fld_client_lookup(msite->ms_client_fld,
+                                       fid_seq(fid), &mdsno, env);
                 if (rc == 0)
-                        result = (range->lsr_mdt == msite->ms_node_id);
+                        result = (mdsno == msite->ms_node_id);
         }
         return result;
 }

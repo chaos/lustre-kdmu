@@ -4,7 +4,14 @@ FSNAME=${FSNAME:-lustre}
 mds_HOST=${mds_HOST:-`hostname`}
 mdsfailover_HOST=${mdsfailover_HOST}
 mds1_HOST=${mds1_HOST:-$mds_HOST}
+mds2_HOST=${mds2_HOST:-$mds_HOST}
+mds3_HOST=${mds3_HOST:-$mds_HOST}
+mds4_HOST=${mds4_HOST:-$mds_HOST}
 mds1failover_HOST=${mds1failover_HOST:-$mdsfailover_HOST}
+mds2failover_HOST=${mds2failover_HOST:-$mdsfailover_HOST}
+mds3failover_HOST=${mds3failover_HOST:-$mdsfailover_HOST}
+mds4failover_HOST=${mds4failover_HOST:-$mdsfailover_HOST}
+
 mgs_HOST=${mgs_HOST:-$mds1_HOST}
 ost_HOST=${ost_HOST:-`hostname`}
 ostfailover_HOST=${ostfailover_HOST}
@@ -18,7 +25,6 @@ ZPOOLBASE=${ZPOOLBASE:-tank}
 DAEMONSIZE=${DAEMONSIZE:-500}
 MDSCOUNT=${MDSCOUNT:-1}
 [ $MDSCOUNT -gt 4 ] && MDSCOUNT=4
-[ $MDSCOUNT -gt 1 ] && IAMDIR=yes
 for num in $(seq $MDSCOUNT); do
     eval mds${num}_HOST=\$\{mds${num}_HOST:-$mds_HOST\}
     eval mds${num}failover_HOST=\$\{mds${num}failover_HOST:-$mdsfailover_HOST\}
@@ -47,8 +53,9 @@ STRIPE_BYTES=${STRIPE_BYTES:-1048576}
 STRIPES_PER_OBJ=${STRIPES_PER_OBJ:-0}
 SINGLEMDS=${SINGLEMDS:-"mds1"}
 TIMEOUT=${TIMEOUT:-20}
-PTLDEBUG=${PTLDEBUG:-0x33f0404}
-DEBUG_SIZE=${DEBUG_SIZE:-10}
+#PTLDEBUG=${PTLDEBUG:-0x33f0404}
+PTLDEBUG=${PTLDEBUG:-0xffffffff}
+DEBUG_SIZE=${DEBUG_SIZE:-50}
 if [ `grep processor /proc/cpuinfo | wc -l` -gt 5 ]; then
     DEBUG_SIZE=$((`grep processor /proc/cpuinfo | wc -l` * 2))   # promise 2MB for every cpu
 fi

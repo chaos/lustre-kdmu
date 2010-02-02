@@ -1221,7 +1221,7 @@ struct md_op_data {
 
         /* Size-on-MDS epoch and flags. */
         __u64                   op_ioepoch;
-        __u32                   op_flags;
+        __u64                   op_flags;
 
         /* Capa fields */
         struct obd_capa        *op_capa1;
@@ -1232,6 +1232,15 @@ struct md_op_data {
 
         /* Operation type */
         __u32                   op_opc;
+};
+
+#define op_stripe_offset       op_ioepoch
+#define op_hash_offset         op_flags
+#define op_exact               op_bias
+
+struct md_page_callback {
+        int (*md_blocking_ast)(struct ldlm_lock *lock, struct ldlm_lock_desc *desc,
+                               void *data, int flag);
 };
 
 struct md_enqueue_info;
@@ -1434,24 +1443,27 @@ enum {
 };
 
 /* lmv structures */
-#define MEA_MAGIC_LAST_CHAR      0xb2221ca1
-#define MEA_MAGIC_ALL_CHARS      0xb222a11c
-#define MEA_MAGIC_HASH_SEGMENT   0xb222a11b
 
 #define MAX_HASH_SIZE_32         0x7fffffffUL
 #define MAX_HASH_SIZE            0x7fffffffffffffffULL
 #define MAX_HASH_HIGHEST_BIT     0x1000000000000000ULL
 
+enum {
+        LUSTRE_MD_NEED_MD       = (1 << 0)
+};
+
 struct lustre_md {
         struct mdt_body         *body;
         struct lov_stripe_md    *lsm;
         struct lmv_stripe_md    *mea;
+        struct lmv_stripe_md    *def_mea;
 #ifdef CONFIG_FS_POSIX_ACL
         struct posix_acl        *posix_acl;
 #endif
         struct mdt_remote_perm  *remote_perm;
         struct obd_capa         *mds_capa;
         struct obd_capa         *oss_capa;
+        __u64                   lm_flags;
 };
 
 struct md_open_data {
@@ -1502,9 +1514,16 @@ struct md_ops {
                          struct md_open_data **mod);
         int (*m_sync)(struct obd_export *, const struct lu_fid *,
                       struct obd_capa *, struct ptlrpc_request **);
-        int (*m_readpage)(struct obd_export *, const struct lu_fid *,
-                          struct obd_capa *, __u64, struct page *,
-                          struct ptlrpc_request **);
+
+        int (*m_readpage)(struct obd_export *, struct md_op_data *,
+                          struct md_page_callback *cb_op,
+                          struct ptlrpc_request **, struct page ** page);
+
+        int (*m_cancel_page) (struct obd_export *, struct lmv_stripe_md *,
+                              struct lu_fid *fid, struct lmv_oinfo *);
+
+        int (*m_put_page) (struct obd_export *, struct md_op_data *,
+                           struct page *page);
 
         int (*m_unlink)(struct obd_export *, struct md_op_data *,
                         struct ptlrpc_request **);
@@ -1557,6 +1576,10 @@ struct md_ops {
 
         int (*m_revalidate_lock)(struct obd_export *, struct lookup_intent *,
                                  struct lu_fid *, __u32 *);
+        int (*m_notify_object)(struct obd_export *,
+                               struct lu_fid *,
+                               enum md_object_event,
+                               void *);
 
         /*
          * NOTE: If adding ops, add another LPROCFS_MD_OP_INIT() line to

@@ -167,6 +167,7 @@ struct ll_inode_info {
         /* identifying fields for both metadata and data stacks. */
         struct lu_fid           lli_fid;
         struct lov_stripe_md   *lli_smd;
+        struct lmv_stripe_md   *lli_mea;
 
         /* fid capability */
         /* open count currently used by capability only, indicate whether
@@ -512,6 +513,7 @@ struct ll_file_data {
         struct ccc_grouplock fd_grouplock;
         struct ll_file_dir fd_dir;
         __u32 fd_flags;
+        __u64 ll_fd_offset;
         struct file *fd_file;
 };
 
@@ -566,18 +568,16 @@ static void lprocfs_llite_init_vars(struct lprocfs_static_vars *lvars)
 
 
 /* llite/dir.c */
-static inline void ll_put_page(struct page *page)
-{
-        kunmap(page);
-        page_cache_release(page);
-}
+int ll_put_page(struct inode *inode, __u64 stripe_off, struct page *page);
 
 extern struct file_operations ll_dir_operations;
 extern struct inode_operations ll_dir_inode_operations;
-struct page *ll_get_dir_page(struct inode *dir, __u64 hash, int exact,
-                             struct ll_dir_chain *chain);
-
+struct page *ll_get_dir_page(struct inode *dir, __u64 hash, __u64 stripe_off,
+                             int exact, struct ll_dir_chain *chain);
 int ll_get_mdt_idx(struct inode *inode);
+struct page *ll_dir_page_locate(struct inode *dir, __u64 hash, __u64 *start,
+                                __u64 *end);
+void ll_release_page(struct page *page, __u64 hash, __u64 start, __u64 end);
 /* llite/namei.c */
 int ll_objects_destroy(struct ptlrpc_request *request,
                        struct inode *dir);
@@ -592,6 +592,10 @@ struct lookup_intent *ll_convert_intent(struct open_intent *oit,
 void ll_lookup_it_alias(struct dentry **de, struct inode *inode, __u32 bits);
 int ll_lookup_it_finish(struct ptlrpc_request *request,
                         struct lookup_intent *it, void *data);
+
+int ll_mkdir_generic(struct inode *dir, struct qstr *name, int mode,
+                     struct dentry *dchild);
+void ll_update_times(struct ptlrpc_request *request, struct inode *inode);
 
 /* llite/rw.c */
 int ll_prepare_write(struct file *, struct page *, unsigned from, unsigned to);
@@ -661,8 +665,8 @@ int ll_lov_getstripe_ea_info(struct inode *inode, const char *filename,
                              struct ptlrpc_request **request);
 int ll_dir_setstripe(struct inode *inode, struct lov_user_md *lump,
                      int set_default);
-int ll_dir_getstripe(struct inode *inode, struct lov_mds_md **lmm,
-                     int *lmm_size, struct ptlrpc_request **request);
+int ll_dir_getstripe(struct inode *inode, void **lmm, int *lmm_size,
+                     struct ptlrpc_request **request, obd_valid);
 int ll_fsync(struct file *file, struct dentry *dentry, int data);
 int ll_do_fiemap(struct inode *inode, struct ll_user_fiemap *fiemap,
               int num_bytes);

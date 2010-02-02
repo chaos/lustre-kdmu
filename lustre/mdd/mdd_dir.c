@@ -226,8 +226,7 @@ int mdd_is_subdir(const struct lu_env *env, struct md_object *mo,
  *           -ve        other error
  *
  */
-static int mdd_dir_is_empty(const struct lu_env *env,
-                            struct mdd_object *dir)
+int mdd_dir_is_empty(const struct lu_env *env, struct mdd_object *dir)
 {
         struct dt_it     *it;
         struct dt_object *obj;
@@ -1923,7 +1922,7 @@ static int mdd_create(const struct lu_env *env,
 {
         struct mdd_thread_info *info = mdd_env_info(env);
         struct lu_attr         *la = &info->mti_la_for_fix;
-        struct md_attr         *ma_acl = &info->mti_ma;
+        struct md_attr         *tmp_ma = &info->mti_ma;
         struct mdd_object      *mdd_pobj = md2mdd_obj(pobj);
         struct mdd_object      *son = md2mdd_obj(child);
         struct mdd_device      *mdd = mdo2mdd(pobj);
@@ -1933,7 +1932,7 @@ static int mdd_create(const struct lu_env *env,
         struct dynlock_handle  *dlh;
         const char             *name = lname->ln_name;
         int rc, created = 0, initialized = 0, inserted = 0, lmm_size = 0;
-        int got_def_acl = 0;
+        struct lu_buf          *tmp_buf;
 #ifdef HAVE_QUOTA_SUPPORT
         struct obd_device *obd = mdd->mdd_obd_dev;
         struct obd_export *exp = md_quota(env)->mq_exp;
@@ -2032,32 +2031,43 @@ static int mdd_create(const struct lu_env *env,
         }
 #endif
 
+        memset(tmp_ma, 0, sizeof(*tmp_ma));
         /*
          * No RPC inside the transaction, so OST objects should be created at
          * first.
          */
-        if (S_ISREG(attr->la_mode)) {
-                lmm_size = ma->ma_lmm_size;
-                rc = mdd_lov_create(env, mdd, mdd_pobj, son, &lmm, &lmm_size,
-                                    spec, attr);
-                if (rc)
-                        GOTO(out_pending, rc);
+        switch (attr->la_mode & S_IFMT) {
+        case S_IFLNK:
+                /* Do nothing for link file */
+                break;
+        case S_IFREG:
+        case S_IFDIR:
+                if (S_ISREG(attr->la_mode)) {
+                        lmm_size = ma->ma_lmm_size;
+                        rc = mdd_lov_create(env, mdd, mdd_pobj, son, &lmm,
+                                            &lmm_size, spec, attr);
+                        if (rc)
+                                GOTO(out_pending, rc);
+                        tmp_ma->ma_lmm = lmm;
+                        tmp_ma->ma_lmm_size = lmm_size;
+                        tmp_ma->ma_valid |= MA_LOV;
+                } else {
+                        mdd_max_lmm_get(env, mdd, &tmp_ma->ma_lmm,
+                               (struct lmv_mds_md**)&tmp_ma->ma_defaultlmv);
+                        tmp_ma->ma_lmm_size = info->mti_max_lmm_size;
+                        tmp_ma->ma_defaultlmv_size = info->mti_max_lmv_size;
+                        tmp_ma->ma_need |= MA_LOV | MA_LMV_DEF;
+                }
+        default:
+                tmp_ma->ma_acl_size = sizeof info->mti_xattr_buf;
+                tmp_ma->ma_acl = info->mti_xattr_buf;
+                tmp_ma->ma_need |= MA_ACL_DEF;
+                break;
         }
 
-        if (!S_ISLNK(attr->la_mode)) {
-                ma_acl->ma_acl_size = sizeof info->mti_xattr_buf;
-                ma_acl->ma_acl = info->mti_xattr_buf;
-                ma_acl->ma_need = MA_ACL_DEF;
-                ma_acl->ma_valid = 0;
-
-                mdd_read_lock(env, mdd_pobj, MOR_TGT_PARENT);
-                rc = mdd_def_acl_get(env, mdd_pobj, ma_acl);
-                mdd_read_unlock(env, mdd_pobj);
-                if (rc)
-                        GOTO(out_free, rc);
-                else if (ma_acl->ma_valid & MA_ACL_DEF)
-                        got_def_acl = 1;
-        }
+        rc = mdd_attr_get(env, pobj, tmp_ma);
+        if (rc)
+                GOTO(out_free, 1);
 
         handle = mdd_start_and_declare_create(env, pobj, son, name,
                                               lmm_size, attr, spec);
@@ -2078,12 +2088,9 @@ static int mdd_create(const struct lu_env *env,
         created = 1;
 
 #ifdef CONFIG_FS_POSIX_ACL
-        if (got_def_acl) {
-                struct lu_buf *acl_buf = &info->mti_buf;
-                acl_buf->lb_buf = ma_acl->ma_acl;
-                acl_buf->lb_len = ma_acl->ma_acl_size;
-
-                rc = __mdd_acl_init(env, son, acl_buf, &attr->la_mode, handle);
+        if (tmp_ma->ma_valid & MA_ACL_DEF) {
+                tmp_buf = mdd_buf_get(env, tmp_ma->ma_acl, tmp_ma->ma_acl_size);
+                rc = __mdd_acl_init(env, son, tmp_buf, &attr->la_mode, handle);
                 if (rc) {
                         mdd_write_unlock(env, son);
                         GOTO(cleanup, rc);
@@ -2114,20 +2121,8 @@ static int mdd_create(const struct lu_env *env,
 
         inserted = 1;
 
-        /* No need mdd_lsm_sanity_check here */
-        rc = mdd_lov_set_md(env, mdd_pobj, son, lmm, lmm_size, handle, 0);
-        if (rc) {
-                CERROR("error on stripe info copy %d \n", rc);
-                GOTO(cleanup, rc);
-        }
-        if (lmm && lmm_size > 0) {
-                /* Set Lov here, do not get lmm again later */
-                memcpy(ma->ma_lmm, lmm, lmm_size);
-                ma->ma_lmm_size = lmm_size;
-                ma->ma_valid |= MA_LOV;
-        }
-
-        if (S_ISLNK(attr->la_mode)) {
+        switch (attr->la_mode & S_IFMT) {
+        case S_IFLNK: {
                 struct md_ucred  *uc = md_ucred(env);
                 struct dt_object *dt = mdd_object_child(son);
                 const char *target_name = spec->u.sp_symname;
@@ -2140,11 +2135,66 @@ static int mdd_create(const struct lu_env *env,
                                                 mdd_object_capa(env, son),
                                                 uc->mu_cap &
                                                 CFS_CAP_SYS_RESOURCE_MASK);
-
                 if (rc == sym_len)
                         rc = 0;
                 else
                         GOTO(cleanup, rc = -EFAULT);
+                break;
+        }
+        case S_IFREG: {
+                rc = mdd_lov_set_md(env, mdd_pobj, son, lmm, lmm_size, handle, 0);
+                if (rc) {
+                        CERROR("error on stripe info copy %d \n", rc);
+                        GOTO(cleanup, rc);
+                }
+                if (lmm && lmm_size > 0) {
+                        /* Set Lov here, do not get lmm again later */
+                        memcpy(ma->ma_lmm, lmm, lmm_size);
+                        ma->ma_lmm_size = lmm_size;
+                        ma->ma_valid |= MA_LOV;
+                }
+                break;
+        }
+        case S_IFDIR: {
+                if (tmp_ma->ma_valid & MA_LOV) {
+                        tmp_buf = mdd_buf_get(env, tmp_ma->ma_lmm,
+                                              tmp_ma->ma_lmm_size);
+                        rc = mdd_xattr_set_txn(env, son, tmp_buf,
+                                       XATTR_NAME_LOV, 0, handle);
+                        if (rc) {
+                                CERROR("error on set default stripe info: rc"
+                                        "= %d\n", rc);
+                                LBUG();
+                                GOTO(cleanup, rc);
+                        }
+                        if (ma->ma_need & MA_LOV) {
+                                ma->ma_lmm_size = tmp_ma->ma_lmm_size;
+                                ma->ma_lmm = tmp_ma->ma_lmm;
+                                ma->ma_valid |= MA_LOV;
+                        }
+                }
+                if (tmp_ma->ma_valid & MA_LMV_DEF) {
+                        tmp_buf = mdd_buf_get(env, tmp_ma->ma_defaultlmv,
+                                              tmp_ma->ma_defaultlmv_size);
+                        rc = mdd_xattr_set_txn(env, son, tmp_buf,
+                                       XATTR_NAME_DEFAULT_LMV, 0, handle);
+                        if (rc) {
+                                CERROR("error on set default dirstripe info: rc"
+                                        "= %d\n", rc);
+                                GOTO(cleanup, rc);
+                        }
+                        if (ma->ma_need & MA_LMV_DEF) {
+                                ma->ma_defaultlmv_size =
+                                                tmp_ma->ma_defaultlmv_size;
+                                ma->ma_defaultlmv = tmp_ma->ma_defaultlmv;
+                                ma->ma_valid |= MA_LMV_DEF;
+                        }
+                }
+
+                break;
+        }
+        default:
+                break;
         }
 
         *la = ma->ma_attr;

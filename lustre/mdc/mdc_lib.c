@@ -150,7 +150,8 @@ void mdc_create_pack(struct ptlrpc_request *req, struct md_op_data *op_data,
         rec->cr_time     = op_data->op_mod_time;
         rec->cr_suppgid1 = op_data->op_suppgids[0];
         rec->cr_suppgid2 = op_data->op_suppgids[1];
-        rec->cr_flags    = op_data->op_flags & MF_SOM_LOCAL_FLAGS;
+        rec->cr_flags    = op_data->op_flags & (MF_SOM_LOCAL_FLAGS |
+                                                MDS_CREATE_SLAVE_OBJ);
         rec->cr_bias     = op_data->op_bias;
 
         mdc_pack_capa(req, &RMF_CAPA1, op_data->op_capa1);
@@ -158,16 +159,45 @@ void mdc_create_pack(struct ptlrpc_request *req, struct md_op_data *op_data,
         tmp = req_capsule_client_get(&req->rq_pill, &RMF_NAME);
         LOGL0(op_data->op_name, op_data->op_namelen, tmp);
 
-        if (data) {
-                tmp = req_capsule_client_get(&req->rq_pill, &RMF_EADATA);
-                memcpy(tmp, data, datalen);
+        if (op_data->op_bias & MDS_CROSS_REF) {
+                struct md_op_spec *spec = (struct md_op_spec *)data;
+
+                if (spec->u.sp_ea.eadatalen) {
+                        tmp = req_capsule_client_get(&req->rq_pill, &RMF_EADATA);
+                        memcpy(tmp, spec->u.sp_ea.eadata, spec->u.sp_ea.eadatalen);
+                }
+                if (spec->u.sp_ea.lovdatalen) {
+                        tmp = req_capsule_client_get(&req->rq_pill,
+                                                     &RMF_LOVDATA);
+                        memcpy(tmp, spec->u.sp_ea.lovdata,
+                                    spec->u.sp_ea.lovdatalen);
+                }
+                if (spec->u.sp_ea.lmvdatalen) {
+                        tmp = req_capsule_client_get(&req->rq_pill,
+                                                     &RMF_LMVDATA);
+                        memcpy(tmp, spec->u.sp_ea.lmvdata,
+                               spec->u.sp_ea.lmvdatalen);
+                }
+                if (spec->u.sp_ea.lmvdefdatalen) {
+                        tmp = req_capsule_client_get(&req->rq_pill,
+                                                     &RMF_LMVDEFDATA);
+                        memcpy(tmp, spec->u.sp_ea.lmvdefdata,
+                               spec->u.sp_ea.lmvdefdatalen);
+                }
+
+        } else {
+                if (data) {
+                        tmp = req_capsule_client_get(&req->rq_pill, &RMF_EADATA);
+                        memcpy(tmp, data, datalen);
+                }
         }
+
 }
 
 static __u32 mds_pack_open_flags(__u32 flags, __u32 mode)
 {
         __u32 cr_flags = (flags & (FMODE_READ | FMODE_WRITE |
-                                   MDS_OPEN_HAS_EA | MDS_OPEN_HAS_OBJS | 
+                                   MDS_OPEN_HAS_EA | MDS_OPEN_HAS_OBJS |
                                    MDS_OPEN_OWNEROVERRIDE | MDS_OPEN_LOCK));
         if (flags & O_CREAT)
                 cr_flags |= MDS_OPEN_CREAT;
@@ -289,6 +319,7 @@ static void mdc_setattr_pack_rec(struct mdt_rec_setattr *rec,
         rec->sa_cap     = cfs_curproc_cap_pack();
         rec->sa_suppgid = -1;
 
+        rec->sa_bias   = op_data->op_bias;
         rec->sa_fid    = op_data->op_fid1;
         rec->sa_valid  = attr_pack(op_data->op_attr.ia_valid);
         rec->sa_mode   = op_data->op_attr.ia_mode;
@@ -321,7 +352,7 @@ void mdc_setattr_pack(struct ptlrpc_request *req, struct md_op_data *op_data,
         struct mdt_rec_setattr *rec;
         struct mdt_ioepoch *epoch;
         struct lov_user_md *lum = NULL;
-        
+
         CLASSERT(sizeof(struct mdt_rec_reint) ==sizeof(struct mdt_rec_setattr));
         rec = req_capsule_client_get(&req->rq_pill, &RMF_REC_REINT);
         mdc_setattr_pack_rec(rec, op_data);
@@ -357,7 +388,7 @@ void mdc_unlink_pack(struct ptlrpc_request *req, struct md_op_data *op_data)
 {
         struct mdt_rec_unlink *rec;
         char *tmp;
- 
+
         CLASSERT(sizeof(struct mdt_rec_reint) == sizeof(struct mdt_rec_unlink));
         rec = req_capsule_client_get(&req->rq_pill, &RMF_REC_REINT);
         LASSERT (rec != NULL);
@@ -452,8 +483,6 @@ void mdc_getattr_pack(struct ptlrpc_request *req, __u64 valid, int flags,
         b->fsgid = cfs_curproc_fsgid();
         b->capability = cfs_curproc_cap_pack();
         b->valid = valid;
-        if (op_data->op_bias & MDS_CHECK_SPLIT)
-                b->valid |= OBD_MD_FLCKSPLIT;
         if (op_data->op_bias & MDS_CROSS_REF)
                 b->valid |= OBD_MD_FLCROSSREF;
         b->flags = flags;

@@ -1130,9 +1130,9 @@ static int filter_read_group_internal(struct obd_device *obd, int group,
         if (filter->fo_subdir_count && fid_seq_is_mdt(group)) {
                 filter->fo_dentry_O_sub[group] = *tmp_subdirs;
                 OBD_FREE(tmp_subdirs, sizeof(*tmp_subdirs));
+                filter_update_last_group(obd, group);
         }
 
-        filter_update_last_group(obd, group);
 
         if (i_size_read(filp->f_dentry->d_inode) == 0) {
                 filter->fo_last_objids[group] = FILTER_INIT_OBJID;

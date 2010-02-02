@@ -523,6 +523,7 @@ int ll_file_open(struct inode *inode, struct file *file)
                         opendir_set = 1;
                 }
                 cfs_spin_unlock(&lli->lli_sa_lock);
+                fd->ll_fd_offset = 0;
         }
 
         if (inode->i_sb->s_root == file->f_dentry) {
@@ -648,6 +649,10 @@ restart:
         }
         cfs_up(&lli->lli_och_sem);
 
+        if (S_ISDIR(inode->i_mode)) {
+                fd->ll_fd_offset = 0;
+                GOTO(out, rc);
+        }
         /* Must do this outside lli_och_sem lock to prevent deadlock where
            different kind of OPEN lock for this same inode gets cancelled
            by ldlm_cancel_lru */
@@ -2188,8 +2193,10 @@ int __ll_inode_revalidate_it(struct dentry *dentry, struct lookup_intent *it,
                         if (rc)
                                 RETURN(rc);
                         valid |= OBD_MD_FLEASIZE | OBD_MD_FLMODEASIZE;
+                } else if (S_ISDIR(inode->i_mode)) {
+                        ealen = obd_size_diskmd(sbi->ll_md_exp, NULL);
+                        valid |= OBD_MD_FLDIREA | OBD_MD_MEA |OBD_MD_DEFAULTMEA;
                 }
-
                 op_data = ll_prep_md_op_data(NULL, inode, NULL, NULL,
                                              0, ealen, LUSTRE_OPC_ANY,
                                              NULL);

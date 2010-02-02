@@ -67,7 +67,6 @@ enum llapi_message_level {
 /* the bottom three bits reserved for llapi_message_level */
 #define LLAPI_MSG_MASK          0x00000007
 #define LLAPI_MSG_NO_ERRNO      0x00000010
-
 /* liblustreapi.c */
 extern void llapi_msg_set_level(int level);
 extern void llapi_err(int level, char *fmt, ...);
@@ -82,6 +81,12 @@ extern int llapi_file_create_pool(const char *name,
                                   unsigned long long stripe_size,
                                   int stripe_offset, int stripe_count,
                                   int stripe_pattern, char *pool_name);
+
+/* flags for create dir stripe */ 
+#define LMV_SET_DEFAULT_DIRSTRIPE  0x00000001 
+extern int llapi_dir_create_pool(const char *name, int flags, int stripe_offset,
+                                 int stripe_count, int stripe_pattern,
+                                 char *pool_name);
 extern int llapi_file_open_pool(const char *name, int flags, int mode,
                                 unsigned long long stripe_size,
                                 int stripe_offset, int stripe_count,
@@ -133,8 +138,9 @@ struct find_param {
                         check_uid:1,
                         check_pool:1,
                         exclude_pool:1,
-                        get_mdt_index:1;
-
+                        get_lmv:1,
+                        get_mdt_index:1,
+                        get_default:1;
         int     verbose;
         int     quiet;
 
@@ -156,6 +162,7 @@ struct find_param {
         unsigned int depth;
         dev_t   st_dev;
 
+        struct obdo     *oinfo;
         char poolname[LOV_MAXPOOLNAME + 1];
 };
 

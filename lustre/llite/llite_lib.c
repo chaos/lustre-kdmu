@@ -169,7 +169,7 @@ static int client_common_fill_super(struct super_block *sb, char *md, char *dt)
         struct obd_connect_data *data = NULL;
         struct obd_uuid *uuid;
         struct md_op_data *op_data;
-        struct lustre_md lmd;
+        struct lustre_md lmd = {0};
         obd_valid valid;
         int size, err, checksum;
         ENTRY;
@@ -441,7 +441,8 @@ static int client_common_fill_super(struct super_block *sb, char *md, char *dt)
                 CERROR("md_getattr failed for root: rc = %d\n", err);
                 GOTO(out_lock_cn_cb, err);
         }
-        memset(&lmd, 0, sizeof(lmd));
+
+        lmd.lm_flags = LUSTRE_MD_NEED_MD;
         err = md_get_lustre_md(sbi->ll_md_exp, request, sbi->ll_dt_exp,
                                sbi->ll_md_exp, &lmd);
         if (err) {
@@ -458,6 +459,8 @@ static int client_common_fill_super(struct super_block *sb, char *md, char *dt)
         if (root == NULL || IS_ERR(root)) {
                 if (lmd.lsm)
                         obd_free_memmd(sbi->ll_dt_exp, &lmd.lsm);
+                if (lmd.mea)
+                        lmv_free_memmd(lmd.mea);
 #ifdef CONFIG_FS_POSIX_ACL
                 if (lmd.posix_acl) {
                         posix_acl_release(lmd.posix_acl);
@@ -806,6 +809,7 @@ void ll_lli_init(struct ll_inode_info *lli)
         CFS_INIT_LIST_HEAD(&lli->lli_dead_list);
         lli->lli_remote_perms = NULL;
         lli->lli_rmtperm_utime = 0;
+        lli->lli_mea = NULL;
         cfs_sema_init(&lli->lli_rmtperm_sem, 1);
         CFS_INIT_LIST_HEAD(&lli->lli_oss_capas);
         cfs_spin_lock_init(&lli->lli_sa_lock);
@@ -1058,6 +1062,10 @@ void ll_clear_inode(struct inode *inode)
                 lli->lli_smd = NULL;
         }
 
+        if (lli->lli_mea) {
+                lmv_free_memmd(lli->lli_mea);
+                lli->lli_mea = NULL;
+        }
 
         EXIT;
 }
@@ -1065,7 +1073,7 @@ void ll_clear_inode(struct inode *inode)
 int ll_md_setattr(struct inode *inode, struct md_op_data *op_data,
                   struct md_open_data **mod)
 {
-        struct lustre_md md;
+        struct lustre_md md = {0};
         struct ll_sb_info *sbi = ll_i2sbi(inode);
         struct ptlrpc_request *request = NULL;
         int rc;
@@ -1271,7 +1279,7 @@ int ll_setattr_raw(struct inode *inode, struct iattr *attr)
 
         if (ia_valid & ATTR_SIZE)
                 attr->ia_valid |= ATTR_SIZE;
-        if ((ia_valid & ATTR_SIZE) | 
+        if ((ia_valid & ATTR_SIZE) |
             ((ia_valid | ATTR_ATIME | ATTR_ATIME_SET) &&
              LTIME_S(attr->ia_atime) < LTIME_S(attr->ia_ctime)) ||
             ((ia_valid | ATTR_MTIME | ATTR_MTIME_SET) &&
@@ -1439,11 +1447,92 @@ void ll_inode_size_unlock(struct inode *inode, int unlock_lsm)
         cfs_up(&lli->lli_size_sem);
 }
 
+static void ll_update_mea(struct inode *inode, struct lustre_md *md)
+{
+        struct ll_inode_info *lli = ll_i2info(inode);
+        struct lmv_stripe_md *lsm;
+        int idx;
+
+        /*Compose a lsm according to md->def_lsm and md->lsm*/
+        LASSERT(md->body->valid & OBD_MD_MEA);
+        lsm = (md->mea != NULL) ? md->mea : md->def_mea;
+        LASSERT(lsm != NULL);
+        if (md->def_mea != NULL) {
+                lsm->mea_default_index = md->def_mea->mea_default_index;
+                lsm->mea_default_count = md->def_mea->mea_default_count;
+        }
+
+        if (lli->lli_mea == NULL) {
+                lli->lli_mea = lsm;
+                return;
+        }
+
+        if (!memcmp(lsm, lli->lli_mea, sizeof(*lsm)))
+                return;
+        /**
+         * If previous lsm only includes default stripe information.
+         * Update the stripe
+         */
+        if (lli->lli_mea->mea_count == 0) {
+                LASSERT(lli->lli_mea->mea_default_index != -1);
+                CDEBUG(D_INODE, "update default stripe %p to lsm %p \n",
+                                 lli->lli_mea, lsm);
+                lmv_free_memmd(lli->lli_mea);
+                lli->lli_mea = lsm;
+        }
+
+        /* Compare the old and new stripe information */
+        if (lli->lli_mea->mea_magic != lsm->mea_magic ||
+            lli->lli_mea->mea_count != lsm->mea_count ||
+            lli->lli_mea->mea_master != lsm->mea_master ||
+            lli->lli_mea->mea_hash_type != lsm->mea_hash_type ||
+            lli->lli_mea->mea_layout_version != lsm->mea_layout_version ||
+            strncmp(lli->lli_mea->mea_pool_name, lsm->mea_pool_name,
+                    strlen(lsm->mea_pool_name))) {
+                CERROR("MEA for inode %p mismatch \n"
+                       "               new(%p)     vs     lli_mea(%p): \n"
+                       "    magic:      %x                   %x\n"
+                       "    count:      %x                   %x\n"
+                       "    master:     %x                   %x\n"
+                       "    hash_type:  %x                   %x\n"
+                       "    layout:     %x                   %x\n"
+                       "    pool:       %s                   %s\n",
+                       inode, lsm, lli->lli_mea, lsm->mea_magic,
+                       lli->lli_mea->mea_magic, lsm->mea_count,
+                       lli->lli_mea->mea_count, lsm->mea_master,
+                       lli->lli_mea->mea_master, lsm->mea_hash_type,
+                       lli->lli_mea->mea_hash_type,
+                       lsm->mea_layout_version,
+                       lli->lli_mea->mea_layout_version,
+                       lsm->mea_pool_name,
+                       lli->lli_mea->mea_pool_name);
+                LBUG();
+        }
+
+        for (idx = 0; idx < lli->lli_mea->mea_count; idx++) {
+                if (memcmp(&lli->lli_mea->mea_oinfo[idx].lmo_fid,
+                           &lsm->mea_oinfo[idx].lmo_fid,
+                           sizeof(lsm->mea_oinfo[idx].lmo_fid))) {
+                        CERROR("FID in lsm mismatch idx %d, old:"DFID
+                               "new:"DFID"\n", idx,
+                                PFID(&lli->lli_mea->mea_oinfo[idx].lmo_fid),
+                                PFID(&lsm->mea_oinfo[idx].lmo_fid));
+                        LBUG();
+                }
+        }
+        CDEBUG(D_INODE, "update defstripe cnt %d --> %d, idx %d --> %d \n",
+               lli->lli_mea->mea_default_count, lsm->mea_default_count,
+               lli->lli_mea->mea_default_index, lsm->mea_default_index);
+
+        lmv_free_memmd(lli->lli_mea);
+        lli->lli_mea = lsm;
+}
+
 void ll_update_inode(struct inode *inode, struct lustre_md *md)
 {
         struct ll_inode_info *lli = ll_i2info(inode);
         struct mdt_body *body = md->body;
-        struct lov_stripe_md *lsm = md->lsm;
+        struct lov_stripe_md  *lsm = md->lsm;
         struct ll_sb_info *sbi = ll_i2sbi(inode);
 
         LASSERT ((lsm != NULL) == ((body->valid & OBD_MD_FLEASIZE) != 0));
@@ -1482,8 +1571,33 @@ void ll_update_inode(struct inode *inode, struct lustre_md *md)
                                 LBUG();
                         }
                 }
-                if (lli->lli_smd != lsm)
-                        obd_free_memmd(ll_i2dtexp(inode), &lsm);
+                if (lli->lli_smd != lsm) {
+                        obd_free_memmd(ll_i2dtexp(inode), &md->lsm);
+                        lsm = NULL;
+                }
+        }
+
+        if (body->valid & OBD_MD_FLMODE)
+                inode->i_mode = (inode->i_mode & S_IFMT)|(body->mode & ~S_IFMT);
+        if (body->valid & OBD_MD_FLTYPE)
+                inode->i_mode = (inode->i_mode & ~S_IFMT)|(body->mode & S_IFMT);
+        LASSERT(inode->i_mode != 0);
+
+        if (body->valid & OBD_MD_MEA) {
+                LASSERT(S_ISDIR(inode->i_mode));
+                ll_update_mea(inode, md);
+                if (md->mea != lli->lli_mea && md->mea != NULL) {
+                        CDEBUG(D_INODE, "Duplicate mea ori %p, new %p\n",
+                               lli->lli_mea, md->mea);
+                        lmv_free_memmd(md->mea);
+                        md->mea = NULL;
+                }
+                if (md->def_mea != lli->lli_mea && md->def_mea != NULL) {
+                        CDEBUG(D_INODE, "Duplicate def mea ori %p, new %p\n",
+                               lli->lli_mea, md->def_mea);
+                        lmv_free_memmd(md->def_mea);
+                        md->def_mea = NULL;
+                }
         }
 
         if (sbi->ll_flags & LL_SBI_RMT_CLIENT) {
@@ -1521,11 +1635,6 @@ void ll_update_inode(struct inode *inode, struct lustre_md *md)
                         LTIME_S(inode->i_ctime) = body->ctime;
                 lli->lli_lvb.lvb_ctime = body->ctime;
         }
-        if (body->valid & OBD_MD_FLMODE)
-                inode->i_mode = (inode->i_mode & S_IFMT)|(body->mode & ~S_IFMT);
-        if (body->valid & OBD_MD_FLTYPE)
-                inode->i_mode = (inode->i_mode & ~S_IFMT)|(body->mode & S_IFMT);
-        LASSERT(inode->i_mode != 0);
         if (S_ISREG(inode->i_mode)) {
                 inode->i_blkbits = min(PTLRPC_MAX_BRW_BITS + 1, LL_MAX_BLKSIZE_BITS);
         } else {
@@ -1653,7 +1762,7 @@ void ll_read_inode2(struct inode *inode, void *opaque)
         } else if (S_ISDIR(inode->i_mode)) {
                 inode->i_op = &ll_dir_inode_operations;
                 inode->i_fop = &ll_dir_operations;
-                inode->i_mapping->a_ops = &ll_dir_aops;
+                /*inode->i_mapping->a_ops = &ll_dir_aops;*/
                 EXIT;
         } else if (S_ISLNK(inode->i_mode)) {
                 inode->i_op = &ll_fast_symlink_inode_operations;
@@ -1908,14 +2017,14 @@ int ll_prep_inode(struct inode **inode,
                   struct super_block *sb)
 {
         struct ll_sb_info *sbi = NULL;
-        struct lustre_md md;
+        struct lustre_md md = { 0};
         int rc;
         ENTRY;
 
         LASSERT(*inode || sb);
         sbi = sb ? ll_s2sbi(sb) : ll_i2sbi(*inode);
-        memset(&md, 0, sizeof(struct lustre_md));
 
+        md.lm_flags = LUSTRE_MD_NEED_MD;
         rc = md_get_lustre_md(sbi->ll_md_exp, req, sbi->ll_dt_exp,
                               sbi->ll_md_exp, &md);
         if (rc)
@@ -1936,6 +2045,7 @@ int ll_prep_inode(struct inode **inode,
                 if (*inode == NULL || IS_ERR(*inode)) {
                         if (md.lsm)
                                 obd_free_memmd(sbi->ll_dt_exp, &md.lsm);
+                        md_free_lustre_md(sbi->ll_md_exp, &md);
 #ifdef CONFIG_FS_POSIX_ACL
                         if (md.posix_acl) {
                                 posix_acl_release(md.posix_acl);
@@ -1950,7 +2060,6 @@ int ll_prep_inode(struct inode **inode,
         }
 
 out:
-        md_free_lustre_md(sbi->ll_md_exp, &md);
         RETURN(rc);
 }
 
@@ -2047,10 +2156,12 @@ struct md_op_data * ll_prep_md_op_data(struct md_op_data *op_data,
         ll_i2gids(op_data->op_suppgids, i1, i2);
         op_data->op_fid1 = *ll_inode2fid(i1);
         op_data->op_capa1 = ll_mdscapa_get(i1);
+        op_data->op_mea1  = ll_i2info(i1)->lli_mea;
 
         if (i2) {
                 op_data->op_fid2 = *ll_inode2fid(i2);
                 op_data->op_capa2 = ll_mdscapa_get(i2);
+                op_data->op_mea2  = ll_i2info(i2)->lli_mea;
         } else {
                 fid_zero(&op_data->op_fid2);
                 op_data->op_capa2 = NULL;
@@ -2063,7 +2174,6 @@ struct md_op_data * ll_prep_md_op_data(struct md_op_data *op_data,
         op_data->op_fsuid = cfs_curproc_fsuid();
         op_data->op_fsgid = cfs_curproc_fsgid();
         op_data->op_cap = cfs_curproc_cap_pack();
-        op_data->op_bias = MDS_CHECK_SPLIT;
         op_data->op_opc = opc;
         op_data->op_mds = 0;
         op_data->op_data = data;

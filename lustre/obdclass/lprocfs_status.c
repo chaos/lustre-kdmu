@@ -1528,7 +1528,7 @@ int lprocfs_alloc_md_stats(struct obd_device *obd,
         LASSERT(obd->obd_proc_entry != NULL);
         LASSERT(obd->md_cntr_base == 0);
 
-        num_stats = 1 + MD_COUNTER_OFFSET(revalidate_lock) +
+        num_stats = 1 + MD_COUNTER_OFFSET(notify_object) +
                     num_private_stats;
         stats = lprocfs_alloc_stats(num_stats, 0);
         if (stats == NULL)
@@ -1550,6 +1550,8 @@ int lprocfs_alloc_md_stats(struct obd_device *obd,
         LPROCFS_MD_OP_INIT(num_private_stats, stats, setattr);
         LPROCFS_MD_OP_INIT(num_private_stats, stats, sync);
         LPROCFS_MD_OP_INIT(num_private_stats, stats, readpage);
+        LPROCFS_MD_OP_INIT(num_private_stats, stats, cancel_page);
+        LPROCFS_MD_OP_INIT(num_private_stats, stats, put_page);
         LPROCFS_MD_OP_INIT(num_private_stats, stats, unlink);
         LPROCFS_MD_OP_INIT(num_private_stats, stats, setxattr);
         LPROCFS_MD_OP_INIT(num_private_stats, stats, getxattr);
@@ -1566,6 +1568,7 @@ int lprocfs_alloc_md_stats(struct obd_device *obd,
         LPROCFS_MD_OP_INIT(num_private_stats, stats, get_remote_perm);
         LPROCFS_MD_OP_INIT(num_private_stats, stats, intent_getattr_async);
         LPROCFS_MD_OP_INIT(num_private_stats, stats, revalidate_lock);
+        LPROCFS_MD_OP_INIT(num_private_stats, stats, notify_object);
 
         for (i = num_private_stats; i < num_stats; i++) {
                 if (stats->ls_percpu[0]->lp_cntr[i].lc_name == NULL) {

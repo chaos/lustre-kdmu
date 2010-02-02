@@ -67,14 +67,14 @@ int lmv_fld_lookup(struct lmv_obd *lmv,
         int rc;
         ENTRY;
 
-        LASSERT(fid_is_sane(fid));
+        LASSERTF(fid_is_sane(fid), "insane fid "DFID" !\n", PFID(fid));
         rc = fld_client_lookup(&lmv->lmv_fld, fid_seq(fid), mds, NULL);
         if (rc) {
                 CERROR("Error while looking for mds number. Seq "LPX64
                        ", err = %d\n", fid_seq(fid), rc);
                 RETURN(rc);
         }
-        
+
         CDEBUG(D_INODE, "FLD lookup got mds #%x for fid="DFID"\n",
                *mds, PFID(fid));
 

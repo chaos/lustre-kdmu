@@ -247,12 +247,16 @@ static int filter_obd_connect(const struct lu_env *env, struct obd_export **_exp
                obd->obd_name, exp->exp_handle.h_cookie, group);
 
         /* init new group */
-        if (group > ofd->ofd_max_group) {
+        if (group > ofd->ofd_max_group)
                 ofd->ofd_max_group = group;
+
+        if (!ofd->ofd_lastid_obj[group]) {
+                rc = filter_group_load(env, ofd, group);
+                if (rc != 0)
+                        GOTO(out, rc);
                 filter_last_id_set(ofd, FILTER_INIT_OBJID, group);
                 filter_last_id_write(env, ofd, group, NULL);
                 filter_last_group_write(env, ofd);
-                rc = filter_group_load(env, ofd, group);
         }
 
 out:

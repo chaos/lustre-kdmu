@@ -1485,7 +1485,7 @@ int llog_get_cat_list(struct obd_device *disk_obd,
 
         if (!count)
                 RETURN(0);
-        
+
         d = disk_obd->obd_lvfs_ctxt.dt;
         LASSERT(d);
 

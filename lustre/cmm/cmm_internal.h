@@ -96,16 +96,6 @@ static inline struct lu_device *cmm2lu_dev(struct cmm_device *d)
         return (&d->cmm_md_dev.md_lu_dev);
 }
 
-#ifdef HAVE_SPLIT_SUPPORT
-enum cmm_split_state {
-        CMM_SPLIT_UNKNOWN,
-        CMM_SPLIT_NONE,
-        CMM_SPLIT_NEEDED,
-        CMM_SPLIT_DONE,
-        CMM_SPLIT_DENIED
-};
-#endif
-
 struct cmm_object {
         struct md_object cmo_obj;
 };
@@ -113,10 +103,6 @@ struct cmm_object {
 /* local CMM object */
 struct cml_object {
         struct cmm_object    cmm_obj;
-#ifdef HAVE_SPLIT_SUPPORT
-        /* split state of object (for dirs only)*/
-        enum cmm_split_state clo_split;
-#endif
 };
 
 /* remote CMM object */
@@ -138,7 +124,9 @@ struct cmm_thread_info {
         /* pointers to pages for readpage. */
         struct page          *cmi_pages[CMM_SPLIT_PAGE_COUNT];
         struct md_op_spec     cmi_spec;
-        struct lmv_stripe_md  cmi_lmv;
+        struct lmv_mds_md     cmi_lmv;
+        struct lmv_user_md    cmi_default_lmv;
+        struct lov_mds_md_v3  cmi_lov;
         char                  cmi_xattr_buf[LUSTRE_POSIX_ACL_MAX_SIZE];
 
         /* Ops object filename */
@@ -198,11 +186,11 @@ static inline struct cml_object *cmm2cml_obj(struct cmm_object *co)
 int cmm_upcall(const struct lu_env *env, struct md_device *md,
                enum md_upcall_event ev, void *data);
 
-#ifdef HAVE_SPLIT_SUPPORT
-
 #define CMM_MD_SIZE(stripes)  (sizeof(struct lmv_stripe_md) +  \
                                (stripes) * sizeof(struct lu_fid))
 
+void cmm_set_specea_by_ma(struct md_op_spec *spec, struct md_attr *ma, 
+                          const struct lu_fid *fid);
 /* cmm_split.c */
 static inline struct lu_buf *cmm_buf_get(const struct lu_env *env,
                                          void *area, ssize_t len)
@@ -215,21 +203,15 @@ static inline struct lu_buf *cmm_buf_get(const struct lu_env *env,
         return buf;
 }
 
-int cmm_split_check(const struct lu_env *env, struct md_object *mp,
-                    const char *name);
-
-int cmm_split_expect(const struct lu_env *env, struct md_object *mo,
-                     struct md_attr *ma, int *split);
-
-int cmm_split_dir(const struct lu_env *env, struct md_object *mo);
-
-int cmm_split_access(const struct lu_env *env, struct md_object *mo,
-                     mdl_mode_t lm);
-#endif
+int cmm_set_dirstripe(const struct lu_env *env, struct md_object *mo,
+                      const struct md_attr *md);
 
 int cmm_fld_lookup(struct cmm_device *cm, const struct lu_fid *fid,
                    mdsno_t *mds, const struct lu_env *env);
 
+
+int cmm_maxsize_get(const struct lu_env *env, struct md_device *md,
+                    int *md_size, int *cookie_size);
 int cmm_procfs_init(struct cmm_device *cmm, const char *name);
 int cmm_procfs_fini(struct cmm_device *cmm);
 

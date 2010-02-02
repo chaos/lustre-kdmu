@@ -175,7 +175,7 @@ struct mdt_device {
 #define MDT_SERVICE_WATCHDOG_FACTOR     (2)
 #define MDT_ROCOMPAT_SUPP       (OBD_ROCOMPAT_LOVOBJID)
 #define MDT_INCOMPAT_SUPP       (OBD_INCOMPAT_MDT | OBD_INCOMPAT_COMMON_LR | \
-                                 OBD_INCOMPAT_FID | OBD_INCOMPAT_IAM_DIR)
+                                 OBD_INCOMPAT_FID /*| OBD_INCOMPAT_IAM_DIR*/)
 #define MDT_COS_DEFAULT         (0)
 
 struct mdt_object {
@@ -317,7 +317,8 @@ struct mdt_thread_info {
 
         __u32                      mti_has_trans:1, /* has txn already? */
                                    mti_no_need_trans:1,
-                                   mti_cross_ref:1;
+                                   mti_cross_ref:1,
+                                   mti_set_mea:1;
 
         /* opdata for mdt_reint_open(), has the same as
          * ldlm_reply:lock_policy_res1.  mdt_update_last_rcvd() stores this

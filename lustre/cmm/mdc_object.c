@@ -339,23 +339,23 @@ static int mdc_object_create(const struct lu_env *env,
         struct mdc_device *mc = md2mdc_dev(md_obj2dev(mo));
         struct lu_attr *la = &ma->ma_attr;
         struct mdc_thread_info *mci;
-        const void *symname;
+        const void *acldata;
         struct md_ucred *uc = md_ucred(env);
-        int rc, symlen;
+        int rc, acllen;
         uid_t uid;
         gid_t gid;
         cfs_cap_t cap;
         ENTRY;
 
         LASSERT(S_ISDIR(la->la_mode));
-        LASSERT(spec->u.sp_pfid != NULL);
+        LASSERT(spec->u.sp_ea.fid != NULL);
 
         mci = mdc_info_init(env);
-        mci->mci_opdata.op_bias = MDS_CROSS_REF;
+        mci->mci_opdata.op_bias |= MDS_CROSS_REF;
         mci->mci_opdata.op_fid2 = *lu_object_fid(&mo->mo_lu);
 
         /* Parent fid is needed to create dotdot on the remote node. */
-        mci->mci_opdata.op_fid1 = *(spec->u.sp_pfid);
+        mci->mci_opdata.op_fid1 = *(spec->u.sp_ea.fid);
         mci->mci_opdata.op_mod_time = la->la_ctime;
         if (uc &&
             ((uc->mu_valid == UCRED_OLD) || (uc->mu_valid == UCRED_NEW))) {
@@ -376,28 +376,19 @@ static int mdc_object_create(const struct lu_env *env,
                 mci->mci_opdata.op_suppgids[0] = -1;
         }
 
-        /* get data from spec */
-        if (spec->sp_cr_flags & MDS_CREATE_SLAVE_OBJ) {
-                symname = spec->u.sp_ea.eadata;
-                symlen = spec->u.sp_ea.eadatalen;
-                mci->mci_opdata.op_fid1 = *(spec->u.sp_ea.fid);
+        mci->mci_opdata.op_fid1 = *(spec->u.sp_ea.fid);
+        if (spec->sp_cr_flags & MDS_CREATE_SLAVE_OBJ)
                 mci->mci_opdata.op_flags |= MDS_CREATE_SLAVE_OBJ;
 #ifdef CONFIG_FS_POSIX_ACL
-        } else if (spec->sp_cr_flags & MDS_CREATE_RMT_ACL) {
-                symname = spec->u.sp_ea.eadata;
-                symlen = spec->u.sp_ea.eadatalen;
-                mci->mci_opdata.op_fid1 = *(spec->u.sp_ea.fid);
+        if (spec->sp_cr_flags & MDS_CREATE_RMT_ACL) {
+                acldata = spec->u.sp_ea.eadata;
+                acllen = spec->u.sp_ea.eadatalen;
                 mci->mci_opdata.op_flags |= MDS_CREATE_RMT_ACL;
-#endif
-        } else {
-                symname = spec->u.sp_symname;
-                symlen = symname ? strlen(symname) + 1 : 0;
         }
-
+#endif
         rc = md_create(mc->mc_desc.cl_exp, &mci->mci_opdata,
-                       symname, symlen, la->la_mode, uid, gid,
+                       spec, sizeof(*spec), la->la_mode, uid, gid,
                        cap, la->la_rdev, &mci->mci_req);
-
         if (rc == 0) {
                 /* get attr from request */
                 rc = mdc_req2attr_update(env, ma);

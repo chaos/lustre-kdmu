@@ -61,6 +61,7 @@
 #include <sys/xattr.h>
 #include <fnmatch.h>
 #include <glob.h>
+#include <libgen.h>
 #ifdef HAVE_LINUX_UNISTD_H
 #include <linux/unistd.h>
 #else
@@ -486,6 +487,78 @@ int llapi_file_create_pool(const char *name, unsigned long long stripe_size,
         return 0;
 }
 
+int llapi_dir_create_pool(const char *name, int flags, int stripe_offset,
+                          int stripe_count, int stripe_pattern, char *pool_name)
+{
+        struct lmv_user_md lmu = {0};
+        struct obd_ioctl_data data = { 0 };
+        char rawbuf[8192];
+        char *buf = rawbuf;
+        char *dirpath = NULL;
+        char *namepath = NULL;
+        char *dir;
+        char *filename;
+        int fd = 0;
+        int rc;
+
+
+        dirpath = strdup(name);
+        namepath = strdup(name);
+        if (!dirpath || !namepath)
+                return -ENOMEM;
+
+        lmu.lum_magic = LMV_USER_MAGIC;
+        lmu.lum_stripe_offset = stripe_offset;
+        lmu.lum_stripe_count = stripe_count;
+        filename = basename(namepath);
+        if (flags & LMV_SET_DEFAULT_DIRSTRIPE) {
+                lmu.lum_type = LMV_DEFAULT_TYPE;
+                dir = dirpath;
+        } else {
+                lmu.lum_type = LMV_STRIPE_TYPE;
+                dir = dirname(dirpath);
+        }
+
+        data.ioc_inlbuf1 = (char *)filename;
+        data.ioc_inllen1 = strlen(filename) + 1;
+        data.ioc_inlbuf2 = (char *)&lmu;
+        data.ioc_inllen2 = sizeof(struct lmv_user_md);
+        rc = obd_ioctl_pack(&data, &buf, sizeof(rawbuf));
+        if (rc) {
+                llapi_err(LLAPI_MSG_ERROR,
+                          "error: IOC_LMV_SETSTRIPE pack failed for '%s': rc %d",
+                          name, rc);
+                free(dirpath);
+                free(namepath);
+                return rc;
+        }
+
+        fd = open(dir, O_DIRECTORY|O_RDONLY);
+        if (fd < 0) {
+                rc = -errno;
+                llapi_err(LLAPI_MSG_ERROR, "unable to open '%s'", name);
+                free(dirpath);
+                free(namepath);
+                return rc;
+        }
+
+        if (ioctl(fd, LL_IOC_LMV_SETSTRIPE, buf)) {
+                char *errmsg = "stripe already set";
+                rc = -errno;
+                if (errno != EEXIST && errno != EALREADY)
+                        errmsg = strerror(errno);
+
+                llapi_err_noerrno(LLAPI_MSG_ERROR,
+                                  "error on ioctl "LPX64" for '%s' (%d): %s",
+                                  (__u64)LL_IOC_LMV_SETSTRIPE, name, fd,errmsg);
+        }
+
+        free(dirpath);
+        free(namepath);
+        close(fd);
+        return rc;
+}
+
 /*
  * Find the fsname, the full path, and/or an open fd.
  * Either the fsname or path must not be NULL
@@ -894,6 +967,16 @@ static int common_param_init(struct find_param *param)
                 return -ENOMEM;
         }
 
+        if (param->get_mdt_index) {
+                param->oinfo = malloc(sizeof(struct obdo));
+                if (param->oinfo == NULL) {
+                        llapi_err(LLAPI_MSG_ERROR,
+                                  "error: allocation of %d bytes for ioctl",
+                                  sizeof(lstat_t) + param->lumlen);
+                        return -ENOMEM;
+                }
+        }
+
         param->got_uuids = 0;
         param->obdindexes = NULL;
         param->obdindex = OBD_NOT_FOUND;
@@ -907,6 +990,19 @@ static void find_param_fini(struct find_param *param)
 
         if (param->lmd)
                 free(param->lmd);
+
+        if (param->oinfo)
+                free(param->oinfo);
+}
+
+static int llapi_file_fget_lmv_uuid(int fd, struct obd_uuid *lmv_name)
+{
+        int rc = ioctl(fd, OBD_IOC_GETMDNAME, lmv_name);
+        if (rc) {
+                rc = errno;
+                llapi_err(LLAPI_MSG_ERROR, "error: can't get lmv name.");
+        }
+        return rc;
 }
 
 static int cb_common_fini(char *path, DIR *parent, DIR *d, void *data,
@@ -1004,7 +1100,8 @@ static int llapi_semantic_traverse(char *path, int size, DIR *parent,
         if (sem_init && (ret = sem_init(path, parent ?: p, d, data, de)))
                 goto err;
 
-        if (!d)
+        if (!d || (((struct find_param *)data)->get_lmv &&
+                   !((struct find_param *)data)->recursive))
                 GOTO(out, ret = 0);
 
         while ((dent = readdir64(d)) != NULL) {
@@ -1226,7 +1323,7 @@ int llapi_uuid_match(char *real_uuid, char *search_uuid)
  * returned in param->obdindex */
 static int setup_obd_uuid(DIR *dir, char *dname, struct find_param *param)
 {
-        struct obd_uuid lov_uuid;
+        struct obd_uuid obd_uuid;
         char uuid[sizeof(struct obd_uuid)];
         char buf[1024];
         FILE *fp;
@@ -1236,7 +1333,10 @@ static int setup_obd_uuid(DIR *dir, char *dname, struct find_param *param)
                 return rc;
 
         /* Get the lov name */
-        rc = llapi_file_fget_lov_uuid(dirfd(dir), &lov_uuid);
+        if (param->get_lmv)
+                rc = llapi_file_fget_lmv_uuid(dirfd(dir), &obd_uuid);
+        else
+                rc = llapi_file_fget_lov_uuid(dirfd(dir), &obd_uuid);
         if (rc) {
                 if (errno != ENOTTY) {
                         rc = errno;
@@ -1251,8 +1351,8 @@ static int setup_obd_uuid(DIR *dir, char *dname, struct find_param *param)
         param->got_uuids = 1;
 
         /* Now get the ost uuids from /proc */
-        snprintf(buf, sizeof(buf), "/proc/fs/lustre/lov/%s/target_obd",
-                 lov_uuid.uuid);
+        snprintf(buf, sizeof(buf), "/proc/fs/lustre/%s/%s/target_obd",
+                 param->get_lmv ? "lmv" : "lov", obd_uuid.uuid);
         fp = fopen(buf, "r");
         if (fp == NULL) {
                 rc = errno;
@@ -1260,8 +1360,9 @@ static int setup_obd_uuid(DIR *dir, char *dname, struct find_param *param)
                 return rc;
         }
 
-        if (!param->obduuid && !param->quiet && !param->obds_printed)
-                llapi_printf(LLAPI_MSG_NORMAL, "OBDS:\n");
+        if (!param->obduuid && !param->quiet && !param->obds_printed) 
+                llapi_printf(LLAPI_MSG_NORMAL, "%s:\n", 
+                             param->get_lmv ? "MDTS" : "OBDS:");
 
         while (fgets(buf, sizeof(buf), fp) != NULL) {
                 if (sscanf(buf, "%d: %s", &index, uuid) < 2)
@@ -1475,6 +1576,72 @@ void lov_dump_user_lmm_v1v3(struct lov_user_md *lum, char *pool_name,
         }
 }
 
+void lmv_dump_user_lmm(struct lmv_user_md *lum, char *pool_name,
+                       char *path, int obdindex, int depth, int verbose)
+{
+        struct lmv_user_mds_data *objects = lum->lum_objects;
+        char *prefix = lum->lum_type == LMV_DEFAULT_TYPE ? "(Default)" : "";
+        int i, obdstripe = 0;
+
+        if (obdindex != OBD_NOT_FOUND) {
+                for (i = 0; i < lum->lum_stripe_count; i++) {
+                        if (obdindex == objects[i].lum_mds) {
+                                llapi_printf(LLAPI_MSG_NORMAL, "%s%s\n", prefix,
+                                             path);
+                                obdstripe = 1;
+                                break;
+                        }
+                }
+        } else {
+                obdstripe = 1;
+        }
+
+        /* show all information default */
+        if (!verbose) {
+                if (lum->lum_type == LMV_DEFAULT_TYPE)
+                        verbose = VERBOSE_POOL | VERBOSE_COUNT | VERBOSE_OFFSET;
+                else
+                        verbose = VERBOSE_OBJID;
+        }
+
+        if (lum->lum_type == LMV_DEFAULT_TYPE)
+                verbose &= ~VERBOSE_OBJID;
+
+        if ((verbose & VERBOSE_POOL) && lum->lum_pool_name)
+                llapi_printf(LLAPI_MSG_NORMAL, "%s\n", lum->lum_pool_name);
+
+        if (verbose & VERBOSE_COUNT) {
+                if (verbose & ~VERBOSE_COUNT)
+                        llapi_printf(LLAPI_MSG_NORMAL, "lmv_stripe_count: ");
+                llapi_printf(LLAPI_MSG_NORMAL, "%u\n",
+                             (int)lum->lum_stripe_count);
+        }
+
+        if (verbose & VERBOSE_OFFSET) {
+                if (verbose & ~VERBOSE_OFFSET)
+                        llapi_printf(LLAPI_MSG_NORMAL, "lmv_stripe_offset: ");
+                llapi_printf(LLAPI_MSG_NORMAL, "%d\n",
+                             (int)lum->lum_stripe_offset);
+        }
+
+        if (verbose & VERBOSE_OBJID) {
+                if ((obdstripe == 1))
+                        llapi_printf(LLAPI_MSG_NORMAL,
+                                     "\tmdtidx\t\t  seq\t\toid\t\tversion\n");
+                for (i = 0; i < lum->lum_stripe_count; i++) {
+                        int idx = objects[i].lum_mds;
+                        struct lu_fid *fid = &objects[i].lum_fid;
+                        if ((obdindex == OBD_NOT_FOUND) || (obdindex == idx))
+                                llapi_printf(LLAPI_MSG_NORMAL,
+                                             "\t%6u\t%16llx\t%#3llx\t%12llu%s\n",
+                                            idx, fid->f_seq, fid->f_oid,
+                                            fid->f_ver,
+                                            obdindex == idx ? " *" : "");
+                }
+                llapi_printf(LLAPI_MSG_NORMAL, "\n");
+        }
+}
+
 void llapi_lov_dump_user_lmm(struct find_param *param,
                              char *path, int is_dir)
 {
@@ -1500,9 +1667,20 @@ void llapi_lov_dump_user_lmm(struct find_param *param,
                                        param->verbose);
                 break;
         }
+        case LMV_USER_MAGIC: {
+                char pool_name[LOV_MAXPOOLNAME + 1];
+                struct lmv_user_md *lum;
+
+                lum = (struct lmv_user_md *)&param->lmd->lmd_lmm;
+                strncpy(pool_name, lum->lum_pool_name, LOV_MAXPOOLNAME);
+                lmv_dump_user_lmm(lum, pool_name, path,
+                                  param->obdindex, param->maxdepth,
+                                  param->verbose);
+                break;
+        }
         default:
                 llapi_printf(LLAPI_MSG_NORMAL, "unknown lmm_magic:  %#x "
-                             "(expecting one of %#x %#x %#x)\n",
+                             "(expecting one of %#x %#x %#x %#x)\n",
                              *(__u32 *)&param->lmd->lmd_lmm,
                              LOV_USER_MAGIC_V1, LOV_USER_MAGIC_V3);
                 return;
@@ -2044,6 +2222,26 @@ out:
         return 0;
 }
 
+static int cb_get_dirstripe(char *path, DIR *d, struct find_param *param)
+{
+        struct lmv_user_md *lmv = (struct lmv_user_md *)&param->lmd->lmd_lmm;
+        int ret = 0;
+
+        lmv->lum_magic = LMV_USER_MAGIC;
+        if (param->get_default) {
+                lmv->lum_type = LMV_DEFAULT_TYPE;
+                ret = ioctl(dirfd(d), LL_IOC_LMV_GETSTRIPE, lmv);
+                if (ret && errno == ENODATA && !param->quiet)
+                        llapi_printf(LLAPI_MSG_NORMAL,
+                                "%s has no default stripe info\n", path);
+                return ret;
+        }
+        lmv->lum_type = LMV_STRIPE_TYPE;
+        ret = ioctl(dirfd(d), LL_IOC_LMV_GETSTRIPE, lmv);
+
+        return ret;
+}
+
 static int cb_getstripe(char *path, DIR *parent, DIR *d, void *data,
                         cfs_dirent_t *de)
 {
@@ -2052,7 +2250,8 @@ static int cb_getstripe(char *path, DIR *parent, DIR *d, void *data,
 
         LASSERT(parent != NULL || d != NULL);
 
-        if (param->obduuid) {
+        /* Prepare odb. */
+        if (param->obduuid && !param->get_mdt_index) {
                 param->quiet = 1;
                 ret = setup_obd_uuid(d ? d : parent, path, param);
                 if (ret)
@@ -2060,14 +2259,30 @@ static int cb_getstripe(char *path, DIR *parent, DIR *d, void *data,
         }
 
         if (d) {
-                ret = ioctl(dirfd(d), LL_IOC_LOV_GETSTRIPE,
-                            (void *)&param->lmd->lmd_lmm);
+                if (param->get_lmv) {
+                        ret = cb_get_dirstripe(path, d, param);
+                } else {
+                        if (param->get_mdt_index) {
+                                llapi_printf(LLAPI_MSG_NORMAL,
+                                             "%s is a directory, please "
+                                             "use getdirstripe get MDT "
+                                             "index \n", path);
+                                return EINVAL;
+                        }
+                        ret = ioctl(dirfd(d), LL_IOC_LOV_GETSTRIPE,
+                                     (void *)&param->lmd->lmd_lmm);
+                }
         } else if (parent) {
                 char *fname = strrchr(path, '/');
                 fname = (fname == NULL ? path : fname + 1);
 
+                if (param->get_lmv) {
+                        llapi_printf(LLAPI_MSG_NORMAL,
+                                     "%s get dirstripe information for file\n",
+                                     path);
+                        goto out;
+                }
                 strncpy((char *)&param->lmd->lmd_lmm, fname, param->lumlen);
-
                 ret = ioctl(dirfd(parent), IOC_MDC_GETFILESTRIPE,
                             (void *)&param->lmd->lmd_lmm);
         }
@@ -2097,9 +2312,7 @@ static int cb_getstripe(char *path, DIR *parent, DIR *d, void *data,
                 return ret;
         }
 
-        if (!param->get_mdt_index)
-                llapi_lov_dump_user_lmm(param, path, d ? 1 : 0);
-
+        llapi_lov_dump_user_lmm(param, path, d ? 1 : 0);
 out:
         /* Do not get down anymore? */
         if (param->depth == param->maxdepth)

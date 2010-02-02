@@ -137,7 +137,6 @@ static int llo_lookup(const struct lu_env  *env,
         spec->sp_cr_flags = 0;
         spec->sp_cr_lookup = 0;
         spec->sp_cr_mode = 0;
-        spec->sp_ck_split = 0;
 
         lname->ln_name = name;
         lname->ln_namelen = strlen(name);
@@ -289,7 +288,6 @@ static struct md_object *llo_create_obj(const struct lu_env *env,
         spec->sp_cr_flags = 0;
         spec->sp_cr_lookup = 1;
         spec->sp_cr_mode = 0;
-        spec->sp_ck_split = 0;
 
         if (feat == &dt_directory_features)
                 la->la_mode = S_IFDIR | S_IXUGO;

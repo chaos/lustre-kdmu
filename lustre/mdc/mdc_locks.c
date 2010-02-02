@@ -398,6 +398,7 @@ static struct ptlrpc_request *mdc_intent_getattr_pack(struct obd_export *exp,
         obd_valid              valid = OBD_MD_FLGETATTR | OBD_MD_FLEASIZE |
                                        OBD_MD_FLMODEASIZE | OBD_MD_FLDIREA |
                                        OBD_MD_FLMDSCAPA | OBD_MD_MEA |
+                                       OBD_MD_DEFAULTMEA |
                                        (client_is_remote(exp) ?
                                                OBD_MD_FLRMTPERM : OBD_MD_FLACL);
         struct ldlm_intent    *lit;
@@ -850,12 +851,20 @@ int mdc_revalidate_lock(struct obd_export *exp, struct lookup_intent *it,
         if (bits && *bits)
                 policy.l_inodebits.bits = *bits;
         else
-                policy.l_inodebits.bits = (it->it_op == IT_GETATTR) ?
-                        MDS_INODELOCK_UPDATE : MDS_INODELOCK_LOOKUP;
+                /* As not all attributes are kept under update lock, e.g.
+                   owner/group/acls are under lookup lock, we need both
+                   ibits for GETATTR. */
+                policy.l_inodebits.bits =
+                        (it->it_op == IT_GETATTR || it->it_op == IT_READDIR) ?
+                                MDS_INODELOCK_UPDATE : MDS_INODELOCK_LOOKUP;
+        if (it->it_op == IT_READDIR)
+                mode = LCK_PR;
+        else
+                mode = LCK_CR|LCK_CW|LCK_PR|LCK_PW;
 
         mode = ldlm_lock_match(exp->exp_obd->obd_namespace,
                                LDLM_FL_BLOCK_GRANTED, &res_id, LDLM_IBITS,
-                               &policy, LCK_CR|LCK_CW|LCK_PR|LCK_PW, &lockh, 0);
+                               &policy, mode, &lockh, 0);
         if (mode) {
                 it->d.lustre.it_lock_handle = lockh.cookie;
                 it->d.lustre.it_lock_mode = mode;
@@ -863,7 +872,7 @@ int mdc_revalidate_lock(struct obd_export *exp, struct lookup_intent *it,
                         struct ldlm_lock *lock = ldlm_handle2lock(&lockh);
 
                         LASSERT(lock != NULL);
-                        *bits = lock->l_policy_data.l_inodebits.bits; 
+                        *bits = lock->l_policy_data.l_inodebits.bits;
                         LDLM_LOCK_PUT(lock);
                 }
         }
@@ -916,8 +925,8 @@ int mdc_intent_lock(struct obd_export *exp, struct md_op_data *op_data,
                it->it_flags);
 
         lockh.cookie = 0;
-        if (fid_is_sane(&op_data->op_fid2) &&
-            (it->it_op & (IT_LOOKUP | IT_GETATTR))) {
+        if ((fid_is_sane(&op_data->op_fid2) &&
+            (it->it_op & (IT_LOOKUP | IT_GETATTR))) || (it->it_op & IT_READDIR)) {
                 /* We could just return 1 immediately, but since we should only
                  * be called in revalidate_it if we already have a lock, let's
                  * verify that. */
@@ -961,8 +970,21 @@ int mdc_intent_lock(struct obd_export *exp, struct md_op_data *op_data,
                  * lookup, so we clear DISP_ENQ_COMPLETE */
                 it_clear_disposition(it, DISP_ENQ_COMPLETE);
         }
-        *reqp = it->d.lustre.it_data;
-        rc = mdc_finish_intent_lock(exp, *reqp, op_data, it, &lockh);
+        if (reqp) {
+                *reqp = it->d.lustre.it_data;
+                rc = mdc_finish_intent_lock(exp, *reqp, op_data, it, &lockh);
+        } else {
+                /**
+                 * For readdir lock, the req do not need to be propagated
+                 * to up layer, just release it.
+                 */
+                struct ptlrpc_request *request;
+
+                LASSERT(it->it_op == IT_READDIR);
+                request = (struct ptlrpc_request *)it->d.lustre.it_data;
+                if (request)
+                        ptlrpc_req_finished(request);
+        }
         RETURN(rc);
 }
 

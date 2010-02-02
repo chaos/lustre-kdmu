@@ -178,6 +178,50 @@ restart:
         cfs_spin_unlock(&ll_lookup_lock);
 }
 
+static void
+ll_dir_truncate_pages(struct ldlm_lock *lock, struct inode *dir)
+{
+        struct lu_fid match_fid;
+
+        match_fid.f_seq = lock->l_resource->lr_name.name[0];
+        match_fid.f_oid = lock->l_resource->lr_name.name[1];
+        match_fid.f_ver = lock->l_resource->lr_name.name[2];
+
+        md_cancel_page(ll_i2mdexp(dir), ll_i2info(dir)->lli_mea,
+                       &match_fid, NULL);
+#if 0
+        if (start == end)
+                return;
+
+        offset = start;
+        while ((__u64)offset < (__u64)end) {
+                __u64 dp_start, dp_end;
+                struct page *page;
+                page = ll_dir_page_locate(dir, offset, &dp_start, &dp_end);
+
+                if (!page || IS_ERR(page))
+                        break;
+
+                if (dp_start < offset) {
+                        CERROR("stale page offset "LPX64", dp_start "LPX64"\n",
+                                offset, dp_start);
+                        ll_release_page(page, offset, dp_start, dp_end);
+                        break;
+                }
+
+                if (dp_start < end)
+                        ll_release_page(page, offset, dp_start, dp_end);
+                else {
+                        kunmap(page);
+                        page_cache_release(page);
+                }
+                offset = dp_end;
+        }
+        CDEBUG(D_INODE, "invalidating inode %lu from "LPX64" to "LPX64" \n",
+               dir->i_ino, start, end);
+#endif
+        ll_drop_negative_dentry(dir);
+}
 
 int ll_md_blocking_ast(struct ldlm_lock *lock, struct ldlm_lock_desc *desc,
                        void *data, int flag)
@@ -217,9 +261,10 @@ int ll_md_blocking_ast(struct ldlm_lock *lock, struct ldlm_lock_desc *desc,
                         bits &= ~MDS_INODELOCK_OPEN;
 
                 fid = ll_inode2fid(inode);
-                if (lock->l_resource->lr_name.name[0] != fid_seq(fid) ||
-                    lock->l_resource->lr_name.name[1] != fid_oid(fid) ||
-                    lock->l_resource->lr_name.name[2] != fid_ver(fid)) {
+                if ((lock->l_resource->lr_name.name[0] != fid_seq(fid) ||
+                     lock->l_resource->lr_name.name[1] != fid_oid(fid) ||
+                     lock->l_resource->lr_name.name[2] != fid_ver(fid)) &&
+                     ll_i2info(inode)->lli_mea == NULL) {
                         LDLM_ERROR(lock, "data mismatch with object "
                                    DFID" (%p)", PFID(fid), inode);
                 }
@@ -248,13 +293,8 @@ int ll_md_blocking_ast(struct ldlm_lock *lock, struct ldlm_lock_desc *desc,
                 if (bits & MDS_INODELOCK_UPDATE)
                         lli->lli_flags &= ~LLIF_MDS_SIZE_LOCK;
 
-                if (S_ISDIR(inode->i_mode) &&
-                     (bits & MDS_INODELOCK_UPDATE)) {
-                        CDEBUG(D_INODE, "invalidating inode %lu\n",
-                               inode->i_ino);
-                        truncate_inode_pages(inode->i_mapping, 0);
-                        ll_drop_negative_dentry(inode);
-                }
+                if (S_ISDIR(inode->i_mode))
+                        ll_dir_truncate_pages(lock, inode);
 
                 if ((bits & MDS_INODELOCK_LOOKUP) &&
                     !cfs_list_empty(&lli->lli_sa_dentry)) {
@@ -844,8 +884,7 @@ static int ll_create_it(struct inode *dir, struct dentry *dentry, int mode,
         RETURN(0);
 }
 
-static void ll_update_times(struct ptlrpc_request *request,
-                            struct inode *inode)
+void ll_update_times(struct ptlrpc_request *request, struct inode *inode)
 {
         struct mdt_body *body = req_capsule_server_get(&request->rq_pill,
                                                        &RMF_MDT_BODY);
@@ -1032,8 +1071,8 @@ out:
         RETURN(err);
 }
 
-static int ll_mkdir_generic(struct inode *dir, struct qstr *name,
-                            int mode, struct dentry *dchild)
+int ll_mkdir_generic(struct inode *dir, struct qstr *name, int mode,
+                     struct dentry *dchild)
 
 {
         int err;

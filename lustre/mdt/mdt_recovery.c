@@ -486,9 +486,6 @@ static int mdt_server_data_init(const struct lu_env *env,
                 last_rcvd_size = lsd->lsd_client_start;
         }
 
-        if (ldd->ldd_flags & LDD_F_IAM_DIR)
-                lsd->lsd_feature_incompat |= OBD_INCOMPAT_IAM_DIR;
-
         lsd->lsd_feature_incompat |= OBD_INCOMPAT_FID;
 
         cfs_spin_lock(&mdt->mdt_lut.lut_translock);
@@ -892,7 +889,7 @@ static int mdt_txn_start_cb(const struct lu_env *env,
 /* Set new object versions */
 static void mdt_version_set(struct mdt_thread_info *info)
 {
-        if (info->mti_mos != NULL) {
+        if (info->mti_mos != NULL && mdt_object_exists(info->mti_mos) > 0) {
                 mo_version_set(info->mti_env, mdt_object_child(info->mti_mos),
                                info->mti_transno);
                 info->mti_mos = NULL;

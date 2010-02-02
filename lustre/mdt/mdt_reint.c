@@ -105,7 +105,7 @@ static void mdt_obj_version_get(struct mdt_thread_info *info,
                                 struct mdt_object *o, __u64 *version)
 {
         LASSERT(o);
-        LASSERT(mdt_object_exists(o) >= 0);
+        //LASSERT(mdt_object_exists(o) >= 0);
         if (mdt_object_exists(o) > 0)
                 *version = mo_version_get(info->mti_env, mdt_object_child(o));
         else
@@ -421,7 +421,8 @@ int mdt_attr_set(struct mdt_thread_info *info, struct mdt_object *mo,
 {
         struct mdt_lock_handle  *lh;
         int do_vbr = ma->ma_attr.la_valid & (LA_MODE|LA_UID|LA_GID|LA_FLAGS);
-        int rc;
+        int rc = 0;
+        __u64   lockpart;
         ENTRY;
 
         /* attr shouldn't be set on remote object */
@@ -429,16 +430,19 @@ int mdt_attr_set(struct mdt_thread_info *info, struct mdt_object *mo,
 
         lh = &info->mti_lh[MDT_LH_PARENT];
         mdt_lock_reg_init(lh, LCK_PW);
+        lockpart = MDS_INODELOCK_UPDATE;
 
-        if (!(flags & MRF_SETATTR_LOCKED)) {
-                __u64 lockpart = MDS_INODELOCK_UPDATE;
-                if (ma->ma_attr.la_valid & (LA_MODE|LA_UID|LA_GID))
-                        lockpart |= MDS_INODELOCK_LOOKUP;
+        /* Both Update and lookup lock for setting default dirstripe,
+         * because client needs to re-fresh its default dirstripe for
+         * new fid allocation*/
+        if (ma->ma_attr.la_valid & (LA_MODE|LA_UID|LA_GID) ||
+            ma->ma_valid & MA_LMV_DEF)
+                lockpart |= MDS_INODELOCK_LOOKUP;
 
+        if (!(flags & MRF_SETATTR_LOCKED))
                 rc = mdt_object_lock(info, mo, lh, lockpart, MDT_LOCAL_LOCK);
-                if (rc != 0)
-                        RETURN(rc);
-        }
+        if (rc != 0)
+                RETURN(rc);
 
         if (mdt_object_exists(mo) == 0)
                 GOTO(out_unlock, rc = -ENOENT);
@@ -570,7 +574,9 @@ static int mdt_reint_setattr(struct mdt_thread_info *info,
                         GOTO(out_put, rc);
         }
 
+
         ma->ma_need = MA_INODE;
+
         ma->ma_valid = 0;
         next = mdt_object_child(mo);
         rc = mo_attr_get(info->mti_env, next, ma);

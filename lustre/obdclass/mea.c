@@ -85,11 +85,9 @@ static int mea_all_chars_hash(int count, char *name, int namelen)
 
 #ifdef __KERNEL__
 /* This hash calculate method must be same as the lvar hash method */
-
 #define LVAR_HASH_SANDWICH  (0)
 #define LVAR_HASH_PREFIX    (0)
-
-static __u32 hash_build0(const char *name, int namelen)
+static __u32 hash_build0(const char *name, int namelen, int hashtype)
 {
         __u32 result;
 
@@ -100,18 +98,20 @@ static __u32 hash_build0(const char *name, int namelen)
         if (strncmp(name, "..", 2) == 0 && namelen == 2)
                 return 2;
 
-        if (LVAR_HASH_PREFIX) {
+        if (hashtype == LMV_HASH_PREFIX) {
                 result = 0;
                 strncpy((void *)&result,
                         name, min(namelen, (int)sizeof result));
         } else {
                 struct ldiskfs_dx_hash_info hinfo;
 
+                /*XXX for an urgent CMD test now, FIXIT soon*/
                 hinfo.hash_version = LDISKFS_DX_HASH_TEA;
+
                 hinfo.seed = 0;
                 ldiskfsfs_dirhash(name, namelen, &hinfo);
                 result = hinfo.hash;
-                if (LVAR_HASH_SANDWICH) {
+                if (hashtype == LMV_HASH_SANDWICH) {
                         __u32 result2;
 
                         hinfo.hash_version = LDISKFS_DX_HASH_TEA;
@@ -129,32 +129,34 @@ enum {
         HASH_GRAY_AREA = 1024
 };
 
-static __u32 hash_build(const char *name, int namelen)
+static __u32 hash_build(const char *name, int namelen, int hashtype)
 {
         __u32 hash;
 
-        hash = (hash_build0(name, namelen) << 1) & MAX_HASH_SIZE_32;
+        hash = (hash_build0(name, namelen, hashtype) << 1) & MAX_HASH_SIZE_32;
         if (hash > MAX_HASH_SIZE_32 - HASH_GRAY_AREA)
                 hash &= HASH_GRAY_AREA - 1;
         return hash;
 }
 
-static int mea_hash_segment(int count, const char *name, int namelen)
+static int mea_hash_segment(int count, const char *name, int namelen, int hashtype)
 {
         __u32 hash;
 
         LASSERT(IS_PO2(MAX_HASH_SIZE_32 + 1));
 
-        hash = hash_build(name, namelen) / (MAX_HASH_SIZE_32 / count);
+        hash = hash_build(name, namelen, hashtype) / (MAX_HASH_SIZE_32 / count);
         LASSERTF(hash < count, "hash %x count %d \n", hash, count);
 
         return hash;
 }
+
 #else
-static int mea_hash_segment(int count, char *name, int namelen)
+static int mea_hash_segment(int count, char *name, int namelen, int hashtype)
 {
         return 0;
 }
+
 #endif
 int raw_name2idx(int hashtype, int count, const char *name, int namelen)
 {
@@ -165,19 +167,21 @@ int raw_name2idx(int hashtype, int count, const char *name, int namelen)
                 return 0;
 
         switch (hashtype) {
-                case MEA_MAGIC_LAST_CHAR:
+                case LMV_HASH_LAST_CHAR:
                         c = mea_last_char_hash(count, (char *)name, namelen);
                         break;
-                case MEA_MAGIC_ALL_CHARS:
+                case LMV_HASH_ALL_CHARS:
                         c = mea_all_chars_hash(count, (char *)name, namelen);
                         break;
-                case MEA_MAGIC_HASH_SEGMENT:
-                        c = mea_hash_segment(count, (char *)name, namelen);
+                case LMV_HASH_TEA:
+                case LMV_HASH_PREFIX:
+                case LMV_HASH_SANDWICH:
+                        c = mea_hash_segment(count, (char *)name, namelen, hashtype);
                         break;
                 default:
                         CERROR("Unknown hash type 0x%x\n", hashtype);
         }
-	
+
         LASSERT(c < count);
         return c;
 }
@@ -193,3 +197,4 @@ int mea_name2idx(struct lmv_stripe_md *mea, const char *name, int namelen)
         LASSERT(c < mea->mea_count);
         return c;
 }
+

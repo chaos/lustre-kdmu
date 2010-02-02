@@ -300,6 +300,35 @@ struct lustre_mdt_attrs {
 };
 
 /**
+ * Define this after lu_fid is defined
+ */
+struct lmv_user_mds_data {
+       struct lu_fid    lum_fid;
+       int              lum_mds;
+};
+
+/* lum_type */
+enum {
+        LMV_STRIPE_TYPE = 0,
+        LMV_DEFAULT_TYPE = 1,
+};
+
+#define lmv_user_md lmv_user_md_v1
+struct lmv_user_md_v1 {
+        __u32         lum_magic;         /* must be the first field */
+        __u32         lum_stripe_count;  /* dirstripe count */
+        __u32         lum_stripe_offset; /* MDT idx for default dirstripe */
+        __u32         lum_hash_type;     /* Dir stripe policy */
+        __u32         lum_type;          /* Whether it is a lmv default (children's)
+                                            stripe or it is its own dirstripe */
+        __u32         lum_padding1;
+        __u32         lum_padding2;
+        __u32         lum_padding3;
+        char          lum_pool_name[LOV_MAXPOOLNAME];
+        struct  lmv_user_mds_data  lum_objects[0];
+};
+
+/**
  * Fill \a lma with its first content.
  * Only fid is stored.
  */
@@ -516,6 +545,14 @@ static inline void ostid_fid_unpack(struct ost_id *ostid, struct lu_fid *fid)
         fid->f_ver = ostid->oi_id >> 32; /* in theory, not currently used */
 }
 
+static inline void ostid_rsvd_fid_unpack(struct ost_id *ostid, struct lu_fid *fid,
+                                         __u32 ost_idx)
+{
+        fid->f_seq = FID_SEQ_IDIF | (ost_idx << 16) | (ostid->oi_seq & 0xffff);
+        fid->f_oid = ostid->oi_id;       /* truncate to 32 bits by assignment */
+        fid->f_ver = ostid->oi_id >> 32; /* in theory, not currently used */
+}
+
 /* Unpack an OST object id/seq (group) into a FID.  This is needed for
  * converting all obdo, lmm, lsm, etc. 64-bit id/seq pairs into proper
  * FIDs.  Note that if an id/seq is already in FID/IDIF format it will
@@ -557,7 +594,7 @@ static inline int fid_ostid_unpack(struct lu_fid *fid, struct ost_id *ostid,
                                 ostid->oi_seq, ostid->oi_id, ost_idx);
                          return -EBADF;
                 }
-                ostid_fid_unpack(ostid, fid);
+                ostid_rsvd_fid_unpack(ostid, fid, ost_idx);
 
         } else if (unlikely(fid_seq_is_igif(ostid->oi_seq))) {
                 /* This is an MDT inode number, which should never collide with
@@ -1240,6 +1277,7 @@ struct lov_mds_md_v1 {            /* LOV EA mds/wire data (little-endian) */
 #define XATTR_NAME_LOV          "trusted.lov"
 #define XATTR_NAME_LMA          "trusted.lma"
 #define XATTR_NAME_LMV          "trusted.lmv"
+#define XATTR_NAME_DEFAULT_LMV  "trusted.dmv"
 #define XATTR_NAME_LINK         "trusted.link"
 #define XATTR_NAME_FID          "trusted.fid"
 
@@ -1301,7 +1339,9 @@ struct lov_mds_md_v3 {            /* LOV EA mds/wire data (little-endian) */
 #define OBD_MD_FLRMTPERM   (0x0000010000000000ULL) /* remote permission */
 #define OBD_MD_FLMDSCAPA   (0x0000020000000000ULL) /* MDS capability */
 #define OBD_MD_FLOSSCAPA   (0x0000040000000000ULL) /* OSS capability */
-#define OBD_MD_FLCKSPLIT   (0x0000080000000000ULL) /* Check split on server */
+//#define OBD_MD_FLCKSPLIT (0x0000080000000000ULL) /* Check split on server, obsolete now */
+#define OBD_MD_DEFAULTMEA  (0x0000080000000000ULL) /* CMD default dirstripe EA  */
+
 #define OBD_MD_FLCROSSREF  (0x0000100000000000ULL) /* Cross-ref case */
 #define OBD_MD_FLGETATTRLOCK (0x0000200000000000ULL) /* Get IOEpoch attributes
                                                       * under lock */
@@ -1609,14 +1649,14 @@ struct mdt_body {
         __u32          aclsize;
         __u32          max_mdsize;
         __u32          max_cookiesize;
+        __u32          defaulteasize;
         __u32          uid_h; /* high 32-bits of uid, for FUID */
         __u32          gid_h; /* high 32-bits of gid, for FUID */
-        __u32          padding_5; /* also fix lustre_swab_mdt_body */
+        __u64          padding_5;  /* also fix lustre_swab_mdt_body */
         __u64          padding_6;
         __u64          padding_7;
         __u64          padding_8;
         __u64          padding_9;
-        __u64          padding_10;
 }; /* 216 */
 
 extern void lustre_swab_mdt_body (struct mdt_body *b);
@@ -1753,10 +1793,10 @@ struct mdt_rec_setattr {
         __u64           sa_ctime;
         __u32           sa_attr_flags;
         __u32           sa_mode;
+        __u32           sa_bias;
         __u32           sa_padding_2;
         __u32           sa_padding_3;
         __u32           sa_padding_4;
-        __u32           sa_padding_5;
 };
 
 extern void lustre_swab_mdt_rec_setattr (struct mdt_rec_setattr *sa);
@@ -1842,13 +1882,13 @@ extern void lustre_swab_mdt_rec_setattr (struct mdt_rec_setattr *sa);
 #define MAY_RGETFACL    (1 << 14)
 
 enum {
-        MDS_CHECK_SPLIT   = 1 << 0,
-        MDS_CROSS_REF     = 1 << 1,
-        MDS_VTX_BYPASS    = 1 << 2,
-        MDS_PERM_BYPASS   = 1 << 3,
-        MDS_SOM           = 1 << 4,
-        MDS_QUOTA_IGNORE  = 1 << 5,
-        MDS_CLOSE_CLEANUP = 1 << 6
+        MDS_CROSS_REF     = 1 << 0,
+        MDS_VTX_BYPASS    = 1 << 1,
+        MDS_PERM_BYPASS   = 1 << 2,
+        MDS_SOM           = 1 << 3,
+        MDS_QUOTA_IGNORE  = 1 << 4,
+        MDS_CLOSE_CLEANUP = 1 << 5,
+        MDS_SET_MEA       = 1 << 6
 };
 
 /* instance of mdt_reint_rec */
@@ -2040,26 +2080,72 @@ struct lmv_desc {
 
 extern void lustre_swab_lmv_desc (struct lmv_desc *ld);
 
+/* lmv structures */
+#define LMV_MAGIC_V1      0x0CD10CD0
+struct lmo_page_root {
+        cfs_spinlock_t         lmo_tree_lock;
+        struct radix_tree_root lmo_tree_root;
+        __u64                  lmo_tree_nrpages;
+};
+
 /* TODO: lmv_stripe_md should contain mds capabilities for all slave fids */
+struct lmv_oinfo {
+        struct lu_fid           lmo_fid;
+        unsigned long           lmo_size;
+        mdsno_t                 lmo_mds;
+        struct lmo_page_root    lmo_root;
+};
+
 struct lmv_stripe_md {
         __u32         mea_magic;
         __u32         mea_count;
         __u32         mea_master;
-        __u32         mea_padding;
+        __u32         mea_hash_type; /*dir stripe policy */
+        __u32         mea_layout_version;
+        __u32         mea_default_count;
+        __u32         mea_default_index;
         char          mea_pool_name[LOV_MAXPOOLNAME];
-        struct lu_fid mea_ids[0];
+        struct lmv_oinfo mea_oinfo[0];
 };
 
-extern void lustre_swab_lmv_stripe_md(struct lmv_stripe_md *mea);
+struct lmv_mds_md {
+        __u32         lmv_magic;
+        __u32         lmv_count;
+        __u32         lmv_master;
+        __u32         lmv_hash_type; /*dir stripe policy */
+        __u32         lmv_layout_version;
+        __u32         lmv_padding1;
+        __u32         lmv_padding2;
+        __u32         lmv_padding3;
+        char          lmv_pool_name[LOV_MAXPOOLNAME];
+        struct lu_fid lmv_ids[0];
+};
 
-/* lmv structures */
-#define MEA_MAGIC_LAST_CHAR      0xb2221ca1
-#define MEA_MAGIC_ALL_CHARS      0xb222a11c
-#define MEA_MAGIC_HASH_SEGMENT   0xb222a11b
+extern void lustre_swab_lmv_mds_md(struct lmv_mds_md *mea);
+extern void lustre_swab_lmv_user_md(struct lmv_user_md *lum);
+extern int lmv_pack_md(struct lmv_mds_md **lmmp, struct lmv_stripe_md *lsm,
+                       int stripes);
+extern int lmv_alloc_md(struct lmv_mds_md **lmmp, int stripes);
+extern void lmv_free_md(struct lmv_mds_md *lsm);
+extern int lmv_alloc_memmd(struct lmv_stripe_md **lsmp, int stripes);
+extern void lmv_free_memmd(struct lmv_stripe_md *lsm);
 
 #define MAX_HASH_SIZE_32         0x7fffffffUL
 #define MAX_HASH_SIZE            0x7fffffffffffffffULL
 #define MAX_HASH_HIGHEST_BIT     0x1000000000000000ULL
+
+static inline int lmv_stripe_md_size(int stripes)
+{
+        return sizeof(struct lmv_stripe_md) +
+               stripes * sizeof(struct lmv_oinfo);
+}
+
+static inline int lmv_mds_md_size(int stripes, int lmm_magic)
+{
+        LASSERT(lmm_magic == LMV_MAGIC_V1);
+        return sizeof(struct lmv_mds_md) +
+                      stripes * sizeof(struct lu_fid);
+}
 
 struct md_fld {
         seqno_t mf_seq;

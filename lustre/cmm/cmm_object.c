@@ -53,18 +53,35 @@
 int cmm_fld_lookup(struct cmm_device *cm, const struct lu_fid *fid,
                    mdsno_t *mds, const struct lu_env *env)
 {
+        struct lu_seq_range   range;
+        struct lu_server_fld *server_fld;
         int rc = 0;
         ENTRY;
 
         LASSERT(fid_is_sane(fid));
 
-        rc = fld_client_lookup(cm->cmm_fld, fid_seq(fid), mds, env);
+        if (fid_seq(fid) == FID_SEQ_LOCAL_FILE ||
+            fid_seq(fid) == LU_LLOG_LUSTRE_SEQ) {
+                *mds = cm->cmm_local_num;
+                RETURN(rc);
+        }
+        /*
+         * BUG 19136: don't try to send the fld query request to other mdt
+         * because it will introduce a livelock case.
+         *
+         * TODO: it will revert to the original code after the fld is
+         * replicated to all MDTs.
+         *   rc = fld_client_lookup(cm->cmm_fld, fid_seq(fid), mds, env);
+         */
+        server_fld = lu_site2md(cmm2lu_dev(cm)->ld_site)->ms_server_fld;
+        rc = fld_server_lookup(server_fld, env, fid_seq(fid), &range);
         if (rc) {
                 CERROR("Can't find mds by seq "LPX64", rc %d\n",
                        fid_seq(fid), rc);
                 RETURN(rc);
         }
 
+        *mds = range.lsr_mdt;
         if (*mds > cm->cmm_tgt_count) {
                 CERROR("Got invalid mdsno: %x (max: %x)\n",
                        *mds, cm->cmm_tgt_count);
@@ -169,12 +186,6 @@ static int cml_object_init(const struct lu_env *env, struct lu_object *lo,
 
         ENTRY;
 
-#ifdef HAVE_SPLIT_SUPPORT
-        if (cd->cmm_tgt_count == 0)
-                lu2cml_obj(lo)->clo_split = CMM_SPLIT_DENIED;
-        else
-                lu2cml_obj(lo)->clo_split = CMM_SPLIT_UNKNOWN;
-#endif
         c_dev = cml_child_dev(cd);
         if (c_dev == NULL) {
                 rc = -ENOENT;
@@ -204,15 +215,49 @@ static const struct lu_object_operations cml_obj_ops = {
         .loo_object_print   = cml_object_print
 };
 
+static void cmm_convert_stripe(struct lmv_user_md *lum)
+{
+        lum->lum_type = LMV_STRIPE_TYPE;
+}
+
 /* CMM local md_object operations */
 static int cml_object_create(const struct lu_env *env,
                              struct md_object *mo,
                              const struct md_op_spec *spec,
                              struct md_attr *attr)
 {
+        int set_stripe = 0;
         int rc;
         ENTRY;
+
+        if (!(spec->sp_cr_flags & MDS_CREATE_SLAVE_OBJ) &&
+             ((spec->u.sp_ea.lmvdefdata != NULL &&
+               spec->u.sp_ea.lmvdefdatalen != 0) ||
+              (spec->u.sp_ea.lmvdata != NULL &&
+               spec->u.sp_ea.lmvdatalen != 0)))
+                set_stripe = 1;
+
         rc = mo_object_create(env, md_object_next(mo), spec, attr);
+        if (rc || !set_stripe)
+                RETURN(rc);
+
+        if (spec->u.sp_ea.lmvdata != NULL && spec->u.sp_ea.lmvdatalen != 0) {
+                attr->ma_defaultlmv =
+                      (struct lmv_user_md *)spec->u.sp_ea.lmvdata;
+                attr->ma_defaultlmv_size = spec->u.sp_ea.lmvdatalen;
+        } else {
+                attr->ma_defaultlmv =
+                      (struct lmv_user_md *)spec->u.sp_ea.lmvdefdata;
+                attr->ma_defaultlmv_size = spec->u.sp_ea.lmvdefdatalen;
+        }
+        attr->ma_lmm = (struct lov_mds_md *)spec->u.sp_ea.lovdata;
+        attr->ma_lmm_size = spec->u.sp_ea.lovdatalen;
+        attr->ma_acl = (void *)spec->u.sp_ea.eadata;
+        attr->ma_acl_size = spec->u.sp_ea.eadatalen;
+
+        cmm_convert_stripe(attr->ma_defaultlmv);
+        rc = cmm_set_dirstripe(env, mo, attr);
+
         RETURN(rc);
 }
 
@@ -241,6 +286,7 @@ static int cml_attr_set(const struct lu_env *env, struct md_object *mo,
 {
         int rc;
         ENTRY;
+
         rc = mo_attr_set(env, md_object_next(mo), attr);
         RETURN(rc);
 }
@@ -404,13 +450,6 @@ static int cml_lookup(const struct lu_env *env, struct md_object *mo_p,
         int rc;
         ENTRY;
 
-#ifdef HAVE_SPLIT_SUPPORT
-        if (spec != NULL && spec->sp_ck_split) {
-                rc = cmm_split_check(env, mo_p, lname->ln_name);
-                if (rc)
-                        RETURN(rc);
-        }
-#endif
         rc = mdo_lookup(env, md_object_next(mo_p), lname, lf, spec);
         RETURN(rc);
 
@@ -422,75 +461,81 @@ static mdl_mode_t cml_lock_mode(const struct lu_env *env,
         int rc = MDL_MINMODE;
         ENTRY;
 
-#ifdef HAVE_SPLIT_SUPPORT
-        rc = cmm_split_access(env, mo, lm);
-#endif
-
         RETURN(rc);
 }
+
+
+/**
+ * Create a file/directory under a directory with default stripe
+ *
+ *                   cml_create
+ *                       |
+ *          create local object(mdd_create)
+ *                       |
+ *        (whether there is default stripe)
+ *                       |
+ *           |-----no----|------yes---|
+ *           |                        |
+ *         nothing             cmm_set_dirstripe
+ *                                    |
+ *                       create slave objects on all stripe objects
+ *                      Note: The EA being set all stripe objs includes
+ *                            ACL, default LMV, default LOV.
+ */
 
 static int cml_create(const struct lu_env *env, struct md_object *mo_p,
                       const struct lu_name *lname, struct md_object *mo_c,
                       struct md_op_spec *spec, struct md_attr *ma)
 {
-        int rc;
+        struct lu_attr         *attr = &ma->ma_attr;
+        struct cmm_thread_info *cmi = cmm_env_info(env);
+        int rc, set_stripe = 0;
         ENTRY;
 
-#ifdef HAVE_SPLIT_SUPPORT
-        /* Lock mode always should be sane. */
-        LASSERT(spec->sp_cr_mode != MDL_MINMODE);
-
-        /*
-         * Sigh... This is long story. MDT may have race with detecting if split
-         * is possible in cmm. We know this race and let it live, because
-         * getting it rid (with some sem or spinlock) will also mean that
-         * PDIROPS for create will not work because we kill parallel work, what
-         * is really bad for performance and makes no sense having PDIROPS. So,
-         * we better allow the race to live, but split dir only if some of
-         * concurrent threads takes EX lock, not matter which one. So that, say,
-         * two concurrent threads may have different lock modes on directory (CW
-         * and EX) and not first one which comes here and see that split is
-         * possible should split the dir, but only that one which has EX
-         * lock. And we do not care that in this case, split may happen a bit
-         * later (when dir size will not be necessarily 64K, but may be a bit
-         * larger). So that, we allow concurrent creates and protect split by EX
-         * lock.
-         */
-        if (spec->sp_cr_mode == MDL_EX) {
-                /*
-                 * Try to split @mo_p. If split is ok, -ERESTART is returned and
-                 * current thread will not peoceed with create. Instead it sends
-                 * -ERESTART to client to let it know that correct MDT should be
-                 * chosen.
-                 */
-                rc = cmm_split_dir(env, mo_p);
-                if (rc)
-                        /*
-                         * -ERESTART or some split error is returned, we can't
-                         * proceed with create.
-                         */
-                        GOTO(out, rc);
+        if (S_ISDIR(attr->la_mode)) {
+                LASSERTF(ma->ma_defaultlmv == NULL && ma->ma_defaultlmv_size==0,
+                        "ma_defaultlmv != NULL %p ma_defaultlmv_size != 0 %d\n",
+                         ma->ma_defaultlmv, ma->ma_defaultlmv_size);
+                if (spec->u.sp_ea.lmvdefdata != NULL && 
+                    spec->u.sp_ea.lmvdefdatalen != 0) {
+                        ma->ma_defaultlmv =
+                                (struct lmv_user_md *)spec->u.sp_ea.lmvdefdata;
+                        ma->ma_defaultlmv_size = spec->u.sp_ea.lmvdefdatalen;
+                        ma->ma_valid |= MA_LMV_DEF;
+                } else {
+                        ma->ma_defaultlmv = &cmi->cmi_default_lmv;
+                        ma->ma_defaultlmv_size = sizeof(cmi->cmi_default_lmv);
+                        ma->ma_need |= MA_LMV_DEF;
+                }
+                ma->ma_lmm = (struct lov_mds_md *)&cmi->cmi_lov;
+                ma->ma_lmm_size = sizeof(cmi->cmi_lov);
+                ma->ma_acl = (struct lmv_stripe_md *)&cmi->cmi_lmv;
+                ma->ma_acl_size = sizeof(cmi->cmi_lmv);
+                ma->ma_need |= MA_LOV | MA_ACL_DEF;
+                set_stripe = 1;
         }
-
-        if (spec != NULL && spec->sp_ck_split) {
-                /*
-                 * Check for possible split directory and let caller know that
-                 * it should tell client that directory is split and operation
-                 * should repeat to correct MDT.
-                 */
-                rc = cmm_split_check(env, mo_p, lname->ln_name);
-                if (rc)
-                        GOTO(out, rc);
-        }
-#endif
 
         rc = mdo_create(env, md_object_next(mo_p), lname, md_object_next(mo_c),
                         spec, ma);
+        if (rc || !set_stripe)
+                GOTO(cleanup, rc);
 
+        if ((ma->ma_valid & MA_LMV_DEF)) {
+                cmm_convert_stripe(ma->ma_defaultlmv);
+                rc = cmm_set_dirstripe(env, mo_c, ma);
+        }
+cleanup:
+        if (set_stripe) {
+                ma->ma_defaultlmv = NULL;
+                ma->ma_defaultlmv_size = 0;
+                ma->ma_lmm = NULL;
+                ma->ma_lmm_size = 0;
+                ma->ma_acl = NULL;
+                ma->ma_acl_size = 0;
+                ma->ma_need &= ~MA_LMV_DEF | ~MA_LOV | ~MA_ACL_DEF;
+                ma->ma_valid &= ~MA_LMV_DEF | ~MA_LOV | ~MA_ACL_DEF;
+        }
         EXIT;
-#ifdef HAVE_SPLIT_SUPPORT
-out:
-#endif
         return rc;
 }
 
@@ -1022,7 +1067,37 @@ static mdl_mode_t cmr_lock_mode(const struct lu_env *env,
         return MDL_MINMODE;
 }
 
-/*
+void cmm_set_specea_by_ma(struct md_op_spec *spec, struct md_attr *ma,
+                          const struct lu_fid *fid)
+{
+        spec->u.sp_ea.fid = fid;
+
+#ifdef CONFIG_FS_POSIX_ACL
+        if (ma->ma_valid & MA_ACL_DEF) {
+                spec->u.sp_ea.fid = fid;
+                spec->u.sp_ea.eadata = ma->ma_acl;
+                spec->u.sp_ea.eadatalen = ma->ma_acl_size;
+                spec->sp_cr_flags |= MDS_CREATE_RMT_ACL;
+        }
+#endif
+        if (ma->ma_valid & MA_LMV_DEF) {
+                spec->u.sp_ea.lmvdefdata = ma->ma_defaultlmv;
+                spec->u.sp_ea.lmvdefdatalen = ma->ma_defaultlmv_size;
+        }
+
+        if (ma->ma_valid & MA_LOV) {
+                spec->u.sp_ea.lovdata = ma->ma_lmm;
+                spec->u.sp_ea.lovdatalen = ma->ma_lmm_size;
+        }
+
+        CDEBUG(D_INFO, "acl %p:%d lmvdef %p:%d lmv %p:%d lov %p:%d\n",
+               spec->u.sp_ea.eadata, spec->u.sp_ea.eadatalen,
+               spec->u.sp_ea.lmvdefdata, spec->u.sp_ea.lmvdefdatalen,
+               spec->u.sp_ea.lmvdata, spec->u.sp_ea.lmvdatalen,
+               spec->u.sp_ea.lovdata, spec->u.sp_ea.lovdatalen);
+}
+
+/**
  * All methods below are cross-ref by nature. They consist of remote call and
  * local operation. Due to future rollback functionality there are several
  * limitations for such methods:
@@ -1030,6 +1105,21 @@ static mdl_mode_t cmr_lock_mode(const struct lu_env *env,
  * MDS involved and to avoid the RPC inside transaction.
  * 2) only one RPC can be sent - also due to epoch negotiation.
  * For more details see rollback HLD/DLD.
+ *
+ *
+ * Create a cross-ref directory under dir with default stripe
+ *                   cmr_create
+ *                       |
+ *         retrieve DEFAULT LMV/LOV ACL from parent
+ *                       |
+ *               mdc_object_create
+ *      (create object on remote MDT with above EA)
+ *                       |
+ *                  on remote MDT
+ *                cml_object_create
+ *                       |
+ *              If there are default LMV,
+ *     call cmm_set_dirstripe to create striped dir
  */
 static int cmr_create(const struct lu_env *env, struct md_object *mo_p,
                       const struct lu_name *lchild_name, struct md_object *mo_c,
@@ -1056,6 +1146,10 @@ static int cmr_create(const struct lu_env *env, struct md_object *mo_p,
         tmp_ma->ma_valid = 0;
         tmp_ma->ma_need = MA_INODE;
 
+        tmp_ma->ma_defaultlmv_size = 0;
+        tmp_ma->ma_lmm_size = 0;
+
+
 #ifdef CONFIG_FS_POSIX_ACL
         if (!S_ISLNK(ma->ma_attr.la_mode)) {
                 tmp_ma->ma_acl = cmi->cmi_xattr_buf;
@@ -1063,6 +1157,14 @@ static int cmr_create(const struct lu_env *env, struct md_object *mo_p,
                 tmp_ma->ma_need |= MA_ACL_DEF;
         }
 #endif
+        if (S_ISDIR(ma->ma_attr.la_mode)) {
+                tmp_ma->ma_need |= MA_LMV_DEF | MA_LOV;
+                tmp_ma->ma_lmm = (struct lov_mds_md *)&cmi->cmi_lov;
+                tmp_ma->ma_lmm_size = sizeof(struct lov_mds_md_v3);
+                tmp_ma->ma_defaultlmv = &cmi->cmi_default_lmv;
+                tmp_ma->ma_defaultlmv_size = sizeof(struct lmv_user_md);
+        }
+
         rc = mo_attr_get(env, md_object_next(mo_p), tmp_ma);
         if (rc)
                 RETURN(rc);
@@ -1075,14 +1177,21 @@ static int cmr_create(const struct lu_env *env, struct md_object *mo_p,
                 }
         }
 
-#ifdef CONFIG_FS_POSIX_ACL
-        if (tmp_ma->ma_valid & MA_ACL_DEF) {
-                spec->u.sp_ea.fid = spec->u.sp_pfid;
-                spec->u.sp_ea.eadata = tmp_ma->ma_acl;
-                spec->u.sp_ea.eadatalen = tmp_ma->ma_acl_size;
-                spec->sp_cr_flags |= MDS_CREATE_RMT_ACL;
-        }
-#endif
+        /**
+         * Usually sp_ea.lmvdefdata will be used to pack
+         * the stripe information. But for cmr_create, the
+         * parent default stripe information is also needs
+         * to be packed to the remote cross-ref object, so
+         * lmvdefdata will be used to pack parent default
+         * stripe, while lmvdata will be used to pack the
+         * stripe information.
+         */
+        spec->u.sp_ea.lmvdata = spec->u.sp_ea.lmvdefdata;
+        spec->u.sp_ea.lmvdatalen = spec->u.sp_ea.lmvdefdatalen;
+        spec->u.sp_ea.lmvdefdata = NULL;
+        spec->u.sp_ea.lmvdefdatalen = 0;
+
+        cmm_set_specea_by_ma(spec, tmp_ma, spec->u.sp_pfid);
 
         /* Local permission check for name_insert before remote ops. */
         rc = mo_permission(env, NULL, md_object_next(mo_p), NULL,
@@ -1090,6 +1199,7 @@ static int cmr_create(const struct lu_env *env, struct md_object *mo_p,
                            MAY_LINK : MAY_CREATE));
         if (rc)
                 RETURN(rc);
+
 
         /* Remote object creation and local name insert. */
         /*
@@ -1111,7 +1221,6 @@ static int cmr_create(const struct lu_env *env, struct md_object *mo_p,
                               PFID(lu_object_fid(&mo_c->mo_lu)), rc);
                 }
         }
-
         RETURN(rc);
 }
 

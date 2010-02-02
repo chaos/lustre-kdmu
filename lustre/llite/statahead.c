@@ -827,6 +827,7 @@ static int ll_statahead_thread(void *arg)
         struct ptlrpc_thread     *thread = &sai->sai_thread;
         struct page              *page;
         __u64                     pos = 0;
+        __u64                     stripe_off = 0;
         int                       first = 0;
         int                       rc = 0;
         struct ll_dir_chain       chain;
@@ -846,7 +847,7 @@ static int ll_statahead_thread(void *arg)
         CDEBUG(D_READA, "start doing statahead for %s\n", parent->d_name.name);
 
         ll_dir_chain_init(&chain);
-        page = ll_get_dir_page(dir, pos, 0, &chain);
+        page = ll_get_dir_page(dir, pos, stripe_off, 0, &chain);
 
         while (1) {
                 struct l_wait_info lwi = { 0 };
@@ -912,7 +913,7 @@ keep_de:
                                 do_statahead_interpret(sai);
 
                         if (unlikely(!sa_is_running(sai))) {
-                                ll_put_page(page);
+                                ll_put_page(dir, stripe_off, page);
                                 GOTO(out, rc);
                         }
 
@@ -924,13 +925,14 @@ keep_de:
 
                         rc = ll_statahead_one(parent, name, namelen);
                         if (rc < 0) {
-                                ll_put_page(page);
+                                ll_put_page(dir, stripe_off, page);
                                 GOTO(out, rc);
                         }
                 }
                 pos = le64_to_cpu(dp->ldp_hash_end);
-                ll_put_page(page);
-                if (pos == DIR_END_OFF) {
+                ll_put_page(dir, stripe_off, page);
+                if (pos == DIR_END_OFF && (lli->lli_mea == NULL ||
+                    lli->lli_mea->mea_count == (stripe_off + 1))) {
                         /*
                          * End of directory reached.
                          */
@@ -951,7 +953,11 @@ keep_de:
                          * chain is exhausted.
                          * Normal case: continue to the next page.
                          */
-                        page = ll_get_dir_page(dir, pos, 1, &chain);
+                        if (pos == DIR_END_OFF) {
+                                stripe_off ++;
+                                pos = 0;
+                        }
+                        page = ll_get_dir_page(dir, pos, stripe_off, 1, &chain);
                 } else {
                         /*
                          * go into overflow page.
@@ -1039,24 +1045,23 @@ enum {
 
 static int is_first_dirent(struct inode *dir, struct dentry *dentry)
 {
-        struct ll_dir_chain chain;
-        struct qstr        *target = &dentry->d_name;
-        struct page        *page;
-        __u64               pos = 0;
-        int                 dot_de;
-        int                 rc = LS_NONE_FIRST_DE;
+        struct ll_dir_chain   chain;
+        struct qstr          *target     = &dentry->d_name;
+        struct ll_inode_info *lli        = ll_i2info(dir);
+        struct page          *page;
+        __u64                 pos        = 0;
+        __u64                 stripe_off = 0;
+        int                   dot_de;
+        int                   rc         = LS_NONE_FIRST_DE;
         ENTRY;
 
         ll_dir_chain_init(&chain);
-        page = ll_get_dir_page(dir, pos, 0, &chain);
-
+        page = ll_get_dir_page(dir, pos, stripe_off, 0, &chain);
         while (1) {
                 struct lu_dirpage *dp;
                 struct lu_dirent  *ent;
 
                 if (IS_ERR(page)) {
-                        struct ll_inode_info *lli = ll_i2info(dir);
-
                         rc = PTR_ERR(page);
                         CERROR("error reading dir "DFID" at "LPU64": "
                                "[rc %d] [parent %u]\n",
@@ -1109,12 +1114,13 @@ static int is_first_dirent(struct inode *dir, struct dentry *dentry)
                         else
                                 rc = LS_FIRST_DOT_DE;
 
-                        ll_put_page(page);
+                        ll_put_page(dir, stripe_off, page);
                         GOTO(out, rc);
                 }
                 pos = le64_to_cpu(dp->ldp_hash_end);
-                ll_put_page(page);
-                if (pos == DIR_END_OFF) {
+                ll_put_page(dir, stripe_off, page);
+                if (pos == DIR_END_OFF && (lli->lli_mea == NULL ||
+                    lli->lli_mea->mea_count == (stripe_off + 1))) {
                         /*
                          * End of directory reached.
                          */
@@ -1124,7 +1130,11 @@ static int is_first_dirent(struct inode *dir, struct dentry *dentry)
                          * chain is exhausted
                          * Normal case: continue to the next page.
                          */
-                        page = ll_get_dir_page(dir, pos, 1, &chain);
+                        if (pos == DIR_END_OFF) {
+                                stripe_off ++;
+                                pos = 0;
+                        }
+                        page = ll_get_dir_page(dir, pos, stripe_off, 1, &chain);
                 } else {
                         /*
                          * go into overflow page.

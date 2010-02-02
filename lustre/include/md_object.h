@@ -126,7 +126,8 @@ enum ma_valid {
         MA_LOV_DEF   = (1 << 6),
 /* (Layout lock will used #7 here) */
         MA_HSM       = (1 << 8),
-        MA_SOM       = (1 << 9)
+        MA_SOM       = (1 << 9),
+        MA_LMV_DEF   = (1 << 10)
 };
 
 typedef enum {
@@ -171,6 +172,8 @@ struct md_attr {
         int                     ma_lmm_size;
         struct lmv_stripe_md   *ma_lmv;
         int                     ma_lmv_size;
+        struct lmv_user_md     *ma_defaultlmv;
+        int                     ma_defaultlmv_size;
         void                   *ma_acl;
         int                     ma_acl_size;
         struct llog_cookie     *ma_cookie;
@@ -187,12 +190,18 @@ struct md_op_spec {
                 const char               *sp_symname;
                 /** parent FID for cross-ref mkdir */
                 const struct lu_fid      *sp_pfid;
-                /** eadata for regular files */
+                /** eadata for regular/cross-ref files/directory */
                 struct md_spec_reg {
                         /** lov objs exist already */
                         const struct lu_fid   *fid;
                         const void *eadata;
-                        int  eadatalen;
+                        int eadatalen;
+                        const void *lmvdata;
+                        int lmvdatalen;
+                        const void *lovdata;
+                        int lovdatalen;
+                        const void *lmvdefdata;
+                        int lmvdefdatalen;
                 } sp_ea;
         } u;
         /** don't create lov objects or llog cookie - this replay */
@@ -206,9 +215,6 @@ struct md_op_spec {
 
         /** Current lock mode for parent dir where create is performing. */
         mdl_mode_t sp_cr_mode;
-
-        /** Check for split */
-        int        sp_ck_split;
 
         /** to create directory */
         const struct dt_index_features *sp_feat;
@@ -277,6 +283,8 @@ struct md_object_operations {
                                 dt_obj_version_t);
         int (*moo_path)(const struct lu_env *env, struct md_object *obj,
                         char *path, int pathlen, __u64 *recno, int *linkno);
+        
+        int (*moo_is_empty)(const struct lu_env *env, struct md_object *obj);
 };
 
 /**
@@ -720,6 +728,13 @@ static inline int mo_capa_get(const struct lu_env *env,
         return m->mo_ops->moo_capa_get(env, m, c, renewal);
 }
 
+static inline int mo_is_empty(const struct lu_env *env,
+                              struct md_object *m)
+{
+        LASSERT(m->mo_ops->moo_is_empty);
+        return m->mo_ops->moo_is_empty(env, m);
+}
+
 static inline int mo_path(const struct lu_env *env, struct md_object *m,
                           char *path, int pathlen, __u64 *recno, int *linkno)
 {
@@ -865,6 +880,7 @@ static inline int mdo_rename_tgt(const struct lu_env *env,
                 return p->mo_dir_ops->mdo_rename_tgt(env, p, t, lf, lname, ma);
         }
 }
+
 
 struct dt_device;
 /**

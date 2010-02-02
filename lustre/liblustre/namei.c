@@ -50,7 +50,6 @@
 #include <sys/queue.h>
 
 #include "llite_lib.h"
-
 void ll_intent_drop_lock(struct lookup_intent *it)
 {
         struct lustre_handle *handle;

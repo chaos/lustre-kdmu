@@ -268,7 +268,6 @@ int mdc_getattr_name(struct obd_export *exp, struct md_op_data *op_data,
         mdc_pack_body(req, &op_data->op_fid1, op_data->op_capa1,
                       op_data->op_valid, op_data->op_mode,
                       op_data->op_suppgids[0], 0);
-
         if (op_data->op_name) {
                 char *name = req_capsule_client_get(&req->rq_pill, &RMF_NAME);
                 LASSERT(strnlen(op_data->op_name, op_data->op_namelen) ==
@@ -479,7 +478,6 @@ int mdc_get_lustre_md(struct obd_export *exp, struct ptlrpc_request *req,
         ENTRY;
 
         LASSERT(md);
-        memset(md, 0, sizeof(*md));
 
         md->body = req_capsule_server_get(pill, &RMF_MDT_BODY);
         LASSERT(md->body != NULL);
@@ -525,7 +523,8 @@ int mdc_get_lustre_md(struct obd_export *exp, struct ptlrpc_request *req,
                         GOTO(out, rc = -EPROTO);
                 }
 
-                if (md->body->eadatasize == 0) {
+                if (md->body->eadatasize == 0 &&
+                    md->body->defaulteasize == 0) {
                         CDEBUG(D_INFO, "OBD_MD_FLDIREA is set, "
                                "but eadatasize 0\n");
                         RETURN(-EPROTO);
@@ -546,6 +545,25 @@ int mdc_get_lustre_md(struct obd_export *exp, struct ptlrpc_request *req,
                                 CDEBUG(D_INFO, "size too small:  "
                                        "rc < sizeof(*md->mea) (%d < %d)\n",
                                         rc, (int)sizeof(*md->mea));
+                                GOTO(out, rc = -EPROTO);
+                        }
+                }
+                if (md->body->valid & OBD_MD_DEFAULTMEA) {
+                        lmvsize = md->body->defaulteasize;
+                        lmv = req_capsule_server_sized_get(pill, &RMF_MDT_DEFAULTMD,
+                                                           lmvsize);
+                        if (!lmv)
+                                GOTO(out, rc = -EPROTO);
+
+                        rc = obd_unpackmd(md_exp, (void *)&md->def_mea, lmv,
+                                          lmvsize);
+                        if (rc < 0)
+                                GOTO(out, rc);
+
+                        if (rc < sizeof(*md->def_mea)) {
+                                CDEBUG(D_INFO, "size too small:  "
+                                       "rc < sizeof(*md->def_mea) (%d < %d)\n",
+                                        rc, (int)sizeof(*md->def_mea));
                                 GOTO(out, rc = -EPROTO);
                         }
                 }
@@ -1007,9 +1025,9 @@ out:
 EXPORT_SYMBOL(mdc_sendpage);
 #endif
 
-int mdc_readpage(struct obd_export *exp, const struct lu_fid *fid,
-                 struct obd_capa *oc, __u64 offset, struct page *page,
-                 struct ptlrpc_request **request)
+static int mdc_getpage(struct obd_export *exp, struct lu_fid *fid,
+                       __u64 offset, struct obd_capa *oc,
+                       struct page *page, struct ptlrpc_request **request)
 {
         struct ptlrpc_request   *req;
         struct ptlrpc_bulk_desc *desc;
@@ -1066,6 +1084,334 @@ int mdc_readpage(struct obd_export *exp, const struct lu_fid *fid,
         *request = req;
         RETURN(0);
 }
+
+#ifdef __KERNEL__
+/**
+ * Read dir page from the cache
+ */
+static struct page *
+mdc_read_cache_page(struct lmv_oinfo *lmo, __u64 offset)
+{
+        struct lmo_page_root root = lmo->lmo_root;
+        struct page *page = NULL;
+        int found;
+
+        cfs_spin_lock(&root.lmo_tree_lock);
+        found = radix_tree_gang_lookup(&root.lmo_tree_root,
+                                       (void **)&page, offset, 1);
+        if (found > 0) {
+                page_cache_get(page);
+                cfs_spin_unlock(&root.lmo_tree_lock);
+                /*
+                 * In contrast to find_lock_page() we are sure that directory
+                 * page cannot be truncated (while DLM lock is held) and,
+                 * hence, can avoid restart.
+                 *
+                 * In fact, page cannot be locked here at all, because
+                 * ll_dir_readpage() does synchronous io.
+                 */
+        } else {
+                cfs_spin_unlock(&root.lmo_tree_lock);
+        }
+        return page;
+}
+#endif
+
+/**
+ * Read dir page from cache first, if it can not find it, read it from
+ * server and add into the cache.
+ */
+static struct page
+*mdc_read_page(struct obd_export *exp, struct lmv_oinfo *lmo,
+               unsigned long index, struct obd_capa *oc,
+               struct ptlrpc_request **req)
+{
+        struct page *page;
+        int rc;
+#ifdef __KERNEL__
+        page = mdc_read_cache_page(lmo, index);
+        if (page != NULL)
+                return page;
+#endif
+        OBD_PAGE_ALLOC(page, CFS_ALLOC_HIGH | CFS_ALLOC_STD | CFS_ALLOC_COLD);
+        if (!page)
+               return ERR_PTR(-ENOMEM);
+
+        rc = mdc_getpage(exp, &lmo->lmo_fid, index, oc, page, req);
+        if (unlikely(rc)) {
+                OBD_PAGE_FREE(page);
+                return (ERR_PTR(rc));
+        }
+#ifdef __KERNEL__
+        /*put page to radix tree */
+        cfs_spin_lock(&lmo->lmo_root.lmo_tree_lock);
+        page->index = index;
+        rc = radix_tree_insert(&lmo->lmo_root.lmo_tree_root, index, page);
+        if (likely(rc == 0))
+                lmo->lmo_root.lmo_tree_nrpages ++;
+        cfs_spin_unlock(&lmo->lmo_root.lmo_tree_lock);
+        if (likely(rc == 0)) {
+                page_cache_get(page);
+                SetPageUptodate(page);
+        } else {
+                OBD_PAGE_FREE(page);
+                page = ERR_PTR(rc);
+        }
+#endif
+        return page;
+}
+
+
+#ifdef __KERNEL__
+static void mdc_release_page(struct lmo_page_root *root,
+                                    struct page *page)
+{
+        if (cfs_atomic_dec_return(&page->_count) == 1) {
+                cfs_spin_lock(&root->lmo_tree_lock);
+                radix_tree_delete(&root->lmo_tree_root, page->index);
+                cfs_spin_unlock(&root->lmo_tree_lock);
+                OBD_PAGE_FREE(page);
+        }
+}
+
+static struct page
+*mdc_page_locate(struct lmo_page_root *root, __u64 offset, __u64 *start, __u64 *end)
+{
+        struct page *page;
+        int found;
+
+        cfs_spin_lock(&root->lmo_tree_lock);
+        found = radix_tree_gang_lookup(&root->lmo_tree_root,
+                                       (void **)&page, offset, 1);
+        if (found > 0) {
+                struct lu_dirpage *dp;
+
+                page_cache_get(page);
+                cfs_spin_unlock(&root->lmo_tree_lock);
+                /*
+                 * In contrast to find_lock_page() we are sure that directory
+                 * page cannot be truncated (while DLM lock is held) and,
+                 * hence, can avoid restart.
+                 *
+                 * In fact, page cannot be locked here at all, because
+                 * ll_dir_readpage() does synchronous io.
+                 */
+                wait_on_page(page);
+                if (PageUptodate(page)) {
+                        dp = kmap(page);
+                        *start = le64_to_cpu(dp->ldp_hash_start);
+                        *end   = le64_to_cpu(dp->ldp_hash_end);
+                        LASSERT(*start <= offset);
+                        if (offset > *end || (*end != *start && offset == *end)) {
+                                mdc_release_page(root, page);
+                                page = NULL;
+                        }
+                } else {
+                        page_cache_release(page);
+                        page = ERR_PTR(-EIO);
+                }
+
+        } else {
+                cfs_spin_unlock(&root->lmo_tree_lock);
+                page = NULL;
+        }
+        return page;
+}
+
+int mdc_put_page(struct obd_export *exp, struct md_op_data *op_data, struct page *page)
+{
+        struct lmv_oinfo *lmo = (struct lmv_oinfo *)op_data->op_mea1;
+
+        mdc_release_page(&lmo->lmo_root, page);
+        return 0;
+}
+
+static void mdc_release_page_locked(struct lmo_page_root *root, struct page *page)
+{
+        if (cfs_atomic_dec_return(&page->_count) == 1) {
+                radix_tree_delete(&root->lmo_tree_root, page->index);
+                OBD_PAGE_FREE(page);
+        }
+}
+
+#define PAGE_VEC_COUNT          12
+static int mdc_cancel_page(struct obd_export *exp, struct lmv_stripe_md *lsm,
+                           struct lu_fid *fid, struct lmv_oinfo *lmo)
+{
+        struct lmo_page_root *root = &lmo->lmo_root;
+        struct page **pvec;
+        struct page *pvec_one;
+        int pvec_count;
+        int nr;
+        int idx;
+
+        if (root->lmo_tree_nrpages == 0)
+                return 0;
+
+        OBD_ALLOC(pvec, sizeof(*pvec) * PAGE_VEC_COUNT);
+        if (unlikely(pvec == NULL)) {
+                pvec = &pvec_one;
+                pvec_count = 1;
+        } else {
+                pvec_count = PAGE_VEC_COUNT;
+        }
+
+        idx = 0;
+        cfs_spin_lock(&root->lmo_tree_lock);
+        while ((nr = radix_tree_gang_lookup(&root->lmo_tree_root, (void **)pvec,
+                                            idx, pvec_count)) > 0) {
+                struct page *page;
+                int i;
+                idx = pvec[nr - 1]->index + 1;
+                for (i = 0; i < nr; ++i) {
+                        page = pvec[i];
+                        mdc_release_page_locked(root, page);
+                }
+        }
+        cfs_spin_unlock(&root->lmo_tree_lock);
+        if (likely(pvec_count > 1))
+                OBD_FREE(pvec, sizeof(*pvec) * PAGE_VEC_COUNT);
+        return 0;
+}
+#else
+static int mdc_cancel_page(struct obd_export *exp, struct lmv_stripe_md *lsm,
+                           struct lu_fid *fid, struct lmv_oinfo *lmo)
+{
+        return 0;
+}
+#endif
+
+static inline unsigned long hash_x_index(unsigned long value)
+{
+        return ~0UL - value;
+}
+
+#ifdef __KERNEL__
+static int mdc_readpage(struct obd_export *exp, struct md_op_data *op_data,
+                        struct md_page_callback *cb_op, struct ptlrpc_request **request,
+                        struct page **ppage)
+{
+        struct lookup_intent it = { .it_op = IT_READDIR };
+        struct page *page;
+        struct lmv_oinfo *lmo = (struct lmv_oinfo *)op_data->op_mea1;
+        struct lu_dirpage *dp;
+        __u64 start = 0;
+        __u64 end = 0;
+        struct lustre_handle lockh;
+        int exact = op_data->op_exact;
+        int rc;
+
+        *ppage = NULL;
+        rc = mdc_intent_lock(exp, op_data, NULL, 0, &it, 0, NULL,
+                             cb_op->md_blocking_ast, 0);
+        if (rc < 0) {
+                CERROR("lock enqueue: rc: %d\n", rc);
+                return rc;
+        }
+        rc = 0;
+
+        mdc_set_lock_data(exp, &it.d.lustre.it_lock_handle,
+                          op_data->op_data, NULL);
+        /*ldlm_lock_dump_handle(D_OTHER, &lockh);*/
+        page = mdc_page_locate(&lmo->lmo_root, op_data->op_hash_offset,
+                               &start, &end);
+        if (IS_ERR(page)) {
+                CERROR("dir page locate: "DFID" at "LPU64": rc %ld\n",
+                       PFID(&op_data->op_fid1), op_data->op_hash_offset,
+                       PTR_ERR(page));
+                GOTO(out_unlock, page);
+        }
+
+        if (page != NULL) {
+                /*
+                 * XXX nikita: not entirely correct handling of a corner case:
+                 * suppose hash chain of entries with hash value HASH crosses
+                 * border between pages P0 and P1. First both P0 and P1 are
+                 * cached, seekdir() is called for some entry from the P0 part
+                 * of the chain. Later P0 goes out of cache. telldir(HASH)
+                 * happens and finds P1, as it starts with matching hash
+                 * value. Remaining entries from P0 part of the chain are
+                 * skipped. (Is that really a bug?)
+                 *
+                 * Possible solutions: 0. don't cache P1 is such case, handle
+                 * it as an "overflow" page. 1. invalidate all pages at
+                 * once. 2. use HASH|1 as an index for P1.
+                 */
+                if (exact && op_data->op_hash_offset != start) {
+                        /*
+                         * readdir asked for a page starting _exactly_ from
+                         * given hash, but cache contains stale page, with
+                         * entries with smaller hash values. Stale page should
+                         * be invalidated, and new one fetched.
+                         */
+                        CDEBUG(D_OTHER, "Stale readpage page %p: "LPX64
+                               " != "LPX64"\n", page, op_data->op_hash_offset,
+                               start);
+                        mdc_release_page(&lmo->lmo_root, page);
+                } else {
+                        GOTO(hash_collision, page);
+                }
+        }
+        page = mdc_read_page(exp, lmo,
+                           (unsigned long)op_data->op_hash_offset,
+                           op_data->op_capa1, request);
+        if (IS_ERR(page))
+                GOTO(out_unlock, rc = PTR_ERR(page));
+        wait_on_page(page);
+        (void)kmap(page);
+        if (!PageUptodate(page)) {
+                goto fail;
+        }
+hash_collision:
+        dp = page_address(page);
+
+        start = le64_to_cpu(dp->ldp_hash_start);
+        end   = le64_to_cpu(dp->ldp_hash_end);
+        if (end == start) {
+                LASSERT(start == op_data->op_hash_offset);
+                CWARN("Page-wide hash collision: %#lx\n", (unsigned long)end);
+                /*
+                 * Fetch whole overflow chain...
+                 *
+                 * XXX not yet.
+                 */
+                goto fail;
+        }
+        *ppage = page;
+out_unlock:
+        lockh.cookie = it.d.lustre.it_lock_handle;
+        ldlm_lock_decref(&lockh, it.d.lustre.it_lock_mode);
+        return rc;
+fail:
+        kunmap(page);
+        mdc_release_page(&lmo->lmo_root, page);
+        rc = -EIO;
+        goto out_unlock;
+}
+#else
+int mdc_put_page(struct obd_export *exp, struct md_op_data *op_data, struct page *page)
+{
+        return 0;
+}
+static int mdc_readpage(struct obd_export *exp, struct md_op_data *op_data,
+                        struct md_page_callback *cb_op, struct ptlrpc_request **request,
+                        struct page **ppage)
+{
+        struct page *page;
+        struct lmv_oinfo *lmo = (struct lmv_oinfo *)op_data->op_mea1;
+        int rc = 0;
+
+        page = mdc_read_page(exp, lmo,
+                             hash_x_index((unsigned long)op_data->op_hash_offset),
+                             op_data->op_capa1, request);
+        if (IS_ERR(page))
+                return PTR_ERR(page);
+
+        *ppage = page;
+
+        return rc;
+}
+#endif
 
 static int mdc_statfs(struct obd_device *obd, struct obd_statfs *osfs,
                       __u64 max_age, __u32 flags)
@@ -2251,6 +2597,8 @@ struct md_ops mdc_md_ops = {
         .m_getxattr         = mdc_getxattr,
         .m_sync             = mdc_sync,
         .m_readpage         = mdc_readpage,
+        .m_cancel_page      = mdc_cancel_page,
+        .m_put_page         = mdc_put_page,
         .m_unlink           = mdc_unlink,
         .m_cancel_unused    = mdc_cancel_unused,
         .m_init_ea_size     = mdc_init_ea_size,

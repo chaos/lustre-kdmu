@@ -153,7 +153,7 @@ init_test_env() {
         export PATH=$LUSTRE/tests/racer:$PATH:
     fi
     if ! echo $PATH | grep -q $LUSTRE/../zfs/cmd/zfs; then
-        export PATH=$PATH:$LUSTRE/../zfs/cmd/zfs:$LUSTRE/../zfs/cmd/zpool
+        export PATH=$PATH:$LUSTRE/../zfs/cmd/zfs:$LUSTRE/../zfs/cmd/zpool:$LUSTRE/../zfs/scripts/:
     fi
 
     # default zfs-test location
@@ -1981,11 +1981,6 @@ zfs_cleanup_all () {
 }
 
 formatall() {
-    if [ "$IAMDIR" == "yes" ]; then
-        MDS_MKFS_OPTS="$MDS_MKFS_OPTS --iam-dir"
-        MDSn_MKFS_OPTS="$MDSn_MKFS_OPTS --iam-dir"
-    fi
-
     zfs_init
 
     [ "$FSTYPE" ] && FSTYPE_OPT="--backfstype $FSTYPE"

@@ -254,8 +254,13 @@ int mdc_create(struct obd_export *exp, struct md_op_data *op_data,
                                                 &cancels, LCK_EX,
                                                 MDS_INODELOCK_UPDATE);
 
-        req = ptlrpc_request_alloc(class_exp2cliimp(exp),
+        if (op_data->op_bias & MDS_CROSS_REF)
+                req = ptlrpc_request_alloc(class_exp2cliimp(exp),
+                                   &RQF_MDS_REINT_CREATE_SLAVE);
+        else
+                req = ptlrpc_request_alloc(class_exp2cliimp(exp),
                                    &RQF_MDS_REINT_CREATE_RMT_ACL);
+
         if (req == NULL) {
                 ldlm_lock_list_put(&cancels, l_bl_ast, count);
                 RETURN(-ENOMEM);
@@ -263,7 +268,20 @@ int mdc_create(struct obd_export *exp, struct md_op_data *op_data,
         mdc_set_capa_size(req, &RMF_CAPA1, op_data->op_capa1);
         req_capsule_set_size(&req->rq_pill, &RMF_NAME, RCL_CLIENT,
                              op_data->op_namelen + 1);
-        req_capsule_set_size(&req->rq_pill, &RMF_EADATA, RCL_CLIENT,
+
+        if (op_data->op_bias & MDS_CROSS_REF) {
+                struct md_op_spec *spec = (struct md_op_spec *)data;
+                LASSERT(spec != NULL);
+                req_capsule_set_size(&req->rq_pill, &RMF_EADATA, RCL_CLIENT,
+                                     spec->u.sp_ea.eadatalen);
+                req_capsule_set_size(&req->rq_pill, &RMF_LMVDATA, RCL_CLIENT,
+                                     spec->u.sp_ea.lmvdatalen);
+                req_capsule_set_size(&req->rq_pill, &RMF_LOVDATA, RCL_CLIENT,
+                                     spec->u.sp_ea.lovdatalen);
+                req_capsule_set_size(&req->rq_pill, &RMF_LMVDEFDATA, RCL_CLIENT,
+                                     spec->u.sp_ea.lmvdefdatalen);
+        } else
+                req_capsule_set_size(&req->rq_pill, &RMF_EADATA, RCL_CLIENT,
                              data && datalen ? datalen : 0);
 
         rc = mdc_prep_elc_req(exp, req, &cancels, count);

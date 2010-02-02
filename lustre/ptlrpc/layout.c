@@ -182,6 +182,9 @@ static const struct req_msg_field *mds_reint_create_slave_client[] = {
         &RMF_REC_REINT,
         &RMF_CAPA1,
         &RMF_NAME,
+        &RMF_LMVDATA,
+        &RMF_LOVDATA,
+        &RMF_LMVDEFDATA,
         &RMF_EADATA,
         &RMF_DLM_REQ
 };
@@ -361,7 +364,8 @@ static const struct req_msg_field *ldlm_intent_open_server[] = {
         &RMF_MDT_MD,
         &RMF_ACL,
         &RMF_CAPA1,
-        &RMF_CAPA2
+        &RMF_CAPA2,
+        &RMF_MDT_DEFAULTMD
 };
 
 static const struct req_msg_field *ldlm_intent_getattr_client[] = {
@@ -379,7 +383,8 @@ static const struct req_msg_field *ldlm_intent_getattr_server[] = {
         &RMF_MDT_BODY,
         &RMF_MDT_MD,
         &RMF_ACL,
-        &RMF_CAPA1
+        &RMF_CAPA1,
+        &RMF_MDT_DEFAULTMD
 };
 
 static const struct req_msg_field *ldlm_intent_create_client[] = {
@@ -430,6 +435,7 @@ static const struct req_msg_field *mds_getattr_server[] = {
         &RMF_PTLRPC_BODY,
         &RMF_MDT_BODY,
         &RMF_MDT_MD,
+        &RMF_MDT_DEFAULTMD,
         &RMF_ACL,
         &RMF_CAPA1,
         &RMF_CAPA2
@@ -846,6 +852,11 @@ struct req_msg_field RMF_MDT_MD =
         DEFINE_MSGF("mdt_md", RMF_F_NO_SIZE_CHECK, MIN_MD_SIZE, NULL, NULL);
 EXPORT_SYMBOL(RMF_MDT_MD);
 
+struct req_msg_field RMF_MDT_DEFAULTMD =
+        DEFINE_MSGF("mdt_default_md", 0, sizeof(struct lmv_user_md),
+                    lustre_swab_lmv_user_md, NULL);
+EXPORT_SYMBOL(RMF_MDT_DEFAULTMD);
+
 struct req_msg_field RMF_REC_REINT =
         DEFINE_MSGF("rec_reint", 0, sizeof(struct mdt_rec_reint),
                     lustre_swab_mdt_rec_reint, NULL);
@@ -855,6 +866,15 @@ EXPORT_SYMBOL(RMF_REC_REINT);
 struct req_msg_field RMF_EADATA = DEFINE_MSGF("eadata", 0, -1,
                                                     NULL, NULL);
 EXPORT_SYMBOL(RMF_EADATA);
+
+struct req_msg_field RMF_LOVDATA = DEFINE_MSGF("eadata", 0, -1, NULL, NULL);
+EXPORT_SYMBOL(RMF_LOVDATA);
+
+struct req_msg_field RMF_LMVDATA = DEFINE_MSGF("eadata", 0, -1, NULL, NULL);
+EXPORT_SYMBOL(RMF_LMVDATA);
+
+struct req_msg_field RMF_LMVDEFDATA = DEFINE_MSGF("eadata", 0, -1, NULL, NULL);
+EXPORT_SYMBOL(RMF_LMVDEFDATA);
 
 struct req_msg_field RMF_ACL =
         DEFINE_MSGF("acl", RMF_F_NO_SIZE_CHECK,

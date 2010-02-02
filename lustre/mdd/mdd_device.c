@@ -1135,13 +1135,15 @@ static int mdd_statfs(const struct lu_env *env, struct md_device *m,
  * No permission check is needed.
  */
 static int mdd_maxsize_get(const struct lu_env *env, struct md_device *m,
-                           int *md_size, int *cookie_size)
+                           int *md_sizep, int *cookie_sizep)
 {
         struct mdd_device *mdd = lu2mdd_dev(&m->md_lu_dev);
         ENTRY;
 
-        *md_size = mdd_lov_mdsize(env, mdd);
-        *cookie_size = mdd_lov_cookiesize(env, mdd);
+        if (md_sizep)
+                *md_sizep = mdd_lov_mdsize(env, mdd);
+        if (cookie_sizep)
+                *cookie_sizep = mdd_lov_cookiesize(env, mdd);
 
         RETURN(0);
 }
@@ -1566,6 +1568,8 @@ static void mdd_key_fini(const struct lu_context *ctx,
         struct mdd_thread_info *info = data;
         if (info->mti_max_lmm != NULL)
                 OBD_FREE(info->mti_max_lmm, info->mti_max_lmm_size);
+        if (info->mti_max_lmv != NULL)
+                OBD_FREE(info->mti_max_lmv, info->mti_max_lmv_size);
         if (info->mti_max_cookie != NULL)
                 OBD_FREE(info->mti_max_cookie, info->mti_max_cookie_size);
         mdd_buf_put(&info->mti_big_buf);

@@ -1841,8 +1841,10 @@ static int osd_declare_object_create(const struct lu_env *env,
 
         OSD_DECLARE_OP(oh, insert);
         OSD_DECLARE_OP(oh, create);
+        OSD_DECLARE_OP(oh, attr_set);
         oh->ot_credits += osd_dto_credits_noquota[DTO_OBJECT_CREATE];
         oh->ot_credits += osd_dto_credits_noquota[DTO_INDEX_INSERT];
+        oh->ot_credits += osd_dto_credits_noquota[DTO_ATTR_SET_BASE];
 
         /* if this is directory, then we expect . and .. to be inserted as well */
         OSD_DECLARE_OP(oh, insert);
@@ -2470,7 +2472,6 @@ static int osd_data_get(const struct lu_env *env, struct dt_object *dt,
 /*
  * Index operations.
  */
-
 static int osd_iam_index_probe(const struct lu_env *env, struct osd_object *o,
                            const struct dt_index_features *feat)
 {
@@ -2519,7 +2520,6 @@ static int osd_iam_container_init(const struct lu_env *env,
         }
         return result;
 }
-
 
 /*
  * Concurrency: no external locking is necessary.
@@ -3052,6 +3052,7 @@ static int osd_add_dot_dotdot(struct osd_thread_info *info,
                         dot_ldp = NULL;
                         dot_dot_ldp = NULL;
                 }
+
                 /* in case of rename, dotdot is already created */
                 if (dir->oo_compat_dotdot_created) {
                         return __osd_ea_add_rec(info, dir, parent_dir, name,
@@ -3230,6 +3231,12 @@ static int osd_index_ea_insert(const struct lu_env *env, struct dt_object *dt,
         struct lu_fid            *fid   = (struct lu_fid *) rec;
         const char               *name  = (const char *)key;
         struct osd_object        *child;
+        struct inode             *child_inode = NULL;
+        struct inode             *inode = obj->oo_inode;
+        struct osd_thread_info   *oti = osd_oti_get(env);
+        struct timespec          *ctime = &oti->oti_time;
+        struct timespec          *mtime = &oti->oti_time2;
+
 #ifdef HAVE_QUOTA_SUPPORT
         cfs_cap_t                 save  = current->cap_effective;
 #endif
@@ -3247,36 +3254,45 @@ static int osd_index_ea_insert(const struct lu_env *env, struct dt_object *dt,
         OSD_EXEC_OP(th, insert);
 
         child = osd_object_find(env, dt, fid);
-        if (!IS_ERR(child)) {
-                struct inode *inode = obj->oo_inode;
-                struct osd_thread_info *oti = osd_oti_get(env);
-                struct timespec *ctime = &oti->oti_time;
-                struct timespec *mtime = &oti->oti_time2;
+        if (IS_ERR(child)) {
+                /* In case of CMD, it only insert name, but ldiskfs
+                 * require inode here, so fake an inode  */
+                if (PTR_ERR(child) == -ENOENT ) {
+                        struct osd_thread_info    *info  = osd_oti_get(env);
 
-                *ctime = inode->i_ctime;
-                *mtime = inode->i_mtime;
-#ifdef HAVE_QUOTA_SUPPORT
-                if (ignore_quota)
-                        current->cap_effective |= CFS_CAP_SYS_RESOURCE_MASK;
-                else
-                        current->cap_effective &= ~CFS_CAP_SYS_RESOURCE_MASK;
-#endif
-                cfs_down_write(&obj->oo_ext_idx_sem);
-                rc = osd_ea_add_rec(env, obj, child->oo_inode, name, rec, th);
-                cfs_up_write(&obj->oo_ext_idx_sem);
-#ifdef HAVE_QUOTA_SUPPORT
-                current->cap_effective = save;
-#endif
-                osd_object_put(env, child);
-                /* xtime should not be updated with server-side time. */
-                cfs_spin_lock(&obj->oo_guard);
-                inode->i_ctime = *ctime;
-                inode->i_mtime = *mtime;
-                cfs_spin_unlock(&obj->oo_guard);
-                mark_inode_dirty(inode);
+                        child_inode = &info->oti_inode;
+                        child_inode->i_sb = osd_sb(osd_obj2dev(obj));
+                        child_inode->i_ino = 12;
+                        child = NULL;
+                } else {
+                        RETURN(PTR_ERR(child));
+                }
         } else {
-                rc = PTR_ERR(child);
+                child_inode = child->oo_inode;
         }
+
+        *ctime = inode->i_ctime;
+        *mtime = inode->i_mtime;
+#ifdef HAVE_QUOTA_SUPPORT
+        if (ignore_quota)
+                current->cap_effective |= CFS_CAP_SYS_RESOURCE_MASK;
+        else
+                current->cap_effective &= ~CFS_CAP_SYS_RESOURCE_MASK;
+#endif
+        cfs_down_write(&obj->oo_ext_idx_sem);
+        rc = osd_ea_add_rec(env, obj, child_inode, name, rec, th);
+        cfs_up_write(&obj->oo_ext_idx_sem);
+#ifdef HAVE_QUOTA_SUPPORT
+        current->cap_effective = save;
+#endif
+        if (child)
+                osd_object_put(env, child);
+        /* xtime should not be updated with server-side time. */
+        cfs_spin_lock(&obj->oo_guard);
+        inode->i_ctime = *ctime;
+        inode->i_mtime = *mtime;
+        cfs_spin_unlock(&obj->oo_guard);
+        mark_inode_dirty(inode);
 
         LASSERT(osd_invariant(obj));
         RETURN(rc);
@@ -4041,11 +4057,7 @@ static int osd_mount(const struct lu_env *env,
         o->od_fsops = fsfilt_get_ops(mt_str(LDD_MT_LDISKFS));
         LASSERT(o->od_fsops);
 
-        if (ldd_flags & LDD_F_IAM_DIR) {
-                o->od_iop_mode = 0;
-                LCONSOLE_WARN("OSD: IAM mode enabled\n");
-        } else
-                o->od_iop_mode = 1;
+        o->od_iop_mode = 1;
 
         osd_procfs_init(o, osd_label_get(env, &o->od_dt_dev));
 out:

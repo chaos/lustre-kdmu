@@ -454,7 +454,7 @@ void mdt_pack_attr2body(struct mdt_thread_info *info, struct mdt_body *b,
                        PFID(fid), b->size);
 }
 
-static inline int mdt_body_has_lov(const struct lu_attr *la,
+static inline int mdt_body_has_ea(const struct lu_attr *la,
                                    const struct mdt_body *body)
 {
         return ((S_ISREG(la->la_mode) && (body->valid & OBD_MD_FLEASIZE)) ||
@@ -493,27 +493,35 @@ static int mdt_getattr_internal(struct mdt_thread_info *info,
 
         buffer->lb_buf = req_capsule_server_get(pill, &RMF_MDT_MD);
         buffer->lb_len = req_capsule_get_size(pill, &RMF_MDT_MD, RCL_SERVER);
-
+        /* inode attributes are needed in any case */
+        ma->ma_need = ma_need | MA_INODE;
         /* If it is dir object and client require MEA, then we got MEA */
-        if (S_ISDIR(lu_object_attr(&next->mo_lu)) &&
-            reqbody->valid & OBD_MD_MEA) {
+        if (S_ISDIR(lu_object_attr(&next->mo_lu))) {
                 /* Assumption: MDT_MD size is enough for lmv size. */
-                ma->ma_lmv = buffer->lb_buf;
-                ma->ma_lmv_size = buffer->lb_len;
-                ma->ma_need = MA_LMV | MA_INODE;
+                if (reqbody->valid & OBD_MD_MEA) {
+                        ma->ma_lmv = buffer->lb_buf;
+                        ma->ma_lmv_size = buffer->lb_len;
+                        ma->ma_need |= MA_LMV;
+                }
+                if (reqbody->valid & OBD_MD_DEFAULTMEA) {
+                        ma->ma_defaultlmv = req_capsule_server_get(pill,
+                                                     &RMF_MDT_DEFAULTMD);
+                        ma->ma_defaultlmv_size = req_capsule_get_size(pill,
+                                               &RMF_MDT_DEFAULTMD, RCL_SERVER);
+                        ma->ma_need |=  MA_LMV_DEF;
+                }
+                if (reqbody->valid & OBD_MD_FLDIREA  &&
+                    lustre_msg_get_opc(req->rq_reqmsg) == MDS_GETATTR) {
+                        ma->ma_lmm = buffer->lb_buf;
+                        ma->ma_lmm_size = buffer->lb_len;
+                        ma->ma_need |= MA_LOV_DEF;
+                }
         } else {
                 ma->ma_lmm = buffer->lb_buf;
                 ma->ma_lmm_size = buffer->lb_len;
-                ma->ma_need = MA_LOV | MA_INODE;
+                ma->ma_need |= MA_LOV;
         }
 
-        if (S_ISDIR(lu_object_attr(&next->mo_lu)) &&
-            reqbody->valid & OBD_MD_FLDIREA  &&
-            lustre_msg_get_opc(req->rq_reqmsg) == MDS_GETATTR) {
-                /* get default stripe info for this dir. */
-                ma->ma_need |= MA_LOV_DEF;
-        }
-        ma->ma_need |= ma_need;
         if (ma->ma_need & MA_SOM)
                 ma->ma_som = &info->mti_u.som.data;
 
@@ -529,7 +537,7 @@ static int mdt_getattr_internal(struct mdt_thread_info *info,
         else
                 RETURN(-EFAULT);
 
-        if (mdt_body_has_lov(la, reqbody)) {
+        if (mdt_body_has_ea(la, reqbody)) {
                 if (ma->ma_valid & MA_LOV) {
                         LASSERT(ma->ma_lmm_size);
                         mdt_dump_lmm(D_INFO, ma->ma_lmm);
@@ -542,8 +550,16 @@ static int mdt_getattr_internal(struct mdt_thread_info *info,
                 if (ma->ma_valid & MA_LMV) {
                         LASSERT(S_ISDIR(la->la_mode));
                         repbody->eadatasize = ma->ma_lmv_size;
-                        repbody->valid |= (OBD_MD_FLDIREA|OBD_MD_MEA);
+                        repbody->valid |= OBD_MD_FLDIREA | OBD_MD_MEA;
                 }
+                if (ma->ma_valid & MA_LMV_DEF) {
+                        LASSERT(S_ISDIR(la->la_mode));
+                        repbody->defaulteasize = ma->ma_defaultlmv_size;
+                        repbody->valid |= OBD_MD_FLDIREA | OBD_MD_DEFAULTMEA;
+                }
+                if (!(ma->ma_valid & MA_LOV) && !(ma->ma_valid & MA_LMV) &&
+                    !(ma->ma_valid & MA_LMV_DEF))
+                        repbody->valid |= OBD_MD_FLSIZE | OBD_MD_FLBLOCKS;
         } else if (S_ISLNK(la->la_mode) &&
                    reqbody->valid & OBD_MD_LINKNAME) {
                 buffer->lb_buf = ma->ma_lmm;
@@ -715,7 +731,6 @@ static int mdt_getattr(struct mdt_thread_info *info)
         if (unlikely(rc))
                 GOTO(out_shrink, rc);
 
-        info->mti_spec.sp_ck_split = !!(reqbody->valid & OBD_MD_FLCKSPLIT);
         info->mti_cross_ref = !!(reqbody->valid & OBD_MD_FLCROSSREF);
 
         /*
@@ -1072,7 +1087,6 @@ static int mdt_getattr_name(struct mdt_thread_info *info)
         repbody = req_capsule_server_get(info->mti_pill, &RMF_MDT_BODY);
         LASSERT(repbody != NULL);
 
-        info->mti_spec.sp_ck_split = !!(reqbody->valid & OBD_MD_FLCKSPLIT);
         info->mti_cross_ref = !!(reqbody->valid & OBD_MD_FLCROSSREF);
         repbody->eadatasize = 0;
         repbody->aclsize = 0;
@@ -1276,180 +1290,6 @@ free_desc:
         ptlrpc_free_bulk(desc);
         return rc;
 }
-
-#ifdef HAVE_SPLIT_SUPPORT
-/*
- * Retrieve dir entry from the page and insert it to the slave object, actually,
- * this should be in osd layer, but since it will not in the final product, so
- * just do it here and do not define more moo api anymore for this.
- */
-static int mdt_write_dir_page(struct mdt_thread_info *info, struct page *page,
-                              int size)
-{
-        struct mdt_object *object = info->mti_object;
-        struct lu_fid *lf = &info->mti_tmp_fid2;
-        struct md_attr *ma = &info->mti_attr;
-        struct lu_dirpage *dp;
-        struct lu_dirent *ent;
-        int rc = 0, offset = 0;
-        ENTRY;
-
-        /* Make sure we have at least one entry. */
-        if (size == 0)
-                RETURN(-EINVAL);
-
-        /*
-         * Disable trans for this name insert, since it will include many trans
-         * for this.
-         */
-        info->mti_no_need_trans = 1;
-        /*
-         * When write_dir_page, no need update parent's ctime,
-         * and no permission check for name_insert.
-         */
-        ma->ma_attr.la_ctime = 0;
-        ma->ma_attr.la_valid = LA_MODE;
-        ma->ma_valid = MA_INODE;
-
-        cfs_kmap(page);
-        dp = page_address(page);
-        offset = (int)((__u32)lu_dirent_start(dp) - (__u32)dp);
-
-        for (ent = lu_dirent_start(dp); ent != NULL;
-             ent = lu_dirent_next(ent)) {
-                struct lu_name *lname;
-                char *name;
-
-                if (le16_to_cpu(ent->lde_namelen) == 0)
-                        continue;
-
-                fid_le_to_cpu(lf, &ent->lde_fid);
-                if (le64_to_cpu(ent->lde_hash) & MAX_HASH_HIGHEST_BIT)
-                        ma->ma_attr.la_mode = S_IFDIR;
-                else
-                        ma->ma_attr.la_mode = 0;
-                OBD_ALLOC(name, le16_to_cpu(ent->lde_namelen) + 1);
-                if (name == NULL)
-                        GOTO(out, rc = -ENOMEM);
-
-                memcpy(name, ent->lde_name, le16_to_cpu(ent->lde_namelen));
-                lname = mdt_name(info->mti_env, name,
-                                 le16_to_cpu(ent->lde_namelen));
-                ma->ma_attr_flags |= (MDS_PERM_BYPASS | MDS_QUOTA_IGNORE);
-                rc = mdo_name_insert(info->mti_env,
-                                     md_object_next(&object->mot_obj),
-                                     lname, lf, ma);
-                OBD_FREE(name, le16_to_cpu(ent->lde_namelen) + 1);
-                if (rc) {
-                        CERROR("Can't insert %*.*s, rc %d\n",
-                               le16_to_cpu(ent->lde_namelen),
-                               le16_to_cpu(ent->lde_namelen),
-                               ent->lde_name, rc);
-                        GOTO(out, rc);
-                }
-
-                offset += lu_dirent_size(ent);
-                if (offset >= size)
-                        break;
-        }
-        EXIT;
-out:
-        cfs_kunmap(page);
-        return rc;
-}
-
-static int mdt_bulk_timeout(void *data)
-{
-        ENTRY;
-
-        CERROR("mdt bulk transfer timeout \n");
-
-        RETURN(1);
-}
-
-static int mdt_writepage(struct mdt_thread_info *info)
-{
-        struct ptlrpc_request   *req = mdt_info_req(info);
-        struct mdt_body         *reqbody;
-        struct l_wait_info      *lwi;
-        struct ptlrpc_bulk_desc *desc;
-        struct page             *page;
-        int                rc;
-        ENTRY;
-
-
-        reqbody = req_capsule_client_get(info->mti_pill, &RMF_MDT_BODY);
-        if (reqbody == NULL)
-                RETURN(err_serious(-EFAULT));
-
-        desc = ptlrpc_prep_bulk_exp(req, 1, BULK_GET_SINK, MDS_BULK_PORTAL);
-        if (desc == NULL)
-                RETURN(err_serious(-ENOMEM));
-
-        /* allocate the page for the desc */
-        page = cfs_alloc_page(CFS_ALLOC_STD);
-        if (page == NULL)
-                GOTO(desc_cleanup, rc = -ENOMEM);
-
-        CDEBUG(D_INFO, "Received page offset %d size %d \n",
-               (int)reqbody->size, (int)reqbody->nlink);
-
-        ptlrpc_prep_bulk_page(desc, page, (int)reqbody->size,
-                              (int)reqbody->nlink);
-
-        rc = sptlrpc_svc_prep_bulk(req, desc);
-        if (rc != 0)
-                GOTO(cleanup_page, rc);
-        /*
-         * Check if client was evicted while we were doing i/o before touching
-         * network.
-         */
-        OBD_ALLOC_PTR(lwi);
-        if (!lwi)
-                GOTO(cleanup_page, rc = -ENOMEM);
-
-        if (desc->bd_export->exp_failed)
-                rc = -ENOTCONN;
-        else
-                rc = ptlrpc_start_bulk_transfer (desc);
-        if (rc == 0) {
-                *lwi = LWI_TIMEOUT_INTERVAL(obd_timeout * CFS_HZ / 4, CFS_HZ,
-                                            mdt_bulk_timeout, desc);
-                rc = l_wait_event(desc->bd_waitq, !ptlrpc_bulk_active(desc) ||
-                                  desc->bd_export->exp_failed, lwi);
-                LASSERT(rc == 0 || rc == -ETIMEDOUT);
-                if (rc == -ETIMEDOUT) {
-                        DEBUG_REQ(D_ERROR, req, "timeout on bulk GET");
-                        ptlrpc_abort_bulk(desc);
-                } else if (desc->bd_export->exp_failed) {
-                        DEBUG_REQ(D_ERROR, req, "Eviction on bulk GET");
-                        rc = -ENOTCONN;
-                        ptlrpc_abort_bulk(desc);
-                } else if (!desc->bd_success ||
-                           desc->bd_nob_transferred != desc->bd_nob) {
-                        DEBUG_REQ(D_ERROR, req, "%s bulk GET %d(%d)",
-                                  desc->bd_success ?
-                                  "truncated" : "network error on",
-                                  desc->bd_nob_transferred, desc->bd_nob);
-                        /* XXX should this be a different errno? */
-                        rc = -ETIMEDOUT;
-                }
-        } else {
-                DEBUG_REQ(D_ERROR, req, "ptlrpc_bulk_get failed: rc %d", rc);
-        }
-        if (rc)
-                GOTO(cleanup_lwi, rc);
-        rc = mdt_write_dir_page(info, page, reqbody->nlink);
-
-cleanup_lwi:
-        OBD_FREE_PTR(lwi);
-cleanup_page:
-        cfs_free_page(page);
-desc_cleanup:
-        ptlrpc_free_bulk(desc);
-        RETURN(rc);
-}
-#endif
 
 static int mdt_readpage(struct mdt_thread_info *info)
 {
@@ -2713,11 +2553,10 @@ static void mdt_thread_info_init(struct ptlrpc_request *req,
         info->mti_has_trans = 0;
         info->mti_no_need_trans = 0;
         info->mti_cross_ref = 0;
+        info->mti_set_mea = 0;
         info->mti_opdata = 0;
 
-        /* To not check for split by default. */
-        info->mti_spec.sp_ck_split = 0;
-        info->mti_spec.no_create = 0;
+        memset(&info->mti_spec, 0, sizeof(info->mti_spec));
 }
 
 static void mdt_thread_info_fini(struct mdt_thread_info *info)
@@ -3301,7 +3140,6 @@ static int mdt_intent_getattr(enum mdt_it_code opcode,
         repbody = req_capsule_server_get(info->mti_pill, &RMF_MDT_BODY);
         LASSERT(repbody);
 
-        info->mti_spec.sp_ck_split = !!(reqbody->valid & OBD_MD_FLCKSPLIT);
         info->mti_cross_ref = !!(reqbody->valid & OBD_MD_FLCROSSREF);
         repbody->eadatasize = 0;
         repbody->aclsize = 0;
@@ -4477,7 +4315,6 @@ static int mdt_init0(const struct lu_env *env, struct mdt_device *m,
         const char                *num = lustre_cfg_string(cfg, 2);
         struct lustre_mount_info  *lmi = NULL;
         struct lustre_sb_info     *lsi;
-        struct lustre_disk_data   *ldd;
         struct lu_site            *s;
         struct md_site            *mite;
         const char                *identity_upcall = "NONE";
@@ -4518,28 +4355,22 @@ static int mdt_init0(const struct lu_env *env, struct mdt_device *m,
         if (lmi == NULL) {
                 CERROR("Cannot get mount info for %s!\n", dev);
                 RETURN(-EFAULT);
-        } else {
-                lsi = lmi->lmi_lsi;
-                fsoptions_to_mdt_flags(m, lsi->lsi_lmd->lmd_opts);
-                if (lsi->lsi_lmd->lmd_flags & LMD_FLG_ABORT_RECOV)
-                        m->mdt_opts.mo_abort_recov = 1;
-                /* CMD is supported only in IAM mode */
-                ldd = lsi->lsi_ldd;
-                LASSERT(num);
-                node_id = simple_strtol(num, NULL, 10);
-                if (!(ldd->ldd_flags & LDD_F_IAM_DIR) && node_id) {
-                        CERROR("CMD Operation not allowed in IOP mode\n");
-                        GOTO(err_lmi, rc = -EINVAL);
-                }
-                /* Read recovery timeouts */
-                if (lsi->lsi_lmd && lsi->lsi_lmd->lmd_recovery_time_soft)
-                        obd->obd_recovery_timeout =
-                                lsi->lsi_lmd->lmd_recovery_time_soft;
-
-                if (lsi->lsi_lmd && lsi->lsi_lmd->lmd_recovery_time_hard)
-                        obd->obd_recovery_time_hard =
-                                lsi->lsi_lmd->lmd_recovery_time_hard;
         }
+
+        lsi = lmi->lmi_lsi;
+        fsoptions_to_mdt_flags(m, lsi->lsi_lmd->lmd_opts);
+        if (lsi->lsi_lmd->lmd_flags & LMD_FLG_ABORT_RECOV)
+                m->mdt_opts.mo_abort_recov = 1;
+        LASSERT(num);
+        node_id = simple_strtol(num, NULL, 10);
+        /* Read recovery timeouts */
+        if (lsi->lsi_lmd && lsi->lsi_lmd->lmd_recovery_time_soft)
+                obd->obd_recovery_timeout =
+                        lsi->lsi_lmd->lmd_recovery_time_soft;
+
+        if (lsi->lsi_lmd && lsi->lsi_lmd->lmd_recovery_time_hard)
+                obd->obd_recovery_time_hard =
+                        lsi->lsi_lmd->lmd_recovery_time_hard;
 
         cfs_rwlock_init(&m->mdt_sptlrpc_lock);
         sptlrpc_rule_set_init(&m->mdt_sptlrpc_rset);
@@ -4590,6 +4421,7 @@ static int mdt_init0(const struct lu_env *env, struct mdt_device *m,
         /* No connection accepted until configurations will finish */
         obd->obd_no_conn = 1;
 
+        CDEBUG(D_INFO, "%s:%p set no conn 1 \n", obd->obd_name, obd);
         if (cfg->lcfg_bufcount > 4 && LUSTRE_CFG_BUFLEN(cfg, 4) > 0) {
                 char *str = lustre_cfg_string(cfg, 4);
                 if (strchr(str, 'n')) {
@@ -5244,6 +5076,7 @@ static void mdt_allow_cli(struct mdt_device *m, unsigned int flag)
                 if (obd->obd_no_conn) {
                         cfs_spin_lock_bh(&obd->obd_processing_task_lock);
                         obd->obd_no_conn = 0;
+                        CDEBUG(D_INFO, "%s:%p set no conn 0 \n", obd->obd_name, obd);
                         cfs_spin_unlock_bh(&obd->obd_processing_task_lock);
                 }
         }
@@ -5941,9 +5774,6 @@ static struct mdt_opc_slice mdt_regular_handlers[] = {
 static struct mdt_handler mdt_readpage_ops[] = {
         DEF_MDT_HNDL_F(0,                         CONNECT,  mdt_connect),
         DEF_MDT_HNDL_F(HABEO_CORPUS|HABEO_REFERO, READPAGE, mdt_readpage),
-#ifdef HAVE_SPLIT_SUPPORT
-        DEF_MDT_HNDL_F(HABEO_CORPUS|HABEO_REFERO, WRITEPAGE, mdt_writepage),
-#endif
 
         /*
          * XXX: this is ugly and should be fixed one day, see mdc_close() for

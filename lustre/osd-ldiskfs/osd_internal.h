@@ -325,7 +325,7 @@ struct osd_thread_info {
 
         /** dentry for Iterator context. */
         struct dentry          oti_it_dentry;
-
+        struct inode           oti_inode;
         struct lu_fid          oti_fid;
         struct osd_inode_id    oti_id;
         struct ost_id          oti_ostid;
@@ -391,7 +391,6 @@ struct osd_thread_info {
         struct filter_iobuf    oti_iobuf;
 
         /** used by compat stuff */
-        struct inode           oti_inode;
         struct lu_env          oti_obj_delete_tx_env;
 #define OSD_FID_REC_SZ 32
         char                   oti_ldp[OSD_FID_REC_SZ];

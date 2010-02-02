@@ -1738,6 +1738,7 @@ void lustre_swab_mdt_body (struct mdt_body *b)
         __swab32s (&b->max_cookiesize);
         __swab32s (&b->uid_h);
         __swab32s (&b->gid_h);
+        __swab32s (&b->defaulteasize);
         CLASSERT(offsetof(typeof(*b), padding_5) != 0);
 }
 
@@ -1896,7 +1897,7 @@ void lustre_swab_lov_desc (struct lov_desc *ld)
         /* uuid endian insensitive */
 }
 
-void lustre_swab_lmv_desc (struct lmv_desc *ld)
+void lustre_swab_lmv_desc(struct lmv_desc *ld)
 {
         __swab32s (&ld->ld_tgt_count);
         __swab32s (&ld->ld_active_tgt_count);
@@ -1907,14 +1908,25 @@ void lustre_swab_lmv_desc (struct lmv_desc *ld)
         /* uuid endian insensitive */
 }
 
-void lustre_swab_lmv_stripe_md (struct lmv_stripe_md *mea)
+void lustre_swab_lmv_mds_md(struct lmv_mds_md *lmv)
 {
-        __swab32s(&mea->mea_magic);
-        __swab32s(&mea->mea_count);
-        __swab32s(&mea->mea_master);
-        CLASSERT(offsetof(typeof(*mea), mea_padding) != 0);
+        __swab32s(&lmv->lmv_magic);
+        __swab32s(&lmv->lmv_count);
+        __swab32s(&lmv->lmv_master);
+        CLASSERT(offsetof(typeof(*lmv), lmv_padding1) != 0);
 }
+EXPORT_SYMBOL(lustre_swab_lmv_mds_md);
 
+void lustre_swab_lmv_user_md(struct lmv_user_md *lum)
+{
+        __swab32s(&lum->lum_magic);
+        __swab32s(&lum->lum_stripe_count);
+        __swab32s(&lum->lum_stripe_offset);
+        __swab32s(&lum->lum_hash_type);
+        __swab32s(&lum->lum_type);
+        CLASSERT(offsetof(typeof(*lum), lum_padding1) != 0);
+}
+EXPORT_SYMBOL(lustre_swab_lmv_user_md);
 
 static void print_lum (struct lov_user_md *lum)
 {

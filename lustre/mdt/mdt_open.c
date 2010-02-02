@@ -616,9 +616,6 @@ static int mdt_mfd_open(struct mdt_thread_info *info, struct mdt_object *p,
                         RETURN(rc);
         }
 
-        CDEBUG(D_INODE, "after open, ma_valid bit = "LPX64" lmm_size = %d\n",
-               ma->ma_valid, ma->ma_lmm_size);
-
         if (ma->ma_valid & MA_LOV) {
                 LASSERT(ma->ma_lmm_size != 0);
                 repbody->eadatasize = ma->ma_lmm_size;
@@ -678,7 +675,7 @@ static int mdt_mfd_open(struct mdt_thread_info *info, struct mdt_object *p,
                         if (old_mfd) {
                                 CDEBUG(D_HA, "del orph mfd %p fid=("DFID") "
                                        "cookie=" LPX64"\n",
-                                       mfd, 
+                                       mfd,
                                        PFID(mdt_object_fid(mfd->mfd_object)),
                                        info->mti_rr.rr_handle->cookie);
                                 cfs_spin_lock(&med->med_open_lock);
@@ -829,10 +826,40 @@ static int mdt_finish_open(struct mdt_thread_info *info,
 
         /* This can't be done earlier, we need to return reply body */
         if (isdir) {
+                /* retrieve the stripe dir */
+                ma->ma_lmv = req_capsule_server_get(info->mti_pill, &RMF_MDT_MD);
+                ma->ma_lmv_size = req_capsule_get_size(info->mti_pill, &RMF_MDT_MD,
+                                                       RCL_SERVER);
+                ma->ma_defaultlmv = req_capsule_server_get(info->mti_pill,
+                                                           &RMF_MDT_DEFAULTMD);
+                ma->ma_defaultlmv_size = req_capsule_get_size(info->mti_pill,
+                                                              &RMF_MDT_DEFAULTMD,
+                                                              RCL_SERVER);
+                ma->ma_need = MA_LMV | MA_LMV_DEF;
+                /**
+                 * Because filestripe is not needed for open dir, the reply field
+                 * (RMF_MDT_MD|RMF_MDT_DEFAULTMD) will be used to return dirstripe
+                 * and default dirstripe.
+                 **/
+                ma->ma_valid &= ~MA_LOV;
+                rc = mo_attr_get(info->mti_env, mdt_object_child(o), ma);
+                if (rc)
+                        RETURN(rc);
+                if (ma->ma_valid & MA_LMV) {
+                        LASSERT(ma->ma_lmv_size != 0);
+                        repbody->eadatasize = ma->ma_lmv_size;
+                        repbody->valid |= OBD_MD_FLDIREA | OBD_MD_MEA;
+                }
+                if (ma->ma_valid & MA_LMV_DEF) {
+                        LASSERT(ma->ma_defaultlmv_size != 0);
+                        repbody->defaulteasize = ma->ma_defaultlmv_size;
+                        repbody->valid |= OBD_MD_FLDIREA | OBD_MD_DEFAULTMEA;
+                }
                 if (flags & (MDS_OPEN_CREAT | FMODE_WRITE)) {
                         /* We are trying to create or write an existing dir. */
                         RETURN(-EISDIR);
                 }
+
         } else if (flags & MDS_OPEN_DIRECTORY)
                 RETURN(-ENOTDIR);
 
@@ -863,6 +890,12 @@ static int mdt_finish_open(struct mdt_thread_info *info,
                                         repbody->valid |= OBD_MD_FLDIREA;
                                 else
                                         repbody->valid |= OBD_MD_FLEASIZE;
+                        }
+                        if (ma->ma_valid & MA_LMV) {
+                                LASSERT(ma->ma_lmv_size != 0);
+                                repbody->eadatasize = ma->ma_lmv_size;
+                                LASSERT(isdir != 0);
+                                repbody->valid |= OBD_MD_FLDIREA | OBD_MD_MEA; 
                         }
                         RETURN(0);
                 }
@@ -1165,13 +1198,12 @@ int mdt_reint_open(struct mdt_thread_info *info, struct mdt_lock_handle *lhc)
 
         repbody = req_capsule_server_get(info->mti_pill, &RMF_MDT_BODY);
 
+        ma->ma_need = MA_INODE;
         ma->ma_lmm = req_capsule_server_get(info->mti_pill, &RMF_MDT_MD);
         ma->ma_lmm_size = req_capsule_get_size(info->mti_pill, &RMF_MDT_MD,
                                                RCL_SERVER);
-        ma->ma_need = MA_INODE;
         if (ma->ma_lmm_size > 0)
                 ma->ma_need |= MA_LOV;
-
         ma->ma_valid = 0;
 
         LASSERT(info->mti_pill->rc_fmt == &RQF_LDLM_INTENT_OPEN);
