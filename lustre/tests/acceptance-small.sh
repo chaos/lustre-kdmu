@@ -2,7 +2,7 @@
 # script which _must_ complete successfully (at minimum) before checkins to
 # the CVS HEAD are allowed.
 #set -vx
-set -eTE
+set -e
 
 export MSKIPPED=0
 export OSKIPPED=0
@@ -13,7 +13,7 @@ DEFAULT_SUITES="runtests sanity sanity-benchmark sanityn lfsck liblustre
                 replay-ost-single replay-dual insanity sanity-quota sanity-sec
                 sanity-gss performance-sanity large-scale recovery-mds-scale 
                 recovery-double-scale recovery-random-scale parallel-scale 
-                lustre_rsync-test metadata-updates ost-pools"
+                lustre_rsync-test metadata-updates ost-pools lnet-selftest"
 
 if [[ -n $@ ]]; then
     ACC_SM_ONLY="${ACC_SM_ONLY} $@"

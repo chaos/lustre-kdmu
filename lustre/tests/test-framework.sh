@@ -127,6 +127,8 @@ init_test_env() {
     if ! echo $PATH | grep -q $LUSTRE/tests; then
         export PATH=$PATH:$LUSTRE/tests
     fi
+    export LST=${LST:-"$LUSTRE/../lnet/utils/lst"}
+    [ ! -f "$LST" ] && export LST=$(which lst)
     export MDSRATE=${MDSRATE:-"$LUSTRE/tests/mpi/mdsrate"}
     [ ! -f "$MDSRATE" ] && export MDSRATE=$(which mdsrate 2> /dev/null)
     if ! echo $PATH | grep -q $LUSTRE/tests/racer; then
@@ -239,7 +241,11 @@ load_module() {
 
     module_loaded ${BASE} && return
 
-    if [ -f ${LUSTRE}/${module}${EXT} ]; then
+    if [ "$BASE" == "lnet_selftest" ] && \
+            [ -f ${LUSTRE}/../lnet/selftest/${module}${EXT} ]; then
+        insmod ${LUSTRE}/../lnet/selftest/${module}${EXT}
+
+    elif [ -f ${LUSTRE}/${module}${EXT} ]; then
         insmod ${LUSTRE}/${module}${EXT} $@
     else
         # must be testing a "make install" or "rpm" installation
@@ -352,9 +358,11 @@ unload_modules() {
 
     if $LOAD_MODULES_REMOTE ; then
         local list=$(comma_list $(remote_nodes_list))
-        echo unloading modules on $list
-        do_rpc_nodes $list $LUSTRE_RMMOD $FSTYPE
-        do_rpc_nodes $list check_mem_leak
+        if [ ! -z $list ]; then
+            echo unloading modules on $list
+            do_rpc_nodes $list $LUSTRE_RMMOD $FSTYPE
+            do_rpc_nodes $list check_mem_leak
+        fi
     fi
 
     HAVE_MODULES=false
@@ -1530,7 +1538,7 @@ do_node() {
         local command_status="$TMP/cs"
         rsh $HOST ":> $command_status"
         rsh $HOST "(PATH=\$PATH:$RLUSTRE/utils:$RLUSTRE/tests:/sbin:/usr/sbin;
-                    cd $RPWD; sh -c \"$@\") ||
+                    cd $RPWD; LUSTRE=\"$RLUSTRE\" sh -c \"$@\") ||
                     echo command failed >$command_status"
         [ -n "$($myPDSH $HOST cat $command_status)" ] && return 1 || true
         return 0
@@ -1539,12 +1547,12 @@ do_node() {
     if $verbose ; then
         # print HOSTNAME for myPDSH="no_dsh"
         if [[ $myPDSH = no_dsh ]]; then
-            $myPDSH $HOST "(PATH=\$PATH:$RLUSTRE/utils:$RLUSTRE/tests:/sbin:/usr/sbin; cd $RPWD; sh -c \"$@\")" | sed -e "s/^/${HOSTNAME}: /"
+            $myPDSH $HOST "(PATH=\$PATH:$RLUSTRE/utils:$RLUSTRE/tests:/sbin:/usr/sbin; cd $RPWD; LUSTRE=\"$RLUSTRE\" sh -c \"$@\")" | sed -e "s/^/${HOSTNAME}: /"
         else
-            $myPDSH $HOST "(PATH=\$PATH:$RLUSTRE/utils:$RLUSTRE/tests:/sbin:/usr/sbin; cd $RPWD; sh -c \"$@\")"
+            $myPDSH $HOST "(PATH=\$PATH:$RLUSTRE/utils:$RLUSTRE/tests:/sbin:/usr/sbin; cd $RPWD; LUSTRE=\"$RLUSTRE\" sh -c \"$@\")"
         fi
     else
-        $myPDSH $HOST "(PATH=\$PATH:$RLUSTRE/utils:$RLUSTRE/tests:/sbin:/usr/sbin; cd $RPWD; sh -c \"$@\")" | sed "s/^${HOST}: //"
+        $myPDSH $HOST "(PATH=\$PATH:$RLUSTRE/utils:$RLUSTRE/tests:/sbin:/usr/sbin; cd $RPWD; LUSTRE=\"$RLUSTRE\" sh -c \"$@\")" | sed "s/^${HOST}: //"
     fi
     return ${PIPESTATUS[0]}
 }
@@ -1585,9 +1593,9 @@ do_nodes() {
     fi
 
     if $verbose ; then
-        $myPDSH $rnodes "(PATH=\$PATH:$RLUSTRE/utils:$RLUSTRE/tests:/sbin:/usr/sbin; cd $RPWD; sh -c \"$@\")"
+        $myPDSH $rnodes "(PATH=\$PATH:$RLUSTRE/utils:$RLUSTRE/tests:/sbin:/usr/sbin; cd $RPWD; LUSTRE=\"$RLUSTRE\" sh -c \"$@\")"
     else
-        $myPDSH $rnodes "(PATH=\$PATH:$RLUSTRE/utils:$RLUSTRE/tests:/sbin:/usr/sbin; cd $RPWD; sh -c \"$@\")" | sed -re "s/\w+:\s//g"
+        $myPDSH $rnodes "(PATH=\$PATH:$RLUSTRE/utils:$RLUSTRE/tests:/sbin:/usr/sbin; cd $RPWD; LUSTRE=\"$RLUSTRE\" sh -c \"$@\")" | sed -re "s/\w+:\s//g"
     fi
     return ${PIPESTATUS[0]}
 }
@@ -2798,6 +2806,12 @@ remote_mgs_nodsh()
     remote_node $MGS && [ "$PDSH" = "no_dsh" -o -z "$PDSH" -o -z "$ost_HOST" ]
 }
 
+local_mode ()
+{
+    remote_mds_nodsh || remote_ost_nodsh || \
+        $(single_local_node $(comma_list $(nodes_list)))
+}
+
 mdts_nodes () {
     local MDSNODES
     local NODES_sort
@@ -3288,8 +3302,8 @@ do_rpc_nodes () {
     shift
 
     # Add paths to lustre tests for 32 and 64 bit systems.
-    local RPATH="$LUSTRE/tests:/usr/lib/lustre/tests:/usr/lib64/lustre/tests:$PATH"
-    do_nodes --verbose $list "PATH=$RPATH sh rpc.sh $@ " 
+    local RPATH="$RLUSTRE/tests:/usr/lib/lustre/tests:/usr/lib64/lustre/tests:$PATH"
+    do_nodes --verbose $list "PATH=$RPATH sh rpc.sh $@ "
 }
 
 wait_clients_import_state () {
