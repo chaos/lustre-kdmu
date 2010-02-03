@@ -902,7 +902,7 @@ static inline int dt_read_prep(const struct lu_env *env, struct dt_object *d,
 }
 
 static inline int dt_statfs(const struct lu_env *env, struct dt_device *dev,
-                            struct kstatfs *sfs)
+                            cfs_kstatfs_t *sfs)
 {
         return dev->dd_ops->dt_statfs(env, dev, sfs);
 }

@@ -63,7 +63,7 @@ int filter_update_capa_key(struct filter_device *ofd, struct lustre_capa_key *ne
         int i;
 
         cfs_spin_lock(&capa_lock);
-        list_for_each_entry(k, &ofd->ofd_capa_keys, k_list) {
+        cfs_list_for_each_entry(k, &ofd->ofd_capa_keys, k_list) {
                 if (k->k_key.lk_mdsid != new->lk_mdsid)
                         continue;
 
@@ -104,8 +104,8 @@ int filter_update_capa_key(struct filter_device *ofd, struct lustre_capa_key *ne
 
         cfs_spin_lock(&capa_lock);
         k->k_key = *new;
-        if (list_empty(&k->k_list))
-                list_add(&k->k_list, &ofd->ofd_capa_keys);
+        if (cfs_list_empty(&k->k_list))
+                cfs_list_add(&k->k_list, &ofd->ofd_capa_keys);
         cfs_spin_unlock(&capa_lock);
 
         DEBUG_CAPA_KEY(D_SEC, new, "new");
@@ -166,7 +166,7 @@ int filter_auth_capa(struct filter_device *ofd, struct lu_fid *fid,
         }
 
         cfs_spin_lock(&capa_lock);
-        list_for_each_entry(k, &ofd->ofd_capa_keys, k_list)
+        cfs_list_for_each_entry(k, &ofd->ofd_capa_keys, k_list)
                 if (k->k_key.lk_mdsid == mdsid) {
                         keys_ready = 1;
                         if (k->k_key.lk_keyid == capa_keyid(capa)) {
@@ -219,8 +219,8 @@ void filter_free_capa_keys(struct filter_device *ofd)
         struct filter_capa_key *key, *n;
 
         cfs_spin_lock(&capa_lock);
-        list_for_each_entry_safe(key, n, &ofd->ofd_capa_keys, k_list) {
-                list_del_init(&key->k_list);
+        cfs_list_for_each_entry_safe(key, n, &ofd->ofd_capa_keys, k_list) {
+                cfs_list_del_init(&key->k_list);
                 OBD_FREE(key, sizeof(*key));
         }
         cfs_spin_unlock(&capa_lock);

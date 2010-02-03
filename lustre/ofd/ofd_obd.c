@@ -426,10 +426,10 @@ static int filter_adapt_sptlrpc_conf(struct obd_device *obd, int initial)
 
         sptlrpc_target_update_exp_flavor(obd, &tmp_rset);
 
-        write_lock(&filter->fo_sptlrpc_lock);
+        cfs_write_lock(&filter->fo_sptlrpc_lock);
         sptlrpc_rule_set_free(&filter->fo_sptlrpc_rset);
         filter->fo_sptlrpc_rset = tmp_rset;
-        write_unlock(&filter->fo_sptlrpc_lock);
+        cfs_write_unlock(&filter->fo_sptlrpc_lock);
 
         return 0;
 }
@@ -493,7 +493,7 @@ static int filter_set_info_async(struct obd_export *exp, __u32 keylen,
         if (val != NULL) {
                 group = (int)(*(__u32 *)val);
                 LASSERT(group >= FILTER_GROUP_MDS0);
-                sema_init(&ofd->ofd_create_locks[group], 1);
+                cfs_sema_init(&ofd->ofd_create_locks[group], 1);
                 cfs_spin_lock(&ofd->ofd_objid_lock);
                 if (group > ofd->ofd_max_group)
                         ofd->ofd_max_group = group;
@@ -567,14 +567,14 @@ static int filter_get_info(struct obd_export *exp, __u32 keylen, void *key,
         }
 
         if (KEY_IS("FLAVOR")) {
-                read_lock(&ofd->ofd_sptlrpc_lock);
+                cfs_read_lock(&ofd->ofd_sptlrpc_lock);
                 LBUG();
 #if 0
                 sptlrpc_rule_set_choose(&ofd->ofd_sptlrpc_rset,
                                         exp->exp_sp_peer,
                                         exp->exp_connection->c_peer.nid,
                                         &exp->exp_flvr);
-                read_unlock(&ofd->ofd_sptlrpc_lock);
+                cfs_read_unlock(&ofd->ofd_sptlrpc_lock);
 #endif
                 RETURN(0);
         }
@@ -982,9 +982,9 @@ static int filter_create(struct obd_export *exp,
                         GOTO(out, rc = 0);
                 }
                 /* This causes inflight precreates to abort and drop lock */
-                set_bit(group, &ofd->ofd_destroys_in_progress);
+                cfs_set_bit(group, &ofd->ofd_destroys_in_progress);
                 cfs_mutex_down(&ofd->ofd_create_locks[group]);
-                if (!test_bit(group, &ofd->ofd_destroys_in_progress)) {
+                if (!cfs_test_bit(group, &ofd->ofd_destroys_in_progress)) {
                         CERROR("%s:["LPU64"] destroys_in_progress already cleared\n",
                                exp->exp_obd->obd_name, group);
                         GOTO(out, rc = 0);
@@ -997,10 +997,10 @@ static int filter_create(struct obd_export *exp,
                         rc = 0;
                 } else if (diff < 0) {
                         rc = filter_orphans_destroy(&env, exp, ofd, oa);
-                        clear_bit(group, &ofd->ofd_destroys_in_progress);
+                        cfs_clear_bit(group, &ofd->ofd_destroys_in_progress);
                 } else {
                         /* XXX: Used by MDS for the first time! */
-                        clear_bit(group, &ofd->ofd_destroys_in_progress);
+                        cfs_clear_bit(group, &ofd->ofd_destroys_in_progress);
                 }
         } else {
                 cfs_mutex_down(&ofd->ofd_create_locks[group]);

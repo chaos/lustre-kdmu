@@ -35,7 +35,7 @@
 #define FILTER_GRANT_SHRINK_LIMIT (16ULL * FILTER_GRANT_CHUNK)
 #define GRANT_FOR_LLOG      16
 
-#define FILTER_RECOVERY_TIMEOUT (obd_timeout * 5 * HZ / 2) /* *waves hands* */
+#define FILTER_RECOVERY_TIMEOUT (obd_timeout * 5 * CFS_HZ / 2) /* *waves hands* */
 
 extern struct file_operations filter_per_export_stats_fops;
 
@@ -66,7 +66,7 @@ struct filter_mod_data {
 #else
 #define FILTER_FMD_MAX_NUM_DEFAULT  32
 #endif
-#define FILTER_FMD_MAX_AGE_DEFAULT ((obd_timeout + 10) * HZ)
+#define FILTER_FMD_MAX_AGE_DEFAULT ((obd_timeout + 10) * CFS_HZ)
 
 int ofd_fmd_init(void);
 void ofd_fmd_exit(void);
@@ -150,7 +150,7 @@ struct filter_device {
         /* XXX: make the following dynamic */
         int                      ofd_max_group;
         obd_id                   ofd_last_objids[FILTER_MAX_GROUPS];
-        struct semaphore         ofd_create_locks[FILTER_MAX_GROUPS];
+        cfs_semaphore_t          ofd_create_locks[FILTER_MAX_GROUPS];
         struct dt_object        *ofd_lastid_obj[FILTER_MAX_GROUPS];
         cfs_spinlock_t           ofd_objid_lock;
         unsigned long            ofd_destroys_in_progress;
@@ -272,7 +272,7 @@ struct filter_thread_info {
         union {
                 char               ns_name[48];   /* for obdfilter_init0()     */
                 struct lustre_cfg_bufs bufs;      /* for obdfilter_stack_fini()*/
-                struct kstatfs     ksfs;          /* for obdfilter_statfs()    */
+                cfs_kstatfs_t      ksfs;          /* for obdfilter_statfs()    */
         } fti_u;
 
         /* server and client data buffers */

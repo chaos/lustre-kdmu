@@ -306,7 +306,7 @@ int llog_cat_add_rec_2(struct llog_handle *cathandle, struct llog_rec_hdr *rec,
 
         /* loghandle is already locked by llog_cat_current_log() for us */
         if (!llog_exist_2(loghandle)) {
-                list_del(&loghandle->u.phd.phd_entry);
+                cfs_list_del(&loghandle->u.phd.phd_entry);
                 rc = llog_cat_new_log(cathandle, loghandle, th);
                 LASSERTF(rc >= 0, "rc = %d\n", rc);
                 created = 1;
@@ -375,17 +375,17 @@ int llog_cat_declare_add_rec(struct llog_handle *cathandle,
         
         } else if (cathandle->u.chd.chd_next_log == NULL) {
                         /* declare next plain llog */
-                down_write(&cathandle->lgh_lock);
+                cfs_down_write(&cathandle->lgh_lock);
                 if (cathandle->u.chd.chd_next_log == NULL) {
                         rc = llog_open_2(cathandle->lgh_ctxt, &loghandle,
                                          NULL, NULL);
                         if (rc == 0) {
                                 cathandle->u.chd.chd_next_log = loghandle;
-                                list_add_tail(&loghandle->u.phd.phd_entry,
-                                              &cathandle->u.chd.chd_head);
+                                cfs_list_add_tail(&loghandle->u.phd.phd_entry,
+                                                  &cathandle->u.chd.chd_head);
                         }
                 }
-                up_write(&cathandle->lgh_lock);
+                cfs_up_write(&cathandle->lgh_lock);
         }
 
         if (rc)

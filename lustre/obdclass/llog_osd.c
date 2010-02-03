@@ -84,7 +84,7 @@ struct llog_name {
  */
 struct llog_superblock {
         /* how many handle's reference this llog system */
-        atomic_t                lsb_refcount;
+        cfs_atomic_t            lsb_refcount;
         struct dt_device       *lsb_dev;
         struct dt_object       *lsb_obj;
         /* all initialized llog systems on this node linked by this */
@@ -134,7 +134,7 @@ static struct llog_superblock *llog_osd_get_sb(const struct lu_env *env,
         cfs_mutex_lock(&lsb_list_mutex);
         cfs_list_for_each_entry(lsb, &lsb_list_head, lsb_list) {
                 if (lsb->lsb_dev == dev) {
-                        atomic_inc(&lsb->lsb_refcount);
+                        cfs_atomic_inc(&lsb->lsb_refcount);
                         GOTO(out, lsb);
                 }
         }
@@ -144,7 +144,7 @@ static struct llog_superblock *llog_osd_get_sb(const struct lu_env *env,
         if (lsb == NULL)
                 GOTO(out, lsb = ERR_PTR(-ENOMEM));
 
-        atomic_set(&lsb->lsb_refcount, 1);
+        cfs_atomic_set(&lsb->lsb_refcount, 1);
         cfs_spin_lock_init(&lsb->lsb_id_lock);
         lsb->lsb_dev = dev;
         CFS_INIT_LIST_HEAD(&lsb->lsb_named_list);
@@ -258,9 +258,9 @@ static void llog_osd_put_names(struct llog_superblock *lsb)
 
 static void llog_osd_put_sb(const struct lu_env *env, struct llog_superblock *lsb)
 {
-        if (atomic_dec_and_test(&lsb->lsb_refcount)) {
+        if (cfs_atomic_dec_and_test(&lsb->lsb_refcount)) {
                 cfs_mutex_lock(&lsb_list_mutex);
-                if (atomic_read(&lsb->lsb_refcount) == 0) {
+                if (cfs_atomic_read(&lsb->lsb_refcount) == 0) {
                         if (lsb->lsb_obj)
                                 lu_object_put(env, &lsb->lsb_obj->do_lu);
                         cfs_list_del(&lsb->lsb_list);
@@ -1090,7 +1090,7 @@ static int llog_osd_open_2(struct llog_ctxt *ctxt, struct llog_handle **res,
         if (rc == 0) {
                 handle->lgh_obj = o;
                 handle->lgh_ctxt = ctxt;
-                atomic_inc(&lsb->lsb_refcount);
+                cfs_atomic_inc(&lsb->lsb_refcount);
                 handle->private_data = lsb;
         } else {
                 if (handle)

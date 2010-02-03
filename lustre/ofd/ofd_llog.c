@@ -149,7 +149,7 @@ struct obd_llog_group *filter_find_olg(struct obd_device *obd, int group)
                 RETURN(&obd->obd_olg);
 
         cfs_spin_lock(&ofd->ofd_llog_list_lock);
-        list_for_each_entry(olg, &ofd->ofd_llog_list, olg_list) {
+        cfs_list_for_each_entry(olg, &ofd->ofd_llog_list, olg_list) {
                 if (olg->olg_group == group) {
                         cfs_spin_unlock(&ofd->ofd_llog_list_lock);
                         RETURN(olg);
@@ -163,20 +163,20 @@ struct obd_llog_group *filter_find_olg(struct obd_device *obd, int group)
 
         llog_group_init(olg, group);
         cfs_spin_lock(&ofd->ofd_llog_list_lock);
-        list_for_each_entry(nolg, &ofd->ofd_llog_list, olg_list) {
+        cfs_list_for_each_entry(nolg, &ofd->ofd_llog_list, olg_list) {
                 if (nolg->olg_group == group) {
                         cfs_spin_unlock(&ofd->ofd_llog_list_lock);
                         OBD_FREE_PTR(olg);
                         RETURN(nolg);
                 }
         }
-        list_add(&olg->olg_list, &ofd->ofd_llog_list);
+        cfs_list_add(&olg->olg_list, &ofd->ofd_llog_list);
         cfs_spin_unlock(&ofd->ofd_llog_list_lock);
 
         rc = obd_llog_init(obd, olg, obd, NULL);
         if (rc) {
                 cfs_spin_lock(&ofd->ofd_llog_list_lock);
-                list_del(&olg->olg_list);
+                cfs_list_del(&olg->olg_list);
                 cfs_spin_unlock(&ofd->ofd_llog_list_lock);
                 OBD_FREE_PTR(olg);
                 RETURN(ERR_PTR(rc));
@@ -338,7 +338,7 @@ filter_find_olg_internal(struct filter_obd *filter, int group)
         struct obd_llog_group *olg;
 
         LASSERT_SPIN_LOCKED(&filter->fo_llog_list_lock);
-        list_for_each_entry(olg, &filter->fo_llog_list, olg_list) {
+        cfs_list_for_each_entry(olg, &filter->fo_llog_list, olg_list) {
                 if (olg->olg_group == group)
                         RETURN(olg);
         }
@@ -376,14 +376,14 @@ struct obd_llog_group *filter_find_create_olg(struct obd_device *obd, int group)
                GOTO(out_unlock, olg = ERR_PTR(-ENOMEM));
 
         llog_group_init(olg, group);
-        list_add(&olg->olg_list, &filter->fo_llog_list);
+        cfs_list_add(&olg->olg_list, &filter->fo_llog_list);
         olg->olg_initializing = 1;
         cfs_spin_unlock(&filter->fo_llog_list_lock);
 
         rc = obd_llog_init(obd, olg, obd, NULL);
         if (rc) {
                cfs_spin_lock(&filter->fo_llog_list_lock);
-               list_del(&olg->olg_list);
+               cfs_list_del(&olg->olg_list);
                cfs_spin_unlock(&filter->fo_llog_list_lock);
                OBD_FREE_PTR(olg);
                GOTO(out, olg = ERR_PTR(-ENOMEM));

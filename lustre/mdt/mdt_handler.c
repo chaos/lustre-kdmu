@@ -4400,7 +4400,7 @@ static void mdt_fini(const struct lu_env *env, struct mdt_device *m)
                 d->ld_site = NULL;
         }
         server_put_mount(obd->obd_name);
-        LASSERT(atomic_read(&d->ld_ref) == 0);
+        LASSERT(cfs_atomic_read(&d->ld_ref) == 0);
 
         EXIT;
 }

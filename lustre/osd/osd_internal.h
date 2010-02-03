@@ -290,8 +290,8 @@ struct osd_it_iam {
 #define MAX_BLOCKS_PER_PAGE (CFS_PAGE_SIZE / 512)
 
 struct filter_iobuf {
-        atomic_t          dr_numreqs;  /* number of reqs being processed */
-        wait_queue_head_t dr_wait;
+        cfs_atomic_t      dr_numreqs;  /* number of reqs being processed */
+        cfs_waitq_t       dr_wait;
         int               dr_max_pages;
         int               dr_npages;
         int               dr_error;

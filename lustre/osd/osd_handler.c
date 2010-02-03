@@ -511,7 +511,7 @@ static struct thandle *osd_trans_create(const struct lu_env *env,
         ENTRY;
        
         /* on pending IO in this thread should left from prev. request */
-        LASSERT(atomic_read(&iobuf->dr_numreqs) == 0);
+        LASSERT(cfs_atomic_read(&iobuf->dr_numreqs) == 0);
 
         th = ERR_PTR(-ENOMEM);
         OBD_ALLOC_GFP(oh, sizeof *oh, CFS_ALLOC_IO);
@@ -615,7 +615,7 @@ static int osd_trans_stop(const struct lu_env *env, struct thandle *th)
         /* see comments in osd_declare_punch() */
         if (oh->ot_alloc_sem_obj) {
                 /* XXX: we don't grab reference on the object - hope it's OK */
-                up_write(&oh->ot_alloc_sem_obj->oo_inode->i_alloc_sem);
+                cfs_up_write(&oh->ot_alloc_sem_obj->oo_inode->i_alloc_sem);
                 oh->ot_alloc_sem_obj = NULL;
         }
 
@@ -656,7 +656,7 @@ static int osd_trans_stop(const struct lu_env *env, struct thandle *th)
          * IMPORTANT: we have to wait till any IO submited by the thread is
          * completed otherwise iobuf may be corrupted by different request
          */
-        wait_event(iobuf->dr_wait, atomic_read(&iobuf->dr_numreqs) == 0);
+        cfs_wait_event(iobuf->dr_wait, cfs_atomic_read(&iobuf->dr_numreqs) == 0);
         if (!result)
                 result = iobuf->dr_error;
 
@@ -1458,7 +1458,7 @@ static int osd_declare_punch(const struct lu_env *env, struct dt_object *dt,
         oh->ot_alloc_sem_obj = oo;
 
         LASSERT(oo->oo_inode != NULL);
-        down_write(&oo->oo_inode->i_alloc_sem);
+        cfs_down_write(&oo->oo_inode->i_alloc_sem);
 
         RETURN(0);
 }

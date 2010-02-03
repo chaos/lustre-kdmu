@@ -107,7 +107,7 @@ struct osd_device {
          * statfs optimization: we cache a bit.
          */
         cfs_time_t                od_osfs_age;
-        struct kstatfs            od_kstatfs;
+        cfs_kstatfs_t             od_kstatfs;
         cfs_spinlock_t            od_osfs_lock;
 
         cfs_proc_dir_entry_t     *od_proc_entry;
@@ -120,7 +120,7 @@ struct osd_device {
         char                      od_label[MAXNAMELEN];
 };
 
-int osd_statfs(const struct lu_env *env, struct dt_device *d, struct kstatfs *sfs);
+int osd_statfs(const struct lu_env *env, struct dt_device *d, cfs_kstatfs_t *sfs);
 
 void lprocfs_osd_init_vars(struct lprocfs_static_vars *lvars);
 int osd_procfs_fini(struct osd_device *osd);
