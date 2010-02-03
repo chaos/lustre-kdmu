@@ -560,17 +560,17 @@ void libcfs_param_remove(const char *name, struct libcfs_param_entry *lpe)
 /**
  * interface for pipe write in kernel space
  */
-static int libcfs_param_pipe_write(int fd, void *payload, int msgtype)
+static int libcfs_param_pipe_write(cfs_file_t *filp, void *payload, int msgtype)
 {
         struct libcfs_param_pipe_hdr *lpph = payload;
 
         lpph->lpph_msgtype = msgtype;
 
-        return cfs_write_fd(fd, (char *)lpph, lpph->lpph_msglen, 0);
+        return cfs_user_write(filp, (char *)lpph, lpph->lpph_msglen, 0);
 }
 
 struct list_param_cb_data {
-        int lpcd_fd;
+        cfs_file_t *lpcd_fp;
         loff_t *lpcd_pos;
         struct libcfs_param_pipe_hdr *lpcd_lpph;
 };
@@ -592,14 +592,14 @@ static void list_param_cb(void *obj, void *data)
         strncpy(lpi->lpi_name, lpe->lpe_name, lpe->lpe_name_len);
         lpi->lpi_name[lpi->lpi_name_len] = '\0';
 
-        rc = libcfs_param_pipe_write(lpcd->lpcd_fd, lpph, LPPH_MSG_LISTPARAM);
-        CDEBUG(D_INFO, "Send \"%s\" to fd=%d, len=%d, rc=%d\n",
-               lpe->lpe_name, lpcd->lpcd_fd, lpph->lpph_msglen, rc);
+        rc = libcfs_param_pipe_write(lpcd->lpcd_fp, lpph, LPPH_MSG_LISTPARAM);
+        CDEBUG(D_INFO, "Send \"%s\" to fd=%p, len=%d, rc=%d\n",
+               lpe->lpe_name, lpcd->lpcd_fp, lpph->lpph_msglen, rc);
 }
 
 struct list_thread_args {
         struct libcfs_param_entry *lta_parent;
-        int lta_fd;
+        cfs_file_t *lta_fp;
 };
 
 int list_param_thread(void *data)
@@ -622,7 +622,7 @@ int list_param_thread(void *data)
         /* build pipe msg header */
         lpph->lpph_magic = LPPH_MAGIC;
         lpph->lpph_msglen = len;
-        lpcd.lpcd_fd = lta->lta_fd;
+        lpcd.lpcd_fp = lta->lta_fp;
         lpcd.lpcd_lpph = lpph;
         lpcd.lpcd_pos = &pos;
 
@@ -631,7 +631,8 @@ int list_param_thread(void *data)
         up_write(&parent->lpe_rw_sem);
 
         libcfs_param_put(parent);
-        libcfs_param_pipe_write(lta->lta_fd, lpph, LPPH_MSG_SHUTDOWN);
+        libcfs_param_pipe_write(lta->lta_fp, lpph, LPPH_MSG_SHUTDOWN);
+        cfs_put_file(lta->lta_fp);
         LIBCFS_FREE(lpph, len);
         LIBCFS_FREE(lta, sizeof(*lta));
 
@@ -664,7 +665,7 @@ int libcfs_param_list(const char *parent_path, int fd)
         /* list the entries */
         LIBCFS_ALLOC(lta, sizeof(*lta));
         lta->lta_parent = parent;
-        lta->lta_fd = fd;
+        lta->lta_fp = cfs_get_fd(fd);
 
         /* Use kernel thread to list params */
         rc = cfs_kernel_thread(list_param_thread, lta, CLONE_VM | CLONE_FILES);

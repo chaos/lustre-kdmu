@@ -75,42 +75,17 @@ cfs_user_write (cfs_file_t *filp, const char *buf, size_t count, loff_t *offset)
 
 	fs = get_fs();
 	set_fs(KERNEL_DS);
-	while (count > 0) {
+	while ((ssize_t)count > 0) {
 		size = filp->f_op->write(filp, (char *)buf, count, offset);
 		if (size < 0)
 			break;
+                buf += size;
 		count -= size;
 		size = 0;
 	}
 	set_fs(fs);
 
 	return size;
-}
-
-/* write by fd, not a file pointer
- * NOTE: this returns 0 on success, not the number of bytes written. */
-ssize_t cfs_write_fd(int fd, const char *buf, size_t count, loff_t *offset)
-{
-        cfs_file_t *filp = NULL;
-        ssize_t size = 0;
-
-        filp = fget(fd);
-        if (IS_ERR(filp)) {
-		printk(KERN_ERR "LustreError: can't get fp of fd=%d: err %d\n",
-				fd, (int)PTR_ERR(filp));
-                return -EIO;
-        }
-        while ((ssize_t)count > 0) {
-                size = filp->f_op->write(filp, (char *)buf, count, offset);
-                if (size < 0)
-                        break;
-                buf += size;
-                count -= size;
-                size = 0;
-        }
-        fput(filp);
-
-        return size;
 }
 
 #if !(CFS_O_CREAT == O_CREAT && CFS_O_EXCL == O_EXCL &&	\
@@ -158,6 +133,5 @@ int cfs_univ2oflags(int flags)
 
 EXPORT_SYMBOL(cfs_filp_open);
 EXPORT_SYMBOL(cfs_user_write);
-EXPORT_SYMBOL(cfs_write_fd);
 EXPORT_SYMBOL(cfs_oflags2univ);
 EXPORT_SYMBOL(cfs_univ2oflags);
