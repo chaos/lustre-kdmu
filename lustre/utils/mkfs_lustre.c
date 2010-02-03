@@ -592,27 +592,29 @@ int make_lustre_backfs(struct mkfs_opts *mop)
         char *dev;
         int ret = 0;
 
-        if (!(mop->mo_flags & MO_IS_LOOP)) {
-                mop->mo_device_sz = get_device_size(mop->mo_device);
+        if (mop->mo_ldd.ldd_mount_type != LDD_MT_ZFS) {
+                if (!(mop->mo_flags & MO_IS_LOOP)) {
+                        mop->mo_device_sz = get_device_size(mop->mo_device);
 
-                if (mop->mo_device_sz == 0)
-                        return ENODEV;
+                        if (mop->mo_device_sz == 0)
+                                return ENODEV;
 
-                /* Compare to real size */
-                if (device_sz == 0 || device_sz > mop->mo_device_sz)
-                        device_sz = mop->mo_device_sz;
-                else
-                        mop->mo_device_sz = device_sz;
-        }
-
-        if (mop->mo_device_sz != 0) {
-                if (mop->mo_device_sz < 8096){
-                        fprintf(stderr, "%s: size of filesystem must be larger "
-                                "than 8MB, but is set to %lldKB\n",
-                                progname, (long long)mop->mo_device_sz);
-                        return EINVAL;
+                        /* Compare to real size */
+                        if (device_sz == 0 || device_sz > mop->mo_device_sz)
+                                device_sz = mop->mo_device_sz;
+                        else
+                                mop->mo_device_sz = device_sz;
                 }
-                block_count = mop->mo_device_sz / (L_BLOCK_SIZE >> 10);
+
+                if (mop->mo_device_sz != 0) {
+                        if (mop->mo_device_sz < 8096){
+                                fprintf(stderr, "%s: size of filesystem must be larger "
+                                        "than 8MB, but is set to %lldKB\n",
+                                        progname, (long long)mop->mo_device_sz);
+                                return EINVAL;
+                        }
+                        block_count = mop->mo_device_sz / (L_BLOCK_SIZE >> 10);
+                }
         }
 
         if ((mop->mo_ldd.ldd_mount_type == LDD_MT_EXT3) ||
