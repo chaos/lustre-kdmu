@@ -465,27 +465,64 @@ out:
 }
 #endif
 
+static int filter_connect_to_next(const struct lu_env *env, struct filter_device *m,
+                                  const char *nextdev)
+{
+        struct obd_connect_data *data = NULL;
+        struct obd_device       *obd;
+        int                      rc;
+        ENTRY;
+
+        LASSERT(m->ofd_osd_exp == NULL);
+
+        OBD_ALLOC(data, sizeof(*data));
+        if (data == NULL)
+                GOTO(out, rc = -ENOMEM);
+
+        obd = class_name2obd(nextdev);
+        if (obd == NULL) {
+                CERROR("can't locate next device: %s\n", nextdev);
+                GOTO(out, rc = -ENOTCONN);
+        }
+
+        /* XXX: which flags we need on OST? */
+        data->ocd_version = LUSTRE_VERSION_CODE;
+
+        rc = obd_connect(NULL, &m->ofd_osd_exp, obd, &obd->obd_uuid, data, NULL);
+        if (rc) {
+                CERROR("cannot connect to next dev %s (%d)\n", nextdev, rc);
+                GOTO(out, rc);
+        }
+
+        m->ofd_dt_dev.dd_lu_dev.ld_site =
+                m->ofd_osd_exp->exp_obd->obd_lu_dev->ld_site;
+        LASSERT(m->ofd_dt_dev.dd_lu_dev.ld_site);
+        m->ofd_osd = lu2dt_dev(m->ofd_osd_exp->exp_obd->obd_lu_dev);
+        m->ofd_dt_dev.dd_lu_dev.ld_site->ls_top_dev = &m->ofd_dt_dev.dd_lu_dev;
+
+out:
+        if (data)
+                OBD_FREE(data, sizeof(*data));
+        RETURN(rc);
+}
+
 int filter_stack_init(const struct lu_env *env,
                           struct filter_device *m, struct lustre_cfg *cfg,
                           struct lustre_mount_info  *lmi)
 {
         struct lu_device  *d = &m->ofd_dt_dev.dd_lu_dev;
         struct lu_device  *tmp;
+        char               osdname[64];
         int rc;
         ENTRY;
 
-        /* init the stack */
-        tmp = &lmi->lmi_dt->dd_lu_dev;
-        LASSERT(tmp);
-        tmp->ld_site = d->ld_site;
-
-        m->ofd_osd = lu2dt_dev(tmp);
-
-        /* process setup config */
-        rc = tmp->ld_ops->ldo_process_config(env, tmp, cfg);
-        if (rc)
-                GOTO(out, rc);
+        LASSERT(m->ofd_osd_exp == NULL);
+        snprintf(osdname, sizeof(osdname), "%s-dsk", lustre_cfg_string(cfg, 0));
         
+        rc = filter_connect_to_next(env, m, osdname);
+        LASSERT(rc == 0);
+
+        tmp = &m->ofd_osd->dd_lu_dev;
         rc = tmp->ld_ops->ldo_prepare(env, d, tmp);
         GOTO(out, rc);
 
@@ -502,16 +539,12 @@ static void filter_stack_fini(const struct lu_env *env,
         struct obd_device       *obd = filter_obd(m);
         struct lustre_cfg_bufs   bufs;
         struct lustre_cfg       *lcfg;
-        struct mdt_thread_info  *info;
         struct lu_device        *d = &m->ofd_dt_dev.dd_lu_dev;
-        struct lu_site          *ls = d->ld_site;
-        char flags[3]="";
+        char                     flags[3] = "";
+        int                      rc;
         ENTRY;
 
-        info = lu_context_key_get(&env->le_ctx, &filter_thread_key);
-        LASSERT(info != NULL);
-        
-        lu_site_purge(env, ls, ~0);
+        lu_site_purge(env, d->ld_site, ~0);
 
         /* process cleanup, pass mdt obd name to get obd umount flags */
         lustre_cfg_bufs_reset(&bufs, obd->obd_name);
@@ -530,7 +563,10 @@ static void filter_stack_fini(const struct lu_env *env,
         top->ld_ops->ldo_process_config(env, top, lcfg);
         lustre_cfg_free(lcfg);
 
-        lu_stack_fini(env, top);
+        lu_site_purge(env, d->ld_site, ~0);
+
+        LASSERT(m->ofd_osd_exp);
+        rc = obd_disconnect(m->ofd_osd_exp);
         m->ofd_osd = NULL;
 
         EXIT;
@@ -600,7 +636,6 @@ static int filter_init0(const struct lu_env *env, struct filter_device *m,
         struct filter_obd *filter;
         struct lustre_mount_info *lmi;
         struct obd_device *obd;
-        struct lu_site *s;
         int rc;
         ENTRY;
 
@@ -608,11 +643,13 @@ static int filter_init0(const struct lu_env *env, struct filter_device *m,
         LASSERT(obd != NULL);
 
         lmi = server_get_mount(dev);
+#if 0
         obd->obd_fsops = fsfilt_get_ops(MT_STR(s2lsi(lmi->lmi_sb)->lsi_ldd));
         if (IS_ERR(obd->obd_fsops)) {
                 obd->obd_fsops = NULL;
                 /* this filesystem doesn't support fsfilt */
         }
+#endif
 
         spin_lock_init(&m->ofd_transno_lock);
 
@@ -646,10 +683,6 @@ static int filter_init0(const struct lu_env *env, struct filter_device *m,
         spin_lock_init(&m->ofd_llog_list_lock);
         m->ofd_lcm = NULL;
 
-        OBD_ALLOC_PTR(s);
-        if (s == NULL)
-                RETURN(-ENOMEM);
-
         dt_device_init(&m->ofd_dt_dev, ldt);
         m->ofd_dt_dev.dd_lu_dev.ld_ops = &filter_lu_ops;
         m->ofd_dt_dev.dd_lu_dev.ld_obd = obd;
@@ -660,12 +693,6 @@ static int filter_init0(const struct lu_env *env, struct filter_device *m,
         if (rc != 0)
                 RETURN(rc);
         LASSERT(env);
-
-        rc = lu_site_init(s, &m->ofd_dt_dev.dd_lu_dev);
-        if (rc) {
-                CERROR("Can't init lu_site, rc %d\n", rc);
-                GOTO(err_free_site, rc);
-        }
 
         rc = filter_procfs_init(m);
         if (rc) {
@@ -735,10 +762,6 @@ static int filter_init0(const struct lu_env *env, struct filter_device *m,
 
         target_recovery_init(&m->ofd_lut, ost_handle);
 
-        rc = lu_site_init_finish(s);
-        if (rc)
-                GOTO(err_fs_cleanup, rc);
-
         //if (obd->obd_recovering == 0)
         //        filter_postrecov(env, m);
 
@@ -759,9 +782,6 @@ err_stack_fini:
         filter_stack_fini(env, m, &m->ofd_osd->dd_lu_dev);
 err_fini_proc:
         filter_procfs_fini(m);
-        lu_site_fini(s);
-err_free_site:
-        OBD_FREE_PTR(s);
 
         dt_device_fini(&m->ofd_dt_dev);
         return (rc);
@@ -771,7 +791,6 @@ static void filter_fini(const struct lu_env *env, struct filter_device *m)
 {
         struct obd_device *obd = filter_obd(m);
         struct lu_device  *d = &m->ofd_dt_dev.dd_lu_dev;
-        struct lu_site    *ls = d->ld_site;
         int                waited = 0;
 
         /* At this point, obd exports might still be on the "obd_zombie_exports"
@@ -820,11 +839,6 @@ static void filter_fini(const struct lu_env *env, struct filter_device *m)
          */
         filter_stack_fini(env, m, &m->ofd_osd->dd_lu_dev);
 
-        if (ls) {
-                lu_site_fini(ls);
-                OBD_FREE_PTR(ls);
-                d->ld_site = NULL;
-        }
         server_put_mount(obd->obd_name);
         LASSERT(atomic_read(&d->ld_ref) == 0);
 

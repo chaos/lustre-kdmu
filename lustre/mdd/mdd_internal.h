@@ -119,6 +119,7 @@ struct mdd_dot_lustre_objs {
 
 struct mdd_device {
         struct md_device                 mdd_md_dev;
+        struct obd_export               *mdd_child_exp;
         struct dt_device                *mdd_child;
         struct obd_device               *mdd_obd_dev;
         struct lu_fid                    mdd_root_fid;
@@ -134,6 +135,7 @@ struct mdd_device {
         struct mdd_dot_lustre_objs       mdd_dot_lustre_objs;
         unsigned int                     mdd_sync_permission;
         struct dt_object                *mdd_objid;
+        int                              mdd_connects;
 };
 
 enum mod_flags {

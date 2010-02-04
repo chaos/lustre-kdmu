@@ -576,6 +576,8 @@ static int osp_sync_thread(void *_arg)
 {
         struct osp_device      *d = _arg;
         struct ptlrpc_thread   *thread = &d->opd_syn_thread;
+        struct llog_ctxt       *ctxt;
+        int                     rc;
         ENTRY;
        
         {
@@ -608,6 +610,22 @@ static int osp_sync_thread(void *_arg)
 
         }
 
+        /* abort all in-flights */
+        CERROR("abort all in-flight RPCs\n");
+
+        /* finish all jobs */
+        CERROR("abort all jobs\n");
+
+
+        ctxt = llog_get_context(d->opd_obd, LLOG_MDS_OST_ORIG_CTXT);
+        if (ctxt) {
+                rc = llog_cleanup(ctxt);
+                if (rc)
+                        CERROR("can't cleanup llog: %d\n", rc);
+        }
+
+        thread->t_flags = SVC_STOPPED;
+        cfs_waitq_signal(&thread->t_ctl_waitq);
         CERROR("@@@@@@@@@ EXIT\n");
 
         RETURN(0);
@@ -740,7 +758,21 @@ int osp_sync_init(struct osp_device *d)
 
 int osp_sync_fini(struct osp_device *d)
 {
-        LBUG();
+        struct ptlrpc_thread *thread = &d->opd_syn_thread;
+        ENTRY;
+
+        thread->t_flags = SVC_STOPPING;
+        cfs_waitq_signal(&d->opd_syn_waitq);
+
+        cfs_wait_event(thread->t_ctl_waitq, thread->t_flags & SVC_STOPPED);
+
+        /*
+         * unregister transaction callbacks only when sync thread
+         * has finished operations with llog
+         */
+        dt_txn_callback_del(d->opd_storage, &d->opd_syn_txn_cb);
+
+        RETURN(0);
 }
 
 

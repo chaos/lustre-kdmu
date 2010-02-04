@@ -1,3 +1,6 @@
+ * all
+ *  - connect data in obd_connect()
+
  * LOD TODO
  *  - shutdown
  *  - support for different LOV EA formats

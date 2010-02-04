@@ -78,35 +78,84 @@ static struct lu_device_type mdd_device_type;
 static const char mdd_root_dir_name[] = "ROOT";
 static const char mdd_obf_dir_name[] = "fid";
 
+static int mdd_connect_to_next(const struct lu_env *env, struct mdd_device *m,
+                               const char *nextdev)
+{
+        struct obd_connect_data *data = NULL;
+        struct obd_device       *obd;
+        int                      rc;
+        ENTRY;
+
+        LASSERT(m->mdd_child_exp == NULL);
+
+        OBD_ALLOC(data, sizeof(*data));
+        if (data == NULL)
+                GOTO(out, rc = -ENOMEM);
+
+        obd = class_name2obd(nextdev);
+        if (obd == NULL) {
+                CERROR("can't locate next device: %s\n", nextdev);
+                GOTO(out, rc = -ENOTCONN);
+        }
+
+        /* XXX: which flags we need on MDS? */
+#if 0
+        data->ocd_connect_flags = OBD_CONNECT_VERSION   | OBD_CONNECT_INDEX   |
+                                  OBD_CONNECT_REQPORTAL | OBD_CONNECT_QUOTA64 |
+                                  OBD_CONNECT_OSS_CAPA  | OBD_CONNECT_FID     |
+                                  OBD_CONNECT_BRW_SIZE  | OBD_CONNECT_CKSUM   |
+                                  OBD_CONNECT_CHANGE_QS | OBD_CONNECT_AT      |
+                                  OBD_CONNECT_MDS | OBD_CONNECT_SKIP_ORPHAN   |
+                                  OBD_CONNECT_SOM;
+#ifdef HAVE_LRU_RESIZE_SUPPORT
+        data->ocd_connect_flags |= OBD_CONNECT_LRU_RESIZE;
+#endif
+        data->ocd_group = mdt_to_obd_objgrp(mds->mds_id);
+#endif
+        data->ocd_version = LUSTRE_VERSION_CODE;
+        
+        rc = obd_connect(NULL, &m->mdd_child_exp, obd, &obd->obd_uuid, data, NULL);
+        if (rc) {
+                CERROR("cannot connect to next dev %s (%d)\n", nextdev, rc);
+                GOTO(out, rc);
+        }
+
+        m->mdd_md_dev.md_lu_dev.ld_site =
+                m->mdd_child_exp->exp_obd->obd_lu_dev->ld_site;
+        LASSERT(m->mdd_md_dev.md_lu_dev.ld_site);
+        m->mdd_child = lu2dt_dev(m->mdd_child_exp->exp_obd->obd_lu_dev);
+
+out:
+        if (data)
+                OBD_FREE(data, sizeof(*data));
+        RETURN(rc);
+}
+
 static int mdd_init0(const struct lu_env *env, struct mdd_device *mdd,
                      struct lu_device_type *t, struct lustre_cfg *lcfg)
 {
         const char                *name = lustre_cfg_string(lcfg, 0);
-        const char                *next = lustre_cfg_string(lcfg, 3);
         struct obd_type           *obdtype = NULL;
         struct obd_device         *obd;
         int rc;
         ENTRY;
                 
         md_device_init(&mdd->mdd_md_dev, t);
-        
+
+#if 0
+        /* XXX: need different way to register ldt_obd_type
+                for usage of this look at mdd_procfs_init() */
         obdtype = class_get_type(LUSTRE_MDD_NAME);
         if (!obdtype) {
                 CERROR("Unknown type: '%s'\n", LUSTRE_MDD_NAME);
                 GOTO(out, rc = -ENODEV);
         }
         t->ldt_obd_type = obdtype;
+#endif
 
-        obd = class_name2obd(next);
-        if (obd == NULL) {
-                CERROR("can't found next device: %s\n", next);
-                GOTO(out, rc = -EINVAL);
-        }
-        LASSERT(obd->obd_lu_dev);
-        LASSERT(obd->obd_lu_dev->ld_site);
-        mdd->mdd_child = lu2dt_dev(obd->obd_lu_dev);
-        mdd->mdd_md_dev.md_lu_dev.ld_site = obd->obd_lu_dev->ld_site;
-        /* XXX: grab reference on next device? */
+        rc = mdd_connect_to_next(env, mdd, lustre_cfg_string(lcfg, 3));
+        if (rc)
+                RETURN(rc);
 
         /* Prepare transactions callbacks. */
         mdd->mdd_txn_cb.dtc_txn_start = mdd_txn_start_cb;
@@ -132,21 +181,6 @@ out:
         RETURN(rc);
 }
 
-static struct lu_device *mdd_device_fini(const struct lu_env *env,
-                                         struct lu_device *d)
-{
-        struct mdd_device *mdd = lu2mdd_dev(d);
-        struct lu_device *next = &mdd->mdd_child->dd_lu_dev;
-        int rc;
-
-        rc = mdd_procfs_fini(mdd);
-        if (rc) {
-                CERROR("proc fini error %d \n", rc);
-                return ERR_PTR(rc);
-        }
-        return next;
-}
-
 static void mdd_changelog_fini(const struct lu_env *env,
                                struct mdd_device *mdd);
 
@@ -161,11 +195,32 @@ static void mdd_device_shutdown(const struct lu_env *env,
                 mdd_object_put(env, m->mdd_dot_lustre_objs.mdd_obf);
         if (m->mdd_dot_lustre)
                 mdd_object_put(env, m->mdd_dot_lustre);
+#if 0
         if (m->mdd_obd_dev)
                 mdd_fini_obd(env, m, cfg);
+#endif
         /* remove upcall device*/
         md_upcall_fini(&m->mdd_md_dev);
+        lu_site_purge(env, mdd2lu_dev(m)->ld_site, ~0);
         EXIT;
+}
+
+static struct lu_device *mdd_device_fini(const struct lu_env *env,
+                                         struct lu_device *d)
+{
+        struct mdd_device *mdd = lu2mdd_dev(d);
+        struct lu_device *next = &mdd->mdd_child->dd_lu_dev;
+        int rc;
+
+        rc = mdd_procfs_fini(mdd);
+        if (rc) {
+                CERROR("proc fini error %d \n", rc);
+                return ERR_PTR(rc);
+        }
+
+        obd_disconnect(mdd->mdd_child_exp);
+
+        return next;
 }
 
 static int changelog_init_cb(struct llog_handle *llh, struct llog_rec_hdr *hdr,
@@ -1267,8 +1322,69 @@ static struct lu_device *mdd_device_free(const struct lu_env *env,
         RETURN(next);
 }
 
+/*
+ * we use exports to track all mdd users
+ */
+static int mdd_obd_connect(const struct lu_env *env, struct obd_export **exp,
+                           struct obd_device *obd, struct obd_uuid *cluuid,
+                           struct obd_connect_data *data, void *localdata)
+{
+        struct mdd_device    *mdd = lu2mdd_dev(obd->obd_lu_dev);
+        struct lustre_handle  conn;
+        int                   i, rc;
+        ENTRY;
+
+        CDEBUG(D_CONFIG, "connect #%d\n", mdd->mdd_connects);
+
+        rc = class_connect(&conn, obd, cluuid);
+        if (rc)
+                RETURN(rc);
+
+        *exp = class_conn2export(&conn);
+
+        /* Why should there ever be more than 1 connect? */
+        /* XXX: locking ? */
+        mdd->mdd_connects++;
+        LASSERT(mdd->mdd_connects == 1);
+
+        RETURN(0);
+}
+
+/*
+ * once last export (we don't count self-export) disappeared
+ * mdd can be released
+ */
+static int mdd_obd_disconnect(struct obd_export *exp)
+{
+        struct obd_device *obd = exp->exp_obd;
+        struct mdd_device *mdd = lu2mdd_dev(obd->obd_lu_dev);
+        int                rc, release = 0;
+        ENTRY;
+
+        /* Only disconnect the underlying layers on the final disconnect. */
+        /* XXX: locking ? */
+        mdd->mdd_connects--;
+        if (mdd->mdd_connects != 0) {
+                /* why should there be more than 1 connect? */
+                CERROR("disconnect #%d\n", mdd->mdd_connects);
+                goto out;
+        }
+
+        /* XXX: the last user of lod has gone, let's release the device */
+        release = 1;
+
+out:
+        rc = class_disconnect(exp); /* bz 9811 */
+
+        if (rc == 0 && release)
+                class_manual_cleanup(obd);
+        RETURN(rc);
+}
+
 static struct obd_ops mdd_obd_device_ops = {
-        .o_owner = THIS_MODULE
+        .o_owner       = THIS_MODULE,
+        .o_connect     = mdd_obd_connect,
+        .o_disconnect  = mdd_obd_disconnect
 };
 
 /* context key constructor/destructor: mdd_ucred_key_init, mdd_ucred_key_fini */

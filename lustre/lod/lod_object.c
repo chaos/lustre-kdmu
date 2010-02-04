@@ -470,6 +470,7 @@ static int lod_declare_striped_object(const struct lu_env *env,
         OBD_ALLOC(mo->mbo_stripe, i);
         if (mo->mbo_stripe == NULL)
                 GOTO(out, rc = -ENOMEM);
+        mo->mbo_stripes_allocated = mo->mbo_stripenr;
 
         /* choose OST and generate appropriate objects */
         rc = lod_qos_prep_create(env, mo, attr, th);
@@ -880,11 +881,15 @@ static void lod_object_free(const struct lu_env *env, struct lu_object *o)
 
         if (mo->mbo_stripe) {
                 LASSERT(mo->mbo_stripenr > 0);
-                i = lov_mds_md_size(mo->mbo_stripenr, LOV_MAGIC_V3);
+                i = sizeof(struct dt_object *) * mo->mbo_stripes_allocated;
                 OBD_FREE(mo->mbo_stripe, i);
                 mo->mbo_stripe = NULL;
                 mo->mbo_stripenr = 0;
         }
+
+        lu_object_fini(o);
+        OBD_FREE_PTR(mo);
+
         EXIT;
 }
 
@@ -893,9 +898,11 @@ static void lod_object_release(const struct lu_env *env, struct lu_object *o)
 }
 
 static int lod_object_print(const struct lu_env *env, void *cookie,
-                             lu_printer_t p, const struct lu_object *o)
+                             lu_printer_t p, const struct lu_object *l)
 {
-        LBUG();
+        struct lod_object *o = lu2lod_obj((struct lu_object *) l);
+
+        return (*p)(env, cookie, LUSTRE_LOD_NAME"-object@%p", o);
 }
 
 static int lod_object_invariant(const struct lu_object *o)

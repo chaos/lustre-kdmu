@@ -4118,11 +4118,22 @@ static void mdt_stack_fini(const struct lu_env *env,
         char flags[3]="";
         ENTRY;
 
+        LASSERT(top);
+
         info = lu_context_key_get(&env->le_ctx, &mdt_thread_key);
         LASSERT(info != NULL);
 
         bufs = &info->mti_u.bufs;
+
+        LASSERT(m->mdt_child_exp);
+        LASSERT(m->mdt_child_exp->exp_obd);
+        obd = m->mdt_child_exp->exp_obd;
+
         /* process cleanup, pass mdt obd name to get obd umount flags */
+        /* XXX: this is needed because all layers are referenced by
+         * objects (some of them are pinned by osd, for example *
+         * the proper solution should be a model where object used
+         * by osd only doesn't have mdt/mdd slices -bzzz */
         lustre_cfg_bufs_reset(bufs, obd->obd_name);
         if (obd->obd_force)
                 strcat(flags, "F");
@@ -4135,13 +4146,19 @@ static void mdt_stack_fini(const struct lu_env *env,
                 return;
         }
 
-        LASSERT(top);
         top->ld_ops->ldo_process_config(env, top, lcfg);
         lustre_cfg_free(lcfg);
 
-        lu_stack_fini(env, top);
+        /* XXX: what about force/fail flags ? */
+        lu_site_purge(env, top->ld_site, ~0);
+
+        obd_disconnect(m->mdt_child_exp);
+
+        m->mdt_child_exp = NULL;
         m->mdt_child = NULL;
         m->mdt_bottom = NULL;
+
+        EXIT;
 }
 
 #if 0
@@ -4214,7 +4231,6 @@ static int mdt_stack_init(struct lu_env *env,
 {
         struct lu_device  *d = &m->mdt_md_dev.md_lu_dev;
         struct lu_device  *tmp;
-        struct md_device  *md;
         struct lu_device  *child_lu_dev;
         struct lu_site    *site;
         int rc;
@@ -4222,22 +4238,11 @@ static int mdt_stack_init(struct lu_env *env,
 
         LASSERT(lmi->lmi_dt);
         tmp = &lmi->lmi_dt->dd_lu_dev;
-        tmp->ld_site = d->ld_site;
 
         site = m->mdt_md_dev.md_lu_dev.ld_site;
         LASSERT(site);
         m->mdt_bottom = lu2dt_dev(site->ls_bottom_dev);
         site->ls_top_dev = d;
-
-#if 0
-        tmp = mdt_layer_setup(env, LUSTRE_CMM_NAME, d, cfg);
-        if (IS_ERR(tmp)) {
-                GOTO(out, rc = PTR_ERR(tmp));
-        }
-        d = tmp;
-        /*set mdd upcall device*/
-        md_upcall_dev_set(md, lu2md_dev(d));
-#endif
 
         /* initialize local objects */
         child_lu_dev = &m->mdt_child->md_lu_dev;
@@ -4248,7 +4253,7 @@ static int mdt_stack_init(struct lu_env *env,
 
         /* XXX: to simplify debugging */
         LASSERT(rc == 0);
-out:
+ 
         /* fini from last known good lu_device */
         if (rc)
                 mdt_stack_fini(env, m, d);
@@ -4374,14 +4379,6 @@ static void mdt_fini(const struct lu_env *env, struct mdt_device *m)
         ptlrpc_lprocfs_unregister_obd(obd);
         lprocfs_obd_cleanup(obd);
 
-        if (ls) {
-                struct md_site *mite;
-
-                lu_site_fini(ls);
-                mite = lu_site2md(ls);
-                OBD_FREE_PTR(mite);
-                d->ld_site = NULL;
-        }
         server_put_mount(obd->obd_name);
         LASSERT(atomic_read(&d->ld_ref) == 0);
 
@@ -4457,16 +4454,67 @@ static void fsoptions_to_mdt_flags(struct mdt_device *m, char *options)
 
 int mdt_postrecov(const struct lu_env *, struct mdt_device *);
 
+static int mdt_connect_to_next(const struct lu_env *env, struct mdt_device *m,
+                               const char *nextdev)
+{
+        struct obd_connect_data *data = NULL;
+        struct obd_device       *obd;
+        int                      rc;
+        ENTRY;
+
+        LASSERT(m->mdt_child_exp == NULL);
+
+        OBD_ALLOC(data, sizeof(*data));
+        if (data == NULL)
+                GOTO(out, rc = -ENOMEM);
+
+        obd = class_name2obd(nextdev);
+        if (obd == NULL) {
+                CERROR("can't locate next device: %s\n", nextdev);
+                GOTO(out, rc = -ENOTCONN);
+        }
+
+        /* XXX: which flags we need on MDS? */
+#if 0
+        data->ocd_connect_flags = OBD_CONNECT_VERSION   | OBD_CONNECT_INDEX   |
+                                  OBD_CONNECT_REQPORTAL | OBD_CONNECT_QUOTA64 |
+                                  OBD_CONNECT_OSS_CAPA  | OBD_CONNECT_FID     |
+                                  OBD_CONNECT_BRW_SIZE  | OBD_CONNECT_CKSUM   |
+                                  OBD_CONNECT_CHANGE_QS | OBD_CONNECT_AT      |
+                                  OBD_CONNECT_MDS | OBD_CONNECT_SKIP_ORPHAN   |
+                                  OBD_CONNECT_SOM;
+#ifdef HAVE_LRU_RESIZE_SUPPORT
+        data->ocd_connect_flags |= OBD_CONNECT_LRU_RESIZE;
+#endif
+        data->ocd_group = mdt_to_obd_objgrp(mds->mds_id);
+#endif
+        data->ocd_version = LUSTRE_VERSION_CODE;
+
+        rc = obd_connect(NULL, &m->mdt_child_exp, obd, &obd->obd_uuid, data, NULL);
+        if (rc) {
+                CERROR("cannot connect to next dev %s (%d)\n", nextdev, rc);
+                GOTO(out, rc);
+        }
+
+        m->mdt_md_dev.md_lu_dev.ld_site =
+                m->mdt_child_exp->exp_obd->obd_lu_dev->ld_site;
+        LASSERT(m->mdt_md_dev.md_lu_dev.ld_site);
+        m->mdt_child = lu2md_dev(m->mdt_child_exp->exp_obd->obd_lu_dev);
+
+out:
+        if (data)
+                OBD_FREE(data, sizeof(*data));
+        RETURN(rc);
+}
+
 static int mdt_init0(const struct lu_env *env, struct mdt_device *m,
                      struct lu_device_type *ldt, struct lustre_cfg *cfg)
 {
         struct lprocfs_static_vars lvars;
         struct mdt_thread_info    *info;
         struct obd_device         *obd;
-        struct obd_device         *nextobd;
         const char                *dev = lustre_cfg_string(cfg, 0);
         const char                *num = lustre_cfg_string(cfg, 2);
-        const char                *nxt = lustre_cfg_string(cfg, 3);
         struct lustre_mount_info  *lmi = NULL;
         struct lustre_sb_info     *lsi;
         struct lustre_disk_data   *ldd;
@@ -4499,16 +4547,11 @@ static int mdt_init0(const struct lu_env *env, struct mdt_device *m,
         obd = class_name2obd(dev);
         LASSERT(obd != NULL);
 
-        nextobd = class_name2obd(nxt);
-        if (nextobd == NULL) {
-                CERROR("can't found next device: %s\n", nxt);
-                RETURN(-EINVAL);
-        }
-        LASSERT(nextobd->obd_lu_dev);
-        LASSERT(nextobd->obd_lu_dev->ld_site);
-        m->mdt_child = lu2md_dev(nextobd->obd_lu_dev);
-        s = m->mdt_md_dev.md_lu_dev.ld_site = nextobd->obd_lu_dev->ld_site;
-        /* XXX: grab reference on next device? */
+        rc = mdt_connect_to_next(env, m, lustre_cfg_string(cfg, 3));
+        if (rc)
+                RETURN(rc);
+
+        s = m->mdt_md_dev.md_lu_dev.ld_site;
 
         spin_lock_init(&m->mdt_transno_lock);
 

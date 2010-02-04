@@ -116,6 +116,7 @@ struct osd_device {
         dmu_buf_t                *od_root_db;
         dmu_buf_t                *od_objdir_db;
 
+        int                       od_connects;
         unsigned int              od_rdonly:1;
         char                      od_label[MAXNAMELEN];
 };

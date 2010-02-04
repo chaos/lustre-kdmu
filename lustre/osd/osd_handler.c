@@ -3944,7 +3944,7 @@ static int osd_shutdown(const struct lu_env *env, struct osd_device *o)
 static int osd_mount(const struct lu_env *env,
                      struct osd_device *o, struct lustre_cfg *cfg)
 {
-        const char               *dev = lustre_cfg_string(cfg, 0);
+        const char               *dev = lustre_cfg_string(cfg, 1);
         const char               *opts;
         unsigned long             page, s_flags, ldd_flags;
         struct page              *__page;
@@ -3962,9 +3962,9 @@ static int osd_mount(const struct lu_env *env,
         if (__page == NULL)
                 GOTO(out, rc = -ENOMEM);
 
-        s_flags = (unsigned long) lustre_cfg_buf(cfg, 1);
-        opts = lustre_cfg_string(cfg, 2);
-        ldd_flags = (unsigned long) lustre_cfg_buf(cfg, 3);
+        s_flags = simple_strtoul(lustre_cfg_string(cfg, 2), NULL, 0);
+        opts = lustre_cfg_string(cfg, 3);
+        ldd_flags = (unsigned long) lustre_cfg_buf(cfg, 4);
 
         page = (unsigned long)cfs_page_address(__page);
         options = (char *)page;
@@ -4037,6 +4037,7 @@ static struct lu_device *osd_device_alloc(const struct lu_env *env,
 {
         struct lu_device  *l;
         struct osd_device *o;
+        int                rc;
 
         OBD_ALLOC_PTR(o);
         if (o != NULL) {
@@ -4054,7 +4055,16 @@ static struct lu_device *osd_device_alloc(const struct lu_env *env,
                                 dt_device_fini(&o->od_dt_dev);
                                 l = ERR_PTR(-ENOMEM);
                         }
+                        /* XXX: make this function more readable */
+                        /* XXX: pass some name, device name? */
+                        rc = osd_device_init(env, l, NULL, NULL);
                         o->od_iop_mode = 1;
+                        lu_site_init(&o->od_site, l);
+                        o->od_site.ls_bottom_dev = l;
+                        if ((rc = osd_mount(env, o, cfg))) {
+                                dt_device_fini(&o->od_dt_dev);
+                                l = ERR_PTR(rc);
+                        }
                 } else
                         l = ERR_PTR(result);
 
@@ -4063,6 +4073,9 @@ static struct lu_device *osd_device_alloc(const struct lu_env *env,
         } else
                 l = ERR_PTR(-ENOMEM);
         return l;
+
+out_err:
+        return ERR_PTR(rc);
 }
 
 static struct lu_device *osd_device_free(const struct lu_env *env,
@@ -4072,6 +4085,9 @@ static struct lu_device *osd_device_free(const struct lu_env *env,
         ENTRY;
 
         cleanup_capa_hash(o->od_capa_hash);
+        /* XXX: make osd top device in order to release reference */
+        d->ld_site->ls_top_dev = d;
+        lu_site_fini(&o->od_site);
         dt_device_fini(&o->od_dt_dev);
         OBD_FREE_PTR(o);
         RETURN(NULL);
@@ -4147,6 +4163,57 @@ out:
         RETURN(result);
 }
 
+/*
+ * we use exports to track all osd users
+ */
+static int osd_obd_connect(const struct lu_env *env, struct obd_export **exp,
+                           struct obd_device *obd, struct obd_uuid *cluuid,
+                           struct obd_connect_data *data, void *localdata)
+{
+        struct osd_device    *osd = osd_dev(obd->obd_lu_dev);
+        struct lustre_handle  conn;
+        int                   rc;
+        ENTRY;
+
+        CDEBUG(D_CONFIG, "connect #%d\n", osd->od_connects);
+
+        rc = class_connect(&conn, obd, cluuid);
+        if (rc)
+                RETURN(rc);
+
+        *exp = class_conn2export(&conn);
+
+        /* XXX: locking ? */
+        osd->od_connects++;
+
+        RETURN(0);
+}
+
+/*
+ * once last export (we don't count self-export) disappeared
+ * osd can be released
+ */
+static int osd_obd_disconnect(struct obd_export *exp)
+{
+        struct obd_device *obd = exp->exp_obd;
+        struct osd_device *osd = osd_dev(obd->obd_lu_dev);
+        int                rc, release = 0;
+        ENTRY;
+
+        /* Only disconnect the underlying layers on the final disconnect. */
+        /* XXX: locking ? */
+        osd->od_connects--;
+        if (osd->od_connects == 0)
+                release = 1;
+
+out:
+        rc = class_disconnect(exp); /* bz 9811 */
+
+        if (rc == 0 && release)
+                class_manual_cleanup(obd);
+        RETURN(rc);
+}
+
 static const struct lu_object_operations osd_lu_obj_ops = {
         .loo_object_init      = osd_object_init,
         .loo_object_delete    = osd_object_delete,
@@ -4188,7 +4255,9 @@ static struct lu_device_type osd_device_type = {
  * lprocfs legacy support.
  */
 static struct obd_ops osd_obd_device_ops = {
-        .o_owner = THIS_MODULE
+        .o_owner       = THIS_MODULE,
+        .o_connect     = osd_obd_connect,
+        .o_disconnect  = osd_obd_disconnect
 };
 
 static struct lu_local_obj_desc llod_osd_rem_obj_dir = {

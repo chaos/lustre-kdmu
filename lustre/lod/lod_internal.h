@@ -54,14 +54,17 @@
 
 struct lod_device {
         struct dt_device                 mbd_dt_dev;
+        struct obd_export               *mbd_child_exp;
         struct dt_device                *mbd_child;
         struct obd_device               *mbd_obd;
         struct dt_txn_callback           mbd_txn_cb;
         cfs_proc_dir_entry_t            *mbd_proc_entry;
         struct lprocfs_stats            *mbd_stats;
+        int                              lod_connects;
 
         /* list of known OSTs */
         struct dt_device                *mbd_ost[LOD_MAX_OSTNR];
+        struct obd_export               *mbd_ost_exp[LOD_MAX_OSTNR];
 
         /* bitmap of OSTs available */
         unsigned long                    mbd_ost_bitmap[LOD_BITMAP_SIZE];
@@ -75,8 +78,10 @@ struct lod_object {
         struct dt_object   mbo_obj;
 
         /* if object is striped, then the next fields describe stripes */
-        struct dt_object **mbo_stripe;
         int                mbo_stripenr;
+        struct dt_object **mbo_stripe;
+        /* to know how much memory to free, mbo_stripenr can be less */
+        int                mbo_stripes_allocated;
 };
 
 struct lod_thread_info {
@@ -169,6 +174,7 @@ int lod_init_striping(const struct lu_env *env,
                        struct lod_object *mo,
                        struct lu_buf *lb);
 int lod_lov_init(struct lod_device *m, struct lustre_cfg *cfg);
+int lod_lov_fini(struct lod_device *m);
 
 /* lod_pool.c */
 int lov_ost_pool_add(struct ost_pool *op, __u32 idx, unsigned int min_count);
@@ -176,11 +182,13 @@ int lov_ost_pool_extend(struct ost_pool *op, unsigned int min_count);
 struct pool_desc *lov_find_pool(struct lov_obd *lov, char *poolname);
 void lov_pool_putref(struct pool_desc *pool);
 int lov_ost_pool_free(struct ost_pool *op);
+int lov_pool_del(struct obd_device *obd, char *poolname);
 
 /* lod_qos.c */
 int lod_qos_prep_create(const struct lu_env *env, struct lod_object *lo,
                         struct lu_attr *attr, struct thandle *th);
-int qos_add_tgt(struct obd_device *obd, __u32 index);
+int qos_add_tgt(struct obd_device *obd, int index);
+int qos_del_tgt(struct obd_device *obd, int index);
 
 
 #endif

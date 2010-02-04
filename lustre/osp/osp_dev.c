@@ -108,6 +108,45 @@ struct lu_object *osp_object_alloc(const struct lu_env *env,
         }
 }
 
+static int osp_shutdown(const struct lu_env *env, struct osp_device *d)
+{
+        int rc = 0;
+        ENTRY;
+
+        /* release last_used file */
+        lu_object_put(env, &d->opd_last_used_file->do_lu);
+
+        /* stop precreate thread */
+        osp_precreate_fini(d);
+
+        /* stop sync thread */
+        osp_sync_fini(d);
+
+        RETURN(rc);
+}
+
+static int osp_process_config(const struct lu_env *env,
+                              struct lu_device *dev,
+                              struct lustre_cfg *lcfg)
+{
+        struct osp_device *d = lu2osp_dev(dev);
+        int                rc;
+        ENTRY;
+
+        switch(lcfg->lcfg_command) {
+
+                case LCFG_CLEANUP:
+                        rc = osp_shutdown(env, d);
+                        break;
+                default:
+                        CERROR("unknown command %u\n", lcfg->lcfg_command);
+                        rc = 0;
+                        break;
+        }
+
+        RETURN(rc);
+}
+
 static int osp_recovery_complete(const struct lu_env *env,
                                      struct lu_device *dev)
 {
@@ -135,9 +174,7 @@ static int osp_prepare(const struct lu_env *env,
 
 const struct lu_device_operations osp_lu_ops = {
         .ldo_object_alloc      = osp_object_alloc,
-#if 0
         .ldo_process_config    = osp_process_config,
-#endif
         .ldo_recovery_complete = osp_recovery_complete,
         .ldo_prepare           = osp_prepare,
 };
@@ -396,11 +433,50 @@ out:
         RETURN(rc);
 }
 
+static int osp_connect_to_osd(const struct lu_env *env, struct osp_device *m,
+                              const char *nextdev)
+{
+        struct obd_connect_data *data = NULL;
+        struct obd_device       *obd;
+        int                      rc;
+        ENTRY;
+
+        LASSERT(m->opd_storage_exp == NULL);
+
+        OBD_ALLOC(data, sizeof(*data));
+        if (data == NULL)
+                GOTO(out, rc = -ENOMEM);
+
+        obd = class_name2obd(nextdev);
+        if (obd == NULL) {
+                CERROR("can't locate next device: %s\n", nextdev);
+                GOTO(out, rc = -ENOTCONN);
+        }
+
+        /* XXX: which flags we need on OSD? */
+        data->ocd_version = LUSTRE_VERSION_CODE;
+
+        rc = obd_connect(NULL, &m->opd_storage_exp, obd, &obd->obd_uuid, data, NULL);
+        if (rc) {
+                CERROR("cannot connect to next dev %s (%d)\n", nextdev, rc);
+                GOTO(out, rc);
+        }
+
+        m->opd_dt_dev.dd_lu_dev.ld_site =
+                m->opd_storage_exp->exp_obd->obd_lu_dev->ld_site;
+        LASSERT(m->opd_dt_dev.dd_lu_dev.ld_site);
+        m->opd_storage = lu2dt_dev(m->opd_storage_exp->exp_obd->obd_lu_dev);
+
+out:
+        if (data)
+                OBD_FREE(data, sizeof(*data));
+        RETURN(rc);
+}
+
 static int osp_init0(const struct lu_env *env, struct osp_device *m,
                       struct lu_device_type *ldt, struct lustre_cfg *cfg)
 {
-        const char        *next  = lustre_cfg_string(cfg, 3);
-        struct obd_device *obd;
+        struct obd_import *imp;
         class_uuid_t       uuid;
         int                rc;
         ENTRY;
@@ -412,16 +488,10 @@ static int osp_init0(const struct lu_env *env, struct osp_device *m,
                 RETURN(-EINVAL);
         }
 
-        obd = class_name2obd(next);
-        if (obd == NULL) {
-                CERROR("can't found next device: %s\n", next);
-                RETURN(-EINVAL);
-        }
-        LASSERT(obd->obd_lu_dev);
-        LASSERT(obd->obd_lu_dev->ld_site);
-        m->opd_storage = lu2dt_dev(obd->obd_lu_dev);
-        m->opd_dt_dev.dd_lu_dev.ld_site = obd->obd_lu_dev->ld_site;
-        /* XXX: grab reference on next device? */
+
+        rc = osp_connect_to_osd(env, m, lustre_cfg_string(cfg, 3));
+        if (rc)
+                RETURN(rc);
 
         /* setup regular network client */
         m->opd_obd = class_name2obd(lustre_cfg_string(cfg, 0));
@@ -468,12 +538,11 @@ static int osp_init0(const struct lu_env *env, struct osp_device *m,
         ll_generate_random_uuid(uuid);
         class_uuid_unparse(uuid, &m->opd_cluuid);
 
-        rc = client_connect_import(env, &m->opd_exp, m->opd_obd,
-                                   &m->opd_cluuid, m->opd_connect_data, NULL);
-        if (rc) {
-                CERROR("can't connect obd: %d\n", rc);
-                GOTO(out, rc);
-        }
+        imp = m->opd_obd->u.cli.cl_import;
+
+        rc = ptlrpc_init_import(imp);
+        LASSERT(rc == 0);
+
 
 out:
         /* XXX: release all resource in error case */
@@ -502,24 +571,61 @@ static struct lu_device *osp_device_alloc(const struct lu_env *env,
 }
 
 static struct lu_device *osp_device_fini(const struct lu_env *env,
-                                          struct lu_device *d)
+                                         struct lu_device *d)
 {
-        LBUG();
-        return NULL;
+        struct osp_device *m = lu2osp_dev(d);
+        struct obd_import *imp;
+        int                rc;
+        ENTRY;
+
+        LASSERT(m->opd_storage_exp);
+        obd_disconnect(m->opd_storage_exp);
+
+        imp = m->opd_obd->u.cli.cl_import;
+
+        /* Mark import deactivated now, so we don't try to reconnect if any
+         * of the cleanup RPCs fails (e.g. ldlm cancel, etc).  We don't
+         * fully deactivate the import, or that would drop all requests. */
+        cfs_spin_lock(&imp->imp_lock);
+        imp->imp_deactive = 1;
+        cfs_spin_unlock(&imp->imp_lock);
+
+        /* Some non-replayable imports (MDS's OSCs) are pinged, so just
+         * delete it regardless.  (It's safe to delete an import that was
+         * never added.) */
+        (void) ptlrpc_pinger_del_import(imp);
+
+        rc = ptlrpc_disconnect_import(imp, 0);
+        LASSERT(rc == 0);
+
+        ptlrpc_invalidate_import(imp);
+
+        if (imp->imp_rq_pool) {
+                ptlrpc_free_rq_pool(imp->imp_rq_pool);
+                imp->imp_rq_pool = NULL;
+        }
+
+        client_destroy_import(imp);
+
+        LASSERT(m->opd_obd);
+        rc = client_obd_cleanup(m->opd_obd);
+        LASSERTF(rc == 0, "error %d\n", rc);
+
+        ptlrpcd_decref();
+
+        RETURN(NULL);
 }
 
 static struct lu_device *osp_device_free(const struct lu_env *env,
                                          struct lu_device *lu)
 {
         struct osp_device *m = lu2osp_dev(lu);
-        struct lu_device   *next = &m->opd_storage->dd_lu_dev;
         ENTRY;
 
-        LBUG();
         LASSERT(atomic_read(&lu->ld_ref) == 0);
         dt_device_fini(&m->opd_dt_dev);
         OBD_FREE_PTR(m);
-        RETURN(next);
+        RETURN(NULL);
 }
 
 
@@ -533,10 +639,71 @@ static int osp_reconnect(const struct lu_env *env,
         return 0;
 }
 
-static int osp_disconnect(struct obd_export *exp)
+/*
+ * we use exports to track all LOD users
+ */
+static int osp_obd_connect(const struct lu_env *env, struct obd_export **exp,
+                           struct obd_device *obd, struct obd_uuid *cluuid,
+                           struct obd_connect_data *data, void *localdata)
 {
-        LBUG();
-        return 0;
+        struct osp_device    *osp = lu2osp_dev(obd->obd_lu_dev);
+        struct obd_import    *imp;
+        struct lustre_handle  conn;
+        int                   rc;
+        ENTRY;
+
+        CDEBUG(D_CONFIG, "connect #%d\n", osp->opd_connects);
+
+        rc = class_connect(&conn, obd, cluuid);
+        if (rc)
+                RETURN(rc);
+
+        *exp = class_conn2export(&conn);
+
+        /* Why should there ever be more than 1 connect? */
+        /* XXX: locking ? */
+        osp->opd_connects++;
+        LASSERT(osp->opd_connects == 1);
+
+        imp = osp->opd_obd->u.cli.cl_import;
+        imp->imp_dlm_handle = conn;
+        rc = ptlrpc_connect_import(imp, NULL);
+        LASSERT(rc == 0);
+
+        if (rc) {
+                CERROR("can't connect obd: %d\n", rc);
+                GOTO(out, rc);
+        }
+
+        ptlrpc_pinger_add_import(imp);
+
+out:
+        RETURN(rc);
+}
+
+/*
+ * once last export (we don't count self-export) disappeared
+ * osp can be released
+ */
+static int osp_obd_disconnect(struct obd_export *exp)
+{
+        struct obd_device *obd = exp->exp_obd;
+        struct osp_device *osp = lu2osp_dev(obd->obd_lu_dev);
+        int                rc;
+        ENTRY;
+
+        /* Only disconnect the underlying layers on the final disconnect. */
+        /* XXX: locking ? */
+        LASSERT(osp->opd_connects == 1);
+        osp->opd_connects--;
+
+        rc = class_disconnect(exp); /* bz 9811 */
+
+        /* destroy the device */
+        if (rc == 0)
+                class_manual_cleanup(obd);
+
+        RETURN(rc);
 }
 
 static int osp_import_event(struct obd_device *obd,
@@ -609,7 +776,8 @@ static struct obd_ops osp_obd_device_ops = {
         .o_add_conn             = client_import_add_conn,
         .o_del_conn             = client_import_del_conn,
         .o_reconnect            = osp_reconnect,
-        .o_disconnect           = osp_disconnect,
+        .o_connect              = osp_obd_connect,
+        .o_disconnect           = osp_obd_disconnect,
         .o_import_event         = osp_import_event,
 };
 

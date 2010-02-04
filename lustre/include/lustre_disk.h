@@ -432,8 +432,13 @@ struct lustre_sb_info {
         struct lustre_mount_data *lsi_lmd;     /* mount command info */
         struct lustre_disk_data  *lsi_ldd;     /* mount info on-disk */
         struct ll_sb_info        *lsi_llsbi;   /* add'l client sbi info */
-        struct dt_device         *lsi_dt_dev; /* dt device to access disk fs*/
         atomic_t                  lsi_mounts;  /* references to the srv_mnt */
+        char                      lsi_osd_obdname[64];
+        char                      lsi_osd_uuid[64];
+        char                     *lsi_osd_type;
+        char                      lsi_mconf_obdname[64];
+        char                      lsi_mconf_uuid[64];
+        struct dt_device         *lsi_dt_dev; /* dt device to access disk fs*/
 };
 
 #define LSI_SERVER                       0x00000001

@@ -2633,7 +2633,7 @@ static int osd_oi_init(const struct lu_env *env, struct osd_device *o)
 static int osd_mount(const struct lu_env *env,
                      struct osd_device *o, struct lustre_cfg *cfg)
 {
-        char               *dev  = lustre_cfg_string(cfg, 0);
+        char               *dev  = lustre_cfg_string(cfg, 1);
         dmu_buf_t          *rootdb;
         int                rc;
 
@@ -2697,6 +2697,9 @@ static struct lu_device *osd_device_alloc(const struct lu_env *env,
                         o->od_dt_dev.dd_ops = &osd_dt_ops;
                         spin_lock_init(&o->od_osfs_lock);
                         o->od_osfs_age = cfs_time_shift_64(-1000);
+                        /* XXX: mount here */
+                        /* XXX: relocate osd_device_init() here */
+                        LBUG();
                 } else
                         l = ERR_PTR(result);
         } else
@@ -2812,6 +2815,62 @@ static int osd_prepare(const struct lu_env *env,
 }
 
 /*
+ * we use exports to track all osd users
+ */
+static int osd_obd_connect(const struct lu_env *env, struct obd_export **exp,
+                           struct obd_device *obd, struct obd_uuid *cluuid,
+                           struct obd_connect_data *data, void *localdata)
+{
+        struct osd_device    *osd = osd_dev(obd->obd_lu_dev);
+        struct lustre_handle  conn;
+        int                   i, rc;
+        ENTRY;
+
+        CDEBUG(D_CONFIG, "connect #%d\n", osd->od_connects);
+
+        rc = class_connect(&conn, obd, cluuid);
+        if (rc)
+                RETURN(rc);
+
+        *exp = class_conn2export(&conn);
+
+        /* XXX: locking ? */
+        osd->od_connects++;
+
+        RETURN(0);
+}
+
+/*
+ * once last export (we don't count self-export) disappeared
+ * osd can be released
+ */
+static int osd_obd_disconnect(struct obd_export *exp)
+{
+        struct obd_device *obd = exp->exp_obd;
+        struct osd_device *osd = osd_dev(obd->obd_lu_dev);
+        int                rc, release = 0;
+        ENTRY;
+
+        /* Only disconnect the underlying layers on the final disconnect. */
+        /* XXX: locking ? */
+        osd->od_connects--;
+        if (osd->od_connects != 0) {
+                /* why should there be more than 1 connect? */
+                goto out;
+        }
+
+        /* XXX: the last user of lod has gone, let's release the device */
+        release = 1;
+
+out:
+        rc = class_disconnect(exp); /* bz 9811 */
+
+        if (rc == 0 && release)
+                class_manual_cleanup(obd);
+        RETURN(rc);
+}
+
+/*
  * Helpers.
  */
 
@@ -2905,7 +2964,9 @@ static struct lu_device_type osd_device_type = {
 
 
 static struct obd_ops osd_obd_device_ops = {
-        .o_owner = THIS_MODULE
+        .o_owner       = THIS_MODULE,
+        .o_connect     = osd_obd_connect,
+        .o_disconnect  = osd_obd_disconnect
 };
 
 int __init osd_init(void)

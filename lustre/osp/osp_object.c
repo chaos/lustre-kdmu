@@ -515,9 +515,11 @@ static void osp_object_release(const struct lu_env *env, struct lu_object *o)
 }
 
 static int osp_object_print(const struct lu_env *env, void *cookie,
-                             lu_printer_t p, const struct lu_object *o)
+                             lu_printer_t p, const struct lu_object *l)
 {
-        LBUG();
+        const struct osp_object *o = lu2osp_obj((struct lu_object *) l);
+
+        return (*p)(env, cookie, LUSTRE_OSP_NAME"-object@%p", o);
 }
 
 static int osp_object_invariant(const struct lu_object *o)

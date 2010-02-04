@@ -470,8 +470,50 @@ static int osp_precreate_thread(void *_arg)
                 }
         }
 
+        /* abort all in-flights */
+        CERROR("abort all in-flight stat RPCs\n");
+
+        /* finish all jobs */
+        CERROR("abort all jobs\n");
+
+        thread->t_flags = SVC_STOPPED;
+        cfs_waitq_signal(&thread->t_ctl_waitq);
+        CERROR("@@@@@@@@@ EXIT\n");
+
         RETURN(0);
 }
+
+/*
+ * called to reserve object in the pool
+ * return codes:
+ *  ENOSPC - no space on corresponded OST
+ *  EAGAIN - precreation is in progress, try later
+ *  EIO    - no access to OST
+ */
+int osp_precreate_reserve(struct osp_device *d)
+{
+        int precreated, rc = 0;
+        ENTRY;
+
+        LASSERT(d->opd_pre_last_created >= d->opd_pre_next);
+
+        spin_lock(&d->opd_pre_lock);
+        precreated = d->opd_pre_last_created - d->opd_pre_next;
+        if (precreated > d->opd_pre_reserved) {
+                d->opd_pre_reserved++;
+                rc = 0;
+                if (osp_precreate_near_empty_nolock(d))
+                       cfs_waitq_signal(&d->opd_pre_waitq);
+        } else {
+                /* XXX: don't wake up if precreation is in progress */
+                cfs_waitq_signal(&d->opd_pre_waitq);
+                rc = -EAGAIN;
+        }
+        spin_unlock(&d->opd_pre_lock);
+
+        RETURN(rc);
+}
+
 
 int osp_init_precreate(struct osp_device *d)
 {
@@ -513,35 +555,18 @@ int osp_init_precreate(struct osp_device *d)
 
 }
 
-/*
- * called to reserve object in the pool
- * return codes:
- *  ENOSPC - no space on corresponded OST
- *  EAGAIN - precreation is in progress, try later
- *  EIO    - no access to OST
- */
-int osp_precreate_reserve(struct osp_device *d)
+void osp_precreate_fini(struct osp_device *d)
 {
-        int precreated, rc = 0;
+        struct ptlrpc_thread *thread = &d->opd_pre_thread;
         ENTRY;
 
-        LASSERT(d->opd_pre_last_created >= d->opd_pre_next);
+        cfs_timer_disarm(&d->opd_statfs_timer);
 
-        spin_lock(&d->opd_pre_lock);
-        precreated = d->opd_pre_last_created - d->opd_pre_next;
-        if (precreated > d->opd_pre_reserved) {
-                d->opd_pre_reserved++;
-                rc = 0;
-                if (osp_precreate_near_empty_nolock(d))
-                       cfs_waitq_signal(&d->opd_pre_waitq);
-        } else {
-                /* XXX: don't wake up if precreation is in progress */
-                cfs_waitq_signal(&d->opd_pre_waitq);
-                rc = -EAGAIN;
-        }
-        spin_unlock(&d->opd_pre_lock);
+        thread->t_flags = SVC_STOPPING;
+        cfs_waitq_signal(&d->opd_pre_waitq);
 
-        RETURN(rc);
+        cfs_wait_event(thread->t_ctl_waitq, thread->t_flags & SVC_STOPPED);
+
+        EXIT;
 }
-
 

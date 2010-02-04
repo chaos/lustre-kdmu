@@ -237,6 +237,8 @@ struct osd_device {
         __u32                     od_iop_mode;
 
         struct fsfilt_operations *od_fsops;
+        int                       od_connects;
+        struct lu_site            od_site;
 
         struct osd_compat_objid  *od_ost_map;
 };

@@ -197,6 +197,7 @@ void client_destroy_import(struct obd_import *imp)
         sptlrpc_import_sec_put(imp);
         class_import_put(imp);
 }
+EXPORT_SYMBOL(client_destroy_import);
 
 /* configure an RPC client OBD device
  *

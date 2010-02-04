@@ -181,9 +181,11 @@ static int lov_add_target(struct lov_obd *lov, struct obd_device *tgt_obd,
 int lod_lov_add_device(const struct lu_env *env, struct lod_device *m,
                         char *osp, unsigned index, unsigned gen)
 {
-        struct obd_device *obd;
-        struct dt_device  *d;
-        int                rc;
+        struct obd_connect_data *data = NULL;
+        struct obd_export       *exp = NULL;
+        struct obd_device       *obd;
+        struct dt_device        *d;
+        int                     rc;
         ENTRY;
 
         CDEBUG(D_CONFIG, "osp:%s idx:%d gen:%d\n", osp, index, gen);
@@ -206,10 +208,20 @@ int lod_lov_add_device(const struct lu_env *env, struct lod_device *m,
                 RETURN(-EINVAL);
         }
 
-        if (obd->obd_lu_dev == NULL) {
-                CERROR("device doesn't provide with OSD API?\n");
-                RETURN(-EINVAL);
+        OBD_ALLOC(data, sizeof(*data));
+        if (data == NULL)
+                RETURN(-ENOMEM);
+        /* XXX: which flags we need on MDS? */
+        data->ocd_version = LUSTRE_VERSION_CODE;
+
+        rc = obd_connect(NULL, &exp, obd, &obd->obd_uuid, data, NULL);
+        if (rc) {
+                CERROR("cannot connect to next dev %s (%d)\n", osp, rc);
+                GOTO(out_free, rc);
         }
+
+        LASSERT(obd->obd_lu_dev);
+        LASSERT(obd->obd_lu_dev->ld_site = m->mbd_dt_dev.dd_lu_dev.ld_site);
 
         d = lu2dt_dev(obd->obd_lu_dev);
 
@@ -230,6 +242,7 @@ int lod_lov_add_device(const struct lu_env *env, struct lod_device *m,
         if (m->mbd_ost[index] == NULL) {
                 /* XXX: grab reference on the device */
                 m->mbd_ost[index] = d;
+                m->mbd_ost_exp[index] = exp;
                 m->mbd_ostnr++;
                 set_bit(index, m->mbd_ost_bitmap);
                 rc = 0;
@@ -241,6 +254,13 @@ int lod_lov_add_device(const struct lu_env *env, struct lod_device *m,
 out:
         mutex_up(&m->mbd_mutex);
 
+        if (rc) {
+                /* XXX: obd_disconnect(), qos_del_tgt(), lov_del_target() */
+        }
+
+out_free:
+        if (data)
+                OBD_FREE(data, sizeof(*data));
         RETURN(rc);
 }
 
@@ -293,6 +313,8 @@ int lod_generate_and_set_lovea(const struct lu_env *env,
         
         rc = dt_xattr_set(env, next, &buf, XATTR_NAME_LOV, 0, th, BYPASS_CAPA);
 
+        OBD_FREE(lmm, buf.lb_len);
+
         RETURN(rc);
 }
 
@@ -322,5 +344,55 @@ int lod_lov_init(struct lod_device *m, struct lustre_cfg *cfg)
         CERROR("rc %d\n", rc);
 
         RETURN(rc);
+}
+
+int lod_lov_fini(struct lod_device *m)
+{
+        struct obd_device   *obd = m->mbd_obd;
+        struct lov_obd      *lov = &obd->u.lov;
+        struct list_head    *pos, *tmp;
+        struct pool_desc    *pool;
+        struct obd_export   *exp;
+        int                  i, rc;
+        ENTRY;
+
+        list_for_each_safe(pos, tmp, &lov->lov_pool_list) {
+                pool = list_entry(pos, struct pool_desc, pool_list);
+                /* free pool structs */
+                CDEBUG(D_INFO, "delete pool %p\n", pool);
+                lov_pool_del(obd, pool->pool_name);
+        }
+        cfs_hash_destroy(lov->lov_pools_hash_body);
+        lov_ost_pool_free(&(lov->lov_qos.lq_rr.lqr_pool));
+        lov_ost_pool_free(&lov->lov_packed);
+
+        for (i = 0; i < LOD_MAX_OSTNR; i++) {
+                exp = m->mbd_ost_exp[i];
+                if (exp == NULL)
+                        continue;
+
+                rc = qos_del_tgt(m->mbd_obd, i);
+                LASSERT(rc == 0);
+
+                rc = obd_disconnect(exp);
+                if (rc)
+                        CERROR("error in disconnect from #%u: %d\n", i, rc);
+
+                if (lov->lov_tgts && lov->lov_tgts[i])
+                        OBD_FREE_PTR(lov->lov_tgts[i]);
+        }
+ 
+        if (lov->lov_tgts) {
+                OBD_FREE(lov->lov_tgts, sizeof(*lov->lov_tgts) *
+                         lov->lov_tgt_size);
+                lov->lov_tgt_size = 0;
+        }
+
+        /* clear pools parent proc entry only after all pools is killed */
+        lprocfs_obd_cleanup(obd);
+
+        OBD_FREE_PTR(lov->lov_qos.lq_statfs_data);
+
+        RETURN(0);
 }
 

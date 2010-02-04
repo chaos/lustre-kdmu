@@ -54,6 +54,7 @@ struct osp_device {
         int                              opd_index;
 
         /* device used to store persistent state (llogs, last ids) */
+        struct obd_export               *opd_storage_exp;
         struct dt_device                *opd_storage;
         struct dt_object                *opd_last_used_file;
         /* protected by opd_pre_lock */
@@ -64,6 +65,7 @@ struct osp_device {
         struct obd_export               *opd_exp;
         struct obd_uuid                  opd_cluuid;
         struct obd_connect_data         *opd_connect_data;
+        int                              opd_connects;
 
         cfs_proc_dir_entry_t            *opd_proc_entry;
         struct lprocfs_stats            *opd_stats;
@@ -188,6 +190,7 @@ static inline struct dt_object* osp_object_child(struct osp_object *o)
 /* osp_precreate.c */
 int osp_init_precreate(struct osp_device *d);
 int osp_precreate_reserve(struct osp_device *d);
+void osp_precreate_fini(struct osp_device *d);
 
 /* osp_sync.c */
 int osp_sync_init(struct osp_device *d);
@@ -195,6 +198,7 @@ int osp_sync_declare_add(const struct lu_env *env, struct osp_object *o,
                          llog_op_type type, struct thandle *th);
 int osp_sync_add(const struct lu_env *env, struct osp_object *d,
                  llog_op_type type, struct thandle *th);
+int osp_sync_fini(struct osp_device *d);
 
 #endif
 

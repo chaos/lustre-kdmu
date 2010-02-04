@@ -73,7 +73,7 @@
                        lov->lov_tgts[i]->ltd_statfs.os_bsize)
 
 
-int qos_add_tgt(struct obd_device *obd, __u32 index)
+int qos_add_tgt(struct obd_device *obd, int index)
 {
         struct lov_obd *lov = &obd->u.lov;
         struct lov_qos_oss *oss, *temposs;
@@ -136,12 +136,16 @@ out:
         RETURN(rc);
 }
 
-int qos_del_tgt(struct obd_device *obd, struct lov_tgt_desc *tgt)
+int qos_del_tgt(struct obd_device *obd, int index)
 {
-        struct lov_obd *lov = &obd->u.lov;
-        struct lov_qos_oss *oss;
+        struct lov_obd      *lov = &obd->u.lov;
+        struct lov_tgt_desc *tgt;
+        struct lov_qos_oss  *oss;
         int rc = 0;
         ENTRY;
+
+        tgt = lov->lov_tgts[index];
+        LASSERT(tgt);
 
         down_write(&lov->lov_qos.lq_rw_sem);
 

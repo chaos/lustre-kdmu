@@ -59,29 +59,13 @@
 static int (*client_fill_super)(struct super_block *sb) = NULL;
 static void (*kill_super_cb)(struct super_block *sb) = NULL;
 
-struct mconf_device {
-        struct lu_device  mcf_lu_dev;
-        struct lu_device *mcf_bottom;
-};
-
-struct mconf_object {
-        struct lu_object_header mco_header;
-        struct lu_object        mco_obj;
-};
-
-static inline struct mconf_device *mconf_dev(struct lu_device *d)
-{
-        return container_of0(d, struct mconf_device, mcf_lu_dev);
-}
-
-static struct mconf_object *mconf_obj(struct lu_object *o)
-{
-        return container_of0(o, struct mconf_object, mco_obj);
-}
-
-static char *mconf_get_label(struct dt_device *dt);
-static int mconf_set_label(struct dt_device *dt, char *label);
-
+int mconf_set_label(struct lustre_sb_info *lsi, char *label);
+int mconf_sync_dev(struct lustre_sb_info *lsi);
+char *mconf_get_label(struct lustre_sb_info *lsi);
+int mconf_read_file(struct lustre_sb_info *, char *, char *, struct lu_buf *, loff_t *);
+int mconf_write_file(struct lustre_sb_info *, char *, char *f, struct lu_buf *, loff_t);
+int mconf_start(struct lustre_sb_info *lsi);
+void mconf_stop(struct lustre_sb_info *lsi);
 
 /*********** mount lookup *********/
 
@@ -105,14 +89,12 @@ static struct lustre_mount_info *server_find_mount(const char *name)
 /* we must register an obd for a mount before we call the setup routine.
    *_setup will call lustre_get_mount to get the mnt struct
    by obd_name, since we can't pass the pointer to setup. */
-static int server_register_mount(const char *name, struct super_block *sb,
-                          struct dt_device *dt)
+static int server_register_mount(const char *name, struct super_block *sb)
 {
         struct lustre_mount_info *lmi;
         char *name_cp;
         ENTRY;
 
-        LASSERT(dt);
         LASSERT(sb);
 
         OBD_ALLOC(lmi, sizeof(*lmi));
@@ -136,7 +118,7 @@ static int server_register_mount(const char *name, struct super_block *sb,
         }
         lmi->lmi_name = name_cp;
         lmi->lmi_sb = sb;
-        lmi->lmi_dt = dt;
+        lmi->lmi_dt = s2lsi(sb)->lsi_dt_dev;
         list_add(&lmi->lmi_list_chain, &server_mount_info_list);
 
         up(&lustre_mount_info_lock);
@@ -288,45 +270,17 @@ static void ldd_print(struct lustre_disk_data *ldd)
 }
 #endif
 
-static int ldd_write(struct dt_device *dt, struct lustre_disk_data *ldd)
+static int ldd_write(struct lustre_sb_info *lsi, struct lustre_disk_data *ldd)
 {
-        struct lu_env          env;
-        int                    rc;
-        struct dt_object      *file;
-        struct lu_fid          fid;
-        struct lu_buf          buf;
-        loff_t                 pos;
-        struct thandle        *th;
-
-        if (dt->dd_lu_dev.ld_site == NULL) {
-                /* no configuration file */
-                return 0;
-        }
-
-        rc = lu_env_init(&env, dt->dd_lu_dev.ld_type->ldt_ctx_tags);
-        LASSERT(rc == 0);
-
-        file = dt_store_open(&env, dt, MOUNT_CONFIGS_DIR, CONFIGS_FILE, &fid);
-        LASSERT(!IS_ERR(file));
+        struct lu_buf buf;
+        int           rc;
+        ENTRY;
 
         buf.lb_buf = ldd;
         buf.lb_len = sizeof(*ldd);
-        pos = 0;
+        rc = mconf_write_file(lsi, MOUNT_CONFIGS_DIR, CONFIGS_FILE, &buf, 0);
 
-        th = dt->dd_ops->dt_trans_create(&env, dt);
-        LASSERT(!IS_ERR(th));
-        rc = dt_declare_record_write(&env, file, buf.lb_len, pos, th);
-        LASSERT(rc == 0);
-        rc = dt->dd_ops->dt_trans_start(&env, dt, th);
-        LASSERT(rc == 0);
-
-        rc = dt_record_write(&env, file, &buf, &pos, th);
-
-        dt->dd_ops->dt_trans_stop(&env, th);
-
-        lu_object_put(&env, &file->do_lu);
-        lu_env_fini(&env);
-        RETURN(0);
+        RETURN(rc);
 }
 
 
@@ -475,7 +429,7 @@ static int server_start_mgs(struct super_block *sb)
 
         CDEBUG(D_CONFIG, "Start MGS service %s\n", LUSTRE_MGS_OBDNAME);
 
-        rc = server_register_mount(LUSTRE_MGS_OBDNAME, sb, lsi->lsi_dt_dev);
+        rc = server_register_mount(LUSTRE_MGS_OBDNAME, sb);
 
         if (!rc) {
                 rc = lustre_start_simple(LUSTRE_MGS_OBDNAME, LUSTRE_MGS_NAME,
@@ -1021,7 +975,7 @@ static int server_label2mti(struct super_block *sb, struct mgs_target_info *mti)
         LASSERT(lsi->lsi_dt_dev);
 
         /* first, retrieve label */
-        label = mconf_get_label(lsi->lsi_dt_dev);
+        label = mconf_get_label(lsi);
         if (label == NULL)
                 return -EINVAL;
 
@@ -1095,44 +1049,15 @@ static int server_sb2mti(struct super_block *sb, struct mgs_target_info *mti)
         RETURN(0);
 }
 
-static int mconf_set_label(struct dt_device *dt, char *label)
-{
-        struct lu_env          env;
-        int                    rc;
-
-        lu_env_init(&env, dt->dd_lu_dev.ld_type->ldt_ctx_tags);
-        rc = dt->dd_ops->dt_label_set(&env, dt, label);
-        lu_env_fini(&env);
-        return rc;
-}
-
-static char *mconf_get_label(struct dt_device *dt)
-{
-        struct lu_env          env;
-        char                  *label;
-
-        lu_env_init(&env, dt->dd_lu_dev.ld_type->ldt_ctx_tags);
-        label = dt->dd_ops->dt_label_get(&env, dt);
-        lu_env_fini(&env);
-
-        return label;
-}
-
-static int mconf_sync_dev(struct dt_device *dt)
-{
-        return 0;
-}
-
-
 /* Register an old or new target with the MGS. If needed MGS will construct
    startup logs and assign index */
 int server_register_target(struct super_block *sb)
 {
-        struct lustre_sb_info *lsi = s2lsi(sb);
-        struct obd_device *mgc = lsi->lsi_mgc;
+        struct lustre_sb_info   *lsi = s2lsi(sb);
+        struct obd_device       *mgc = lsi->lsi_mgc;
         struct lustre_disk_data *ldd = lsi->lsi_ldd;
-        struct mgs_target_info *mti = NULL;
-        int rc;
+        struct mgs_target_info  *mti = NULL;
+        int                      reload = 0, rc;
         ENTRY;
 
         LASSERT(mgc);
@@ -1163,8 +1088,10 @@ int server_register_target(struct super_block *sb)
         /* we don't have persistent ldd probably,
          * but MGS * supplies us withservice name */
         ldd->ldd_svindex = mti->mti_stripe_index;
-        strncpy(ldd->ldd_svname, mti->mti_svname,
-                        sizeof(ldd->ldd_svname));
+        if (strncmp(ldd->ldd_svname, mti->mti_svname, sizeof(ldd->ldd_svname))) {
+                reload = 1;
+                strncpy(ldd->ldd_svname, mti->mti_svname, sizeof(ldd->ldd_svname));
+        }
 
         /* Always update our flags */
         ldd->ldd_flags = mti->mti_flags & ~LDD_F_REWRITE_LDD;
@@ -1178,16 +1105,42 @@ int server_register_target(struct super_block *sb)
                        "for %s\n", ldd->ldd_svindex, mti->mti_stripe_index,
                        mti->mti_svname);
                 /* or ldd_make_sv_name(ldd); */
-                ldd_write(lsi->lsi_dt_dev, ldd);
-                err = mconf_set_label(lsi->lsi_dt_dev, mti->mti_svname);
+                ldd_write(lsi, ldd);
+                err = mconf_set_label(lsi, mti->mti_svname);
                 if (err)
                         CERROR("Label set error %d\n", err);
-                label = mconf_get_label(lsi->lsi_dt_dev);
+                label = mconf_get_label(lsi);
                 if (label)
                         CDEBUG(D_MOUNT, "Disk label changed to %s\n", label);
 
                 /* Flush the new ldd to disk */
-                mconf_sync_dev(lsi->lsi_dt_dev);
+                mconf_sync_dev(lsi);
+        }
+
+        if (reload) {
+                /*
+                 * At registration the service got new name, this new name is
+                 * used in configuration, so we assign new obd name to our osd
+                 * just stop it and restart ...
+                 */
+                struct obd_device *obd;
+                CERROR("FIX THIS ASAP!\n");
+
+                obd = class_name2obd(lsi->lsi_osd_obdname);
+                LASSERT(obd);
+                strcpy(obd->obd_name, ldd->ldd_svname);
+                strcat(obd->obd_name, "-dsk");
+                strcpy(lsi->lsi_osd_obdname, obd->obd_name);
+                CERROR("new name: %s\n", obd->obd_name);
+
+                obd = class_name2obd(lsi->lsi_mconf_obdname);
+                LASSERT(obd);
+                strcpy(obd->obd_name, ldd->ldd_svname);
+                strcat(obd->obd_name, "-mconf");
+                strcpy(lsi->lsi_mconf_obdname, obd->obd_name);
+                CERROR("new name: %s\n", obd->obd_name);
+
+
         }
 
 out:
@@ -1196,59 +1149,8 @@ out:
         RETURN(rc);
 }
 
-/*
- * we used our temporary site and special mountconf device
- * now it's time to make site persistent and create special
- * obd device so that other devices can find OSD and site
- */
-static void convert_temp_site(struct super_block *sb)
-{
-        struct lustre_sb_info *lsi = s2lsi(sb);
-        struct lu_env          env;
-        struct mconf_device   *mdev;
-        int                    rc;
-        struct lu_site        *site;
-        struct obd_device     *obd;
-        char                  *obdname;
-
-        LASSERT(lsi);
-        LASSERT(lsi->lsi_dt_dev);
-
-        site = lsi->lsi_dt_dev->dd_lu_dev.ld_site;
-        if (site == NULL)
-                return;
-
-        mdev = mconf_dev(site->ls_top_dev);
-        LASSERT(mdev);
-
-        rc = lu_env_init(&env, mdev->mcf_lu_dev.ld_type->ldt_ctx_tags);
-        LASSERT(rc == 0);
-        lu_site_purge(&env, site, ~0);
-        lu_env_fini(&env);
-
-        LASSERT(site->ls_total == 0);
-        site->ls_top_dev = NULL;
-        site->ls_bottom_dev = &lsi->lsi_dt_dev->dd_lu_dev;
-
-        /* create obd device so that other device can find OSD/site */
-        OBD_ALLOC(obdname, strlen(lsi->lsi_ldd->ldd_svname) + strlen("-dsk") + 1);
-        LASSERT(obdname);
-        strcpy(obdname, lsi->lsi_ldd->ldd_svname);
-        strcat(obdname, "-dsk");
-
-        obd = class_newdev("mconf", obdname);
-        LASSERT(!IS_ERR(obd));
-        obd->obd_attached = 1;
-
-        obd->obd_lu_dev = &lsi->lsi_dt_dev->dd_lu_dev;
-        lsi->lsi_dt_dev->dd_lu_dev.ld_obd = obd;
-
-
-        OBD_FREE_PTR(mdev);
-}
-
 /* Start targets */
-static int server_start_targets(struct super_block *sb, struct dt_device *dt)
+static int server_start_targets(struct super_block *sb)
 {
         struct obd_device *obd;
         struct lustre_sb_info *lsi = s2lsi(sb);
@@ -1282,9 +1184,6 @@ static int server_start_targets(struct super_block *sb, struct dt_device *dt)
 
         /* Register with MGS */
         rc = server_register_target(sb);
-
-        /* destroy temporary site */
-        convert_temp_site(sb);
 
         /* If we're an OST, make sure the global OSS is running */
         if (lsi->lsi_ldd->ldd_flags & LDD_F_SV_TYPE_OST) {
@@ -1334,7 +1233,7 @@ static int server_start_targets(struct super_block *sb, struct dt_device *dt)
 
         /* Let the target look up the mount using the target's name
            (we can't pass the sb or dt through class_process_config.) */
-        rc = server_register_mount(lsi->lsi_ldd->ldd_svname, sb, dt);
+        rc = server_register_mount(lsi->lsi_ldd->ldd_svname, sb);
         if (rc)
                 GOTO(out_mgc, rc);
 
@@ -1465,245 +1364,17 @@ static int lustre_put_lsi(struct super_block *sb)
 
 /*************** server mount ******************/
 
-static int mconf_object_init(const struct lu_env *env, struct lu_object *o,
-                             const struct lu_object_conf *_)
+static int ldd_parse(struct lustre_sb_info *lsi, struct lustre_disk_data *ldd)
 {
-        struct mconf_device *d = mconf_dev(o->lo_dev);
-        struct lu_device  *under;
-        struct lu_object  *below;
-        int                rc = 0;
-        ENTRY;
-
-        under = d->mcf_bottom;
-        below = under->ld_ops->ldo_object_alloc(env, o->lo_header, under);
-        if (below != NULL) {
-                lu_object_add(o, below);
-        } else
-                rc = -ENOMEM;
-
-        RETURN(rc);
-}
-
-static void mconf_object_free(const struct lu_env *env, struct lu_object *o)
-{
-        struct mconf_object *mo = mconf_obj(o);
-        struct lu_object_header *h;
-        ENTRY;
-
-        h = o->lo_header;
-        CDEBUG(D_INFO, "object free, fid = "DFID"\n",
-               PFID(lu_object_fid(o)));
-
-        lu_object_fini(o);
-        lu_object_header_fini(h);
-        OBD_FREE_PTR(mo);
-        EXIT;
-}
-
-
-static const struct lu_object_operations mconf_obj_ops = {
-        .loo_object_init    = mconf_object_init,
-        .loo_object_free    = mconf_object_free
-};
-
-static struct lu_object *
-mconf_object_alloc(const struct lu_env *env,
-                   const struct lu_object_header *hdr,
-                   struct lu_device *d)
-{
-        struct mconf_object *mo;
-        
-        ENTRY;
-
-        OBD_ALLOC_PTR(mo);
-        if (mo != NULL) {
-                struct lu_object *o;
-                struct lu_object_header *h;
-
-                o = &mo->mco_obj;
-                h = &mo->mco_header;
-                lu_object_header_init(h);
-                lu_object_init(o, h, d);
-                lu_object_add_top(h, o);
-                o->lo_ops = &mconf_obj_ops;
-                RETURN(o);
-        } else
-                RETURN(NULL);
-}
-
-static const struct lu_device_operations mconf_lu_ops = {
-        .ldo_object_alloc   = mconf_object_alloc,
-};
-
-static struct lu_device_type_operations mconf_device_type_ops = {
-};
-
-static struct lu_device_type mconf_device_type = {
-        .ldt_tags     = LU_DEVICE_MC,
-        .ldt_name     = LUSTRE_MCF_NAME,
-        .ldt_ops      = &mconf_device_type_ops,
-        .ldt_ctx_tags = LCT_DT_THREAD
-};
-
-
-static struct lu_device *try_start_osd(struct lustre_mount_data *lmd,
-                                       char *typename,
-                                       unsigned long s_flags)
-{
-        struct obd_type       *type = NULL;
-        struct lu_device_type *ldt = NULL;
-        struct lu_device      *d = NULL;
-        struct dt_device      *dt;
-        struct lu_env          env;
-        int                    rc = 0;
-        struct                 lustre_cfg *lcfg;
-        struct                 lustre_cfg_bufs bufs;
-
-
-        /* find the type */
-        type = class_get_type(typename);
-        if (!type) {
-                CERROR("Unknown type: '%s'\n", typename);
-                GOTO(out_env, rc = -ENODEV);
-        }
-
-        ldt = type->typ_lu;
-        if (ldt == NULL) {
-                CERROR("type: '%s'\n", typename);
-                GOTO(out_type, rc = -EINVAL);
-        }
-
-        rc = lu_env_init(&env, ldt->ldt_ctx_tags);
-        LASSERT(rc == 0);
-
-        ldt->ldt_obd_type = type;
-        d = ldt->ldt_ops->ldto_device_alloc(&env, ldt, NULL);
-        if (IS_ERR(d)) {
-                CERROR("Cannot allocate device: '%s'\n", typename);
-                GOTO(out_type, rc = -ENODEV);
-        }
-
-        type->typ_refcnt++;
-        rc = ldt->ldt_ops->ldto_device_init(&env, d, NULL, NULL);
-        if (rc) {
-                CERROR("can't init device '%s', rc %d\n", typename, rc);
-                GOTO(out_alloc, rc);
-        }
-
-        /* ask osd to mount underlying disk filesystem */
-        lustre_cfg_bufs_reset(&bufs, lmd->lmd_dev);
-        lustre_cfg_bufs_set(&bufs, 1, &s_flags, sizeof(s_flags));
-        lcfg = lustre_cfg_new(LCFG_SETUP, &bufs);
-        dt = lu2dt_dev(d);
-        rc = dt->dd_lu_dev.ld_ops->ldo_process_config(&env, d, lcfg);
-        lustre_cfg_free(lcfg);
-
-        if (rc)
-                GOTO(out, rc);
-
-        lu_device_get(d);
-        lu_ref_add(&d->ld_reference, "lu-stack", &lu_site_init);
-out_type:
-out_alloc:
-out:
-        if (rc) {
-                if (d) {
-                        LASSERT(ldt);
-                        type->typ_refcnt--;
-                        ldt->ldt_ops->ldto_device_fini(&env, d);
-                        ldt->ldt_ops->ldto_device_free(&env, d);
-                }
-                if (type)
-                        class_put_type(type);
-        }
-        lu_env_fini(&env);
-out_env:
-        if (rc)
-                d = ERR_PTR(rc);
-
-        RETURN(d);
-}
-
-static struct lu_device *start_osd(struct lustre_mount_data *lmd,
-                                   unsigned long s_flags)
-{
-        struct lu_device *d;
-        ENTRY;
-
-        d = try_start_osd(lmd, LUSTRE_OSD_NAME, s_flags);
-        if (IS_ERR(d))
-                d = try_start_osd(lmd, LUSTRE_ZFS_NAME, s_flags);
-        RETURN(d);
-}
-
-/* XXX: to stop OSD used by standalone MGS */
-static void stop_osd(struct dt_device *dt)
-{
-        struct lustre_cfg_bufs   bufs;
-        struct lustre_cfg       *lcfg;
-        struct lu_device        *d;
-        struct lu_device_type   *ldt;
-        struct obd_type         *type;
-        struct lu_env            env;
-        char                     flags[3]="";
-        int                      rc;
-
-        LASSERT(dt);
-        d = &dt->dd_lu_dev;
-
-        ldt = d->ld_type;
-        LASSERT(ldt);
-
-        type = ldt->ldt_obd_type;
-        LASSERT(type != NULL);
-
-        rc = lu_env_init(&env, ldt->ldt_ctx_tags);
-        LASSERT(rc == 0);
-
-        /* process cleanup, pass mdt obd name to get obd umount flags */
-        lustre_cfg_bufs_reset(&bufs, NULL);
-        lustre_cfg_bufs_set_string(&bufs, 1, flags);
-        lcfg = lustre_cfg_new(LCFG_CLEANUP, &bufs);
-        if (!lcfg) {
-                CERROR("Cannot alloc lcfg!\n");
-                return;
-        }
-
-        d->ld_ops->ldo_process_config(&env, d, lcfg);
-        lustre_cfg_free(lcfg);
-
-        lu_ref_del(&d->ld_reference, "lu-stack", &lu_site_init);
-        lu_device_put(d);
-
-        type->typ_refcnt--;
-        ldt->ldt_ops->ldto_device_fini(&env, d);
-        ldt->ldt_ops->ldto_device_free(&env, d);
-        lu_env_fini(&env);
-
-        class_put_type(type);
-}
-
-static int ldd_parse(struct mconf_device *mdev, struct lustre_disk_data *ldd)
-{
-        struct dt_device      *dev = lu2dt_dev(mdev->mcf_bottom);
-        struct lu_env          env;
-        int                    rc;
-        struct dt_object      *file;
-        struct lu_fid          fid;
         struct lu_buf          buf;
         loff_t                 pos;
-
-        rc = lu_env_init(&env, mdev->mcf_lu_dev.ld_type->ldt_ctx_tags);
-        LASSERT(rc == 0);
-
-        file = dt_store_open(&env, dev, MOUNT_CONFIGS_DIR, CONFIGS_FILE, &fid);
-        if (IS_ERR(file))
-                GOTO(out, rc = PTR_ERR(file));
+        int                    rc;
 
         buf.lb_buf = ldd;
         buf.lb_len = sizeof(*ldd);
         pos = 0;
-        rc = file->do_body_ops->dbo_read(&env, file, &buf, &pos, BYPASS_CAPA);
+        rc = mconf_read_file(lsi, MOUNT_CONFIGS_DIR, CONFIGS_FILE, &buf, &pos);
+
         if (rc == buf.lb_len) {
                 if (ldd->ldd_magic != LDD_MAGIC) {
                         /* FIXME add swabbing support */
@@ -1731,69 +1402,57 @@ static int ldd_parse(struct mconf_device *mdev, struct lustre_disk_data *ldd)
                        rc, buf.lb_len);
                 rc = -EIO;
         }
-        lu_object_put(&env, &file->do_lu);
+
 out:
-        lu_env_fini(&env);
         RETURN(rc);
 }
 
 
 /* Kernel mount using mount options in MOUNT_DATA_FILE */
-static struct dt_device *server_kernel_mount(struct super_block *sb)
+static int server_kernel_mount(struct super_block *sb)
 {
-        struct lustre_sb_info *lsi = s2lsi(sb);
-        struct lustre_disk_data *ldd;
+        struct lustre_sb_info    *lsi = s2lsi(sb);
+        struct lustre_disk_data  *ldd;
         struct lustre_mount_data *lmd = lsi->lsi_lmd;
-        struct lu_device *dev;
-        struct mconf_device *mdev;
-        struct lu_site *site;
-        int rc;
-
+        char                      flagstr[16];
+        int                       rc;
         ENTRY;
 
         OBD_ALLOC(ldd, sizeof(*ldd));
         if (!ldd)
-                RETURN(ERR_PTR(-ENOMEM));
+                RETURN(-ENOMEM);
         lsi->lsi_ldd = ldd;
 
-        /* start OSD on given device */
-        dev = start_osd(lmd, sb->s_flags);
-        if (IS_ERR(dev)) {
-                OBD_FREE(ldd, sizeof(*ldd));
-                lsi->lsi_ldd = NULL;
-                RETURN((void *) dev);
+        strcpy(lsi->lsi_osd_obdname, lsi->lsi_ldd->ldd_svname);
+        strcat(lsi->lsi_osd_obdname, "-dsk");
+        strcpy(lsi->lsi_osd_uuid, lsi->lsi_osd_obdname);
+        strcat(lsi->lsi_osd_uuid, "_UUID");
+        sprintf(flagstr, "%lu", sb->s_flags);
+
+        rc = lustre_start_simple(lsi->lsi_osd_obdname, LUSTRE_OSD_NAME,
+                                 lsi->lsi_osd_uuid, lmd->lmd_dev, flagstr);
+        if (rc)
+                rc = lustre_start_simple(lsi->lsi_osd_obdname, LUSTRE_ZFS_NAME,
+                                         lsi->lsi_osd_uuid, lmd->lmd_dev, flagstr);
+        if (rc) {
+                /* ldd will be freed as part of lsi freeing */
+                RETURN(rc);
         }
-        
-        lsi->lsi_dt_dev = lu2dt_dev(dev);
 
-        /* create temporary site to access ldd */
-        OBD_ALLOC_PTR(site);
-        LASSERT(site);
-
-        /* create temporary top-device to access ldd */
-        OBD_ALLOC_PTR(mdev);
-        LASSERT(mdev != NULL);
-        lu_device_init(&mdev->mcf_lu_dev, &mconf_device_type);
-        mdev->mcf_lu_dev.ld_ops = &mconf_lu_ops;
-        mdev->mcf_bottom = dev;
-
-        rc = lu_site_init(site, &mdev->mcf_lu_dev);
-        LASSERT(rc == 0);
-        dev->ld_site = site;
-        rc = lu_site_init_finish(site);
+        /* start special mountconf device to access local configuration */
+        rc = mconf_start(lsi);
         LASSERT(rc == 0);
 
-        rc = ldd_parse(mdev, ldd);
+        rc = ldd_parse(lsi, ldd);
         if (rc == -ENOENT) {
                 /* no configuration found, use disk label */
                 LBUG();
-                //stop_temp_site(sb);
         } else {
                 if (rc != 0)
                         CERROR("Error reading disk data: %d\n", rc);
         }
 
-        RETURN(lu2dt_dev(dev));
+        RETURN(0);
 }
 
 /* Wait here forever until the mount refcount is 0 before completing umount,
@@ -1898,11 +1557,15 @@ static void server_put_super(struct super_block *sb)
                                         (!(lddflags & LDD_F_SV_TYPE_OST))) {
                                 /* XXX: OSD isn't part of MSG stack yet
                                  *      shutdown OSD manually */
-                                stop_osd(lsi->lsi_dt_dev);
+                                LBUG();
+                                //stop_osd(lsi->lsi_dt_dev);
                         }
                         
                 }
         }
+
+        /* stop mconf autotomatically causing osd cleanup */
+        mconf_stop(lsi);
 
         /* Clean the mgc and sb */
         lustre_common_put_super(sb);
@@ -2042,14 +1705,12 @@ static int server_fill_super_common(struct super_block *sb)
 static int server_fill_super(struct super_block *sb)
 {
         struct lustre_sb_info *lsi = s2lsi(sb);
-        struct dt_device *dt;
         int rc;
         ENTRY;
 
         /* the One True Mount */
-        dt = server_kernel_mount(sb);
-        if (IS_ERR(dt)) {
-                rc = PTR_ERR(dt);
+        rc = server_kernel_mount(sb);
+        if (rc) {
                 CERROR("Unable to mount device %s: %d\n",
                        lsi->lsi_lmd->lmd_dev, rc);
                 lustre_put_lsi(sb);
@@ -2086,14 +1747,14 @@ static int server_fill_super(struct super_block *sb)
         /* Set up all obd devices for service */
         if (lsi->lsi_ldd->ldd_magic == 0) {
                 /* no configuration found, try to register on MGS and get conf */
-                rc = server_start_targets(sb, dt);
+                rc = server_start_targets(sb);
                 if (rc < 0) {
                         CERROR("Unable to start targets: %d\n", rc);
                         GOTO(out_mnt, rc);
                 }
         } else if (!(lsi->lsi_lmd->lmd_flags & LMD_FLG_NOSVC) &&
                 (IS_OST(lsi->lsi_ldd) || IS_MDT(lsi->lsi_ldd))) {
-                rc = server_start_targets(sb, dt);
+                rc = server_start_targets(sb);
                 if (rc < 0) {
                         CERROR("Unable to start targets: %d\n", rc);
                         GOTO(out_mnt, rc);
@@ -2110,7 +1771,6 @@ static int server_fill_super(struct super_block *sb)
         } else {
                 /* destroy temporary site */
                 LBUG();
-                //stop_temp_site(sb);
         }
 
         rc = server_fill_super_common(sb);
@@ -2566,21 +2226,21 @@ struct file_system_type lustre_fs_type = {
                         LL_RENAME_DOES_D_MOVE,
 };
 
-static struct obd_ops mconf_obd_device_ops = {
-        .o_owner = THIS_MODULE
-};
+extern struct obd_ops mconf_obd_device_ops;
+extern struct lu_device_type mconf_device_type;
 
 int lustre_register_fs(void)
 {
         struct lprocfs_static_vars lvars;
-        class_register_type(&mconf_obd_device_ops, NULL,
-                            lvars.module_vars, "mconf", NULL);
+        class_register_type(&mconf_obd_device_ops, NULL, lvars.module_vars,
+                            LUSTRE_MCF_NAME, &mconf_device_type);
 
         return register_filesystem(&lustre_fs_type);
 }
 
 int lustre_unregister_fs(void)
 {
+        class_unregister_type(LUSTRE_MCF_NAME);
         return unregister_filesystem(&lustre_fs_type);
 }
 
