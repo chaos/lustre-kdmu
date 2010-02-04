@@ -4297,11 +4297,11 @@ static int mdt_obd_llog_setup(struct obd_device *obd,
         obd->obd_fsops = fsfilt_get_ops(MT_STR(lsi->lsi_ldd));
         if (IS_ERR(obd->obd_fsops))
                 return PTR_ERR(obd->obd_fsops);
-#endif
 
         rc = fsfilt_setup(obd, mnt->mnt_sb);
         if (rc)
                 fsfilt_put_ops(obd->obd_fsops);
+#endif
 
         return rc;
 }
