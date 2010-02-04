@@ -770,9 +770,6 @@ static int filter_init0(const struct lu_env *env, struct filter_device *m,
 
         RETURN(0);
 
-err_fs_cleanup:
-        target_recovery_fini(obd);
-        filter_fs_cleanup(env, m);
 err_lut_fini:
         lut_fini(env, &m->ofd_lut);
 err_free_ns:

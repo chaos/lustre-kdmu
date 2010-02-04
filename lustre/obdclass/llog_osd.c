@@ -114,6 +114,7 @@ static void fid_to_logid(struct lu_fid *fid, struct llog_logid *id)
 {
         id->lgl_ogr = fid->f_seq;
         id->lgl_oid = fid->f_oid;
+        id->lgl_ogen = 0;
 }
 
 static struct llog_superblock *llog_osd_get_sb(const struct lu_env *env,

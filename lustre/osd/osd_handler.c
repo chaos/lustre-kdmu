@@ -4074,7 +4074,6 @@ static struct lu_device *osd_device_alloc(const struct lu_env *env,
                 l = ERR_PTR(-ENOMEM);
         return l;
 
-out_err:
         return ERR_PTR(rc);
 }
 
@@ -4206,7 +4205,6 @@ static int osd_obd_disconnect(struct obd_export *exp)
         if (osd->od_connects == 0)
                 release = 1;
 
-out:
         rc = class_disconnect(exp); /* bz 9811 */
 
         if (rc == 0 && release)

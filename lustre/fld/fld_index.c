@@ -178,7 +178,7 @@ int fld_index_create(struct lu_server_fld *fld,
                      const struct lu_seq_range *range,
                      struct thandle *th)
 {
-        struct dt_object *dt_obj = fld->lsf_obj;
+        //struct dt_object *dt_obj = fld->lsf_obj;
         struct dt_device *dt_dev;
         seqno_t start;
         int rc;

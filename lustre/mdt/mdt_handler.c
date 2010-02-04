@@ -4292,9 +4292,12 @@ static int mdt_obd_llog_setup(struct obd_device *obd,
         }
         LASSERT(mnt);
 
+#if 0
+        /* XXX: used for changelogs */
         obd->obd_fsops = fsfilt_get_ops(MT_STR(lsi->lsi_ldd));
         if (IS_ERR(obd->obd_fsops))
                 return PTR_ERR(obd->obd_fsops);
+#endif
 
         rc = fsfilt_setup(obd, mnt->mnt_sb);
         if (rc)
@@ -4321,7 +4324,6 @@ static void mdt_fini(const struct lu_env *env, struct mdt_device *m)
 {
         struct md_device  *next = m->mdt_child;
         struct lu_device  *d    = &m->mdt_md_dev.md_lu_dev;
-        struct lu_site    *ls   = d->ld_site;
         struct obd_device *obd = mdt2obd_dev(m);
         ENTRY;
 
@@ -4705,14 +4707,12 @@ static int mdt_init0(const struct lu_env *env, struct mdt_device *m,
         if (rc)
                 GOTO(err_fs_cleanup, rc);
 
-#if 0
         /* XXX: doesn't work w/o OBD yet */
         if (obd->obd_fsops) {
                 rc = mdt_llog_ctxt_clone(env, m, LLOG_CHANGELOG_ORIG_CTXT);
                 if (rc)
                         GOTO(err_llog_cleanup, rc);
         }
-#endif
 
         mdt_adapt_sptlrpc_conf(obd, 1);
 
@@ -4744,9 +4744,6 @@ static int mdt_init0(const struct lu_env *env, struct mdt_device *m,
 
         RETURN(0);
 
-err_stop_service:
-        ping_evictor_stop();
-        mdt_stop_ptlrpc_service(m);
 err_recovery:
         target_recovery_fini(obd);
 #ifdef HAVE_QUOTA_SUPPORT
@@ -4781,8 +4778,6 @@ err_fini_proc:
         }
         ptlrpc_lprocfs_unregister_obd(obd);
         lprocfs_obd_cleanup(obd);
-err_fini_site:
-        lu_site_fini(s);
 err_lmi:
         if (lmi) 
                 server_put_mount(dev);

@@ -136,7 +136,7 @@ static int mdd_init0(const struct lu_env *env, struct mdd_device *mdd,
 {
         const char                *name = lustre_cfg_string(lcfg, 0);
         struct obd_type           *obdtype = NULL;
-        struct obd_device         *obd;
+        //struct obd_device         *obd;
         int rc;
         ENTRY;
                 
@@ -172,7 +172,7 @@ static int mdd_init0(const struct lu_env *env, struct mdd_device *mdd,
 
         mdd->mdd_child->dd_ops->dt_conf_get(env, mdd->mdd_child, &mdd->mdd_dt_conf);
 
-out:
+//out:
         if (rc) {
                 if (obdtype)
                         class_put_type(obdtype);
@@ -1331,7 +1331,7 @@ static int mdd_obd_connect(const struct lu_env *env, struct obd_export **exp,
 {
         struct mdd_device    *mdd = lu2mdd_dev(obd->obd_lu_dev);
         struct lustre_handle  conn;
-        int                   i, rc;
+        int                   rc;
         ENTRY;
 
         CDEBUG(D_CONFIG, "connect #%d\n", mdd->mdd_connects);
