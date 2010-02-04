@@ -673,9 +673,6 @@ int filter_setattr(struct obd_export *exp,
                 GOTO(out, rc = -EPERM);
         }
 
-        info->fti_attr.la_valid = LA_MODE;
-        info->fti_attr.la_mode = S_IFREG | 0666;
-
         fo = filter_object_find(&env, ofd, &info->fti_fid);
         if (IS_ERR(fo)) {
                 CERROR("can't find object %lu:%llu\n",
@@ -747,9 +744,6 @@ static int filter_punch(struct obd_export *exp, struct obd_info *oinfo,
                               oinfo_capa(oinfo), CAPA_OPC_OSS_TRUNC);
         if (rc)
                 GOTO(out_env, rc);
-
-        info->fti_attr.la_valid = LA_MODE;
-        info->fti_attr.la_mode = S_IFREG | 0666;
 
         fo = filter_object_find(&env, ofd, &info->fti_fid);
         if (IS_ERR(fo)) {
