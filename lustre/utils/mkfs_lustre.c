@@ -608,9 +608,10 @@ int make_lustre_backfs(struct mkfs_opts *mop)
 
                 if (mop->mo_device_sz != 0) {
                         if (mop->mo_device_sz < 8096){
-                                fprintf(stderr, "%s: size of filesystem must be larger "
-                                        "than 8MB, but is set to %lldKB\n",
-                                        progname, (long long)mop->mo_device_sz);
+                                fprintf(stderr, "%s: size of filesystem must be"
+                                        " larger than 8MB, but is set to"
+                                        "  %lldKB\n", progname,
+                                        (long long)mop->mo_device_sz);
                                 return EINVAL;
                         }
                         block_count = mop->mo_device_sz / (L_BLOCK_SIZE >> 10);
@@ -751,6 +752,27 @@ int make_lustre_backfs(struct mkfs_opts *mop)
                                 fatal();
                                 fprintf(stderr, "Unable to create pool '%s' "
                                         "(%d)\n", pool_name, ret);
+                                return ret;
+                        }
+                } else if (mop->mo_flags & MO_FORCEFORMAT) {
+                        /* If --reformat was given, destroy previous ZFS
+                           filesystem (if it exists).  */
+                        snprintf(mkfs_cmd, sizeof(mkfs_cmd), "zfs destroy %s",
+                                 mop->mo_device);
+                        mkfs_cmd[sizeof(mkfs_cmd) - 1] = '\0';
+
+                        vprint("\nDestroying previous filesystem if it exists"
+                               " (--reformat was given)...\n");
+                        vprint("zfs_cmd = \"%s\"\n", mkfs_cmd);
+
+                        /* run_command_err() will return -2 if the zfs command
+                           spits out 'dataset does not exist' */
+                        ret = run_command_err(mkfs_cmd, sizeof(mkfs_cmd),
+                                              "dataset does not exist");
+                        if (ret && ret != -2) {
+                                fatal();
+                                fprintf(stderr, "Unable to destroy filesystem"
+                                        " %s (%d)\n", mop->mo_device, ret);
                                 return ret;
                         }
                 }
