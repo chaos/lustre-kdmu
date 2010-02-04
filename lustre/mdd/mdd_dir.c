@@ -2328,12 +2328,15 @@ static int mdd_rename(const struct lu_env *env,
 #endif
         ENTRY;
 
-        LASSERT(ma->ma_attr.la_mode & S_IFMT);
-        is_dir = S_ISDIR(ma->ma_attr.la_mode);
-
         if (tobj)
                 mdd_tobj = md2mdd_obj(tobj);
         mdd_sobj = mdd_object_find(env, mdd, lf);
+
+        rc = mdd_iattr_get(env, mdd_sobj, ma);
+        if (rc)
+                GOTO(out_pending, rc);
+        LASSERT(ma->ma_attr.la_mode & S_IFMT);
+        is_dir = S_ISDIR(ma->ma_attr.la_mode);
 
 #ifdef HAVE_QUOTA_SUPPORT
         if (mds->mds_quota) {
