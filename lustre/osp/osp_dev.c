@@ -768,7 +768,7 @@ static struct lu_device_type osp_device_type = {
         .ldt_tags     = LU_DEVICE_DT,
         .ldt_name     = LUSTRE_OSP_NAME,
         .ldt_ops      = &osp_device_type_ops,
-        .ldt_ctx_tags = LCT_DT_THREAD
+        .ldt_ctx_tags = LCT_DT_THREAD | LCT_MD_THREAD
 };
 
 static struct obd_ops osp_obd_device_ops = {
