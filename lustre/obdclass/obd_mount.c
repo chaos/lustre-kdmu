@@ -1057,7 +1057,8 @@ int server_register_target(struct super_block *sb)
         struct obd_device       *mgc = lsi->lsi_mgc;
         struct lustre_disk_data *ldd = lsi->lsi_ldd;
         struct mgs_target_info  *mti = NULL;
-        int                      reload = 0, rc;
+        struct obd_device       *obd;
+        int                      rc;
         ENTRY;
 
         LASSERT(mgc);
@@ -1088,10 +1089,8 @@ int server_register_target(struct super_block *sb)
         /* we don't have persistent ldd probably,
          * but MGS * supplies us withservice name */
         ldd->ldd_svindex = mti->mti_stripe_index;
-        if (strncmp(ldd->ldd_svname, mti->mti_svname, sizeof(ldd->ldd_svname))) {
-                reload = 1;
+        if (strncmp(ldd->ldd_svname, mti->mti_svname, sizeof(ldd->ldd_svname)))
                 strncpy(ldd->ldd_svname, mti->mti_svname, sizeof(ldd->ldd_svname));
-        }
 
         /* Always update our flags */
         ldd->ldd_flags = mti->mti_flags & ~LDD_F_REWRITE_LDD;
@@ -1117,31 +1116,22 @@ int server_register_target(struct super_block *sb)
                 mconf_sync_dev(lsi);
         }
 
-        if (reload) {
-                /*
-                 * At registration the service got new name, this new name is
-                 * used in configuration, so we assign new obd name to our osd
-                 * just stop it and restart ...
-                 */
-                struct obd_device *obd;
-                CERROR("FIX THIS ASAP!\n");
+        /*
+         * Original obd name of osd to be changed to real one, taken from storage
+         */
+        CERROR("FIX THIS ASAP!\n");
 
-                obd = class_name2obd(lsi->lsi_osd_obdname);
-                LASSERT(obd);
-                strcpy(obd->obd_name, ldd->ldd_svname);
-                strcat(obd->obd_name, "-dsk");
-                strcpy(lsi->lsi_osd_obdname, obd->obd_name);
-                CERROR("new name: %s\n", obd->obd_name);
+        obd = class_name2obd(lsi->lsi_osd_obdname);
+        LASSERT(obd);
+        strcpy(obd->obd_name, ldd->ldd_svname);
+        strcat(obd->obd_name, "-dsk");
+        strcpy(lsi->lsi_osd_obdname, obd->obd_name);
 
-                obd = class_name2obd(lsi->lsi_mconf_obdname);
-                LASSERT(obd);
-                strcpy(obd->obd_name, ldd->ldd_svname);
-                strcat(obd->obd_name, "-mconf");
-                strcpy(lsi->lsi_mconf_obdname, obd->obd_name);
-                CERROR("new name: %s\n", obd->obd_name);
-
-
-        }
+        obd = class_name2obd(lsi->lsi_mconf_obdname);
+        LASSERT(obd);
+        strcpy(obd->obd_name, ldd->ldd_svname);
+        strcat(obd->obd_name, "-mconf");
+        strcpy(lsi->lsi_mconf_obdname, obd->obd_name);
 
 out:
         if (mti)
@@ -1423,7 +1413,7 @@ static int server_kernel_mount(struct super_block *sb)
                 RETURN(-ENOMEM);
         lsi->lsi_ldd = ldd;
 
-        strcpy(lsi->lsi_osd_obdname, lsi->lsi_ldd->ldd_svname);
+        sprintf(lsi->lsi_osd_obdname, "%s-boot", lmd->lmd_dev);
         strcat(lsi->lsi_osd_obdname, "-dsk");
         strcpy(lsi->lsi_osd_uuid, lsi->lsi_osd_obdname);
         strcat(lsi->lsi_osd_uuid, "_UUID");
