@@ -10,7 +10,7 @@ set -e
 
 ONLY=${ONLY:-"$*"}
 # bug number for skipped test: 13297 2108 9789 3637 9789 3561 12622 12653 12653 5188 16260 19742 
-ALWAYS_EXCEPT="                27u   42a  42b  42c  42d  45   51d   65a   65e   68b  119d  130 $SANITY_EXCEPT"
+ALWAYS_EXCEPT="                27u   42a  42b  42c  42d  45   51d   65a   65e   68b  119d $SANITY_EXCEPT"
 # bug number for skipped test: 2108 9789 3637 9789 3561 5188/5749 1443
 #ALWAYS_EXCEPT=${ALWAYS_EXCEPT:-"27m 42a 42b 42c 42d 45 68 76"}
 # UPDATE THE COMMENT ABOVE WITH BUG NUMBERS WHEN CHANGING ALWAYS_EXCEPT!
@@ -4360,7 +4360,7 @@ test_103 () {
 }
 run_test 103 "acl test ========================================="
 
-test_104() {
+test_104a() {
 	touch $DIR/$tfile
 	lfs df || error "lfs df failed"
 	lfs df -ih || error "lfs df -ih failed"
@@ -4376,7 +4376,18 @@ test_104() {
 	lfs df || error "lfs df with reactivated OSC failed"
 	rm -f $DIR/$tfile
 }
-run_test 104 "lfs df [-ih] [path] test ========================="
+run_test 104a "lfs df [-ih] [path] test ========================="
+
+test_104b() {
+	[ $RUNAS_ID -eq $UID ] && skip_env "RUNAS_ID = UID = $UID -- skipping" && return
+	chmod 666 /dev/obd
+	denied_cnt=$((`$RUNAS $LFS check servers 2>&1 | grep "Permission denied" | wc -l`))
+	if [ $denied_cnt -ne 0 ];
+	then
+	            error "lfs check servers test failed"
+	fi
+}
+run_test 104b "$RUNAS lfs check servers test ===================="
 
 test_105a() {
 	# doesn't work on 2.4 kernels
