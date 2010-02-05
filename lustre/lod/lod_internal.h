@@ -86,7 +86,9 @@ struct lod_object {
 
 struct lod_thread_info {
         /* array of OSTs selected in striping creation */
-        int ost_arr[LOD_MAX_OSTNR];    /* XXX: should be dynamic */
+        int     ost_arr[LOD_MAX_OSTNR];    /* XXX: should be dynamic */
+        char   *lti_ea_store;              /* a buffer for lov ea */
+        int     lti_ea_store_size;
 };
 
 extern const struct lu_device_operations lod_lu_ops;
@@ -170,9 +172,7 @@ int lod_lov_del_device(const struct lu_env *env, struct lod_device *m,
 int lod_generate_and_set_lovea(const struct lu_env *env,
                                 struct lod_object *mo,
                                 struct thandle *th);
-int lod_init_striping(const struct lu_env *env,
-                       struct lod_object *mo,
-                       struct lu_buf *lb);
+int lod_load_striping(const struct lu_env *env, struct lod_object *mo);
 int lod_lov_init(struct lod_device *m, struct lustre_cfg *cfg);
 int lod_lov_fini(struct lod_device *m);
 

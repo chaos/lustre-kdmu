@@ -318,15 +318,148 @@ int lod_generate_and_set_lovea(const struct lu_env *env,
         RETURN(rc);
 }
 
-/*
- *
- */
-int lod_init_striping(const struct lu_env *env,
-                       struct lod_object *mo,
-                       struct lu_buf *lb)
+static int lod_get_lov_ea(const struct lu_env *env, struct lod_object *mo)
 {
-        LBUG();
-        RETURN(0);
+        struct lod_thread_info *info = lod_mti_get(env);
+        struct dt_object       *next = dt_object_child(&mo->mbo_obj);
+        struct lu_buf           lb;
+        int                     rc, count = 0;
+        ENTRY;
+
+        /* we really don't support that large striping yet? */
+        LASSERT(info);
+        LASSERT(info->lti_ea_store_size < 1024*1024);
+
+repeat:
+        count++;
+        lb.lb_buf = info->lti_ea_store;
+        lb.lb_len = info->lti_ea_store_size;
+        dt_read_lock(env, next, 0);
+        rc = dt_xattr_get(env, next, &lb, XATTR_NAME_LOV, BYPASS_CAPA);
+        dt_read_unlock(env, next);
+
+        /* if object is not striped or inaccessible */
+        if (rc == -ENODATA)
+                RETURN(0);
+        if (rc <= 0)
+                RETURN(rc);
+
+        if (rc > info->lti_ea_store_size) {
+                /* EA doesn't fit, reallocate new buffer */
+                LASSERT(count == 1);
+                if (info->lti_ea_store) {
+                        LASSERT(info->lti_ea_store_size);
+                        OBD_FREE(info->lti_ea_store, info->lti_ea_store_size);
+                        info->lti_ea_store = NULL;
+                        info->lti_ea_store_size = 0;
+                }
+
+                OBD_ALLOC(info->lti_ea_store, rc);
+                if (info->lti_ea_store == NULL)
+                        RETURN(-ENOMEM);
+                info->lti_ea_store_size = rc;
+
+                GOTO(repeat, rc);
+        }
+
+        RETURN(rc);
+}
+
+/*
+ * Parse striping information stored in lti_ea_store
+ */
+static int lod_parse_striping(const struct lu_env *env, struct lod_object *mo)
+{
+        struct lod_thread_info *info = lod_mti_get(env);
+        struct lod_device      *md = lu2lod_dev(mo->mbo_obj.do_lu.lo_dev);
+        struct lov_mds_md_v3   *lmm;
+        struct lu_device       *nd;
+        struct lu_object       *o, *n;
+        struct lu_fid           fid;
+        int                     rc = 0, i, idx;
+        ENTRY;
+
+        LASSERT(info->lti_ea_store);
+        lmm = (struct lov_mds_md_v3 *) info->lti_ea_store;
+
+        /* XXX: support for different LOV EA formats */
+        LASSERT(le32_to_cpu(lmm->lmm_magic) == LOV_MAGIC_V3);
+        LASSERT(le32_to_cpu(lmm->lmm_pattern) == LOV_PATTERN_RAID0);
+
+        mo->mbo_stripenr = le32_to_cpu(lmm->lmm_stripe_count);
+        LASSERT(info->lti_ea_store_size>=lov_mds_md_size(mo->mbo_stripenr,LOV_MAGIC_V3));
+
+        i = sizeof(struct dt_object *) * mo->mbo_stripenr;
+        OBD_ALLOC(mo->mbo_stripe, i);
+        if (mo->mbo_stripe == NULL)
+                GOTO(out, rc = -ENOMEM);
+        mo->mbo_stripes_allocated = mo->mbo_stripenr;
+
+        for (i = 0; i < mo->mbo_stripenr; i++) {
+
+                idx = le64_to_cpu(lmm->lmm_objects[i].l_ost_idx);
+                lu_idif_build(&fid, le64_to_cpu(lmm->lmm_objects[i].l_object_id), idx);
+
+                LASSERT(md->mbd_ost[idx]);
+                nd = &md->mbd_ost[idx]->dd_lu_dev;
+
+                o = lu_object_find_at(env, nd, &fid, NULL);
+                if (IS_ERR(o))
+                        GOTO(out, rc = PTR_ERR(o));
+
+                n = lu_object_locate(o->lo_header, nd->ld_type);
+                if (unlikely(n == NULL)) {
+                        CERROR("can't find slice\n");
+                        lu_object_put(env, o);
+                        GOTO(out, rc = ERR_PTR(-EINVAL));
+                }
+
+                mo->mbo_stripe[i] = container_of(n, struct dt_object, do_lu);
+        }
+
+out:
+        RETURN(rc);
+}
+
+/*
+ * Load and parse striping information, create in-core representation for the stripes
+ */
+int lod_load_striping(const struct lu_env *env, struct lod_object *mo)
+{
+        struct dt_object  *next = dt_object_child(&mo->mbo_obj);
+        struct lu_attr     attr;
+        int                rc;
+        ENTRY;
+
+        /* already initialized? */
+        if (mo->mbo_stripe)
+                RETURN(0);
+
+        if (!dt_object_exists(next))
+                RETURN(0);
+
+        /* XXX: can we used cached mode from lu_object_header? */
+        rc = dt_attr_get(env, next, &attr, BYPASS_CAPA);
+        if (rc)
+                GOTO(out, rc);
+
+        /* only regular files can be striped */
+        if (!(attr.la_mode & S_IFREG))
+                GOTO(out, rc = 0);
+
+        LASSERT(mo->mbo_stripenr == 0);
+        rc = lod_get_lov_ea(env, mo);
+        if (rc <= 0)
+                GOTO(out, rc);
+
+        /*
+         * there is LOV EA (striping information) in this object
+         * let's parse it and create in-core objects for the stripes
+         */
+        rc = lod_parse_striping(env, mo);
+
+out:
+        RETURN(rc);
 }
 
 extern int lov_setup(struct obd_device *obd, struct lustre_cfg *cfg);
@@ -341,7 +474,6 @@ int lod_lov_init(struct lod_device *m, struct lustre_cfg *cfg)
         m->mbd_obd->obd_lu_dev = &m->mbd_dt_dev.dd_lu_dev;
 
         rc = lov_setup(m->mbd_obd, cfg);
-        CERROR("rc %d\n", rc);
 
         RETURN(rc);
 }

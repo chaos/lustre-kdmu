@@ -553,11 +553,31 @@ out:
         RETURN(rc);
 }
 
-/* context key constructor/destructor: mdt_key_init, mdt_key_fini */
-LU_KEY_INIT_FINI(lod, struct lod_thread_info);
+static void *lod_key_init(const struct lu_context *ctx,
+                          struct lu_context_key *key)
+{
+        struct lod_thread_info *info;
+
+        OBD_ALLOC_PTR(info);
+        if (info == NULL)
+                info = ERR_PTR(-ENOMEM);
+        return info;
+}
+
+static void lod_key_fini(const struct lu_context *ctx,
+                         struct lu_context_key *key, void *data)
+{
+        struct lod_thread_info *info = data;
+        if (info->lti_ea_store) {
+                OBD_FREE(info->lti_ea_store, info->lti_ea_store_size);
+                info->lti_ea_store = NULL;
+                info->lti_ea_store_size = 0;
+        }
+        OBD_FREE_PTR(info);
+}
 
 /* context key: lod_thread_key */
-LU_CONTEXT_KEY_DEFINE(lod, LCT_DT_THREAD);
+LU_CONTEXT_KEY_DEFINE(lod, LCT_DT_THREAD | LCT_MD_THREAD);
 
 LU_TYPE_INIT_FINI(lod, &lod_thread_key);
 
@@ -578,7 +598,7 @@ static struct lu_device_type lod_device_type = {
         .ldt_tags     = LU_DEVICE_DT,
         .ldt_name     = LUSTRE_LOD_NAME,
         .ldt_ops      = &lod_device_type_ops,
-        .ldt_ctx_tags = LCT_DT_THREAD
+        .ldt_ctx_tags = LCT_MD_THREAD | LCT_DT_THREAD,
 };
 
 static struct obd_ops lod_obd_device_ops = {

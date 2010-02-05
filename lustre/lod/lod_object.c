@@ -236,6 +236,15 @@ static int lod_declare_attr_set(const struct lu_env *env,
                 RETURN(rc);
 
         /*
+         * load striping information, notice we don't do this when object
+         * is being initialized as we don't need this information till
+         * few specific cases like destroy, chown
+         */
+        rc = lod_load_striping(env, mo);
+        if (rc)
+                RETURN(rc);
+
+        /*
          * if object is striped declare changes on the stripes
          */
         LASSERT(mo->mbo_stripe || mo->mbo_stripenr == 0);
@@ -556,15 +565,24 @@ static int lod_declare_object_destroy(const struct lu_env *env,
                                        struct dt_object *dt,
                                        struct thandle *th)
 {
-        struct dt_object    *next = dt_object_child(dt);
+        struct dt_object   *next = dt_object_child(dt);
         struct lod_object  *mo = lod_dt_obj(dt);
-        int                  rc, i;
+        int                 rc, i;
         ENTRY;
 
         /*
-         * first of all, we declare destroy for the local object
+         * we declare destroy for the local object
          */
         rc = dt_declare_destroy(env, next, th);
+        if (rc)
+                RETURN(rc);
+
+        /*
+         * load striping information, notice we don't do this when object
+         * is being initialized as we don't need this information till
+         * few specific cases like destroy, chown
+         */
+        rc = lod_load_striping(env, mo);
         if (rc)
                 RETURN(rc);
 
@@ -792,67 +810,6 @@ static int lod_object_init(const struct lu_env *env, struct lu_object *o,
         RETURN(0);
 }
 
-/**
- * used to initialize striping information
- *
- * XXX: probably better to do initialization in the specific cases only
- *      when we really need that: object destroy, uid/gid change, etc
- */
-static int lod_object_start(const struct lu_env *env, struct lu_object *o)
-{
-        struct lod_object *mo = lu2lod_obj(o);
-        struct dt_object   *next = dt_object_child(&mo->mbo_obj);
-        struct lu_attr      attr;
-        struct lu_buf       lb;
-        int                 rc, len;
-        ENTRY;
-
-        /* if no striping is created yet */
-        if (!dt_object_exists(next))
-                RETURN(0);
-
-        rc = dt_attr_get(env, next, &attr, BYPASS_CAPA);
-        if (rc)
-                RETURN(rc);
-
-        /* only regular files can be striped */
-        if (!(attr.la_mode & S_IFREG)) 
-                RETURN(0);
-                        
-        lb.lb_buf = NULL;
-        lb.lb_len = 0;
-        dt_read_lock(env, next, 0);
-        rc = dt_xattr_get(env, next, &lb, XATTR_NAME_LOV, BYPASS_CAPA);
-        dt_read_unlock(env, next);
-
-        /* if object is not striped or inaccessible */
-        if (rc == -ENODATA)
-                RETURN(0);
-        if (rc <= 0)
-                RETURN(rc);
-
-        /* it is striped, let fetch striping data and parse */
-
-        /* XXX: use TLS to save on allocation? at least for majority of files */
-        len = rc;
-        OBD_ALLOC(lb.lb_buf, len);
-        if (lb.lb_buf == NULL)
-                RETURN(-ENOMEM);
-
-        dt_read_lock(env, next, 0);
-        lb.lb_len = dt_xattr_get(env, next, &lb, XATTR_NAME_LOV, BYPASS_CAPA);
-        dt_read_unlock(env, next);
-        if (lb.lb_len < 0)
-                RETURN(rc);
-        CERROR("get lovea: %d\n", lb.lb_len);
-
-        rc = lod_init_striping(env, mo, &lb);
-
-        OBD_FREE(lb.lb_buf, len);
-
-        RETURN(rc);
-}
-
 /*
  * Called just before object is freed
  */
@@ -913,7 +870,6 @@ static int lod_object_invariant(const struct lu_object *o)
 
 struct lu_object_operations lod_lu_obj_ops = {
         .loo_object_init      = lod_object_init,
-        .loo_object_start     = lod_object_start,
         .loo_object_delete    = lod_object_delete,
         .loo_object_free      = lod_object_free,
         .loo_object_release   = lod_object_release,
