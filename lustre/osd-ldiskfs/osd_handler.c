@@ -2081,7 +2081,7 @@ static int osd_object_ea_create(const struct lu_env *env, struct dt_object *dt,
         LASSERT(!dt_object_exists(dt));
         LASSERT(osd_write_locked(env, obj));
         LASSERT(th != NULL);
-        
+
         OSD_EXEC_OP(th, create);
 
         result = __osd_object_create(info, obj, attr, hint, dof, th);
@@ -2104,7 +2104,7 @@ static int osd_declare_object_ref_add(const struct lu_env *env,
 {
         struct osd_thandle *oh;
 
-        LASSERT(dt_object_exists(dt));
+        LASSERT(dt_object_exists(dt)); 
         LASSERT(handle != NULL);
 
         oh = container_of0(handle, struct osd_thandle, ot_super);

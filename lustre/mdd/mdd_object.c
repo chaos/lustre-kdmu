@@ -59,6 +59,8 @@
 
 #include "mdd_internal.h"
 
+extern const char dot[];
+extern const char dotdot[];
 static const struct lu_object_operations mdd_lu_obj_ops;
 
 static int mdd_xattr_get(const struct lu_env *env,
@@ -1769,6 +1771,16 @@ static int mdd_ref_del(const struct lu_env *env, struct md_object *obj,
         if (rc)
                 GOTO(cleanup2, rc);
 
+        if (S_ISDIR(lu_object_attr(&obj->mo_lu))) {
+                rc = mdo_declare_ref_del(env, mdd_obj, handle);
+                if (rc)
+                        GOTO(cleanup2, rc);
+        }
+
+        rc = mdo_declare_attr_set(env, mdd_obj, la_copy, handle);
+        if (rc)
+                GOTO(cleanup2, rc);
+
         rc = __mdd_declare_orphan_add(env, mdd_obj, handle);
         if (rc)
                 GOTO(cleanup2, rc);
@@ -1849,6 +1861,7 @@ static int mdd_oc_sanity_check(const struct lu_env *env,
 }
 
 static int mdd_declare_create_obj(const struct lu_env *env,
+                                  struct mdd_object *mdd_pobj,
                                   struct mdd_object *mdd_obj,
                                   const struct md_op_spec *spec,
                                   struct md_attr *ma,
@@ -1906,6 +1919,21 @@ static int mdd_declare_create_obj(const struct lu_env *env,
                                 RETURN(rc);
                 }
         }
+
+        if (S_ISDIR(ma->ma_attr.la_mode)) {
+                rc = mdd_declare_index_insert(env, mdd_pobj, mdo2fid(mdd_obj),dot,
+                                              0, handle);
+                if (rc)
+                        RETURN(rc);
+
+                rc = mdd_declare_index_insert(env, mdd_pobj, mdo2fid(mdd_obj),
+                                              dotdot, 1, handle);
+                if (rc)
+                        RETURN(rc);
+        }
+        mdo_declare_xattr_set(env, mdd_obj, sizeof(struct link_ea_header),
+                              XATTR_NAME_LINK, 0, handle);
+
         return 0;
 }
 
@@ -1960,7 +1988,8 @@ static int mdd_object_create(const struct lu_env *env,
         if (IS_ERR(handle))
                 GOTO(out_pending, rc = PTR_ERR(handle));
 
-        rc = mdd_declare_create_obj(env, mdd_obj, spec, ma, handle);
+        rc = mdd_declare_create_obj(env, mdd->mdd_objects, mdd_obj, spec, ma,
+                                    handle);
         if (rc)
                 GOTO(unlock, rc);
 
@@ -1973,7 +2002,8 @@ static int mdd_object_create(const struct lu_env *env,
         if (rc)
                 GOTO(unlock, rc);
 
-        rc = mdd_object_create_internal(env, NULL, mdd_obj, ma, handle, spec);
+        rc = mdd_object_create_internal(env, mdd->mdd_objects, mdd_obj, ma,
+                                        handle, spec);
         if (rc)
                 GOTO(unlock, rc);
 

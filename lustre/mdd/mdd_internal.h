@@ -132,6 +132,8 @@ struct mdd_device {
         struct mdd_dot_lustre_objs       mdd_dot_lustre_objs;
         unsigned int                     mdd_sync_permission;
         struct dt_object                *mdd_objid;
+        struct lu_fid                    mdd_obj_fid;
+        struct mdd_object               *mdd_objects;
 };
 
 enum mod_flags {
@@ -321,6 +323,9 @@ void mdd_lee_unpack(const struct link_ea_entry *lee, int *reclen,
 
 int mdd_dir_is_empty(const struct lu_env *env, struct mdd_object *dir);
 
+int mdd_declare_index_insert(const struct lu_env *env, struct mdd_object *pobj,
+                             const struct lu_fid *lf, const char *name, int is_dir,
+                             struct thandle *handle);
 /* mdd_lov.c */
 int mdd_unlink_log(const struct lu_env *env, struct mdd_device *mdd,
                    struct mdd_object *mdd_cobj, struct md_attr *ma,
