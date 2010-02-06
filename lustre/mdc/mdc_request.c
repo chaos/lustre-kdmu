@@ -1201,8 +1201,11 @@ static struct page
                         dp = kmap(page);
                         *start = le64_to_cpu(dp->ldp_hash_start);
                         *end   = le64_to_cpu(dp->ldp_hash_end);
-                        LASSERT(*start <= offset);
+                        LASSERTF(*start >= offset, "offset:"LPU64" start: "
+                                 LPU64"end: "LPU64" index %lu \n", offset,
+                                 *start, *end, page->index);
                         if (offset > *end || (*end != *start && offset == *end)) {
+                                kunmap(page);
                                 mdc_release_page(root, page);
                                 page = NULL;
                         }
