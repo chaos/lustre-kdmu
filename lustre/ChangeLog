@@ -100,6 +100,11 @@ Description: Fix SLES 11 client builds.
 Details    : Resolved uninitalized pointer gcc warnings.
 
 Severity   : normal
+Bugzilla   : 21259
+Description: Allow non-root access for "lfs check".
+Details    : Added a check in obd_class_ioctl() for OBD_IOC_PING_TARGET.
+
+Severity   : normal
 Bugzilla   : 21513
 Description: Clear imp_force_reconnect correctly in ptlrpc_connect_interpret()
 

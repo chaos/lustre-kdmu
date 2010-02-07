@@ -1765,6 +1765,7 @@ test_22() {
 
         quota_init
 }
+run_test_with_stat 22 "test if quota_type saved as permanent parameter ===="
 
 test_23_sub() {
 	mkdir -p $DIR/$tdir

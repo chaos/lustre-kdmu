@@ -42,7 +42,6 @@ if [ "$ACC_SM_ONLY" ]; then
     done
 fi
 LFSCK="no" # bug 13698
-RECOVERY_RANDOM_SCALE="no" # bug 16353
 
 STARTTIME=`date +%s`
 
@@ -66,7 +65,7 @@ setup_if_needed() {
 
     local MOUNTED=$(mounted_lustre_filesystems)
     if $(echo $MOUNTED | grep -w -q $MOUNT); then
-        check_config $MOUNT
+        check_config_clients $MOUNT
         init_facets_vars
         init_param_vars
         return

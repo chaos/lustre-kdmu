@@ -20,17 +20,23 @@ init_test_env $@
 init_logging
 TESTSUITELOG=${TESTSUITELOG:-$TMP/$(basename $0 .sh)}
 DEBUGLOG=$TESTSUITELOG.debug
+
+cleanup_logs
+
 exec 2>$DEBUGLOG
 echo "--- env ---" >&2
 env >&2
 echo "--- env ---" >&2
 set -x
 
+[ "$SHARED_DIRECTORY" ] || \
+    { skip "$0: Empty SHARED_DIRECTORY" && exit 0; }
+
 [ -n "$CLIENTS" ] || { skip "$0 Need two or more remote clients" && exit 0; }
 [ $CLIENTCOUNT -ge 3 ] || \
     { skip "$0 Need two or more remote clients, have $CLIENTCOUNT" && exit 0; }
 
-END_RUN_FILE=${END_RUN_FILE:-$SHARED_DIRECTORY}/end_run_file}
+END_RUN_FILE=${END_RUN_FILE:-$SHARED_DIRECTORY/end_run_file}
 LOAD_PID_FILE=${LOAD_PID_FILE:-$TMP/client-load.pid}
 
 remote_mds_nodsh && skip "remote MDS with nodsh" && exit 0
@@ -73,10 +79,15 @@ reboot_recover_node () {
        clients) for c in ${item//,/ }; do
                       shutdown_client $c
                       boot_node $c
+                      echo "Reintegrating $c"
+                      # one client fails; need dk logs from this client only 
+                      zconf_mount $c $MOUNT || NODES="$c $(mdts_nodes) $(osts_nodes)" error_exit "zconf_mount failed"
                  done
-                 start_client_loads $list || return $?
+                 start_client_loads $item
                  ;;
-       * )      error "reboot_recover_node: nodetype=$nodetype. Must be one of 'MDS', 'OST', or 'clients'."
+                # script failure:
+                # don't use error (), the logs from all nodes not needed
+       * )      echo "reboot_recover_node: nodetype=$nodetype. Must be one of 'MDS', 'OST', or 'clients'."
                 exit 1;;
     esac
 }
@@ -91,7 +102,9 @@ get_item_type () {
        OST )    list=$OSTS;;
        clients) list=$NODES_TO_USE
                 ;;
-       * )      error "Invalid type=$type. Must be one of 'MDS', 'OST', or 'clients'."
+                # script failure:
+                # don't use error (), the logs from all nodes not needed
+       * )      echo "Invalid type=$type. Must be one of 'MDS', 'OST', or 'clients'."
                 exit 1;;
     esac
 
@@ -147,7 +160,7 @@ failover_pair() {
 
     log "Done checking client loads. Failing type1=$type1 item1=$item1 ... "
 
-    reboot_recover_node $item1 $type1 || return $?
+    reboot_recover_node $item1 $type1
 
     # Hendrix test17 description: 
     # Introduce a failure, wait at
@@ -162,7 +175,7 @@ failover_pair() {
     # do not need a sleep between failures for "double failures"
 
     log "                            Failing type2=$type2 item2=$item2 ... "    
-    reboot_recover_node $item2 $type2 || return $?
+    reboot_recover_node $item2 $type2
 
     # Client loads are allowed to die while in recovery, so we just
     # restart them.
@@ -218,6 +231,16 @@ Status: $result: rc=$rc"
         sleep 5
         kill -9 $CLIENT_LOAD_PIDS || true
     fi
+
+    if [ $rc -ne 0 ]; then
+        # we are interested in only on failed clients and servers
+        local failedclients=$(cat $END_RUN_FILE | grep -v $0)
+        # FIXME: need ostfailover-s nodes also for FLAVOR=OST
+        local product=$(gather_logs $(comma_list $(osts_nodes) \
+                                 $(mdts_nodes) $mdsfailover_HOST $failedclients))
+        echo logs files $product
+    fi
+
     [ $rc -eq 0 ] && zconf_mount $(hostname) $MOUNT
     exit $rc
 }
