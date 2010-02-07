@@ -134,6 +134,18 @@ struct fsfilt_cb_data {
 #define ext3_inode_bitmap(sb,desc) le32_to_cpu((desc)->bg_inode_bitmap)
 #endif
 
+#ifndef ext3_find_next_bit
+#define ext3_find_next_bit           ext2_find_next_bit
+#endif
+
+#ifndef ext2_find_next_bit
+#ifdef __LITTLE_ENDIAN
+#define ext2_find_next_bit(addr, size, off) find_next_bit((unsigned long *)(addr), (size), (off))
+#else
+error "Need implementation of find_next_bit on big-endian systems"
+#endif	/* __LITTLE_ENDIAN */
+#endif	/* !ext2_find_next_le_bit */
+
 static char *fsfilt_ext3_get_label(struct super_block *sb)
 {
         return EXT3_SB(sb)->s_es->s_volume_name;
@@ -382,7 +394,7 @@ static int fsfilt_ext3_credits_needed(int objcount, struct fsfilt_objinfo *fso,
                         nbitmaps++;     /* additional indirect */
                         next_indir = nb[i].file_offset +
                                 (EXT3_ADDR_PER_BLOCK(sb)<<sb->s_blocksize_bits);
-                } else if (nb[i].file_offset != nb[i-1].file_offset+sb->s_blocksize){
+                } else if (nb[i].file_offset != nb[i - 1].file_offset + sb->s_blocksize) {
                         nbitmaps++;     /* additional indirect */
                 }
                 nbitmaps += blockpp;    /* each leaf in different group? */
@@ -975,6 +987,8 @@ static int ext3_ext_new_extent_cb(struct ext3_ext_base *base,
                         CERROR("nothing to do?! i = %d, e_num = %u\n",
                                         i, cex->ec_len);
                 for (; i < cex->ec_len && bp->num; i++) {
+                        *(bp->created) = 0;
+                        bp->created++;
                         *(bp->blocks) = 0;
                         bp->blocks++;
                         bp->num--;
@@ -1056,12 +1070,16 @@ map:
                                         i, cex->ec_len);
                 for (; i < cex->ec_len && bp->num; i++) {
                         *(bp->blocks) = cex->ec_start + i;
-                        if (cex->ec_type != EXT3_EXT_CACHE_EXTENT) {
+                        if (cex->ec_type == EXT3_EXT_CACHE_EXTENT) {
+                                *(bp->created) = 0;
+                        } else {
+                                *(bp->created) = 1;
                                 /* unmap any possible underlying metadata from
                                  * the block device mapping.  bug 6998. */
                                 ll_unmap_underlying_metadata(inode->i_sb,
                                                              *(bp->blocks));
                         }
+                        bp->created++;
                         bp->blocks++;
                         bp->num--;
                         bp->start++;
@@ -1164,17 +1182,18 @@ int fsfilt_ext3_map_bm_inode_pages(struct inode *inode, struct page **page,
 {
         int blocks_per_page = CFS_PAGE_SIZE >> inode->i_blkbits;
         unsigned long *b;
-        int rc = 0, i;
+        int rc = 0, i, *cr;
 
-        for (i = 0, b = blocks; i < pages; i++, page++) {
-                rc = ext3_map_inode_page(inode, *page, b, NULL, create);
+        for (i = 0, cr = created, b = blocks; i < pages; i++, page++) {
+                rc = ext3_map_inode_page(inode, *page, b, cr, create);
                 if (rc) {
-                        CERROR("ino %lu, blk %lu create %d: rc %d\n",
-                               inode->i_ino, *b, create, rc);
+                        CERROR("ino %lu, blk %lu cr %u create %d: rc %d\n",
+                               inode->i_ino, *b, *cr, create, rc);
                         break;
                 }
 
                 b += blocks_per_page;
+                cr += blocks_per_page;
         }
         return rc;
 }
@@ -1683,8 +1702,9 @@ static inline int read_old_dqinfo(struct super_block *sb, int type,
         RETURN(rc);
 }
 
+#ifndef HAVE_EXT4_LDISKFS
 static inline struct ext3_group_desc *
-get_group_desc(struct super_block *sb, int group)
+get_group_desc(struct super_block *sb, int group, struct buffer_head **bh)
 {
         unsigned long desc_block, desc;
         struct ext3_group_desc *gdp;
@@ -1697,38 +1717,24 @@ get_group_desc(struct super_block *sb, int group)
         return gdp + desc;
 }
 
-
-#ifndef HAVE_EXT4_LDISKFS
 static inline struct buffer_head *
 ext3_read_inode_bitmap(struct super_block *sb, unsigned long group)
 {
         struct ext3_group_desc *desc;
         struct buffer_head *bh;
 
-        desc = get_group_desc(sb, group);
+        desc = get_group_desc(sb, group, NULL);
         bh = sb_bread(sb, ext3_inode_bitmap(sb, desc));
         return bh;
 }
-#endif
 
-static inline struct inode *ext3_iget_inuse(struct super_block *sb,
-                                     struct buffer_head *bitmap_bh,
-                                     int index, unsigned long ino)
-{
-        struct inode *inode = NULL;
-
-
-        if (ext3_test_bit(index, bitmap_bh->b_data))
-#ifdef HAVE_EXT4_LDISKFS
-                inode = ext4_iget(sb, ino);
-                if (IS_ERR(inode))
-                /* Newer kernels return an error instead of a NULL pointer */
-                        inode = NULL;
-#else
-                inode = iget(sb, ino);
-#endif
-        return inode;
+static __u32 ext3_itable_unused_count(struct super_block *sb,
+                               struct ext3_group_desc *bg) {
+       return le16_to_cpu(bg->bg_itable_unused);
 }
+#else
+#define get_group_desc ext3_get_group_desc
+#endif
 
 struct qchk_ctxt {
         cfs_hlist_head_t        qckt_hash[NR_DQHASH];      /* quotacheck hash */
@@ -1934,14 +1940,18 @@ static int prune_chkquots(struct super_block *sb,
         return error;
 }
 
+#ifndef EXT3_FEATURE_RO_COMPAT_GDT_CSUM
+#define EXT3_FEATURE_RO_COMPAT_GDT_CSUM 0x0010
+#endif
+
 static int fsfilt_ext3_quotacheck(struct super_block *sb,
                                   struct obd_quotactl *oqc)
 {
         struct ext3_sb_info *sbi = EXT3_SB(sb);
-        int i, group;
+        int i, group, uninit_feat = 0;
         struct qchk_ctxt *qctxt;
         struct buffer_head *bitmap_bh = NULL;
-        unsigned long ino;
+        unsigned long ino, inode_inuse;
         struct inode *inode;
         int rc = 0;
         ENTRY;
@@ -1972,34 +1982,63 @@ static int fsfilt_ext3_quotacheck(struct super_block *sb,
                         GOTO(out, rc);
                 }
         }
+        if (EXT3_HAS_RO_COMPAT_FEATURE(sb, EXT3_FEATURE_RO_COMPAT_GDT_CSUM))
+                /* This filesystem supports the uninit group feature */
+                uninit_feat = 1;
+
+        /* number of inodes that have been allocated */
+        inode_inuse = sbi->s_inodes_per_group * sbi->s_groups_count -
+                      percpu_counter_sum(&sbi->s_freeinodes_counter);
 
         /* check quota and update in hash */
-        for (group = 0; group < sbi->s_groups_count; group++) {
-                struct ext3_group_desc *desc;
-                desc = get_group_desc(sb, group);
-                if (!desc)
-                        GOTO(out, -EIO);
+        for (group = 0; group < sbi->s_groups_count && inode_inuse > 0;
+             group++) {
+                unsigned long used_count = sbi->s_inodes_per_group;
 
-                spin_lock(sb_bgl_lock(sbi, group));
-                if (desc->bg_flags & cpu_to_le16(EXT3_BG_INODE_UNINIT)) {
-                        /* no inode in use in this group, just skip it */
+                if (uninit_feat) {
+                        struct ext3_group_desc *desc;
+                        desc = get_group_desc(sb, group, NULL);
+                        if (!desc)
+                                GOTO(out, -EIO);
+
+                        /* we don't really need to take the group lock here,
+                         * but it may be useful if one day we support online
+                         * quotacheck */
+                        spin_lock(sb_bgl_lock(sbi, group));
+                        if (desc->bg_flags & cpu_to_le16(EXT3_BG_INODE_UNINIT)) {
+                                /* no inode in use in this group, just skip it */
+                                spin_unlock(sb_bgl_lock(sbi, group));
+                                continue;
+                        }
+                        used_count -= ext3_itable_unused_count(sb, desc);
                         spin_unlock(sb_bgl_lock(sbi, group));
-                        continue;
                 }
-                spin_unlock(sb_bgl_lock(sbi, group));
 
                 ino = group * sbi->s_inodes_per_group + 1;
                 bitmap_bh = ext3_read_inode_bitmap(sb, group);
                 if (!bitmap_bh) {
-                        CERROR("ext3_read_inode_bitmap group %d failed", group);
-                        GOTO(out, rc = -EIO);
+                        CERROR("%s: ext3_read_inode_bitmap group %d failed\n",
+                               sb->s_id, group);
+                        GOTO(out, -EIO);
                 }
 
-                for (i = 0; i < sbi->s_inodes_per_group; i++, ino++) {
+                i = 0;
+                while (i < used_count &&
+                       (i = ext3_find_next_bit(bitmap_bh->b_data,
+                                               used_count, i)) < used_count) {
+                        inode_inuse--;
+                        i++;
+                        ino = i + group * sbi->s_inodes_per_group;
                         if (ino < sbi->s_first_ino)
                                 continue;
+#if defined(HAVE_EXT4_LDISKFS) || !defined(HAVE_READ_INODE_IN_SBOPS)
+                        inode = ext3_iget(sb, ino);
+#else
+                        inode = iget(sb, ino);
+#endif
+                        if (!inode || IS_ERR(inode))
+                                continue;
 
-                        inode = ext3_iget_inuse(sb, bitmap_bh, i, ino);
                         rc = add_inode_quota(inode, qctxt, oqc);
                         iput(inode);
                         if (rc) {
@@ -2007,7 +2046,6 @@ static int fsfilt_ext3_quotacheck(struct super_block *sb,
                                 GOTO(out, rc);
                         }
                 }
-
                 brelse(bitmap_bh);
         }
 
