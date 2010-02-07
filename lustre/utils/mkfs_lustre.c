@@ -605,17 +605,16 @@ int make_lustre_backfs(struct mkfs_opts *mop)
                         else
                                 mop->mo_device_sz = device_sz;
                 }
+        }
 
-                if (mop->mo_device_sz != 0) {
-                        if (mop->mo_device_sz < 8096){
-                                fprintf(stderr, "%s: size of filesystem must be"
-                                        " larger than 8MB, but is set to"
-                                        "  %lldKB\n", progname,
-                                        (long long)mop->mo_device_sz);
-                                return EINVAL;
-                        }
-                        block_count = mop->mo_device_sz / (L_BLOCK_SIZE >> 10);
+        if (mop->mo_device_sz != 0) {
+                if (mop->mo_device_sz < 8192) {
+                        fprintf(stderr, "%s: size of filesystem must be larger"
+                                " than 8MB, but is set to "LPU64"KB\n",
+                                progname, mop->mo_device_sz);
+                        return EINVAL;
                 }
+                block_count = mop->mo_device_sz / (L_BLOCK_SIZE >> 10);
         }
 
         if ((mop->mo_ldd.ldd_mount_type == LDD_MT_EXT3) ||
@@ -734,7 +733,6 @@ int make_lustre_backfs(struct mkfs_opts *mop)
                         snprintf(mkfs_cmd, sizeof(mkfs_cmd),
                                  "zpool create %s%s", force_zpool ? "-f " : "",
                                  pool_name);
-                        mkfs_cmd[sizeof(mkfs_cmd) - 1] = '\0';
 
                         /* Add the vdevs to the cmd line */
                         while (*mop->mo_pool_vdevs != NULL) {
@@ -759,7 +757,6 @@ int make_lustre_backfs(struct mkfs_opts *mop)
                            filesystem (if it exists).  */
                         snprintf(mkfs_cmd, sizeof(mkfs_cmd), "zfs destroy %s",
                                  mop->mo_device);
-                        mkfs_cmd[sizeof(mkfs_cmd) - 1] = '\0';
 
                         vprint("\nDestroying previous filesystem if it exists"
                                " (--reformat was given)...\n");
@@ -781,7 +778,6 @@ int make_lustre_backfs(struct mkfs_opts *mop)
                 snprintf(mkfs_cmd, sizeof(mkfs_cmd), "zfs create%s%s %s",
                          mop->mo_mkfsopts[0] ? " -o " : "", mop->mo_mkfsopts,
                          mop->mo_device);
-                mkfs_cmd[sizeof(mkfs_cmd) - 1] = '\0';
 
                 vprint("\ncreating ZFS filesystem \"%s\"...\n", mop->mo_device);
                 vprint("zfs_cmd = \"%s\"\n", mkfs_cmd);
@@ -801,7 +797,6 @@ int make_lustre_backfs(struct mkfs_opts *mop)
                          mop->mo_ldd.ldd_flags & LDD_F_SV_TYPE_MDT ? "MDT":"OST",
                          mop->mo_ldd.ldd_svindex,
                          mop->mo_device);
-                mkfs_cmd[sizeof(mkfs_cmd) - 1] = '\0';
 
                 vprint("\nsetting label to \"%s\"...\n", mop->mo_ldd.ldd_svname);
                 vprint("zfs_cmd = \"%s\"\n", mkfs_cmd);
@@ -812,6 +807,25 @@ int make_lustre_backfs(struct mkfs_opts *mop)
                         fprintf(stderr, "Unable to set label to %s (%d)\n",
                                 mop->mo_ldd.ldd_svname, ret);
                         return ret;
+                }
+
+                /* Set refquota if --device-size was given */
+                if (mop->mo_device_sz != 0) {
+                        snprintf(mkfs_cmd, sizeof(mkfs_cmd), "zfs set "
+                                 "refquota="LPU64"K %s", mop->mo_device_sz,
+                                 mop->mo_device);
+
+                        vprint("\nsetting max filesystem size to "
+                               "\""LPU64"K\"...\n", mop->mo_device_sz);
+                        vprint("zfs_cmd = \"%s\"\n", mkfs_cmd);
+
+                        ret = run_command(mkfs_cmd, sizeof(mkfs_cmd));
+                        if (ret) {
+                                fatal();
+                                fprintf(stderr, "Unable to set refquota (%d)\n",
+                                        ret);
+                                return ret;
+                        }
                 }
 
                 goto skip_format;
