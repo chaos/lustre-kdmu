@@ -772,11 +772,11 @@ static int ll_dir_ioctl(struct inode *inode, struct file *file,
                 LASSERT(sizeof(lumv3.lmm_objects[0]) ==
                         sizeof(lumv3p->lmm_objects[0]));
                 /* first try with v1 which is smaller than v3 */
-                if (copy_from_user(lumv1, lumv1p, sizeof(*lumv1)))
+                if (cfs_copy_from_user(lumv1, lumv1p, sizeof(*lumv1)))
                         RETURN(-EFAULT);
 
                 if (lumv1->lmm_magic == LOV_USER_MAGIC_V3) {
-                        if (copy_from_user(&lumv3, lumv3p, sizeof(lumv3)))
+                        if (cfs_copy_from_user(&lumv3, lumv3p, sizeof(lumv3)))
                                 RETURN(-EFAULT);
                 }
 
@@ -837,7 +837,7 @@ static int ll_dir_ioctl(struct inode *inode, struct file *file,
                         lmdp = (struct lov_user_mds_data *)arg;
                         lump = &lmdp->lmd_lmm;
                 }
-                if (copy_to_user(lump, lmm, lmmsize))
+                if (cfs_copy_to_user(lump, lmm, lmmsize))
                         GOTO(out_req, rc = -EFAULT);
         skip_lmm:
                 if (cmd == IOC_MDC_GETFILEINFO || cmd == LL_IOC_MDC_GETINFO) {
@@ -859,7 +859,7 @@ static int ll_dir_ioctl(struct inode *inode, struct file *file,
                         st.st_ino     = inode->i_ino;
 
                         lmdp = (struct lov_user_mds_data *)arg;
-                        if (copy_to_user(&lmdp->lmd_st, &st, sizeof(st)))
+                        if (cfs_copy_to_user(&lmdp->lmd_st, &st, sizeof(st)))
                                 GOTO(out_req, rc = -EFAULT);
                 }
 
@@ -887,7 +887,7 @@ static int ll_dir_ioctl(struct inode *inode, struct file *file,
                         RETURN(rc);
 
                 OBD_ALLOC(lmm, lmmsize);
-                if (copy_from_user(lmm, lum, lmmsize))
+                if (cfs_copy_from_user(lmm, lum, lmmsize))
                         GOTO(free_lmm, rc = -EFAULT);
 
                 switch (lmm->lmm_magic) {
@@ -924,7 +924,7 @@ static int ll_dir_ioctl(struct inode *inode, struct file *file,
                 if (rc)
                         GOTO(free_lsm, rc);
 
-                if (copy_to_user(&lumd->lmd_st, &st, sizeof(st)))
+                if (cfs_copy_to_user(&lumd->lmd_st, &st, sizeof(st)))
                         GOTO(free_lsm, rc = -EFAULT);
 
                 EXIT;
@@ -983,7 +983,8 @@ static int ll_dir_ioctl(struct inode *inode, struct file *file,
                 if (!rc) {
                         str = req_capsule_server_get(&req->rq_pill,
                                                      &RMF_STRING);
-                        if (copy_to_user(data->ioc_pbuf1, str, data->ioc_plen1))
+                        if (cfs_copy_to_user(data->ioc_pbuf1, str,
+                                             data->ioc_plen1))
                                 rc = -EFAULT;
                 }
                 ptlrpc_req_finished(req);
@@ -1032,7 +1033,8 @@ static int ll_dir_ioctl(struct inode *inode, struct file *file,
                                    NULL);
                 if (rc) {
                         CDEBUG(D_QUOTA, "mdc ioctl %d failed: %d\n", cmd, rc);
-                        if (copy_to_user((void *)arg, check, sizeof(*check)))
+                        if (cfs_copy_to_user((void *)arg, check,
+                                             sizeof(*check)))
                                 rc = -EFAULT;
                         GOTO(out_poll, rc);
                 }
@@ -1041,7 +1043,8 @@ static int ll_dir_ioctl(struct inode *inode, struct file *file,
                                    NULL);
                 if (rc) {
                         CDEBUG(D_QUOTA, "osc ioctl %d failed: %d\n", cmd, rc);
-                        if (copy_to_user((void *)arg, check, sizeof(*check)))
+                        if (cfs_copy_to_user((void *)arg, check,
+                                             sizeof(*check)))
                                 rc = -EFAULT;
                         GOTO(out_poll, rc);
                 }
@@ -1057,7 +1060,7 @@ static int ll_dir_ioctl(struct inode *inode, struct file *file,
                 if (!qctl)
                         RETURN(-ENOMEM);
 
-                if (copy_from_user(qctl, (void *)arg, sizeof(*qctl)))
+                if (cfs_copy_from_user(qctl, (void *)arg, sizeof(*qctl)))
                         GOTO(out_quotactl, rc = -EFAULT);
 
                 cmd = qctl->qc_cmd;
@@ -1077,7 +1080,7 @@ static int ll_dir_ioctl(struct inode *inode, struct file *file,
                                 GOTO(out_quotactl, rc = -EPERM);
                         break;
                 case Q_GETQUOTA:
-                        if (((type == USRQUOTA && current->euid != id) ||
+                        if (((type == USRQUOTA && cfs_curproc_euid() != id) ||
                              (type == GRPQUOTA && !in_egroup_p(id))) &&
                             (!cfs_capable(CFS_CAP_SYS_ADMIN) ||
                              sbi->ll_flags & LL_SBI_RMT_CLIENT))
@@ -1153,7 +1156,7 @@ static int ll_dir_ioctl(struct inode *inode, struct file *file,
                         }
                 }
 
-                if (copy_to_user((void *)arg, qctl, sizeof(*qctl)))
+                if (cfs_copy_to_user((void *)arg, qctl, sizeof(*qctl)))
                         rc = -EFAULT;
 
         out_quotactl:
@@ -1164,8 +1167,8 @@ static int ll_dir_ioctl(struct inode *inode, struct file *file,
                 struct obd_device *obd = class_exp2obd(sbi->ll_dt_exp);
                 if (!obd)
                         RETURN(-EFAULT);
-                if (copy_to_user((void *)arg, obd->obd_name,
-                                strlen(obd->obd_name) + 1))
+                if (cfs_copy_to_user((void *)arg, obd->obd_name,
+                                     strlen(obd->obd_name) + 1))
                         RETURN (-EFAULT);
                 RETURN(0);
         }
@@ -1190,7 +1193,7 @@ static int ll_dir_ioctl(struct inode *inode, struct file *file,
         case LL_IOC_GETOBDCOUNT: {
                 int count;
 
-                if (copy_from_user(&count, (int *)arg, sizeof(int)))
+                if (cfs_copy_from_user(&count, (int *)arg, sizeof(int)))
                         RETURN(-EFAULT);
 
                 if (!count) {
@@ -1203,14 +1206,14 @@ static int ll_dir_ioctl(struct inode *inode, struct file *file,
                         count = lmv->desc.ld_tgt_count;
                 }
 
-                if (copy_to_user((int *)arg, &count, sizeof(int)))
+                if (cfs_copy_to_user((int *)arg, &count, sizeof(int)))
                         RETURN(-EFAULT);
 
                 RETURN(0);
         }
         case LL_IOC_PATH2FID:
-                if (copy_to_user((void *)arg, ll_inode2fid(inode),
-                                 sizeof(struct lu_fid)))
+                if (cfs_copy_to_user((void *)arg, ll_inode2fid(inode),
+                                     sizeof(struct lu_fid)))
                         RETURN(-EFAULT);
                 RETURN(0);
         case OBD_IOC_CHANGELOG_CLEAR: {
@@ -1220,7 +1223,7 @@ static int ll_dir_ioctl(struct inode *inode, struct file *file,
                 OBD_ALLOC_PTR(icc);
                 if (icc == NULL)
                         RETURN(-ENOMEM);
-                if (copy_from_user(icc, (void *)arg, sizeof(*icc)))
+                if (cfs_copy_from_user(icc, (void *)arg, sizeof(*icc)))
                         GOTO(icc_free, rc = -EFAULT);
 
                 rc = obd_iocontrol(cmd, sbi->ll_md_exp, sizeof(*icc), icc,NULL);

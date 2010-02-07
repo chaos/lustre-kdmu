@@ -68,7 +68,7 @@ struct llu_sb_info {
         struct lu_fid            ll_root_fid;
         int                      ll_flags;
         struct lustre_client_ocd ll_lco;
-        struct list_head         ll_conn_chain;
+        cfs_list_t               ll_conn_chain;
 
         struct obd_uuid          ll_mds_uuid;
         struct obd_uuid          ll_mds_peer_uuid;
@@ -90,7 +90,7 @@ struct llu_inode_info {
 
         struct lov_stripe_md   *lli_smd;
         char                   *lli_symlink_name;
-        struct semaphore        lli_open_sem;
+        cfs_semaphore_t         lli_open_sem;
         __u64                   lli_maxbytes;
         unsigned long           lli_flags;
         __u64                   lli_ioepoch;
@@ -230,7 +230,8 @@ void obdo_to_inode(struct inode *dst, struct obdo *src, obd_flag valid);
 void obdo_from_inode(struct obdo *dst, struct inode *src, obd_flag valid);
 int ll_it_open_error(int phase, struct lookup_intent *it);
 struct inode *llu_iget(struct filesys *fs, struct lustre_md *md);
-int llu_inode_getattr(struct inode *inode, struct obdo *obdo);
+int llu_inode_getattr(struct inode *inode, struct obdo *obdo,
+                      __u64 ioepoch, int sync);
 int llu_md_setattr(struct inode *inode, struct md_op_data *op_data,
                    struct md_open_data **mod);
 int llu_setattr_raw(struct inode *inode, struct iattr *attr);
@@ -246,10 +247,12 @@ void llu_finish_md_op_data(struct md_op_data *op_data);
 int llu_create(struct inode *dir, struct pnode_base *pnode, int mode);
 int llu_local_open(struct llu_inode_info *lli, struct lookup_intent *it);
 int llu_iop_open(struct pnode *pnode, int flags, mode_t mode);
+void llu_done_writing_attr(struct inode *inode, struct md_op_data *op_data);
 int llu_md_close(struct obd_export *md_exp, struct inode *inode);
+void llu_pack_inode2opdata(struct inode *inode, struct md_op_data *op_data,
+                           struct lustre_handle *fh);
 int llu_file_release(struct inode *inode);
-int llu_sizeonmds_update(struct inode *inode, struct lustre_handle *fh,
-                         __u64 ioepoch);
+int llu_som_update(struct inode *inode, struct md_op_data *op_data);
 int llu_iop_close(struct inode *inode);
 _SYSIO_OFF_T llu_iop_pos(struct inode *ino, _SYSIO_OFF_T off);
 int llu_vmtruncate(struct inode * inode, loff_t offset, obd_flag obd_flags);

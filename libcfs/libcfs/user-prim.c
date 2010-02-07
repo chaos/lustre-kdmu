@@ -119,7 +119,7 @@ void cfs_waitq_wait(struct cfs_waitlink *link, cfs_task_state_t state)
         (void)link;
 
         /* well, wait for something to happen */
-        call_wait_handler(0);
+        cfs_call_wait_handler(0);
 }
 
 int64_t cfs_waitq_timedwait(struct cfs_waitlink *link, cfs_task_state_t state,
@@ -127,11 +127,11 @@ int64_t cfs_waitq_timedwait(struct cfs_waitlink *link, cfs_task_state_t state,
 {
         LASSERT(link != NULL);
         (void)link;
-        call_wait_handler(timeout);
+        cfs_call_wait_handler(timeout);
         return 0;
 }
 
-void cfs_schedule_timeout(cfs_task_state_t state, int64_t timeout)
+void cfs_schedule_timeout_and_set_state(cfs_task_state_t state, int64_t timeout)
 {
         cfs_waitlink_t    l;
         /* sleep(timeout) here instead? */
@@ -240,6 +240,21 @@ int cfs_create_thread(cfs_thread_t func, void *arg)
 uid_t cfs_curproc_uid(void)
 {
         return getuid();
+}
+
+gid_t cfs_curproc_gid(void)
+{
+        return getgid();
+}
+
+uid_t cfs_curproc_fsuid(void)
+{
+        return getuid();
+}
+
+gid_t cfs_curproc_fsgid(void)
+{
+        return getgid();
 }
 
 void cfs_enter_debugger(void)

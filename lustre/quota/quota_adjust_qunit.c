@@ -102,7 +102,7 @@ quota_create_lqs(unsigned long long lqs_key, struct lustre_quota_ctxt *qctxt)
 
         lqs->lqs_key = lqs_key;
 
-        spin_lock_init(&lqs->lqs_lock);
+        cfs_spin_lock_init(&lqs->lqs_lock);
         lqs->lqs_bwrite_pending = 0;
         lqs->lqs_iwrite_pending = 0;
         lqs->lqs_ino_rec = 0;
@@ -120,13 +120,13 @@ quota_create_lqs(unsigned long long lqs_key, struct lustre_quota_ctxt *qctxt)
         }
         lqs_initref(lqs);
 
-        spin_lock(&qctxt->lqc_lock);
+        cfs_spin_lock(&qctxt->lqc_lock);
         if (!qctxt->lqc_valid)
                 rc = -EBUSY;
         else
                 rc = cfs_hash_add_unique(qctxt->lqc_lqs_hash,
                                          &lqs->lqs_key, &lqs->lqs_hash);
-        spin_unlock(&qctxt->lqc_lock);
+        cfs_spin_unlock(&qctxt->lqc_lock);
 
         if (!rc)
                 lqs_getref(lqs);
@@ -176,7 +176,7 @@ struct lustre_qunit_size *quota_search_lqs(unsigned long long lqs_key,
         if (rc == 0) {
                 return lqs;
         } else {
-                CDEBUG(D_ERROR, "get lqs error(rc: %d)\n", rc);
+                CERROR("get lqs error(rc: %d)\n", rc);
                 return ERR_PTR(rc);
         }
 }
@@ -195,14 +195,14 @@ int quota_adjust_slave_lqs(struct quota_adjust_qunit *oqaq,
         lqs = quota_search_lqs(LQS_KEY(QAQ_IS_GRP(oqaq), oqaq->qaq_id),
                                qctxt, QAQ_IS_CREATE_LQS(oqaq) ? 1 : 0);
         if (lqs == NULL || IS_ERR(lqs)){
-                CDEBUG(D_ERROR, "fail to find a lqs(%s id: %u)!\n",
-                       QAQ_IS_GRP(oqaq) ? "group" : "user", oqaq->qaq_id);
+                CERROR("fail to find a lqs for %sid %u!\n",
+                       QAQ_IS_GRP(oqaq) ? "g" : "u", oqaq->qaq_id);
                 RETURN(PTR_ERR(lqs));
         }
 
         CDEBUG(D_QUOTA, "before: bunit: %lu, iunit: %lu.\n",
                lqs->lqs_bunit_sz, lqs->lqs_iunit_sz);
-        spin_lock(&lqs->lqs_lock);
+        cfs_spin_lock(&lqs->lqs_lock);
         for (i = 0; i < 2; i++) {
                 if (i == 0 && !QAQ_IS_ADJBLK(oqaq))
                         continue;
@@ -248,7 +248,7 @@ int quota_adjust_slave_lqs(struct quota_adjust_qunit *oqaq,
                 if (tmp < 0)
                         rc |= i ? LQS_INO_INCREASE : LQS_BLK_INCREASE;
         }
-        spin_unlock(&lqs->lqs_lock);
+        cfs_spin_unlock(&lqs->lqs_lock);
         CDEBUG(D_QUOTA, "after: bunit: %lu, iunit: %lu.\n",
                lqs->lqs_bunit_sz, lqs->lqs_iunit_sz);
 

@@ -81,8 +81,8 @@ int qos_add_tgt(struct obd_device *obd, int index)
         int rc = 0, found = 0;
         ENTRY;
 
-        down_write(&lov->lov_qos.lq_rw_sem);
-        mutex_down(&lov->lov_lock);
+        cfs_down_write(&lov->lov_qos.lq_rw_sem);
+        cfs_mutex_down(&lov->lov_lock);
 #if 0
         /* XXX: how do we learn configuration here? */ 
         list_for_each_entry(oss, &lov->lov_qos.lq_oss_list, lqo_oss_list) {
@@ -131,8 +131,8 @@ int qos_add_tgt(struct obd_device *obd, int index)
                oss->lqo_ost_count);
 
 out:
-        mutex_up(&lov->lov_lock);
-        up_write(&lov->lov_qos.lq_rw_sem);
+        cfs_mutex_up(&lov->lov_lock);
+        cfs_up_write(&lov->lov_qos.lq_rw_sem);
         RETURN(rc);
 }
 

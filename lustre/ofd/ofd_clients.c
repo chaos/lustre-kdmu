@@ -68,14 +68,14 @@ int filter_client_new(const struct lu_env *env, struct filter_device *ofd,
         /* the bitmap operations can handle cl_idx > sizeof(long) * 8, so
          * there's no need for extra complication here
          */
-        cl_idx = find_first_zero_bit(bitmap, LR_MAX_CLIENTS);
+        cl_idx = cfs_find_first_zero_bit(bitmap, LR_MAX_CLIENTS);
 repeat:
         if (cl_idx >= LR_MAX_CLIENTS) {
                 CERROR("no client slots - fix LR_MAX_CLIENTS\n");
                 RETURN(-EOVERFLOW);
         }
-        if (test_and_set_bit(cl_idx, bitmap)) {
-                cl_idx = find_next_zero_bit(bitmap, LR_MAX_CLIENTS, cl_idx);
+        if (cfs_test_and_set_bit(cl_idx, bitmap)) {
+                cl_idx = cfs_find_next_zero_bit(bitmap, LR_MAX_CLIENTS, cl_idx);
                 goto repeat;
         }
 
@@ -104,9 +104,9 @@ repeat:
          * export */
         /*
         mdt_trans_add_cb(th, mdt_cb_new_client, mti->mti_exp);
-        spin_lock(&mti->mti_exp->exp_lock);
+        cfs_spin_lock(&mti->mti_exp->exp_lock);
         mti->mti_exp->exp_need_sync = 1;
-        spin_unlock(&mti->mti_exp->exp_lock);
+        cfs_spin_unlock(&mti->mti_exp->exp_lock);
         */
 
         err = filter_last_rcvd_write(env, ofd, lcd, &off, th);
@@ -136,7 +136,7 @@ int filter_client_add(const struct lu_env *env, struct filter_device *ofd,
         /* the bitmap operations can handle cl_idx > sizeof(long) * 8, so
          * there's no need for extra complication here
          */
-        if (test_and_set_bit(cl_idx, bitmap)) {
+        if (cfs_test_and_set_bit(cl_idx, bitmap)) {
                 CERROR("FILTER client %d: bit already set in bitmap!\n",
                        cl_idx);
                 LBUG();
@@ -178,7 +178,7 @@ int filter_client_free(struct lu_env *env, struct obd_export *exp)
 
         /* Clear the bit _after_ zeroing out the client so we don't
            race with filter_client_add and zero out new clients.*/
-        if (!test_bit(fed->fed_lr_idx, ofd->ofd_last_rcvd_slots)) {
+        if (!cfs_test_bit(fed->fed_lr_idx, ofd->ofd_last_rcvd_slots)) {
                 CERROR("FILTER client %u: bit already clear in bitmap!!\n",
                        fed->fed_lr_idx);
                 LBUG();
@@ -215,7 +215,7 @@ int filter_client_free(struct lu_env *env, struct obd_export *exp)
                        LAST_RCVD, rc);
         }
 
-        if (!test_and_clear_bit(fed->fed_lr_idx, ofd->ofd_last_rcvd_slots)) {
+        if (!cfs_test_and_clear_bit(fed->fed_lr_idx, ofd->ofd_last_rcvd_slots)){
                 CERROR("FILTER client %u: bit already clear in bitmap!!\n",
                        fed->fed_lr_idx);
                 LBUG();

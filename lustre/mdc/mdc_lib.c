@@ -55,10 +55,10 @@ static void __mdc_pack_body(struct mdt_body *b, __u32 suppgid)
         LASSERT (b != NULL);
 
         b->suppgid = suppgid;
-        b->uid = current->uid;
-        b->gid = current->gid;
-        b->fsuid = current->fsuid;
-        b->fsgid = current->fsgid;
+        b->uid = cfs_curproc_uid();
+        b->gid = cfs_curproc_gid();
+        b->fsuid = cfs_curproc_fsuid();
+        b->fsgid = cfs_curproc_fsgid();
         b->capability = cfs_curproc_cap_pack();
 }
 
@@ -150,7 +150,7 @@ void mdc_create_pack(struct ptlrpc_request *req, struct md_op_data *op_data,
         rec->cr_time     = op_data->op_mod_time;
         rec->cr_suppgid1 = op_data->op_suppgids[0];
         rec->cr_suppgid2 = op_data->op_suppgids[1];
-        rec->cr_flags    = op_data->op_flags & ~MF_SOM_LOCAL_FLAGS;
+        rec->cr_flags    = op_data->op_flags & MF_SOM_LOCAL_FLAGS;
         rec->cr_bias     = op_data->op_bias;
 
         mdc_pack_capa(req, &RMF_CAPA1, op_data->op_capa1);
@@ -204,8 +204,8 @@ void mdc_open_pack(struct ptlrpc_request *req, struct md_op_data *op_data,
 
         /* XXX do something about time, uid, gid */
         rec->cr_opcode   = REINT_OPEN;
-        rec->cr_fsuid    = current->fsuid;
-        rec->cr_fsgid    = current->fsgid;
+        rec->cr_fsuid   = cfs_curproc_fsuid();
+        rec->cr_fsgid   = cfs_curproc_fsgid();
         rec->cr_cap      = cfs_curproc_cap_pack();
         if (op_data != NULL) {
                 rec->cr_fid1 = op_data->op_fid1;
@@ -284,8 +284,8 @@ static void mdc_setattr_pack_rec(struct mdt_rec_setattr *rec,
                                  struct md_op_data *op_data)
 {
         rec->sa_opcode  = REINT_SETATTR;
-        rec->sa_fsuid   = current->fsuid;
-        rec->sa_fsgid   = current->fsgid;
+        rec->sa_fsuid   = cfs_curproc_fsuid();
+        rec->sa_fsgid   = cfs_curproc_fsgid();
         rec->sa_cap     = cfs_curproc_cap_pack();
         rec->sa_suppgid = -1;
 
@@ -301,24 +301,25 @@ static void mdc_setattr_pack_rec(struct mdt_rec_setattr *rec,
         rec->sa_ctime  = LTIME_S(op_data->op_attr.ia_ctime);
         rec->sa_attr_flags = ((struct ll_iattr *)&op_data->op_attr)->ia_attr_flags;
         if ((op_data->op_attr.ia_valid & ATTR_GID) &&
-            in_group_p(op_data->op_attr.ia_gid))
+            cfs_curproc_is_in_groups(op_data->op_attr.ia_gid))
                 rec->sa_suppgid = op_data->op_attr.ia_gid;
         else
                 rec->sa_suppgid = op_data->op_suppgids[0];
 }
 
-static void mdc_epoch_pack(struct mdt_epoch *epoch, struct md_op_data *op_data)
+static void mdc_ioepoch_pack(struct mdt_ioepoch *epoch,
+                             struct md_op_data *op_data)
 {
         memcpy(&epoch->handle, &op_data->op_handle, sizeof(epoch->handle));
         epoch->ioepoch = op_data->op_ioepoch;
-        epoch->flags = op_data->op_flags & ~MF_SOM_LOCAL_FLAGS;
+        epoch->flags = op_data->op_flags & MF_SOM_LOCAL_FLAGS;
 }
 
 void mdc_setattr_pack(struct ptlrpc_request *req, struct md_op_data *op_data,
                       void *ea, int ealen, void *ea2, int ea2len)
 {
         struct mdt_rec_setattr *rec;
-        struct mdt_epoch *epoch;
+        struct mdt_ioepoch *epoch;
         
         CLASSERT(sizeof(struct mdt_rec_reint) ==sizeof(struct mdt_rec_setattr));
         rec = req_capsule_client_get(&req->rq_pill, &RMF_REC_REINT);
@@ -328,7 +329,7 @@ void mdc_setattr_pack(struct ptlrpc_request *req, struct md_op_data *op_data,
 
         if (op_data->op_flags & (MF_SOM_CHANGE | MF_EPOCH_OPEN)) {
                 epoch = req_capsule_client_get(&req->rq_pill, &RMF_MDT_EPOCH);
-                mdc_epoch_pack(epoch, op_data);
+                mdc_ioepoch_pack(epoch, op_data);
         }
 
         if (ealen == 0)
@@ -438,8 +439,8 @@ void mdc_getattr_pack(struct ptlrpc_request *req, __u64 valid, int flags,
         struct mdt_body *b = req_capsule_client_get(&req->rq_pill,
                                                     &RMF_MDT_BODY);
 
-        b->fsuid = current->fsuid;
-        b->fsgid = current->fsgid;
+        b->fsuid = cfs_curproc_fsuid();
+        b->fsgid = cfs_curproc_fsgid();
         b->capability = cfs_curproc_cap_pack();
         b->valid = valid;
         if (op_data->op_bias & MDS_CHECK_SPLIT)
@@ -464,7 +465,7 @@ void mdc_getattr_pack(struct ptlrpc_request *req, __u64 valid, int flags,
 
 void mdc_close_pack(struct ptlrpc_request *req, struct md_op_data *op_data)
 {
-        struct mdt_epoch *epoch;
+        struct mdt_ioepoch *epoch;
         struct mdt_rec_setattr *rec;
 
         epoch = req_capsule_client_get(&req->rq_pill, &RMF_MDT_EPOCH);
@@ -472,7 +473,7 @@ void mdc_close_pack(struct ptlrpc_request *req, struct md_op_data *op_data)
 
         mdc_setattr_pack_rec(rec, op_data);
         mdc_pack_capa(req, &RMF_CAPA1, op_data->op_capa1);
-        mdc_epoch_pack(epoch, op_data);
+        mdc_ioepoch_pack(epoch, op_data);
 }
 
 static int mdc_req_avail(struct client_obd *cli, struct mdc_cache_waiter *mcw)
@@ -480,7 +481,7 @@ static int mdc_req_avail(struct client_obd *cli, struct mdc_cache_waiter *mcw)
         int rc;
         ENTRY;
         client_obd_list_lock(&cli->cl_loi_list_lock);
-        rc = list_empty(&mcw->mcw_entry);
+        rc = cfs_list_empty(&mcw->mcw_entry);
         client_obd_list_unlock(&cli->cl_loi_list_lock);
         RETURN(rc);
 };
@@ -495,7 +496,7 @@ void mdc_enter_request(struct client_obd *cli)
 
         client_obd_list_lock(&cli->cl_loi_list_lock);
         if (cli->cl_r_in_flight >= cli->cl_max_rpcs_in_flight) {
-                list_add_tail(&mcw.mcw_entry, &cli->cl_cache_waiters);
+                cfs_list_add_tail(&mcw.mcw_entry, &cli->cl_cache_waiters);
                 cfs_waitq_init(&mcw.mcw_waitq);
                 client_obd_list_unlock(&cli->cl_loi_list_lock);
                 l_wait_event(mcw.mcw_waitq, mdc_req_avail(cli, &mcw), &lwi);
@@ -507,20 +508,20 @@ void mdc_enter_request(struct client_obd *cli)
 
 void mdc_exit_request(struct client_obd *cli)
 {
-        struct list_head *l, *tmp;
+        cfs_list_t *l, *tmp;
         struct mdc_cache_waiter *mcw;
 
         client_obd_list_lock(&cli->cl_loi_list_lock);
         cli->cl_r_in_flight--;
-        list_for_each_safe(l, tmp, &cli->cl_cache_waiters) {
+        cfs_list_for_each_safe(l, tmp, &cli->cl_cache_waiters) {
                 
                 if (cli->cl_r_in_flight >= cli->cl_max_rpcs_in_flight) {
                         /* No free request slots anymore */
                         break;
                 }
 
-                mcw = list_entry(l, struct mdc_cache_waiter, mcw_entry);
-                list_del_init(&mcw->mcw_entry);
+                mcw = cfs_list_entry(l, struct mdc_cache_waiter, mcw_entry);
+                cfs_list_del_init(&mcw->mcw_entry);
                 cli->cl_r_in_flight++;
                 cfs_waitq_signal(&mcw->mcw_waitq);
         }

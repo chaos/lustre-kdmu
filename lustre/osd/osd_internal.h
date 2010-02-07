@@ -166,11 +166,11 @@ struct osd_object {
         /**
          * to protect index ops.
          */
-        struct rw_semaphore    oo_ext_idx_sem;
-        struct rw_semaphore    oo_sem;
+        cfs_rw_semaphore_t     oo_ext_idx_sem;
+        cfs_rw_semaphore_t     oo_sem;
         struct osd_directory  *oo_dir;
         /** protects inode attributes. */
-        spinlock_t             oo_guard;
+        cfs_spinlock_t         oo_guard;
         /**
          * Following two members are used to indicate the presence of dot and
          * dotdot in the given directory. This is required for interop mode
@@ -219,7 +219,7 @@ struct osd_device {
         unsigned long             od_capa_timeout;
         __u32                     od_capa_alg;
         struct lustre_capa_key   *od_capa_keys;
-        struct hlist_head        *od_capa_hash;
+        cfs_hlist_head_t         *od_capa_hash;
 
         cfs_proc_dir_entry_t     *od_proc_entry;
         struct lprocfs_stats     *od_stats;
@@ -227,8 +227,8 @@ struct osd_device {
          * statfs optimization: we cache a bit.
          */
         cfs_time_t                od_osfs_age;
-        struct kstatfs            od_kstatfs;
-        spinlock_t                od_osfs_lock;
+        cfs_kstatfs_t             od_kstatfs;
+        cfs_spinlock_t            od_osfs_lock;
 
         /**
          * The following flag indicates, if it is interop mode or not.
@@ -293,8 +293,8 @@ struct osd_it_iam {
 #define MAX_BLOCKS_PER_PAGE (CFS_PAGE_SIZE / 512)
 
 struct filter_iobuf {
-        atomic_t          dr_numreqs;  /* number of reqs being processed */
-        wait_queue_head_t dr_wait;
+        cfs_atomic_t      dr_numreqs;  /* number of reqs being processed */
+        cfs_waitq_t       dr_wait;
         int               dr_max_pages;
         int               dr_npages;
         int               dr_error;
@@ -394,7 +394,7 @@ void osd_lprocfs_time_end(const struct lu_env *env,
                           struct osd_device *osd, int op);
 #endif
 int osd_statfs(const struct lu_env *env, struct dt_device *dev,
-               struct kstatfs *sfs);
+               cfs_kstatfs_t *sfs);
 
 extern struct inode *ldiskfs_create_inode(handle_t *handle,
                                           struct inode * dir, int mode);

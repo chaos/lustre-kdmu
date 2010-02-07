@@ -77,13 +77,13 @@ void rprintf(int rank, int loop, const char *fmt, ...)
 #define CHUNK_SIZE(n) chunk_size[(n) % 2]
 
 int main (int argc, char *argv[]) {
-        int i, n, fd;
+        int i, n, fd, c;
         unsigned long chunk_size[2];
         int rank, noProcessors, done;
         int error;
         off_t offset;
         char **chunk_buf;
-        char *read_buf, c;
+        char *read_buf;
         struct stat stat_buf;
         ssize_t ret;
         char *filename = "/mnt/lustre/write_disjoint";
@@ -222,6 +222,7 @@ int main (int argc, char *argv[]) {
                                 rprintf(0, n, "data check error - exiting\n");
                         }
                 }
+                MPI_Barrier(MPI_COMM_WORLD);
         }
 
         printf("Finished after %d loops\n", n);

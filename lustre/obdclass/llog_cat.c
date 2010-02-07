@@ -128,8 +128,9 @@ static int llog_cat_new_log(struct llog_handle *cathandle,
                 GOTO(out_destroy, rc);
 
         loghandle->lgh_hdr->llh_cat_idx = index;
-        LASSERT(list_empty(&loghandle->u.phd.phd_entry));
-        list_add_tail(&loghandle->u.phd.phd_entry, &cathandle->u.chd.chd_head);
+        LASSERT(cfs_list_empty(&loghandle->u.phd.phd_entry));
+        cfs_list_add_tail(&loghandle->u.phd.phd_entry,
+                          &cathandle->u.chd.chd_head);
 
 out_destroy:
         if (rc < 0)
@@ -154,8 +155,8 @@ int llog_cat_id2handle(struct llog_handle *cathandle, struct llog_handle **res,
         if (cathandle == NULL)
                 RETURN(-EBADF);
 
-        list_for_each_entry(loghandle, &cathandle->u.chd.chd_head,
-                            u.phd.phd_entry) {
+        cfs_list_for_each_entry(loghandle, &cathandle->u.chd.chd_head,
+                                u.phd.phd_entry) {
                 struct llog_logid *cgl = &loghandle->lgh_id;
                 if (cgl->lgl_oid == logid->lgl_oid) {
                         if (cgl->lgl_ogen != logid->lgl_ogen) {
@@ -176,8 +177,8 @@ int llog_cat_id2handle(struct llog_handle *cathandle, struct llog_handle **res,
         } else {
                 rc = llog_init_handle(loghandle, LLOG_F_IS_PLAIN, NULL);
                 if (!rc) {
-                        list_add(&loghandle->u.phd.phd_entry,
-                                 &cathandle->u.chd.chd_head);
+                        cfs_list_add(&loghandle->u.phd.phd_entry,
+                                     &cathandle->u.chd.chd_head);
                 }
         }
         if (!rc) {
@@ -198,10 +199,10 @@ int llog_cat_put(struct llog_handle *cathandle)
         int rc;
         ENTRY;
 
-        list_for_each_entry_safe(loghandle, n, &cathandle->u.chd.chd_head,
-                                 u.phd.phd_entry) {
+        cfs_list_for_each_entry_safe(loghandle, n, &cathandle->u.chd.chd_head,
+                                     u.phd.phd_entry) {
                 /* unlink open-not-created llogs */
-                list_del_init(&loghandle->u.phd.phd_entry);
+                cfs_list_del_init(&loghandle->u.phd.phd_entry);
                 if (llog_close(loghandle))
                         CERROR("error closing loghandle\n");
         }
@@ -235,39 +236,39 @@ static struct llog_handle *llog_cat_current_log(struct llog_handle *cathandle,
         struct llog_handle *loghandle = NULL;
         ENTRY;
 
-        down_read_nested(&cathandle->lgh_lock, LLOGH_CAT);
+        cfs_down_read_nested(&cathandle->lgh_lock, LLOGH_CAT);
         loghandle = cathandle->u.chd.chd_current_log;
         if (loghandle) {
                 struct llog_log_hdr *llh = loghandle->lgh_hdr;
-                down_write_nested(&loghandle->lgh_lock, LLOGH_LOG);
+                cfs_down_write_nested(&loghandle->lgh_lock, LLOGH_LOG);
                 if (!llh || loghandle->lgh_last_idx < LLOG_BITMAP_SIZE(llh) - 1) {
-                        up_read(&cathandle->lgh_lock);
+                        cfs_up_read(&cathandle->lgh_lock);
                         RETURN(loghandle);
                 } else {
-                        up_write(&loghandle->lgh_lock);
+                        cfs_up_write(&loghandle->lgh_lock);
                 }
         }
         if (!create) {
                 if (loghandle)
-                        down_write(&loghandle->lgh_lock);
-                up_read(&cathandle->lgh_lock);
+                        cfs_down_write(&loghandle->lgh_lock);
+                cfs_up_read(&cathandle->lgh_lock);
                 RETURN(loghandle);
         }
-        up_read(&cathandle->lgh_lock);
+        cfs_up_read(&cathandle->lgh_lock);
 
         /* time to use next log */
 
         /* first, we have to make sure the state hasn't changed */
-        down_write_nested(&cathandle->lgh_lock, LLOGH_CAT);
+        cfs_down_write_nested(&cathandle->lgh_lock, LLOGH_CAT);
         loghandle = cathandle->u.chd.chd_current_log;
         if (loghandle) {
                 struct llog_log_hdr *llh = loghandle->lgh_hdr;
-                down_write_nested(&loghandle->lgh_lock, LLOGH_LOG);
+                cfs_down_write_nested(&loghandle->lgh_lock, LLOGH_LOG);
                 if (loghandle->lgh_last_idx < LLOG_BITMAP_SIZE(llh) - 1) {
-                        up_write(&cathandle->lgh_lock);
+                        cfs_up_write(&cathandle->lgh_lock);
                         RETURN(loghandle);
                 } else {
-                        up_write(&loghandle->lgh_lock);
+                        cfs_up_write(&loghandle->lgh_lock);
                 }
         }
 
@@ -276,8 +277,8 @@ static struct llog_handle *llog_cat_current_log(struct llog_handle *cathandle,
         loghandle = cathandle->u.chd.chd_next_log;
         cathandle->u.chd.chd_current_log = loghandle;
         cathandle->u.chd.chd_next_log = NULL;
-        down_write_nested(&loghandle->lgh_lock, LLOGH_LOG);
-        up_write(&cathandle->lgh_lock);
+        cfs_down_write_nested(&loghandle->lgh_lock, LLOGH_LOG);
+        cfs_up_write(&cathandle->lgh_lock);
 
         RETURN(loghandle);
 }
@@ -305,7 +306,7 @@ int llog_cat_add_rec_2(struct llog_handle *cathandle, struct llog_rec_hdr *rec,
 
         /* loghandle is already locked by llog_cat_current_log() for us */
         if (!llog_exist_2(loghandle)) {
-                list_del(&loghandle->u.phd.phd_entry);
+                cfs_list_del(&loghandle->u.phd.phd_entry);
                 rc = llog_cat_new_log(cathandle, loghandle, th);
                 LASSERTF(rc >= 0, "rc = %d\n", rc);
                 created = 1;
@@ -315,7 +316,7 @@ int llog_cat_add_rec_2(struct llog_handle *cathandle, struct llog_rec_hdr *rec,
         rc = llog_write_rec_2(loghandle, rec, reccookie, 1, buf, -1, th);
         if (rc < 0)
                 CERROR("llog_write_rec %d: lh=%p\n", rc, loghandle);
-        up_write(&loghandle->lgh_lock);
+        cfs_up_write(&loghandle->lgh_lock);
 
         if (rc == -ENOSPC) {
                 /* try to use next log */
@@ -323,23 +324,23 @@ int llog_cat_add_rec_2(struct llog_handle *cathandle, struct llog_rec_hdr *rec,
                 LASSERT(loghandle);
                 if (IS_ERR(loghandle))
                         GOTO(out, rc = PTR_ERR(loghandle));
-                list_del(&loghandle->u.phd.phd_entry);
+                cfs_list_del(&loghandle->u.phd.phd_entry);
                 rc = llog_cat_new_log(cathandle, loghandle, th);
                 LASSERT(rc == 0);
                 /* now let's try to add the record */
                 rc = llog_write_rec_2(loghandle, rec, reccookie, 1, buf, -1, th);
                 if (rc < 0)
                         CERROR("llog_write_rec %d: lh=%p\n", rc, loghandle);
-                up_write(&loghandle->lgh_lock);
+                cfs_up_write(&loghandle->lgh_lock);
         } else if (!created && rc >= 0 && cathandle->u.chd.chd_next_log != NULL) {
                 /* create next llog ahead */
-                down_write_nested(&cathandle->lgh_lock, LLOGH_CAT);
+                cfs_down_write_nested(&cathandle->lgh_lock, LLOGH_CAT);
                 loghandle = cathandle->u.chd.chd_next_log;
                 if (loghandle && !llog_exist_2(loghandle)) {
-                        list_del(&loghandle->u.phd.phd_entry);
+                        cfs_list_del(&loghandle->u.phd.phd_entry);
                         llog_cat_new_log(cathandle, loghandle,th);
                 }
-                up_write(&cathandle->lgh_lock);
+                cfs_up_write(&cathandle->lgh_lock);
         }
 
 out:
@@ -360,31 +361,31 @@ int llog_cat_declare_add_rec(struct llog_handle *cathandle,
 
         if (cathandle->u.chd.chd_current_log == NULL) {
                 /* declare new plain llog */
-                down_write(&cathandle->lgh_lock);
+                cfs_down_write(&cathandle->lgh_lock);
                 if (cathandle->u.chd.chd_current_log == NULL) {
                         rc = llog_open_2(cathandle->lgh_ctxt, &loghandle,
                                          NULL, NULL);
                         if (rc == 0) {
                                 cathandle->u.chd.chd_current_log = loghandle;
-                                list_add_tail(&loghandle->u.phd.phd_entry,
-                                              &cathandle->u.chd.chd_head);
+                                cfs_list_add_tail(&loghandle->u.phd.phd_entry,
+                                                  &cathandle->u.chd.chd_head);
                         }
                 }
-                up_write(&cathandle->lgh_lock);
+                cfs_up_write(&cathandle->lgh_lock);
         
         } else if (cathandle->u.chd.chd_next_log == NULL) {
                         /* declare next plain llog */
-                down_write(&cathandle->lgh_lock);
+                cfs_down_write(&cathandle->lgh_lock);
                 if (cathandle->u.chd.chd_next_log == NULL) {
                         rc = llog_open_2(cathandle->lgh_ctxt, &loghandle,
                                          NULL, NULL);
                         if (rc == 0) {
                                 cathandle->u.chd.chd_next_log = loghandle;
-                                list_add_tail(&loghandle->u.phd.phd_entry,
-                                              &cathandle->u.chd.chd_head);
+                                cfs_list_add_tail(&loghandle->u.phd.phd_entry,
+                                                  &cathandle->u.chd.chd_head);
                         }
                 }
-                up_write(&cathandle->lgh_lock);
+                cfs_up_write(&cathandle->lgh_lock);
         }
 
         if (rc)
@@ -473,7 +474,7 @@ int llog_cat_cancel_records(struct llog_handle *cathandle, int count,
         int i, index, rc = 0;
         ENTRY;
 
-        down_write_nested(&cathandle->lgh_lock, LLOGH_CAT);
+        cfs_down_write_nested(&cathandle->lgh_lock, LLOGH_CAT);
         for (i = 0; i < count; i++, cookies++) {
                 struct llog_handle *loghandle;
                 struct llog_logid *lgl = &cookies->lgc_lgl;
@@ -484,9 +485,9 @@ int llog_cat_cancel_records(struct llog_handle *cathandle, int count,
                         break;
                 }
 
-                down_write_nested(&loghandle->lgh_lock, LLOGH_LOG);
+                cfs_down_write_nested(&loghandle->lgh_lock, LLOGH_LOG);
                 rc = llog_cancel_rec(loghandle, cookies->lgc_index);
-                up_write(&loghandle->lgh_lock);
+                cfs_up_write(&loghandle->lgh_lock);
 
                 if (rc == 1) {          /* log has been destroyed */
                         index = loghandle->u.phd.phd_cookie.lgc_index;
@@ -503,7 +504,7 @@ int llog_cat_cancel_records(struct llog_handle *cathandle, int count,
                                        index, cathandle->lgh_id.lgl_oid);
                 }
         }
-        up_write(&cathandle->lgh_lock);
+        cfs_up_write(&cathandle->lgh_lock);
 
         RETURN(rc);
 }

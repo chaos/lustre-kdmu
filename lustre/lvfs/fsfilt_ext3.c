@@ -572,7 +572,7 @@ static int fsfilt_ext3_setattr(struct dentry *dentry, void *handle,
                 if (iattr->ia_valid & ATTR_MODE) {
                         inode->i_mode = iattr->ia_mode;
 
-                        if (!in_group_p(inode->i_gid) &&
+                        if (!cfs_curproc_is_in_groups(inode->i_gid) &&
                             !cfs_capable(CFS_CAP_FSETID))
                                 inode->i_mode &= ~S_ISGID;
                 }
@@ -1182,7 +1182,7 @@ int fsfilt_ext3_map_bm_inode_pages(struct inode *inode, struct page **page,
 int fsfilt_ext3_map_inode_pages(struct inode *inode, struct page **page,
                                 int pages, unsigned long *blocks,
                                 int *created, int create,
-                                struct semaphore *optional_sem)
+                                cfs_semaphore_t *optional_sem)
 {
         int rc;
 #ifdef EXT3_MULTIBLOCK_ALLOCATOR
@@ -1193,11 +1193,11 @@ int fsfilt_ext3_map_inode_pages(struct inode *inode, struct page **page,
         }
 #endif
         if (optional_sem != NULL)
-                down(optional_sem);
+                cfs_down(optional_sem);
         rc = fsfilt_ext3_map_bm_inode_pages(inode, page, pages, blocks,
                                             created, create);
         if (optional_sem != NULL)
-                up(optional_sem);
+                cfs_up(optional_sem);
 
         return rc;
 }
@@ -1209,19 +1209,19 @@ int fsfilt_ext3_read(struct inode *inode, void *buf, int size, loff_t *offs)
         int err, blocksize, csize, boffs, osize = size;
 
         /* prevent reading after eof */
-        lock_kernel();
+        cfs_lock_kernel();
         if (i_size_read(inode) < *offs + size) {
                 size = i_size_read(inode) - *offs;
-                unlock_kernel();
+                cfs_unlock_kernel();
                 if (size < 0) {
-                        CERROR("size %llu is too short for read %u@%llu\n",
-                               i_size_read(inode), size, *offs);
-                        return -EIO;
+                        CDEBUG(D_EXT2, "size %llu is too short for read @%llu\n",
+                               i_size_read(inode), *offs);
+                        return -EBADR;
                 } else if (size == 0) {
                         return 0;
                 }
         } else {
-                unlock_kernel();
+                cfs_unlock_kernel();
         }
 
         blocksize = 1 << inode->i_blkbits;
@@ -1304,14 +1304,14 @@ int fsfilt_ext3_write_handle(struct inode *inode, void *buf, int bufsize,
 
         /* correct in-core and on-disk sizes */
         if (new_size > i_size_read(inode)) {
-                lock_kernel();
+                cfs_lock_kernel();
                 if (new_size > i_size_read(inode))
                         i_size_write(inode, new_size);
                 if (i_size_read(inode) > EXT3_I(inode)->i_disksize)
                         EXT3_I(inode)->i_disksize = i_size_read(inode);
                 if (i_size_read(inode) > old_size)
                         mark_inode_dirty(inode);
-                unlock_kernel();
+                cfs_unlock_kernel();
         }
 
         if (err == 0)
@@ -1556,8 +1556,8 @@ out:
 }
 
 struct chk_dqblk{
-        struct hlist_node       dqb_hash;        /** quotacheck hash */
-        struct list_head        dqb_list;        /** in list also */
+        cfs_hlist_node_t        dqb_hash;        /** quotacheck hash */
+        cfs_list_t              dqb_list;        /** in list also */
         qid_t                   dqb_id;          /** uid/gid */
         short                   dqb_type;        /** USRQUOTA/GRPQUOTA */
         qsize_t                 dqb_bhardlimit;  /** block hard limit */
@@ -1580,13 +1580,13 @@ static inline unsigned int chkquot_hash(qid_t id, int type)
 }
 
 static inline struct chk_dqblk *
-find_chkquot(struct hlist_head *head, qid_t id, int type)
+find_chkquot(cfs_hlist_head_t *head, qid_t id, int type)
 {
-        struct hlist_node *node;
+        cfs_hlist_node_t *node;
         struct chk_dqblk *cdqb;
 
-        hlist_for_each(node, head) {
-                cdqb = hlist_entry(node, struct chk_dqblk, dqb_hash);
+        cfs_hlist_for_each(node, head) {
+                cdqb = cfs_hlist_entry(node, struct chk_dqblk, dqb_hash);
                 if (cdqb->dqb_id == id && cdqb->dqb_type == type)
                         return cdqb;
         }
@@ -1600,8 +1600,8 @@ static struct chk_dqblk *alloc_chkquot(qid_t id, int type)
 
         OBD_ALLOC_PTR(cdqb);
         if (cdqb) {
-                INIT_HLIST_NODE(&cdqb->dqb_hash);
-                INIT_LIST_HEAD(&cdqb->dqb_list);
+                CFS_INIT_HLIST_NODE(&cdqb->dqb_hash);
+                CFS_INIT_LIST_HEAD(&cdqb->dqb_list);
                 cdqb->dqb_id = id;
                 cdqb->dqb_type = type;
         }
@@ -1610,10 +1610,10 @@ static struct chk_dqblk *alloc_chkquot(qid_t id, int type)
 }
 
 static struct chk_dqblk *
-cqget(struct super_block *sb, struct hlist_head *hash, struct list_head *list,
-      qid_t id, int type, int first_check)
+cqget(struct super_block *sb, cfs_hlist_head_t *hash,
+      cfs_list_t *list, qid_t id, int type, int first_check)
 {
-        struct hlist_head *head = hash + chkquot_hash(id, type);
+        cfs_hlist_head_t *head = hash + chkquot_hash(id, type);
         struct if_dqblk dqb;
         struct chk_dqblk *cdqb;
         int rc;
@@ -1638,8 +1638,8 @@ cqget(struct super_block *sb, struct hlist_head *hash, struct list_head *list,
                 }
         }
 
-        hlist_add_head(&cdqb->dqb_hash, head);
-        list_add_tail(&cdqb->dqb_list, list);
+        cfs_hlist_add_head(&cdqb->dqb_hash, head);
+        cfs_list_add_tail(&cdqb->dqb_list, list);
 
         return cdqb;
 }
@@ -1731,10 +1731,10 @@ static inline struct inode *ext3_iget_inuse(struct super_block *sb,
 }
 
 struct qchk_ctxt {
-        struct hlist_head       qckt_hash[NR_DQHASH];        /* quotacheck hash */
-        struct list_head        qckt_list;                   /* quotacheck list */
+        cfs_hlist_head_t        qckt_hash[NR_DQHASH];      /* quotacheck hash */
+        cfs_list_t              qckt_list;                 /* quotacheck list */
         int                     qckt_first_check[MAXQUOTAS]; /* 1 if no old quotafile */
-        struct if_dqinfo        qckt_dqinfo[MAXQUOTAS];      /* old dqinfo */
+        struct if_dqinfo        qckt_dqinfo[MAXQUOTAS];    /* old dqinfo */
 };
 
 static int add_inode_quota(struct inode *inode, struct qchk_ctxt *qctxt,
@@ -1920,14 +1920,14 @@ static int prune_chkquots(struct super_block *sb,
         struct chk_dqblk *cdqb, *tmp;
         int rc;
 
-        list_for_each_entry_safe(cdqb, tmp, &qctxt->qckt_list, dqb_list) {
+        cfs_list_for_each_entry_safe(cdqb, tmp, &qctxt->qckt_list, dqb_list) {
                 if (!error) {
                         rc = commit_chkquot(sb, qctxt, cdqb);
                         if (rc)
                                 error = rc;
                 }
-                hlist_del_init(&cdqb->dqb_hash);
-                list_del(&cdqb->dqb_list);
+                cfs_hlist_del_init(&cdqb->dqb_hash);
+                cfs_list_del(&cdqb->dqb_list);
                 OBD_FREE_PTR(cdqb);
         }
 
@@ -1954,8 +1954,8 @@ static int fsfilt_ext3_quotacheck(struct super_block *sb,
         }
 
         for (i = 0; i < NR_DQHASH; i++)
-                INIT_HLIST_HEAD(&qctxt->qckt_hash[i]);
-        INIT_LIST_HEAD(&qctxt->qckt_list);
+                CFS_INIT_HLIST_HEAD(&qctxt->qckt_hash[i]);
+        CFS_INIT_LIST_HEAD(&qctxt->qckt_list);
 
         for (i = 0; i < MAXQUOTAS; i++) {
                 if (!Q_TYPESET(oqc, i))
@@ -2015,7 +2015,7 @@ static int fsfilt_ext3_quotacheck(struct super_block *sb,
          * has limits but hasn't file) */
 #ifdef HAVE_QUOTA_SUPPORT
         for (i = 0; i < MAXQUOTAS; i++) {
-                struct list_head id_list;
+                cfs_list_t id_list;
                 struct dquot_id *dqid, *tmp;
 
                 if (!Q_TYPESET(oqc, i))
@@ -2026,7 +2026,7 @@ static int fsfilt_ext3_quotacheck(struct super_block *sb,
 
 
                 LASSERT(sb_dqopt(sb)->files[i] != NULL);
-                INIT_LIST_HEAD(&id_list);
+                CFS_INIT_LIST_HEAD(&id_list);
 #ifndef KERNEL_SUPPORTS_QUOTA_READ
                 rc = lustre_get_qids(sb_dqopt(sb)->files[i], NULL, i, &id_list);
 #else
@@ -2035,8 +2035,8 @@ static int fsfilt_ext3_quotacheck(struct super_block *sb,
                 if (rc)
                         CERROR("read old limits failed. (rc:%d)\n", rc);
 
-                list_for_each_entry_safe(dqid, tmp, &id_list, di_link) {
-                        list_del_init(&dqid->di_link);
+                cfs_list_for_each_entry_safe(dqid, tmp, &id_list, di_link) {
+                        cfs_list_del_init(&dqid->di_link);
 
                         if (!rc)
                                 cqget(sb, qctxt->qckt_hash, &qctxt->qckt_list,
@@ -2110,7 +2110,7 @@ static int fsfilt_ext3_quotainfo(struct lustre_quota_info *lqi, int type,
 }
 
 static int fsfilt_ext3_qids(struct file *file, struct inode *inode, int type,
-                            struct list_head *list)
+                            cfs_list_t *list)
 {
         return lustre_get_qids(file, inode, type, list);
 }
@@ -2134,9 +2134,9 @@ static int fsfilt_ext3_dquot(struct lustre_dquot *dquot, int cmd)
                     dquot->dq_dqb.dqb_isoftlimit ||
                     dquot->dq_dqb.dqb_bhardlimit ||
                     dquot->dq_dqb.dqb_bsoftlimit)
-                        clear_bit(DQ_FAKE_B, &dquot->dq_flags);
+                        cfs_clear_bit(DQ_FAKE_B, &dquot->dq_flags);
                 else
-                        set_bit(DQ_FAKE_B, &dquot->dq_flags);
+                        cfs_set_bit(DQ_FAKE_B, &dquot->dq_flags);
 
                 rc = lustre_commit_dquot(dquot);
                 if (rc >= 0)
@@ -2174,6 +2174,66 @@ lvfs_sbdev_type fsfilt_ext3_journal_sbdev(struct super_block *sb)
         return (EXT3_SB(sb)->journal_bdev);
 }
 EXPORT_SYMBOL(fsfilt_ext3_journal_sbdev);
+
+ssize_t lustre_read_quota(struct file *f, struct inode *inode, int type,
+                          char *buf, int count, loff_t pos)
+{
+        loff_t p = pos;
+        int rc;
+
+        /* Support for both adm and op quota files must be provided */
+        if (f) {
+                rc = fsfilt_ext3_read_record(f, buf, count, &p);
+                rc = rc < 0 ? rc : p - pos;
+        } else {
+                struct super_block *sb = inode->i_sb;
+                rc = sb->s_op->quota_read(sb, type, buf, count, pos);
+        }
+        return rc;
+}
+
+ssize_t lustre_write_quota(struct file *f, char *buf, int count, loff_t pos)
+{
+        loff_t p = pos;
+        int rc;
+
+        /* Only adm quota files are supported, op updates are handled by vfs */
+        rc = fsfilt_ext3_write_record(f, buf, count, &p, 0);
+        rc = rc < 0 ? rc : p - pos;
+
+        return rc;
+}
+
+void *lustre_quota_journal_start(struct inode *inode, int delete)
+{
+        handle_t *handle;
+        unsigned block_count;
+
+        if (delete) {
+                /* each indirect block (+4) may become free, attaching to the
+                 * header list of free blocks (+1); the data block (+1) may
+                 * become a free block (+0) or a block with free dqentries (+0) */
+                block_count = (4 + 1) + 1;
+                handle = ext3_journal_start(inode,
+                            block_count*FSFILT_DATA_TRANS_BLOCKS(inode->i_sb)+2);
+        } else {
+                /* indirect blocks are touched (+4), each causes file expansion (+0) or
+                 * freeblk reusage with a header update (+1); dqentry is either reused
+                 * causing update of the entry block (+1), prev (+1) and next (+1) or
+                 * a new block allocation (+1) with a header update (+1)              */
+                block_count = (4 + 1) + 3;
+                handle = ext3_journal_start(inode,
+                             block_count*FSFILT_DATA_TRANS_BLOCKS(inode->i_sb)+2);
+
+        }
+
+        return handle;
+}
+
+void lustre_quota_journal_stop(void *handle)
+{
+        ext3_journal_stop((handle_t *)handle);
+}
 
 static struct fsfilt_operations fsfilt_ext3_ops = {
         .fs_type                = "ext3",

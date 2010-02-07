@@ -87,14 +87,14 @@
 #define LQS_DEBUG(lqs, fmt, arg...)                                           \
         CDEBUG(D_QUOTA, "lqs(%p) id(%u) flag(%lu) type(%c) bunit(%lu) "       \
                "btune(%lu) iunit(%lu) itune(%lu) lqs_bwrite_pending(%lu) "    \
-               "lqs_iwrite_pending(%lu) ino_rec("LPD64") blk_rec("LPD64" ) "  \
+               "lqs_iwrite_pending(%lu) ino_rec(%lld) blk_rec(%lld) "         \
                "refcount(%d): "                                               \
                fmt, lqs, lqs->lqs_id, lqs->lqs_flags,                         \
                LQS_IS_GRP(lqs) ? 'g' : 'u',                                   \
                lqs->lqs_bunit_sz, lqs->lqs_btune_sz, lqs->lqs_iunit_sz,       \
                lqs->lqs_itune_sz, lqs->lqs_bwrite_pending,                    \
                lqs->lqs_iwrite_pending, lqs->lqs_ino_rec,                     \
-               lqs->lqs_blk_rec, atomic_read(&lqs->lqs_refcount), ## arg);
+               lqs->lqs_blk_rec, cfs_atomic_read(&lqs->lqs_refcount), ## arg);
 
 
 /* quota_context.c */
@@ -219,8 +219,8 @@ static inline int client_quota_recoverable_error(int rc)
 
 static inline int client_quota_should_resend(int resend, struct client_obd *cli)
 {
-        return (atomic_read(&cli->cl_quota_resends) >= 0) ?
-                atomic_read(&cli->cl_quota_resends) > resend : 1;
+        return (cfs_atomic_read(&cli->cl_quota_resends) >= 0) ?
+                cfs_atomic_read(&cli->cl_quota_resends) > resend : 1;
 }
 
 #endif

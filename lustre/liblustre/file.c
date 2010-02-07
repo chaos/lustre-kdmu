@@ -60,8 +60,6 @@
 #include <file.h>
 #endif
 
-#undef LIST_HEAD
-
 #include "llite_lib.h"
 
 /* Pack the required supplementary groups into the supplied groups array.
@@ -73,13 +71,13 @@ void ll_i2gids(__u32 *suppgids, struct inode *i1, struct inode *i2)
         LASSERT(i1 != NULL);
         LASSERT(suppgids != NULL);
 
-        if (in_group_p(i1->i_stbuf.st_gid))
+        if (cfs_curproc_is_in_groups(i1->i_stbuf.st_gid))
                 suppgids[0] = i1->i_stbuf.st_gid;
         else
                 suppgids[0] = -1;
 
         if (i2) {
-                if (in_group_p(i2->i_stbuf.st_gid))
+                if (cfs_curproc_is_in_groups(i2->i_stbuf.st_gid))
                         suppgids[1] = i2->i_stbuf.st_gid;
                 else
                         suppgids[1] = -1;
@@ -112,7 +110,7 @@ void llu_prep_md_op_data(struct md_op_data *op_data, struct inode *i1,
         op_data->op_name = name;
         op_data->op_mode = mode;
         op_data->op_namelen = namelen;
-        op_data->op_mod_time = CURRENT_TIME;
+        op_data->op_mod_time = CFS_CURRENT_TIME;
         op_data->op_data = NULL;
 }
 
@@ -157,6 +155,11 @@ void obdo_refresh_inode(struct inode *dst,
                 st->st_blocks = src->o_blocks;
 }
 
+/**
+ * Assign an obtained @ioepoch to client's inode. No lock is needed, MDS does
+ * not believe attributes if a few ioepoch holders exist. Attributes for
+ * previous ioepoch if new one is opened are also skipped by MDS.
+ */
 void llu_ioepoch_open(struct llu_inode_info *lli, __u64 ioepoch)
 {
         if (ioepoch && lli->lli_ioepoch != ioepoch) {
@@ -335,39 +338,112 @@ int llu_objects_destroy(struct ptlrpc_request *req, struct inode *dir)
         return rc;
 }
 
-int llu_sizeonmds_update(struct inode *inode, struct lustre_handle *fh,
-                         __u64 ioepoch)
+/** Cliens updates SOM attributes on MDS: obd_getattr and md_setattr. */
+int llu_som_update(struct inode *inode, struct md_op_data *op_data)
 {
         struct llu_inode_info *lli = llu_i2info(inode);
         struct llu_sb_info *sbi = llu_i2sbi(inode);
-        struct md_op_data op_data = {{ 0 }};
         struct obdo oa = { 0 };
+        __u32 old_flags;
         int rc;
         ENTRY;
 
         LASSERT(!(lli->lli_flags & LLIF_MDS_SIZE_LOCK));
         LASSERT(sbi->ll_lco.lco_flags & OBD_CONNECT_SOM);
 
-        rc = llu_inode_getattr(inode, &oa);
-        if (rc == -ENOENT) {
-                oa.o_valid = 0;
-                CDEBUG(D_INODE, "objid "LPX64" is already destroyed\n",
-                       lli->lli_smd->lsm_object_id);
-        } else if (rc) {
-                CERROR("inode_getattr failed (%d): unable to send a "
-                       "Size-on-MDS attribute update for inode %llu/%lu\n",
-                       rc, (long long)llu_i2stat(inode)->st_ino,
-                       lli->lli_st_generation);
-                RETURN(rc);
+        old_flags = op_data->op_flags;
+        op_data->op_flags = MF_SOM_CHANGE;
+
+        /* If inode is already in another epoch, skip getattr from OSTs. */
+        if (lli->lli_ioepoch == op_data->op_ioepoch) {
+                rc = llu_inode_getattr(inode, &oa, op_data->op_ioepoch,
+                                       old_flags & MF_GETATTR_LOCK);
+                if (rc) {
+                        oa.o_valid = 0;
+                        if (rc == -ENOENT)
+                                CDEBUG(D_INODE, "objid "LPX64" is destroyed\n",
+                                       lli->lli_smd->lsm_object_id);
+                        else
+                                CERROR("inode_getattr failed (%d): unable to "
+                                       "send a Size-on-MDS attribute update "
+                                       "for inode %llu/%lu\n", rc,
+                                       (long long)llu_i2stat(inode)->st_ino,
+                                       lli->lli_st_generation);
+                }  else {
+                        CDEBUG(D_INODE, "Size-on-MDS update on "DFID"\n",
+                               PFID(&lli->lli_fid));
+                }
+
+                /* Install attributes into op_data. */
+                md_from_obdo(op_data, &oa, oa.o_valid);
         }
 
-        md_from_obdo(&op_data, &oa, oa.o_valid);
-        memcpy(&op_data.op_handle, fh, sizeof(*fh));
-        op_data.op_ioepoch = ioepoch;
-        op_data.op_flags |= MF_SOM_CHANGE;
-
-        rc = llu_md_setattr(inode, &op_data, NULL);
+        rc = llu_md_setattr(inode, op_data, NULL);
         RETURN(rc);
+}
+
+void llu_pack_inode2opdata(struct inode *inode, struct md_op_data *op_data,
+                           struct lustre_handle *fh)
+{
+        struct llu_inode_info *lli = llu_i2info(inode);
+        struct intnl_stat *st = llu_i2stat(inode);
+        ENTRY;
+
+        op_data->op_fid1 = lli->lli_fid;
+        op_data->op_attr.ia_atime = st->st_atime;
+        op_data->op_attr.ia_mtime = st->st_mtime;
+        op_data->op_attr.ia_ctime = st->st_ctime;
+        op_data->op_attr.ia_size = st->st_size;
+        op_data->op_attr_blocks = st->st_blocks;
+        op_data->op_attr.ia_attr_flags = lli->lli_st_flags;
+        op_data->op_ioepoch = lli->lli_ioepoch;
+        if (fh)
+                op_data->op_handle = *fh;
+        EXIT;
+}
+
+/** Pack SOM attributes info @opdata for CLOSE, DONE_WRITING rpc. */
+void llu_done_writing_attr(struct inode *inode, struct md_op_data *op_data)
+{
+        struct llu_inode_info *lli = llu_i2info(inode);
+        ENTRY;
+
+        op_data->op_flags |= MF_SOM_CHANGE;
+
+        /* Pack Size-on-MDS attributes if we are in IO
+         * epoch and attributes are valid. */
+        LASSERT(!(lli->lli_flags & LLIF_MDS_SIZE_LOCK));
+        if (!cl_local_size(inode))
+                op_data->op_attr.ia_valid |= ATTR_MTIME_SET | ATTR_CTIME_SET |
+                        ATTR_ATIME_SET | ATTR_SIZE | ATTR_BLOCKS;
+
+        EXIT;
+}
+
+static void llu_prepare_close(struct inode *inode, struct md_op_data *op_data,
+                              struct ll_file_data *fd)
+{
+        struct obd_client_handle *och = &fd->fd_mds_och;
+
+        op_data->op_attr.ia_valid = ATTR_MODE      | ATTR_ATIME_SET |
+                                    ATTR_MTIME_SET | ATTR_CTIME_SET;
+
+        if (fd->fd_flags & FMODE_WRITE) {
+                struct llu_sb_info *sbi = llu_i2sbi(inode);
+                if (!(sbi->ll_lco.lco_flags & OBD_CONNECT_SOM) ||
+                    !S_ISREG(llu_i2stat(inode)->st_mode)) {
+                        op_data->op_attr.ia_valid |= ATTR_SIZE | ATTR_BLOCKS;
+                } else {
+                        /* Inode cannot be dirty. Close the epoch. */
+                        op_data->op_flags |= MF_EPOCH_CLOSE;
+                        /* XXX: Send SOM attributes only if they are really
+                         * changed.  */
+                        llu_done_writing_attr(inode, op_data);
+                }
+        }
+        llu_pack_inode2opdata(inode, op_data, &och->och_fh);
+        llu_prep_md_op_data(op_data, inode, NULL, NULL,
+                            0, 0, LUSTRE_OPC_ANY);
 }
 
 int llu_md_close(struct obd_export *md_exp, struct inode *inode)
@@ -385,46 +461,13 @@ int llu_md_close(struct obd_export *md_exp, struct inode *inode)
         if (fd->fd_flags & LL_FILE_GROUP_LOCKED)
                 llu_put_grouplock(inode, fd->fd_grouplock.cg_gid);
 
-        op_data.op_attr.ia_valid = ATTR_MODE | ATTR_ATIME_SET |
-                                ATTR_MTIME_SET | ATTR_CTIME_SET;
-
-        if (lli->lli_open_flags & FMODE_WRITE) {
-                struct llu_sb_info *sbi = llu_i2sbi(inode);
-                if (!(sbi->ll_lco.lco_flags & OBD_CONNECT_SOM) ||
-                    !S_ISREG(llu_i2stat(inode)->st_mode)) {
-                        op_data.op_attr.ia_valid |= ATTR_SIZE | ATTR_BLOCKS;
-                } else {
-                        /* Inode cannot be dirty. Close the epoch. */
-                        op_data.op_flags |= MF_EPOCH_CLOSE;
-                        /* XXX: Send CHANGE flag only if Size-on-MDS inode attributes
-                         * are really changed.  */
-                        op_data.op_flags |= MF_SOM_CHANGE;
-
-                        /* Pack Size-on-MDS attributes if we are in IO epoch and
-                         * attributes are valid. */
-                        LASSERT(!(lli->lli_flags & LLIF_MDS_SIZE_LOCK));
-                        if (!cl_local_size(inode))
-                                op_data.op_attr.ia_valid |=
-                                        OBD_MD_FLSIZE | OBD_MD_FLBLOCKS;
-                }
-        }
-        op_data.op_fid1 = lli->lli_fid;
-        op_data.op_attr.ia_atime = st->st_atime;
-        op_data.op_attr.ia_mtime = st->st_mtime;
-        op_data.op_attr.ia_ctime = st->st_ctime;
-        op_data.op_attr.ia_size = st->st_size;
-        op_data.op_attr_blocks = st->st_blocks;
-        op_data.op_attr.ia_attr_flags = lli->lli_st_flags;
-        op_data.op_ioepoch = lli->lli_ioepoch;
-        memcpy(&op_data.op_handle, &och->och_fh, sizeof(op_data.op_handle));
-
+        llu_prepare_close(inode, &op_data, fd);
         rc = md_close(md_exp, &op_data, och->och_mod, &req);
         if (rc == -EAGAIN) {
                 /* We are the last writer, so the MDS has instructed us to get
                  * the file size and any write cookies, then close again. */
                 LASSERT(lli->lli_open_flags & FMODE_WRITE);
-                rc = llu_sizeonmds_update(inode, &och->och_fh,
-                                          op_data.op_ioepoch);
+                rc = llu_som_update(inode, &op_data);
                 if (rc) {
                         CERROR("inode %llu mdc Size-on-MDS update failed: "
                                "rc = %d\n", (long long)st->st_ino, rc);

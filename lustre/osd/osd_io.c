@@ -42,8 +42,6 @@
  *
  */
 
-#include <linux/module.h>
-
 /* LUSTRE_VERSION_CODE */
 #include <lustre_ver.h>
 /* prerequisite for linux/xattr.h */
@@ -111,8 +109,8 @@ int osd_object_auth(const struct lu_env *env, struct dt_object *dt,
 static void filter_init_iobuf(struct filter_iobuf *iobuf)
 {
 
-        init_waitqueue_head(&iobuf->dr_wait);
-        atomic_set(&iobuf->dr_numreqs, 0);
+        cfs_waitq_init(&iobuf->dr_wait);
+        cfs_atomic_set(&iobuf->dr_numreqs, 0);
         iobuf->dr_max_pages = PTLRPC_MAX_BRW_PAGES;
         iobuf->dr_npages = 0;
         iobuf->dr_error = 0;
@@ -149,13 +147,13 @@ static int dio_complete_routine(struct bio *bio, unsigned int done, int error)
                        "bi_idx: %d, bi->size: %d, bi_end_io: %p, bi_cnt: %d, "
                        "bi_private: %p\n", bio->bi_next, bio->bi_flags,
                        bio->bi_rw, bio->bi_vcnt, bio->bi_idx, bio->bi_size,
-                       bio->bi_end_io, atomic_read(&bio->bi_cnt),
+                       bio->bi_end_io, cfs_atomic_read(&bio->bi_cnt),
                        bio->bi_private);
                 return 0;
         }
 
         /* the check is outside of the cycle for performance reason -bzzz */
-        if (!test_bit(BIO_RW, &bio->bi_rw)) {
+        if (!cfs_test_bit(BIO_RW, &bio->bi_rw)) {
                 bio_for_each_segment(bvl, bio, i) {
                         if (likely(error == 0))
                                 SetPageUptodate(bvl->bv_page);
@@ -174,8 +172,8 @@ static int dio_complete_routine(struct bio *bio, unsigned int done, int error)
         if (error != 0 && iobuf->dr_error == 0)
                 iobuf->dr_error = error;
 
-        if (atomic_dec_and_test(&iobuf->dr_numreqs))
-                wake_up(&iobuf->dr_wait);
+        if (cfs_atomic_dec_and_test(&iobuf->dr_numreqs))
+                cfs_waitq_signal(&iobuf->dr_wait);
 
         /* Completed bios used to be chained off iobuf->dr_bios and freed in
          * filter_clear_dreq().  It was then possible to exhaust the biovec-256
@@ -291,7 +289,7 @@ static int osd_do_bio(struct inode *inode, struct filter_iobuf *iobuf, int rw)
                                        bio_hw_segments(q, bio),
                                        q->max_hw_segments);
 
-                                atomic_inc(&iobuf->dr_numreqs);
+                                cfs_atomic_inc(&iobuf->dr_numreqs);
                                 osd_submit_bio(rw, bio);
                                 frags++;
                         }
@@ -320,7 +318,7 @@ static int osd_do_bio(struct inode *inode, struct filter_iobuf *iobuf, int rw)
         }
 
         if (bio != NULL) {
-                atomic_inc(&iobuf->dr_numreqs);
+                cfs_atomic_inc(&iobuf->dr_numreqs);
                 osd_submit_bio(rw, bio);
                 frags++;
                 rc = 0;
@@ -332,7 +330,8 @@ static int osd_do_bio(struct inode *inode, struct filter_iobuf *iobuf, int rw)
          * parallel and wait for IO completion once transaction is stopped
          * see osd_trans_stop() for more details -bzzz */
         if (rw != OBD_BRW_WRITE)
-                wait_event(iobuf->dr_wait, atomic_read(&iobuf->dr_numreqs) == 0);
+                cfs_wait_event(iobuf->dr_wait,
+                               cfs_atomic_read(&iobuf->dr_numreqs) == 0);
 
         if (rc == 0)
                 rc = iobuf->dr_error;
@@ -421,7 +420,7 @@ int osd_get_bufs(const struct lu_env *env, struct dt_object *d, loff_t pos,
          * punch/write requests from one client, filter writes and
          * filter truncates are serialized by i_alloc_sem, allowing
          * multiple writes or single truncate. */
-        down_read(&obj->oo_inode->i_alloc_sem);
+        cfs_down_read(&obj->oo_inode->i_alloc_sem);
 
 cleanup:
         RETURN(rc);
@@ -433,7 +432,7 @@ static int osd_put_bufs(const struct lu_env *env, struct dt_object *dt,
         struct osd_object *obj    = osd_dt_obj(dt);
         int                i;
 
-        up_read(&obj->oo_inode->i_alloc_sem);
+        cfs_up_read(&obj->oo_inode->i_alloc_sem);
 
         for (i = 0; i < npages; i++) {
                 if (lb[i].page == NULL)

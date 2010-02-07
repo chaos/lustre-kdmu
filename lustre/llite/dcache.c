@@ -51,7 +51,7 @@
 
 #include "llite_internal.h"
 
-spinlock_t ll_lookup_lock = SPIN_LOCK_UNLOCKED;
+cfs_spinlock_t ll_lookup_lock = CFS_SPIN_LOCK_UNLOCKED;
 
 /* should NOT be called with the dcache lock, see fs/dcache.c */
 static void ll_release(struct dentry *de)
@@ -119,18 +119,12 @@ static int ll_ddelete(struct dentry *de)
 {
         ENTRY;
         LASSERT(de);
-#ifndef DCACHE_LUSTRE_INVALID
-#define DCACHE_LUSTRE_INVALID 0
-#endif
 
         CDEBUG(D_DENTRY, "%s dentry %.*s (%p, parent %p, inode %p) %s%s\n",
                (de->d_flags & DCACHE_LUSTRE_INVALID ? "deleting" : "keeping"),
                de->d_name.len, de->d_name.name, de, de->d_parent, de->d_inode,
                d_unhashed(de) ? "" : "hashed,",
                list_empty(&de->d_subdirs) ? "" : "subdirs");
-#if DCACHE_LUSTRE_INVALID == 0
-#undef DCACHE_LUSTRE_INVALID
-#endif
 
         RETURN(0);
 }
@@ -216,9 +210,9 @@ int ll_drop_dentry(struct dentry *dentry)
                 __d_drop(dentry);
                 unlock_dentry(dentry);
                 spin_unlock(&dcache_lock);
-                spin_unlock(&ll_lookup_lock);
+                cfs_spin_unlock(&ll_lookup_lock);
                 dput(dentry);
-                spin_lock(&ll_lookup_lock);
+                cfs_spin_lock(&ll_lookup_lock);
                 spin_lock(&dcache_lock);
                 return 1;
         }
@@ -229,11 +223,7 @@ int ll_drop_dentry(struct dentry *dentry)
                 RETURN (0);
         }
 
-#ifdef DCACHE_LUSTRE_INVALID
         if (!(dentry->d_flags & DCACHE_LUSTRE_INVALID)) {
-#else
-        if (!d_unhashed(dentry)) {
-#endif
                 CDEBUG(D_DENTRY, "unhashing dentry %.*s (%p) parent %p "
                        "inode %p refc %d\n", dentry->d_name.len,
                        dentry->d_name.name, dentry, dentry->d_parent,
@@ -241,12 +231,9 @@ int ll_drop_dentry(struct dentry *dentry)
                 /* actually we don't unhash the dentry, rather just
                  * mark it inaccessible for to __d_lookup(). otherwise
                  * sys_getcwd() could return -ENOENT -bzzz */
-#ifdef DCACHE_LUSTRE_INVALID
                 dentry->d_flags |= DCACHE_LUSTRE_INVALID;
-#endif
                 if (!dentry->d_inode || !S_ISDIR(dentry->d_inode->i_mode))
                         __d_drop(dentry);
-
         }
         unlock_dentry(dentry);
         return 0;
@@ -266,7 +253,7 @@ void ll_unhash_aliases(struct inode *inode)
                inode->i_ino, inode->i_generation, inode);
 
         head = &inode->i_dentry;
-        spin_lock(&ll_lookup_lock);
+        cfs_spin_lock(&ll_lookup_lock);
         spin_lock(&dcache_lock);
 restart:
         tmp = head;
@@ -289,7 +276,7 @@ restart:
                           goto restart;
         }
         spin_unlock(&dcache_lock);
-        spin_unlock(&ll_lookup_lock);
+        cfs_spin_unlock(&ll_lookup_lock);
 
         EXIT;
 }
@@ -378,10 +365,8 @@ int ll_revalidate_it(struct dentry *de, int lookup_flags,
                 if (it && (it->it_op & IT_CREAT))
                         RETURN(0);
 
-#ifdef DCACHE_LUSTRE_INVALID
                 if (de->d_flags & DCACHE_LUSTRE_INVALID)
                         RETURN(0);
-#endif
 
                 rc = ll_have_md_lock(parent, MDS_INODELOCK_UPDATE);
                 GOTO(out_sa, rc);
@@ -405,6 +390,9 @@ int ll_revalidate_it(struct dentry *de, int lookup_flags,
         OBD_FAIL_TIMEOUT(OBD_FAIL_MDC_REVALIDATE_PAUSE, 5);
         ll_frob_intent(&it, &lookup_it);
         LASSERT(it);
+
+        if (it->it_op == IT_LOOKUP && !(de->d_flags & DCACHE_LUSTRE_INVALID))
+                GOTO(out_sa, rc = 1);
 
         op_data = ll_prep_md_op_data(NULL, parent, de->d_inode,
                                      de->d_name.name, de->d_name.len,
@@ -442,7 +430,7 @@ int ll_revalidate_it(struct dentry *de, int lookup_flags,
                 /* Check for the proper lock. */
                 if (!ll_have_md_lock(inode, MDS_INODELOCK_LOOKUP))
                         goto do_lock;
-                down(&lli->lli_och_sem);
+                cfs_down(&lli->lli_och_sem);
                 if (*och_p) { /* Everything is open already, do nothing */
                         /*(*och_usecount)++;  Do not let them steal our open
                           handle from under us */
@@ -453,11 +441,11 @@ int ll_revalidate_it(struct dentry *de, int lookup_flags,
                            hope the lock won't be invalidated in between. But
                            if it would be, we'll reopen the open request to
                            MDS later during file open path */
-                        up(&lli->lli_och_sem);
+                        cfs_up(&lli->lli_och_sem);
                         ll_finish_md_op_data(op_data);
                         RETURN(1);
                 } else {
-                        up(&lli->lli_och_sem);
+                        cfs_up(&lli->lli_och_sem);
                 }
         }
 
@@ -513,14 +501,14 @@ revalidate_finish:
 
         /* unfortunately ll_intent_lock may cause a callback and revoke our
          * dentry */
-        spin_lock(&ll_lookup_lock);
+        cfs_spin_lock(&ll_lookup_lock);
         spin_lock(&dcache_lock);
         lock_dentry(de);
         __d_drop(de);
         unlock_dentry(de);
         d_rehash_cond(de, 0);
         spin_unlock(&dcache_lock);
-        spin_unlock(&ll_lookup_lock);
+        cfs_spin_unlock(&ll_lookup_lock);
 
 out:
         /* We do not free request as it may be reused during following lookup
@@ -530,25 +518,18 @@ out:
         if (req != NULL && !it_disposition(it, DISP_ENQ_COMPLETE))
                 ptlrpc_req_finished(req);
         if (rc == 0) {
-#ifdef DCACHE_LUSTRE_INVALID
                 ll_unhash_aliases(de->d_inode);
                 /* done in ll_unhash_aliases()
                    dentry->d_flags |= DCACHE_LUSTRE_INVALID; */
-#else
-                /* We do not want d_invalidate to kill all child dentries too */
-                d_drop(de);
-#endif
         } else {
                 CDEBUG(D_DENTRY, "revalidated dentry %.*s (%p) parent %p "
                        "inode %p refc %d\n", de->d_name.len,
                        de->d_name.name, de, de->d_parent, de->d_inode,
                        atomic_read(&de->d_count));
                 ll_lookup_finish_locks(it, de);
-#ifdef DCACHE_LUSTRE_INVALID
                 lock_dentry(de);
                 de->d_flags &= ~DCACHE_LUSTRE_INVALID;
                 unlock_dentry(de);
-#endif
         }
         RETURN(rc);
 
@@ -621,7 +602,8 @@ out_sa:
         return rc;
 }
 
-/*static*/ void ll_pin(struct dentry *de, struct vfsmount *mnt, int flag)
+#if 0
+static void ll_pin(struct dentry *de, struct vfsmount *mnt, int flag)
 {
         struct inode *inode= de->d_inode;
         struct ll_sb_info *sbi = ll_i2sbi(inode);
@@ -632,43 +614,43 @@ out_sa:
         ENTRY;
         LASSERT(ldd);
 
-        lock_kernel();
+        cfs_lock_kernel();
         /* Strictly speaking this introduces an additional race: the
          * increments should wait until the rpc has returned.
          * However, given that at present the function is void, this
          * issue is moot. */
         if (flag == 1 && (++ldd->lld_mnt_count) > 1) {
-                unlock_kernel();
+                cfs_unlock_kernel();
                 EXIT;
                 return;
         }
 
         if (flag == 0 && (++ldd->lld_cwd_count) > 1) {
-                unlock_kernel();
+                cfs_unlock_kernel();
                 EXIT;
                 return;
         }
-        unlock_kernel();
+        cfs_unlock_kernel();
 
         handle = (flag) ? &ldd->lld_mnt_och : &ldd->lld_cwd_och;
         oc = ll_mdscapa_get(inode);
         rc = obd_pin(sbi->ll_md_exp, ll_inode2fid(inode), oc, handle, flag);
         capa_put(oc);
         if (rc) {
-                lock_kernel();
+                cfs_lock_kernel();
                 memset(handle, 0, sizeof(*handle));
                 if (flag == 0)
                         ldd->lld_cwd_count--;
                 else
                         ldd->lld_mnt_count--;
-                unlock_kernel();
+                cfs_unlock_kernel();
         }
 
         EXIT;
         return;
 }
 
-/*static*/ void ll_unpin(struct dentry *de, struct vfsmount *mnt, int flag)
+static void ll_unpin(struct dentry *de, struct vfsmount *mnt, int flag)
 {
         struct ll_sb_info *sbi = ll_i2sbi(de->d_inode);
         struct ll_dentry_data *ldd = ll_d2d(de);
@@ -677,7 +659,7 @@ out_sa:
         ENTRY;
         LASSERT(ldd);
 
-        lock_kernel();
+        cfs_lock_kernel();
         /* Strictly speaking this introduces an additional race: the
          * increments should wait until the rpc has returned.
          * However, given that at present the function is void, this
@@ -685,7 +667,7 @@ out_sa:
         handle = (flag) ? ldd->lld_mnt_och : ldd->lld_cwd_och;
         if (handle.och_magic != OBD_CLIENT_HANDLE_MAGIC) {
                 /* the "pin" failed */
-                unlock_kernel();
+                cfs_unlock_kernel();
                 EXIT;
                 return;
         }
@@ -694,7 +676,7 @@ out_sa:
                 count = --ldd->lld_mnt_count;
         else
                 count = --ldd->lld_cwd_count;
-        unlock_kernel();
+        cfs_unlock_kernel();
 
         if (count != 0) {
                 EXIT;
@@ -705,6 +687,7 @@ out_sa:
         EXIT;
         return;
 }
+#endif
 
 #ifdef HAVE_VFS_INTENT_PATCHES
 int ll_revalidate_nd(struct dentry *dentry, struct nameidata *nd)

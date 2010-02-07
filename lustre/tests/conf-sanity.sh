@@ -12,7 +12,8 @@ set -e
 ONLY=${ONLY:-"$*"}
 
 # bug number for skipped test:
-ALWAYS_EXCEPT=" $CONF_SANITY_EXCEPT"
+#               15977
+ALWAYS_EXCEPT=" 39    $CONF_SANITY_EXCEPT"
 # UPDATE THE COMMENT ABOVE WITH BUG NUMBERS WHEN CHANGING ALWAYS_EXCEPT!
 
 SRCDIR=`dirname $0`
@@ -25,6 +26,7 @@ RLUSTRE=${RLUSTRE:-$LUSTRE}
 
 . $LUSTRE/tests/test-framework.sh
 init_test_env $@
+init_logging
 # STORED_MDSSIZE is used in test_18
 if [ -n "$MDSSIZE" ]; then
     STORED_MDSSIZE=$MDSSIZE
@@ -34,10 +36,9 @@ MDSSIZE=40000
 OSTSIZE=40000
 . ${CONFIG:=$LUSTRE/tests/cfg/$NAME.sh}
 
-remote_mds_nodsh && skip "remote MDS with nodsh" && exit 0
-remote_ost_nodsh && skip "remote OST with nodsh" && exit 0
+require_dsh_mds || exit 0
+require_dsh_ost || exit 0
 
-#
 [ "$SLOW" = "no" ] && EXCEPT_SLOW="0 1 2 3 6 7 15 18 24b 25 30 31 32 33 34a 45"
 
 assert_DIR

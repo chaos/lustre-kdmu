@@ -152,9 +152,9 @@ static int filter_last_rcvd_update(struct filter_thread_info *info,
          */
         if (info->fti_transno == 0 &&
             *transno_p == ofd->ofd_last_transno) {
-                spin_lock(&ofd->ofd_transno_lock);
+                cfs_spin_lock(&ofd->ofd_transno_lock);
                 ofd->ofd_fsd.lsd_last_transno = ofd->ofd_last_transno;
-                spin_unlock(&ofd->ofd_transno_lock);
+                cfs_spin_unlock(&ofd->ofd_transno_lock);
                 filter_last_rcvd_header_write(info->fti_env, ofd, th);
         }
 
@@ -203,7 +203,7 @@ static int filter_txn_stop_cb(const struct lu_env *env,
         }
 
         info->fti_has_trans = 1;
-        spin_lock(&ofd->ofd_transno_lock);
+        cfs_spin_lock(&ofd->ofd_transno_lock);
         if (txn->th_result != 0) {
                 if (info->fti_transno != 0) {
                         CERROR("Replay transno "LPU64" failed: rc %i\n",
@@ -224,7 +224,7 @@ static int filter_txn_stop_cb(const struct lu_env *env,
 
         /* save transno for the commit callback */
         txi->txi_transno = info->fti_transno;
-        spin_unlock(&ofd->ofd_transno_lock);
+        cfs_spin_unlock(&ofd->ofd_transno_lock);
 
         return filter_last_rcvd_update(info, txn);
 }

@@ -40,6 +40,7 @@
 #endif
 #include <linux/module.h>
 #include <linux/kernel.h>
+#include <linux/fs_struct.h>
 #include <linux/sched.h>
 
 #include <libcfs/libcfs.h>
@@ -74,7 +75,7 @@ EXPORT_SYMBOL(cfs_waitq_add);
 
 void
 cfs_waitq_add_exclusive(cfs_waitq_t *waitq,
-                             cfs_waitlink_t *link)
+                        cfs_waitlink_t *link)
 {
         add_wait_queue_exclusive(LINUX_WAITQ_HEAD(waitq), LINUX_WAITQ(link));
 }
@@ -123,16 +124,24 @@ cfs_waitq_wait(cfs_waitlink_t *link, cfs_task_state_t state)
 EXPORT_SYMBOL(cfs_waitq_wait);
 
 int64_t
-cfs_waitq_timedwait(cfs_waitlink_t *link, cfs_task_state_t state, int64_t timeout)
+cfs_waitq_timedwait(cfs_waitlink_t *link, cfs_task_state_t state,
+                    int64_t timeout)
 {
         return schedule_timeout(timeout);
 }
 EXPORT_SYMBOL(cfs_waitq_timedwait);
 
 void
-cfs_schedule_timeout(cfs_task_state_t state, int64_t timeout)
+cfs_schedule_timeout_and_set_state(cfs_task_state_t state, int64_t timeout)
 {
         set_current_state(state);
+        schedule_timeout(timeout);
+}
+EXPORT_SYMBOL(cfs_schedule_timeout_and_set_state);
+
+void
+cfs_schedule_timeout(int64_t timeout)
+{
         schedule_timeout(timeout);
 }
 EXPORT_SYMBOL(cfs_schedule_timeout);
@@ -233,18 +242,23 @@ void cfs_daemonize(char *str) {
 }
 
 int cfs_daemonize_ctxt(char *str) {
-        struct task_struct *tsk = current;
-        struct fs_struct *fs = NULL;
 
         cfs_daemonize(str);
+#ifndef HAVE_UNSHARE_FS_STRUCT
+        {
+        struct task_struct *tsk = current;
+        struct fs_struct *fs = NULL;
         fs = copy_fs_struct(tsk->fs);
         if (fs == NULL)
                 return -ENOMEM;
         exit_fs(tsk);
         tsk->fs = fs;
+        }
+#else
+        unshare_fs_struct();
+#endif
         return 0;
 }
-
 
 sigset_t
 cfs_get_blockedsigs(void)

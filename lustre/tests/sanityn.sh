@@ -42,6 +42,7 @@ CLEANUP=${CLEANUP:-:}
 SETUP=${SETUP:-:}
 init_test_env $@
 . ${CONFIG:=$LUSTRE/tests/cfg/$NAME.sh}
+init_logging
 
 [ "$SLOW" = "no" ] && EXCEPT_SLOW="12 16 23 33a"
 
@@ -67,6 +68,9 @@ rm -rf $DIR1/[df][0-9]* $DIR1/lnk
 check_runas_id $RUNAS_ID $RUNAS_ID $RUNAS
 
 build_test_filter
+
+mkdir -p $MOUNT2
+mount_client $MOUNT2
 
 test_1a() {
 	touch $DIR1/f1
@@ -701,7 +705,11 @@ print_jbd_stat () {
     for mds in ${mdts//,/ }; do
         varsvc=${mds}_svc
         dev=$(basename $(do_facet $mds lctl get_param -n osd.${!varsvc}.mntdev))
-        val=$(do_facet $mds cat /proc/fs/jbd/$dev/info | head -1 | cut -d" " -f1)
+        val=$(do_facet $mds "procfile=/proc/fs/jbd/$dev/info;
+[ -f \\\$procfile ] || procfile=/proc/fs/jbd2/$dev/info;
+[ -f \\\$procfile ] || procfile=/proc/fs/jbd2/${dev}\:\\\*/info;
+cat \\\$procfile | head -1;")
+        val=${val%% *};
         stat=$(( stat + val))
     done
     echo $stat
@@ -714,9 +722,6 @@ test_33a() {
     [ -n "$CLIENTS" ] || { skip "Need two or more clients" && return 0; }
     [ $CLIENTCOUNT -ge 2 ] || \
         { skip "Need two or more clients, have $CLIENTCOUNT" && return 0; }
-
-    zconf_mount_clients $CLIENT1,$CLIENT2 $DIR1
-    zconf_mount_clients $CLIENT1,$CLIENT2 $DIR2
 
     local nfiles=${TEST33_NFILES:-10000}
     local param_file=$TMP/$tfile-params
@@ -915,6 +920,7 @@ run_test 37 "check i_size is not updated for directory on close (bug 18695) ====
 
 log "cleanup: ======================================================"
 
+[ "$(mount | grep $MOUNT2)" ] && umount $MOUNT2
 check_and_cleanup_lustre
 
 echo '=========================== finished ==============================='

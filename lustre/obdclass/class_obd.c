@@ -46,6 +46,7 @@
 
 #include <obd_support.h>
 #include <obd_class.h>
+#include <lnet/lnetctl.h>
 #include <lustre_debug.h>
 #include <lprocfs_status.h>
 #include <lustre/lustre_build_version.h>
@@ -54,12 +55,12 @@
 
 #ifndef __KERNEL__
 /* liblustre workaround */
-atomic_t libcfs_kmemory = {0};
+cfs_atomic_t libcfs_kmemory = {0};
 #endif
 
 struct obd_device *obd_devs[MAX_OBD_DEVICES];
-struct list_head obd_types;
-spinlock_t obd_dev_lock = SPIN_LOCK_UNLOCKED;
+cfs_list_t obd_types;
+cfs_spinlock_t obd_dev_lock = CFS_SPIN_LOCK_UNLOCKED;
 
 #ifndef __KERNEL__
 __u64 obd_max_pages = 0;
@@ -82,8 +83,8 @@ unsigned int at_history = 600;
 int at_early_margin = 5;
 int at_extra = 30;
 
-atomic_t obd_dirty_pages;
-atomic_t obd_dirty_transit_pages;
+cfs_atomic_t obd_dirty_pages;
+cfs_atomic_t obd_dirty_transit_pages;
 
 cfs_waitq_t obd_race_waitq;
 int obd_race_state;
@@ -93,24 +94,6 @@ unsigned long obd_print_fail_loc(void)
 {
         CWARN("obd_fail_loc = %lx\n", obd_fail_loc);
         return obd_fail_loc;
-}
-
-/*  opening /dev/obd */
-static int obd_class_open(unsigned long flags, void *args)
-{
-        ENTRY;
-
-        PORTAL_MODULE_USE;
-        RETURN(0);
-}
-
-/*  closing /dev/obd */
-static int obd_class_release(unsigned long flags, void *args)
-{
-        ENTRY;
-
-        PORTAL_MODULE_UNUSE;
-        RETURN(0);
 }
 #endif
 
@@ -191,7 +174,8 @@ int class_handle_ioctl(unsigned int cmd, unsigned long arg)
                 OBD_ALLOC(lcfg, data->ioc_plen1);
                 if (lcfg == NULL)
                         GOTO(out, err = -ENOMEM);
-                err = copy_from_user(lcfg, data->ioc_pbuf1, data->ioc_plen1);
+                err = cfs_copy_from_user(lcfg, data->ioc_pbuf1,
+                                         data->ioc_plen1);
                 if (!err)
                         err = lustre_cfg_sanity_check(lcfg, data->ioc_plen1);
                 if (!err)
@@ -307,7 +291,7 @@ int class_handle_ioctl(unsigned int cmd, unsigned long arg)
                 snprintf(str, len - sizeof(*data), "%3d %s %s %s %s %d",
                          (int)index, status, obd->obd_type->typ_name,
                          obd->obd_name, obd->obd_uuid.uuid,
-                         atomic_read(&obd->obd_refcount));
+                         cfs_atomic_read(&obd->obd_refcount));
                 err = obd_ioctl_popdata((void *)arg, data, len);
 
                 GOTO(out, err = 0);
@@ -371,24 +355,7 @@ int class_handle_ioctl(unsigned int cmd, unsigned long arg)
 
 
 
-#define OBD_MINOR 241
 #ifdef __KERNEL__
-/* to control /dev/obd */
-static int obd_class_ioctl (struct cfs_psdev_file *pfile, unsigned long cmd,
-                            void *arg)
-{
-        return class_handle_ioctl(cmd, (unsigned long)arg);
-}
-
-/* declare character device */
-struct cfs_psdev_ops obd_psdev_ops = {
-        /* .p_open    = */ obd_class_open,      /* open */
-        /* .p_close   = */ obd_class_release,   /* release */
-        /* .p_read    = */ NULL,
-        /* .p_write   = */ NULL,
-        /* .p_ioctl   = */ obd_class_ioctl     /* ioctl */
-};
-
 extern cfs_psdev_t obd_psdev;
 #else
 void *obd_psdev = NULL;
@@ -536,7 +503,7 @@ int obd_init_checks(void)
 #define obd_init_checks() do {} while(0)
 #endif
 
-extern spinlock_t obd_types_lock;
+extern cfs_spinlock_t obd_types_lock;
 extern int class_procfs_init(void);
 extern int class_procfs_clean(void);
 
@@ -558,7 +525,7 @@ int init_obdclass(void)
         LCONSOLE_INFO("        Lustre Version: "LUSTRE_VERSION_STRING"\n");
         LCONSOLE_INFO("        Build Version: "BUILD_VERSION"\n");
 
-        spin_lock_init(&obd_types_lock);
+        cfs_spin_lock_init(&obd_types_lock);
         cfs_waitq_init(&obd_race_waitq);
         obd_zombie_impexp_init();
 #ifdef LPROCFS
@@ -585,12 +552,12 @@ int init_obdclass(void)
         if (err)
                 return err;
 
-        spin_lock_init(&obd_dev_lock);
+        cfs_spin_lock_init(&obd_dev_lock);
         CFS_INIT_LIST_HEAD(&obd_types);
 
         err = cfs_psdev_register(&obd_psdev);
         if (err) {
-                CERROR("cannot register %d err %d\n", OBD_MINOR, err);
+                CERROR("cannot register %d err %d\n", OBD_DEV_MINOR, err);
                 return err;
         }
 
@@ -601,10 +568,10 @@ int init_obdclass(void)
         /* Default the dirty page cache cap to 1/2 of system memory.
          * For clients with less memory, a larger fraction is needed
          * for other purposes (mostly for BGL). */
-        if (num_physpages <= 512 << (20 - CFS_PAGE_SHIFT))
-                obd_max_dirty_pages = num_physpages / 4;
+        if (cfs_num_physpages <= 512 << (20 - CFS_PAGE_SHIFT))
+                obd_max_dirty_pages = cfs_num_physpages / 4;
         else
-                obd_max_dirty_pages = num_physpages / 2;
+                obd_max_dirty_pages = cfs_num_physpages / 2;
 
         err = obd_init_caches();
         if (err)

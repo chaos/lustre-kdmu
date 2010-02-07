@@ -92,9 +92,9 @@ obd_id filter_last_id(struct filter_device *ofd, obd_gr group)
 
         LASSERT(group <= ofd->ofd_max_group);
 
-        spin_lock(&ofd->ofd_objid_lock);
+        cfs_spin_lock(&ofd->ofd_objid_lock);
         id = ofd->ofd_last_objids[group];
-        spin_unlock(&ofd->ofd_objid_lock);
+        cfs_spin_unlock(&ofd->ofd_objid_lock);
 
         return id;
 }
@@ -102,10 +102,10 @@ obd_id filter_last_id(struct filter_device *ofd, obd_gr group)
 void filter_last_id_set(struct filter_device *ofd, obd_id id, obd_gr group)
 {
         LASSERT(group <= ofd->ofd_max_group);
-        spin_lock(&ofd->ofd_objid_lock);
+        cfs_spin_lock(&ofd->ofd_objid_lock);
         if (ofd->ofd_last_objids[group] < id)
                 ofd->ofd_last_objids[group] = id;
-        spin_unlock(&ofd->ofd_objid_lock);
+        cfs_spin_unlock(&ofd->ofd_objid_lock);
 }
 
 int filter_last_id_write(const struct lu_env *env, struct filter_device *ofd,
@@ -210,7 +210,7 @@ int filter_groups_init(const struct lu_env *env, struct filter_device *ofd)
         int rc = 0, i;
         ENTRY;
 
-        spin_lock_init(&ofd->ofd_objid_lock);
+        cfs_spin_lock_init(&ofd->ofd_objid_lock);
 
         rc = dt_attr_get(env, ofd->ofd_last_group_file,
                          &info->fti_attr, BYPASS_CAPA);
@@ -448,10 +448,10 @@ static inline int filter_clients_data_init(const struct lu_env *env,
                         LASSERTF(rc == 0, "rc = %d\n", rc); /* can't fail existing */
 
                         lcd = NULL;
-                        spin_lock(&exp->exp_lock);
+                        cfs_spin_lock(&exp->exp_lock);
                         exp->exp_connecting = 0;
                         exp->exp_in_recovery = 0;
-                        spin_unlock(&exp->exp_lock);
+                        cfs_spin_unlock(&exp->exp_lock);
                         obd->obd_max_recoverable_clients++;
                         class_export_put(exp);
                 }
@@ -460,10 +460,10 @@ static inline int filter_clients_data_init(const struct lu_env *env,
                 CDEBUG(D_OTHER, "client at idx %d has last_rcvd = "LPU64"\n",
                        cl_idx, last_rcvd);
 
-                spin_lock(&ofd->ofd_transno_lock);
+                cfs_spin_lock(&ofd->ofd_transno_lock);
                 if (last_rcvd > fsd->lsd_last_transno)
                         fsd->lsd_last_transno = last_rcvd;
-                spin_unlock(&ofd->ofd_transno_lock);
+                cfs_spin_unlock(&ofd->ofd_transno_lock);
         }
 
         if (lcd)
@@ -486,9 +486,9 @@ int filter_server_data_update(const struct lu_env *env,
         CDEBUG(D_SUPER, "OSS mount_count is "LPU64", last_transno is "LPU64"\n",
                ofd->ofd_fsd.lsd_mount_count, ofd->ofd_fsd.lsd_last_transno);
 
-        spin_lock(&ofd->ofd_transno_lock);
+        cfs_spin_lock(&ofd->ofd_transno_lock);
         ofd->ofd_fsd.lsd_last_transno = ofd->ofd_last_transno;
-        spin_unlock(&ofd->ofd_transno_lock);
+        cfs_spin_unlock(&ofd->ofd_transno_lock);
 
         /*
          * This may be called from difficult reply handler and
@@ -590,9 +590,9 @@ int filter_server_data_init(const struct lu_env *env,
 
         rc = filter_clients_data_init(env, ofd, last_rcvd_size);
 
-        spin_lock(&ofd->ofd_transno_lock);
+        cfs_spin_lock(&ofd->ofd_transno_lock);
         obd->obd_last_committed = fsd->lsd_last_transno;
-        spin_unlock(&ofd->ofd_transno_lock);
+        cfs_spin_unlock(&ofd->ofd_transno_lock);
 
         /* save it, so mount count and last_transno is current */
         rc = filter_server_data_update(env, ofd);

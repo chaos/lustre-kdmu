@@ -98,8 +98,8 @@ struct osd_object {
         dmu_buf_t               *oo_db;
 
         /* protects inode attributes. */
-        struct semaphore       oo_guard;
-        struct rw_semaphore    oo_sem;
+        cfs_semaphore_t         oo_guard;
+        cfs_rw_semaphore_t      oo_sem;
 
         uint64_t                oo_mode;
         uint64_t                oo_type;
@@ -420,8 +420,8 @@ static struct lu_object *osd_object_alloc(const struct lu_env *env,
                 dt_object_init(&mo->oo_dt, NULL, d);
                 mo->oo_dt.do_ops = &osd_obj_ops;
                 l->lo_ops = &osd_lu_obj_ops;
-                init_rwsem(&mo->oo_sem);
-                sema_init(&mo->oo_guard, 1);
+                cfs_init_rwsem(&mo->oo_sem);
+                cfs_sema_init(&mo->oo_guard, 1);
                 return l;
         } else
                 return NULL;
@@ -525,13 +525,14 @@ static int osd_object_print(const struct lu_env *env, void *cookie,
 /*
  * Concurrency: shouldn't matter.
  */
-int osd_statfs(const struct lu_env *env, struct dt_device *d, struct kstatfs *sfs)
+int osd_statfs(const struct lu_env *env, struct dt_device *d,
+               cfs_kstatfs_t *sfs)
 {
         struct osd_device *osd = osd_dt_dev(d);
-        struct kstatfs *kfs = &osd->od_kstatfs;
+        cfs_kstatfs_t *kfs = &osd->od_kstatfs;
         int rc = 0;
 
-        spin_lock(&osd->od_osfs_lock);
+        cfs_spin_lock(&osd->od_osfs_lock);
         /* cache 1 second */
         if (cfs_time_before_64(osd->od_osfs_age, cfs_time_shift_64(-1))) {
                 rc = udmu_objset_statfs(&osd->od_objset, (struct statfs64 *) kfs);
@@ -552,7 +553,7 @@ int osd_statfs(const struct lu_env *env, struct dt_device *d, struct kstatfs *sf
                 }
         }
         *sfs = *kfs;
-        spin_unlock(&osd->od_osfs_lock);
+        cfs_spin_unlock(&osd->od_osfs_lock);
 
         RETURN (rc);
 }
@@ -831,7 +832,7 @@ static void osd_object_read_lock(const struct lu_env *env,
 
         LASSERT(osd_invariant(obj));
 
-        down_read(&obj->oo_sem);
+        cfs_down_read(&obj->oo_sem);
 }
 
 static void osd_object_write_lock(const struct lu_env *env,
@@ -841,7 +842,7 @@ static void osd_object_write_lock(const struct lu_env *env,
 
         LASSERT(osd_invariant(obj));
 
-        down_write(&obj->oo_sem);
+        cfs_down_write(&obj->oo_sem);
 }
 
 static void osd_object_read_unlock(const struct lu_env *env,
@@ -850,7 +851,7 @@ static void osd_object_read_unlock(const struct lu_env *env,
         struct osd_object *obj = osd_dt_obj(dt);
 
         LASSERT(osd_invariant(obj));
-        up_read(&obj->oo_sem);
+        cfs_up_read(&obj->oo_sem);
 }
 
 static void osd_object_write_unlock(const struct lu_env *env,
@@ -859,7 +860,7 @@ static void osd_object_write_unlock(const struct lu_env *env,
         struct osd_object *obj = osd_dt_obj(dt);
 
         LASSERT(osd_invariant(obj));
-        up_write(&obj->oo_sem);
+        cfs_up_write(&obj->oo_sem);
 }
 
 static int osd_object_write_locked(const struct lu_env *env,
@@ -870,9 +871,9 @@ static int osd_object_write_locked(const struct lu_env *env,
 
         LASSERT(osd_invariant(obj));
         
-        if (down_write_trylock(&obj->oo_sem)) {
+        if (cfs_down_write_trylock(&obj->oo_sem)) {
                 rc = 0;
-                up_write(&obj->oo_sem);
+                cfs_up_write(&obj->oo_sem);
         }
         return rc;
 }
@@ -889,9 +890,9 @@ static int osd_attr_get(const struct lu_env *env,
         LASSERT(osd_invariant(obj));
         LASSERT(obj->oo_db);
 
-        down(&obj->oo_guard);
+        cfs_mutex_down(&obj->oo_guard);
         udmu_object_getattr(obj->oo_db, &vap);
-        up(&obj->oo_guard);
+        cfs_mutex_up(&obj->oo_guard);
         vnattr2lu_attr(&vap, attr);
 
         return 0;
@@ -938,9 +939,9 @@ static int osd_attr_set(const struct lu_env *env, struct dt_object *dt,
         oh = container_of0(handle, struct osd_thandle, ot_super);
 
         lu_attr2vnattr((struct lu_attr *)attr, &vap);
-        down(&obj->oo_guard);
+        cfs_mutex_down(&obj->oo_guard);
         udmu_object_setattr(obj->oo_db, oh->ot_tx, &vap);
-        up(&obj->oo_guard);
+        cfs_mutex_up(&obj->oo_guard);
 
         RETURN(rc);
 }
@@ -1022,7 +1023,7 @@ static int osd_create_post(struct osd_thread_info *info, struct osd_object *obj,
 }
 
 static void osd_ah_init(const struct lu_env *env, struct dt_allocation_hint *ah,
-                        struct dt_object *parent, umode_t child_mode)
+                        struct dt_object *parent, cfs_umode_t child_mode)
 {
         LASSERT(ah);
 
@@ -1127,9 +1128,9 @@ static dmu_buf_t* osd_mksym(struct osd_thread_info *info, struct osd_device  *os
 static dmu_buf_t* osd_mknod(struct osd_thread_info *info, struct osd_device *osd,
                             struct lu_attr *attr, struct osd_thandle *oh)
 {
-        umode_t    mode = attr->la_mode & (S_IFMT | S_IRWXUGO | S_ISVTX);
-        dmu_buf_t *db;
-        vnattr_t   vap;
+        cfs_umode_t  mode = attr->la_mode & (S_IFMT | S_IRWXUGO | S_ISVTX);
+        dmu_buf_t   *db;
+        vnattr_t     vap;
 
         vap.va_mask = DMU_AT_MODE;
         if (S_ISCHR(mode)) {
@@ -1805,9 +1806,9 @@ static void osd_object_ref_add(const struct lu_env *env,
         oh = container_of0(handle, struct osd_thandle, ot_super);
 
         LASSERT(obj->oo_db != NULL);
-        down(&obj->oo_guard);
+        cfs_mutex_down(&obj->oo_guard);
         udmu_object_links_inc(obj->oo_db, oh->ot_tx);
-        up(&obj->oo_guard);
+        cfs_mutex_up(&obj->oo_guard);
 }
 
 static int osd_declare_object_ref_del(const struct lu_env *env,
@@ -1834,9 +1835,9 @@ static void osd_object_ref_del(const struct lu_env *env,
         oh = container_of0(handle, struct osd_thandle, ot_super);
 
         LASSERT(obj->oo_db != NULL);
-        down(&obj->oo_guard);
+        cfs_mutex_down(&obj->oo_guard);
         udmu_object_links_dec(obj->oo_db, oh->ot_tx);
-        up(&obj->oo_guard);
+        cfs_mutex_up(&obj->oo_guard);
 }
 
 int osd_xattr_get(const struct lu_env *env, struct dt_object *dt,
@@ -1852,10 +1853,10 @@ int osd_xattr_get(const struct lu_env *env, struct dt_object *dt,
         LASSERT(osd_invariant(obj));
         LASSERT(dt_object_exists(dt));
 
-        down(&obj->oo_guard);
+        cfs_mutex_down(&obj->oo_guard);
         rc = -udmu_xattr_get(&osd->od_objset, obj->oo_db, buf->lb_buf,
                              buf->lb_len, name, &size);
-        up(&obj->oo_guard);
+        cfs_mutex_up(&obj->oo_guard);
 
         if (rc == -ENOENT)
                 rc = -ENODATA;
@@ -1876,10 +1877,10 @@ int osd_declare_xattr_set(const struct lu_env *env, struct dt_object *dt,
         LASSERT(handle != NULL);
         oh = container_of0(handle, struct osd_thandle, ot_super);
 
-        down(&obj->oo_guard);
+        cfs_mutex_down(&obj->oo_guard);
         udmu_xattr_declare_set(&osd->od_objset, obj->oo_db, buflen,
                                name, oh->ot_tx);
-        up(&obj->oo_guard);
+        cfs_mutex_up(&obj->oo_guard);
 
         RETURN(0);
 }
@@ -1902,10 +1903,10 @@ int osd_xattr_set(const struct lu_env *env,
 
         oh = container_of0(handle, struct osd_thandle, ot_super);
 
-        down(&obj->oo_guard);
+        cfs_mutex_down(&obj->oo_guard);
         rc = -udmu_xattr_set(&osd->od_objset, obj->oo_db, buf->lb_buf,
                              buf->lb_len, name, oh->ot_tx);
-        up(&obj->oo_guard);
+        cfs_mutex_up(&obj->oo_guard);
 
         RETURN(rc);
 }
@@ -1927,9 +1928,9 @@ int osd_declare_xattr_del(const struct lu_env *env, struct dt_object *dt,
         LASSERT(oh->ot_tx != NULL);
         LASSERT(obj->oo_db != NULL);
 
-        down(&obj->oo_guard);
+        cfs_mutex_down(&obj->oo_guard);
         udmu_xattr_declare_del(&osd->od_objset, obj->oo_db, name, oh->ot_tx);
-        up(&obj->oo_guard);
+        cfs_mutex_up(&obj->oo_guard);
 
         RETURN(0);
 }
@@ -1951,9 +1952,9 @@ int osd_xattr_del(const struct lu_env *env, struct dt_object *dt,
         oh = container_of0(handle, struct osd_thandle, ot_super);
         LASSERT(oh->ot_tx != NULL);
 
-        down(&obj->oo_guard);
+        cfs_mutex_down(&obj->oo_guard);
         rc = -udmu_xattr_del(&osd->od_objset, obj->oo_db, name, oh->ot_tx);
-        up(&obj->oo_guard);
+        cfs_mutex_up(&obj->oo_guard);
 
         RETURN(rc);
 }
@@ -1971,10 +1972,10 @@ int osd_xattr_list(const struct lu_env *env,
         LASSERT(osd_invariant(obj));
         LASSERT(dt_object_exists(dt));
 
-        down(&obj->oo_guard);
+        cfs_mutex_down(&obj->oo_guard);
         rc = udmu_xattr_list(&osd->od_objset, obj->oo_db,
                               buf->lb_buf, buf->lb_len);
-        up(&obj->oo_guard);
+        cfs_mutex_up(&obj->oo_guard);
 
         RETURN(rc);
 
@@ -2000,14 +2001,14 @@ static int capa_is_sane(const struct lu_env *env,
                 RETURN(rc);
         }
 
-        spin_lock(&capa_lock);
+        cfs_spin_lock(&capa_lock);
         for (i = 0; i < 2; i++) {
                 if (keys[i].lk_keyid == capa->lc_keyid) {
                         oti->oti_capa_key = keys[i];
                         break;
                 }
         }
-        spin_unlock(&capa_lock);
+        cfs_spin_unlock(&capa_lock);
 
         if (i == 2) {
                 DEBUG_CAPA(D_ERROR, capa, "no matched capa key");
@@ -2105,9 +2106,9 @@ static struct obd_capa *osd_capa_get(const struct lu_env *env,
                 RETURN(oc);
         }
 
-        spin_lock(&capa_lock);
+        cfs_spin_lock(&capa_lock);
         *key = dev->od_capa_keys[1];
-        spin_unlock(&capa_lock);
+        cfs_spin_unlock(&capa_lock);
 
         capa->lc_keyid = key->lk_keyid;
         capa->lc_expiry = cfs_time_current_sec() + dev->od_capa_timeout;
@@ -2695,7 +2696,7 @@ static struct lu_device *osd_device_alloc(const struct lu_env *env,
                         l = osd2lu_dev(o);
                         l->ld_ops = &osd_lu_ops;
                         o->od_dt_dev.dd_ops = &osd_dt_ops;
-                        spin_lock_init(&o->od_osfs_lock);
+                        cfs_spin_lock_init(&o->od_osfs_lock);
                         o->od_osfs_age = cfs_time_shift_64(-1000);
                         /* XXX: mount here */
                         /* XXX: relocate osd_device_init() here */

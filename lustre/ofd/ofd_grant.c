@@ -72,7 +72,7 @@ void filter_grant_sanity_check(struct obd_device *obd, const char *func)
         obd_size tot_dirty = 0, tot_pending = 0, tot_granted = 0;
         obd_size fo_tot_dirty, fo_tot_pending, fo_tot_granted;
 
-        if (list_empty(&obd->obd_exports))
+        if (cfs_list_empty(&obd->obd_exports))
                 return;
 
         /* We don't want to do this for large machines that do lots of
@@ -80,9 +80,9 @@ void filter_grant_sanity_check(struct obd_device *obd, const char *func)
         if (obd->obd_num_exports > 100)
                 return;
 
-        mutex_down(&ofd->ofd_grant_sem);
-        spin_lock(&obd->obd_dev_lock);
-        list_for_each_entry(exp, &obd->obd_exports, exp_obd_chain) {
+        cfs_mutex_down(&ofd->ofd_grant_sem);
+        cfs_spin_lock(&obd->obd_dev_lock);
+        cfs_list_for_each_entry(exp, &obd->obd_exports, exp_obd_chain) {
                 int error = 0;
                 fed = &exp->exp_filter_data;
                 if (fed->fed_grant < 0 || fed->fed_pending < 0 ||
@@ -113,8 +113,8 @@ void filter_grant_sanity_check(struct obd_device *obd, const char *func)
         fo_tot_granted = ofd->ofd_tot_granted;
         fo_tot_pending = ofd->ofd_tot_pending;
         fo_tot_dirty = ofd->ofd_tot_dirty;
-        spin_unlock(&obd->obd_dev_lock);
-        mutex_up(&ofd->ofd_grant_sem);
+        cfs_spin_unlock(&obd->obd_dev_lock);
+        cfs_mutex_up(&ofd->ofd_grant_sem);
 
         /* Do these assertions outside the spinlocks so we don't kill system */
         if (tot_granted != fo_tot_granted)
@@ -148,10 +148,10 @@ void filter_grant_discard(struct obd_export *exp)
         struct filter_device *ofd = filter_exp(exp);
         struct filter_export_data *fed = &exp->exp_filter_data;
 
-        mutex_down(&ofd->ofd_grant_sem);
-        spin_lock(&obd->obd_dev_lock);
-        list_del_init(&exp->exp_obd_chain);
-        spin_unlock(&obd->obd_dev_lock);
+        cfs_mutex_down(&ofd->ofd_grant_sem);
+        cfs_spin_lock(&obd->obd_dev_lock);
+        cfs_list_del_init(&exp->exp_obd_chain);
+        cfs_spin_unlock(&obd->obd_dev_lock);
 
         LASSERTF(ofd->ofd_tot_granted >= fed->fed_grant,
                  "%s: tot_granted "LPU64" cli %s/%p fed_grant %ld\n",
@@ -170,7 +170,7 @@ void filter_grant_discard(struct obd_export *exp)
         ofd->ofd_tot_dirty -= fed->fed_dirty;
         fed->fed_dirty = 0;
         fed->fed_grant = 0;
-        mutex_up(&ofd->ofd_grant_sem);
+        cfs_mutex_up(&ofd->ofd_grant_sem);
 }
 
 /* 
@@ -252,7 +252,7 @@ void filter_grant_incoming(const struct lu_env *env, struct obd_export *exp,
                 CERROR("%s: cli %s/%p dirty %ld pend %ld grant %ld\n",
                        obd->obd_name, exp->exp_client_uuid.uuid, exp,
                        fed->fed_dirty, fed->fed_pending, fed->fed_grant);
-                mutex_up(&ofd->ofd_grant_sem);
+                cfs_mutex_up(&ofd->ofd_grant_sem);
                 LBUG();
         }
         EXIT;
@@ -277,7 +277,7 @@ obd_size filter_grant_space_left(const struct lu_env *env,
         LASSERT_SEM_LOCKED(&ofd->ofd_grant_sem);
 
         if (cfs_time_before_64(obd->obd_osfs_age,
-                               cfs_time_current_64() - HZ)) {
+                               cfs_time_current_64() - CFS_HZ)) {
 restat:
                 dt_statfs(env, ofd->ofd_osd, &info->fti_u.ksfs);
                 statfs_pack(&obd->obd_osfs, &info->fti_u.ksfs);
@@ -377,7 +377,7 @@ int filter_grant_client_calc(struct obd_export *exp, obd_size *left,
                 CERROR("%s: cli %s/%p dirty %ld pend %ld grant %ld\n",
                        obd->obd_name, exp->exp_client_uuid.uuid, exp,
                        fed->fed_dirty, fed->fed_pending, fed->fed_grant);
-                mutex_up(&ofd->ofd_grant_sem);
+                cfs_mutex_up(&ofd->ofd_grant_sem);
                 LBUG();
         }
         PRINTK_GRANTS(ofd, fed);
@@ -501,7 +501,7 @@ long _filter_grant(const struct lu_env *env, struct obd_export *exp,
                                "current"LPU64"\n", obd->obd_name,
                                 exp->exp_client_uuid.uuid, exp,
                                 fed->fed_grant, want, curgrant);
-                        mutex_up(&ofd->ofd_grant_sem);
+                        cfs_mutex_up(&ofd->ofd_grant_sem);
                         LBUG();
                 }
         }
@@ -545,7 +545,7 @@ void filter_grant_commit(struct obd_export *exp, int niocount,
         unsigned long pending = 0;
         int i;
 
-        mutex_down(&ofd->ofd_grant_sem);
+        cfs_mutex_down(&ofd->ofd_grant_sem);
         for (i = 0, lnb = res; i < niocount; i++, lnb++)
                 pending += lnb->lnb_grant_used;
 
@@ -565,7 +565,7 @@ void filter_grant_commit(struct obd_export *exp, int niocount,
                  ofd->ofd_tot_pending, pending);
         ofd->ofd_tot_pending -= pending;
 
-        mutex_up(&ofd->ofd_grant_sem);
+        cfs_mutex_up(&ofd->ofd_grant_sem);
         PRINTK_GRANTS(ofd, fed);
 }
 

@@ -63,6 +63,7 @@ static int mgs_export_stats_init(struct obd_device *obd, struct obd_export *exp,
 {
         lnet_nid_t *client_nid = localdata;
         int rc, newnid;
+        ENTRY;
 
         rc = lprocfs_exp_setup(exp, client_nid, &newnid);
         if (rc) {
@@ -70,24 +71,26 @@ static int mgs_export_stats_init(struct obd_device *obd, struct obd_export *exp,
                  * /proc entries */
                 if (rc == -EALREADY)
                         rc = 0;
-                return rc;
+                RETURN(rc);
         }
 
-        if ((obd->md_stats == NULL) &&
-            (rc = lprocfs_alloc_md_stats(obd, LPROC_MGS_LAST)))
-                return rc;
         if (newnid) {
                 /* Always add in ldlm_stats */
                 exp->exp_nid_stats->nid_ldlm_stats =
-                        lprocfs_alloc_stats(LDLM_LAST_OPC - LDLM_FIRST_OPC, 
+                        lprocfs_alloc_stats(LDLM_LAST_OPC - LDLM_FIRST_OPC,
                                             LPROCFS_STATS_FLAG_NOPERCPU);
                 if (exp->exp_nid_stats->nid_ldlm_stats == NULL)
-                        return -ENOMEM;
+                        GOTO(clean, rc = -ENOMEM);
                 lprocfs_init_ldlm_stats(exp->exp_nid_stats->nid_ldlm_stats);
                 rc = lprocfs_register_stats(exp->exp_nid_stats->nid_proc,
                                             "ldlm_stats",
                                             exp->exp_nid_stats->nid_ldlm_stats);
+                if (rc)
+                        GOTO(clean, rc);
         }
+        RETURN(0);
+clean:
+        lprocfs_exp_cleanup(exp);
         return rc;
 }
 
@@ -152,7 +155,8 @@ static struct dentry *mgs_fid2dentry(struct mgs_obd *mgs,
                 /* we didn't find the right inode.. */
                 CDEBUG(D_INODE, "found wrong generation: inode %lu, link: %lu, "
                        "count: %d, generation %u/%u\n", inode->i_ino,
-                       (unsigned long)inode->i_nlink, atomic_read(&inode->i_count),
+                       (unsigned long)inode->i_nlink,
+                       atomic_read(&inode->i_count),
                        inode->i_generation, gen);
                 l_dput(result);
                 RETURN(ERR_PTR(-ENOENT));
@@ -181,7 +185,7 @@ int mgs_fs_setup(struct obd_device *obd, struct vfsmount *mnt)
         ENTRY;
 
         /* FIXME what's this?  Do I need it? */
-        rc = cleanup_group_info();
+        rc = cfs_cleanup_group_info();
         if (rc)
                 RETURN(rc);
 

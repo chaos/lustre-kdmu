@@ -65,7 +65,7 @@
 
 /* object cache. */
 cfs_mem_cache_t *lmv_object_cache;
-atomic_t lmv_object_count = ATOMIC_INIT(0);
+cfs_atomic_t lmv_object_count = CFS_ATOMIC_INIT(0);
 
 static void lmv_activate_target(struct lmv_obd *lmv,
                                 struct lmv_tgt_desc *tgt,
@@ -97,7 +97,7 @@ static int lmv_set_mdc_active(struct lmv_obd *lmv, struct obd_uuid *uuid,
         CDEBUG(D_INFO, "Searching in lmv %p for uuid %s (activate=%d)\n",
                lmv, uuid->uuid, activate);
 
-        spin_lock(&lmv->lmv_lock);
+        cfs_spin_lock(&lmv->lmv_lock);
         for (i = 0, tgt = lmv->tgts; i < lmv->desc.ld_tgt_count; i++, tgt++) {
                 if (tgt->ltd_exp == NULL)
                         continue;
@@ -133,7 +133,7 @@ static int lmv_set_mdc_active(struct lmv_obd *lmv, struct obd_uuid *uuid,
         EXIT;
 
  out_lmv_lock:
-        spin_unlock(&lmv->lmv_lock);
+        cfs_spin_unlock(&lmv->lmv_lock);
         return rc;
 }
 
@@ -146,7 +146,7 @@ static int lmv_set_mdc_data(struct lmv_obd *lmv, struct obd_uuid *uuid,
 
         LASSERT(data != NULL);
 
-        spin_lock(&lmv->lmv_lock);
+        cfs_spin_lock(&lmv->lmv_lock);
         for (i = 0, tgt = lmv->tgts; i < lmv->desc.ld_tgt_count; i++, tgt++) {
                 if (tgt->ltd_exp == NULL)
                         continue;
@@ -156,7 +156,7 @@ static int lmv_set_mdc_data(struct lmv_obd *lmv, struct obd_uuid *uuid,
                         break;
                 }
         }
-        spin_unlock(&lmv->lmv_lock);
+        cfs_spin_unlock(&lmv->lmv_lock);
         RETURN(0);
 }
 
@@ -463,22 +463,20 @@ int lmv_connect_mdc(struct obd_device *obd, struct lmv_tgt_desc *tgt)
 
         CDEBUG(D_CONFIG, "Connected to %s(%s) successfully (%d)\n",
                 mdc_obd->obd_name, mdc_obd->obd_uuid.uuid,
-                atomic_read(&obd->obd_refcount));
+                cfs_atomic_read(&obd->obd_refcount));
 
 #ifdef __KERNEL__
         lmv_proc_dir = lprocfs_srch(obd->obd_proc_entry, "target_obds");
         if (lmv_proc_dir) {
                 struct proc_dir_entry *mdc_symlink;
-                char name[MAX_STRING_SIZE + 1];
 
                 LASSERT(mdc_obd->obd_type != NULL);
                 LASSERT(mdc_obd->obd_type->typ_name != NULL);
-                name[MAX_STRING_SIZE] = '\0';
-                snprintf(name, MAX_STRING_SIZE, "../../../%s/%s",
-                         mdc_obd->obd_type->typ_name,
-                         mdc_obd->obd_name);
-                mdc_symlink = proc_symlink(mdc_obd->obd_name,
-                                           lmv_proc_dir, name);
+                mdc_symlink = lprocfs_add_symlink(mdc_obd->obd_name,
+                                                  lmv_proc_dir,
+                                                  "../../../%s/%s",
+                                                  mdc_obd->obd_type->typ_name,
+                                                  mdc_obd->obd_name);
                 if (mdc_symlink == NULL) {
                         CERROR("Could not register LMV target "
                                "/proc/fs/lustre/%s/%s/target_obds/%s.",
@@ -527,18 +525,18 @@ int lmv_add_target(struct obd_device *obd, struct obd_uuid *tgt_uuid)
                         CERROR("lmv failed to setup llogging subsystems\n");
                 }
         }
-        spin_lock(&lmv->lmv_lock);
+        cfs_spin_lock(&lmv->lmv_lock);
         tgt = lmv->tgts + lmv->desc.ld_tgt_count++;
         tgt->ltd_uuid = *tgt_uuid;
-        spin_unlock(&lmv->lmv_lock);
+        cfs_spin_unlock(&lmv->lmv_lock);
 
         if (lmv->connected) {
                 rc = lmv_connect_mdc(obd, tgt);
                 if (rc) {
-                        spin_lock(&lmv->lmv_lock);
+                        cfs_spin_lock(&lmv->lmv_lock);
                         lmv->desc.ld_tgt_count--;
                         memset(tgt, 0, sizeof(*tgt));
-                        spin_unlock(&lmv->lmv_lock);
+                        cfs_spin_unlock(&lmv->lmv_lock);
                 } else {
                         int easize = sizeof(struct lmv_stripe_md) +
                                      lmv->desc.ld_tgt_count *
@@ -753,13 +751,14 @@ static int lmv_iocontrol(unsigned int cmd, struct obd_export *exp,
                         RETURN(-EINVAL);
 
                 rc = obd_statfs(mdc_obd, &stat_buf,
-                                cfs_time_current_64() - HZ, 0);
+                                cfs_time_current_64() - CFS_HZ, 0);
                 if (rc)
                         RETURN(rc);
-                if (copy_to_user(data->ioc_pbuf1, &stat_buf, data->ioc_plen1))
+                if (cfs_copy_to_user(data->ioc_pbuf1, &stat_buf,
+                                     data->ioc_plen1))
                         RETURN(-EFAULT);
-                if (copy_to_user(data->ioc_pbuf2, obd2cli_tgt(mdc_obd),
-                                  data->ioc_plen2))
+                if (cfs_copy_to_user(data->ioc_pbuf2, obd2cli_tgt(mdc_obd),
+                                     data->ioc_plen2))
                         RETURN(-EFAULT);
                 break;
         }
@@ -976,7 +975,7 @@ int __lmv_fid_alloc(struct lmv_obd *lmv, struct lu_fid *fid,
          * New seq alloc and FLD setup should be atomic. Otherwise we may find
          * on server that seq in new allocated fid is not yet known.
          */
-        down(&tgt->ltd_fid_sem);
+        cfs_down(&tgt->ltd_fid_sem);
 
         if (!tgt->ltd_active)
                 GOTO(out, rc = -ENODEV);
@@ -992,7 +991,7 @@ int __lmv_fid_alloc(struct lmv_obd *lmv, struct lu_fid *fid,
 
         EXIT;
 out:
-        up(&tgt->ltd_fid_sem);
+        cfs_up(&tgt->ltd_fid_sem);
         return rc;
 }
 
@@ -1063,7 +1062,7 @@ static int lmv_setup(struct obd_device *obd, struct lustre_cfg *lcfg)
                 RETURN(-ENOMEM);
 
         for (i = 0; i < LMV_MAX_TGT_COUNT; i++) {
-                sema_init(&lmv->tgts[i].ltd_fid_sem, 1);
+                cfs_sema_init(&lmv->tgts[i].ltd_fid_sem, 1);
                 lmv->tgts[i].ltd_idx = i;
         }
 
@@ -1081,8 +1080,8 @@ static int lmv_setup(struct obd_device *obd, struct lustre_cfg *lcfg)
         lmv->max_easize = 0;
         lmv->lmv_placement = PLACEMENT_CHAR_POLICY;
 
-        spin_lock_init(&lmv->lmv_lock);
-        sema_init(&lmv->init_sem, 1);
+        cfs_spin_lock_init(&lmv->lmv_lock);
+        cfs_sema_init(&lmv->init_sem, 1);
 
         rc = lmv_object_setup(obd);
         if (rc) {
@@ -1969,8 +1968,8 @@ repeat:
         CDEBUG(D_INODE, "Forward to mds #%x ("DFID")\n",
                mds, PFID(&op_data->op_fid1));
 
-        op_data->op_fsuid = current->fsuid;
-        op_data->op_fsgid = current->fsgid;
+        op_data->op_fsuid = cfs_curproc_fsuid();
+        op_data->op_fsgid = cfs_curproc_fsgid();
         op_data->op_cap = cfs_curproc_cap_pack();
         tgt = lmv_get_target(lmv, mds);
 
@@ -2063,8 +2062,8 @@ repeat:
                         RETURN(rc);
         }
 
-        op_data->op_fsuid = current->fsuid;
-        op_data->op_fsgid = current->fsgid;
+        op_data->op_fsuid = cfs_curproc_fsuid();
+        op_data->op_fsgid = cfs_curproc_fsgid();
         op_data->op_cap = cfs_curproc_cap_pack();
 
         src_tgt = lmv_get_target(lmv, mds1);
@@ -2452,8 +2451,8 @@ repeat:
                 op_data->op_bias |= MDS_CHECK_SPLIT;
         }
 
-        op_data->op_fsuid = current->fsuid;
-        op_data->op_fsgid = current->fsgid;
+        op_data->op_fsuid = cfs_curproc_fsuid();
+        op_data->op_fsgid = cfs_curproc_fsgid();
         op_data->op_cap = cfs_curproc_cap_pack();
 
         /*
@@ -3043,7 +3042,7 @@ int __init lmv_init(void)
 
         lprocfs_lmv_init_vars(&lvars);
 
-        request_module("lquota");
+        cfs_request_module("lquota");
         quota_interface = PORTAL_SYMBOL_GET(lmv_quota_interface);
         init_obd_quota_ops(quota_interface, &lmv_obd_ops);
 
@@ -3066,9 +3065,9 @@ static void lmv_exit(void)
 
         class_unregister_type(LUSTRE_LMV_NAME);
 
-        LASSERTF(atomic_read(&lmv_object_count) == 0,
+        LASSERTF(cfs_atomic_read(&lmv_object_count) == 0,
                  "Can't free lmv objects cache, %d object(s) busy\n",
-                 atomic_read(&lmv_object_count));
+                 cfs_atomic_read(&lmv_object_count));
         cfs_mem_cache_destroy(lmv_object_cache);
 }
 

@@ -489,9 +489,9 @@ static int mdd_path_current(const struct lu_env *env,
         /* Verify that our path hasn't changed since we started the lookup.
            Record the current index, and verify the path resolves to the
            same fid. If it does, then the path is correct as of this index. */
-        spin_lock(&mdd->mdd_cl.mc_lock);
+        cfs_spin_lock(&mdd->mdd_cl.mc_lock);
         pli->pli_currec = mdd->mdd_cl.mc_index;
-        spin_unlock(&mdd->mdd_cl.mc_lock);
+        cfs_spin_unlock(&mdd->mdd_cl.mc_lock);
         rc = mdd_path2fid(env, mdd, ptr, &pli->pli_fid);
         if (rc) {
                 CDEBUG(D_INFO, "mdd_path2fid(%s) failed %d\n", ptr, rc);
@@ -722,12 +722,14 @@ static int __mdd_lma_get(const struct lu_env *env, struct mdd_object *mdd_obj,
                         ma->ma_hsm_flags = 0;
                 ma->ma_valid |= MA_HSM;
         }
-        if (ma->ma_need & MA_SOM) {
 
-                /* XXX: Here, copy and swab SoM data, and then remove this
-                 * assert. */
-                LASSERT(!(ma->ma_need & MA_SOM));
-
+        /* Copy SOM */
+        if (ma->ma_need & MA_SOM && lma->lma_compat & LMAC_SOM) {
+                LASSERT(ma->ma_som != NULL);
+                ma->ma_som->msd_ioepoch = lma->lma_ioepoch;
+                ma->ma_som->msd_size    = lma->lma_som_size;
+                ma->ma_som->msd_blocks  = lma->lma_som_blocks;
+                ma->ma_som->msd_mountid = lma->lma_som_mountid;
                 ma->ma_valid |= MA_SOM;
         }
 
@@ -1012,7 +1014,7 @@ static int mdd_fix_attr(const struct lu_env *env, struct mdd_object *obj,
                         struct lu_attr *la, const struct md_attr *ma)
 {
         struct lu_attr   *tmp_la     = &mdd_env_info(env)->mti_la;
-        struct md_ucred  *uc         = md_ucred(env);
+        struct md_ucred  *uc;
         int               rc;
         ENTRY;
 
@@ -1026,6 +1028,13 @@ static int mdd_fix_attr(const struct lu_env *env, struct mdd_object *obj,
         /* They should not be processed by setattr */
         if (la->la_valid & (LA_NLINK | LA_RDEV | LA_BLKSIZE))
                 RETURN(-EPERM);
+
+        /* export destroy does not have ->le_ses, but we may want
+         * to drop LUSTRE_SOM_FL. */
+        if (!env->le_ses)
+                RETURN(0);
+
+        uc = md_ucred(env);
 
         rc = mdd_la_get(env, obj, tmp_la, BYPASS_CAPA);
         if (rc)
@@ -1102,7 +1111,7 @@ static int mdd_fix_attr(const struct lu_env *env, struct mdd_object *obj,
                     !mdd_capable(uc, CFS_CAP_FOWNER))
                         RETURN(-EPERM);
 
-                if (la->la_mode == (umode_t) -1)
+                if (la->la_mode == (cfs_umode_t) -1)
                         la->la_mode = tmp_la->la_mode;
                 else
                         la->la_mode = (la->la_mode & S_IALLUGO) |
@@ -1316,15 +1325,15 @@ static int __mdd_lma_set(const struct lu_env *env, struct mdd_object *mdd_obj,
 
         ENTRY;
 
-        memset(lma, 0, lmasize);
-
         /* Either HSM or SOM part is not valid, we need to read it before */
         if ((!ma->ma_valid) & (MA_HSM | MA_SOM)) {
                 rc = mdd_get_md(env, mdd_obj, lma, &lmasize, XATTR_NAME_LMA);
-                if (rc)
+                if (rc <= 0)
                         RETURN(rc);
 
                 lustre_lma_swab(lma);
+        } else {
+                memset(lma, 0, lmasize);
         }
 
         /* Copy HSM data */
@@ -1332,12 +1341,19 @@ static int __mdd_lma_set(const struct lu_env *env, struct mdd_object *mdd_obj,
                 lma->lma_flags  |= ma->ma_hsm_flags & HSM_FLAGS_MASK;
                 lma->lma_compat |= LMAC_HSM;
         }
-        /* XXX: Copy SOM data */
+
+        /* Copy SOM data */
         if (ma->ma_valid & MA_SOM) {
-                /*
-                lma->lma_compat |= LMAC_SOM;
-                */
-                LASSERT(!(ma->ma_valid & MA_SOM));
+                LASSERT(ma->ma_som != NULL);
+                if (ma->ma_som->msd_ioepoch == IOEPOCH_INVAL) {
+                        lma->lma_compat     &= ~LMAC_SOM;
+                } else {
+                        lma->lma_compat     |= LMAC_SOM;
+                        lma->lma_ioepoch     = ma->ma_som->msd_ioepoch;
+                        lma->lma_som_size    = ma->ma_som->msd_size;
+                        lma->lma_som_blocks  = ma->ma_som->msd_blocks;
+                        lma->lma_som_mountid = ma->ma_som->msd_mountid;
+                }
         }
 
         /* Copy FID */
@@ -1380,7 +1396,6 @@ static int mdd_attr_set(const struct lu_env *env, struct md_object *obj,
         int  rc;
 #ifdef HAVE_QUOTA_SUPPORT
         struct obd_device *obd = mdd->mdd_obd_dev;
-        struct obd_export *exp = md_quota(env)->mq_exp;
         struct mds_obd *mds = &obd->u.mds;
         unsigned int qnids[MAXQUOTAS] = { 0, 0 };
         unsigned int qoids[MAXQUOTAS] = { 0, 0 };
@@ -1413,6 +1428,7 @@ static int mdd_attr_set(const struct lu_env *env, struct md_object *obj,
 
 #ifdef HAVE_QUOTA_SUPPORT
         if (mds->mds_quota && la_copy->la_valid & (LA_UID | LA_GID)) {
+                struct obd_export *exp = md_quota(env)->mq_exp;
                 struct lu_attr *la_tmp = &mdd_env_info(env)->mti_la;
 
                 rc = mdd_la_get(env, mdd_obj, la_tmp, BYPASS_CAPA);
@@ -1449,7 +1465,7 @@ static int mdd_attr_set(const struct lu_env *env, struct md_object *obj,
         }
 
         if (rc == 0 && ma->ma_valid & MA_LOV) {
-                umode_t mode;
+                cfs_umode_t mode;
 
                 mode = mdd_object_type(mdd_obj);
                 if (S_ISREG(mode) || S_ISDIR(mode)) {
@@ -1463,7 +1479,7 @@ static int mdd_attr_set(const struct lu_env *env, struct md_object *obj,
 
         }
         if (rc == 0 && ma->ma_valid & (MA_HSM | MA_SOM)) {
-                umode_t mode;
+                cfs_umode_t mode;
 
                 mode = mdd_object_type(mdd_obj);
                 if (S_ISREG(mode))

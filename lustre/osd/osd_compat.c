@@ -39,8 +39,6 @@
  *
  */
 
-#include <linux/module.h>
-
 /* LUSTRE_VERSION_CODE */
 #include <lustre_ver.h>
 /* prerequisite for linux/xattr.h */
@@ -72,7 +70,7 @@
 #include <lvfs.h>
 
 struct osd_compat_objid_group {
-        struct semaphore       dir_init_sem; /* protects on-fly initialization */
+        cfs_semaphore_t        dir_init_sem; /* protects on-fly initialization */
         struct osd_inode_id    last_id;      /* file storing last created objid */
         struct dentry         *groot;        /* O/<group> */
         struct dentry        **dirs;         /* O/<group>/d0-dXX */
@@ -134,7 +132,7 @@ int osd_ost_init(struct osd_device *dev)
         /* XXX: to be initialized from last_rcvd */
         dev->od_ost_map->subdir_count = 32;
         for (i = 0; i < MAX_OBJID_GROUP; i++)
-                sema_init(&dev->od_ost_map->groups[i].dir_init_sem, 1);
+                cfs_sema_init(&dev->od_ost_map->groups[i].dir_init_sem, 1);
 
         LASSERT(dev->od_fsops);
 
@@ -330,9 +328,9 @@ int osd_compat_load_group(struct osd_device *osd, int group)
         if (map->groups[group].groot != NULL)
                 RETURN(0);
 
-        down(&map->groups[group].dir_init_sem);
+        cfs_down(&map->groups[group].dir_init_sem);
         rc = __osd_compat_load_group(osd, group);
-        up(&map->groups[group].dir_init_sem);
+        cfs_up(&map->groups[group].dir_init_sem);
 
         RETURN(rc);
 }
@@ -352,7 +350,7 @@ int osd_compat_load_or_make_group(struct osd_device *osd, int group)
         if (map->groups[group].groot != NULL)
                 RETURN(0);
 
-        down(&map->groups[group].dir_init_sem);
+        cfs_down(&map->groups[group].dir_init_sem);
 
         rc = __osd_compat_load_group(osd, group);
 
@@ -371,7 +369,7 @@ int osd_compat_load_or_make_group(struct osd_device *osd, int group)
                 }
         }
 
-        up(&map->groups[group].dir_init_sem);
+        cfs_up(&map->groups[group].dir_init_sem);
 
         RETURN(rc);
 }
@@ -429,9 +427,9 @@ int osd_compat_load_dir(struct osd_device *osd, int group, int dirn)
         if (grp->dirs[dirn] != NULL)
                 RETURN(0);
 
-        down(&grp->dir_init_sem);
+        cfs_down(&grp->dir_init_sem);
         rc = __osd_compat_load_dir(osd, group, dirn);
-        up(&grp->dir_init_sem);
+        cfs_up(&grp->dir_init_sem);
 
         RETURN(rc);
 }
@@ -456,7 +454,7 @@ int osd_compat_load_or_make_dir(struct osd_device *osd, int group, int dirn)
         if (grp->dirs[dirn] != NULL)
                 RETURN(0);
 
-        down(&grp->dir_init_sem);
+        cfs_down(&grp->dir_init_sem);
 
         rc = __osd_compat_load_dir(osd, group, dirn);
 
@@ -474,7 +472,7 @@ int osd_compat_load_or_make_dir(struct osd_device *osd, int group, int dirn)
                 }
         }
 
-        up(&grp->dir_init_sem);
+        cfs_up(&grp->dir_init_sem);
 
         RETURN(rc);
 }

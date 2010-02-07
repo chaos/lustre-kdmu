@@ -112,12 +112,12 @@ static int filter_parse_connect_data(const struct lu_env *env,
         if (exp->exp_connect_flags & OBD_CONNECT_GRANT) {
                 obd_size left, want;
 
-                mutex_down(&ofd->ofd_grant_sem);
+                cfs_mutex_down(&ofd->ofd_grant_sem);
                 left = filter_grant_space_left(env, exp);
                 want = data->ocd_grant;
                 filter_grant(env, exp, fed->fed_grant, want, left);
                 data->ocd_grant = fed->fed_grant;
-                mutex_up(&ofd->ofd_grant_sem);
+                cfs_mutex_up(&ofd->ofd_grant_sem);
 
                 CDEBUG(D_CACHE, "%s: cli %s/%p ocd_grant: %d want: "
                        LPU64" left: "LPU64"\n", exp->exp_obd->obd_name,
@@ -327,11 +327,11 @@ static void filter_revimp_update(struct obd_export *exp)
 
 static int filter_init_export(struct obd_export *exp)
 {
-        spin_lock_init(&exp->exp_filter_data.fed_lock);
+        cfs_spin_lock_init(&exp->exp_filter_data.fed_lock);
         CFS_INIT_LIST_HEAD(&exp->exp_filter_data.fed_mod_list);
-        spin_lock(&exp->exp_lock);
+        cfs_spin_lock(&exp->exp_lock);
         exp->exp_connecting = 1;
-        spin_unlock(&exp->exp_lock);
+        cfs_spin_unlock(&exp->exp_lock);
 
         return ldlm_init_export(exp);
 }
@@ -426,10 +426,10 @@ static int filter_adapt_sptlrpc_conf(struct obd_device *obd, int initial)
 
         sptlrpc_target_update_exp_flavor(obd, &tmp_rset);
 
-        write_lock(&filter->fo_sptlrpc_lock);
+        cfs_write_lock(&filter->fo_sptlrpc_lock);
         sptlrpc_rule_set_free(&filter->fo_sptlrpc_rset);
         filter->fo_sptlrpc_rset = tmp_rset;
-        write_unlock(&filter->fo_sptlrpc_lock);
+        cfs_write_unlock(&filter->fo_sptlrpc_lock);
 
         return 0;
 }
@@ -477,9 +477,9 @@ static int filter_set_info_async(struct obd_export *exp, __u32 keylen,
         if (KEY_IS(KEY_GRANT_SHRINK)) {
                 struct ost_body *body = (struct ost_body *)val;
                 /* handle shrink grant */
-                mutex_down(&ofd->ofd_grant_sem);
+                cfs_mutex_down(&ofd->ofd_grant_sem);
                 filter_grant_incoming(&env, exp, &body->oa);
-                mutex_up(&ofd->ofd_grant_sem);
+                cfs_mutex_up(&ofd->ofd_grant_sem);
                 GOTO(out, rc = 0);
         }
 
@@ -493,11 +493,11 @@ static int filter_set_info_async(struct obd_export *exp, __u32 keylen,
         if (val != NULL) {
                 group = (int)(*(__u32 *)val);
                 LASSERT(group >= FILTER_GROUP_MDS0);
-                sema_init(&ofd->ofd_create_locks[group], 1);
-                spin_lock(&ofd->ofd_objid_lock);
+                cfs_sema_init(&ofd->ofd_create_locks[group], 1);
+                cfs_spin_lock(&ofd->ofd_objid_lock);
                 if (group > ofd->ofd_max_group)
                         ofd->ofd_max_group = group;
-                spin_unlock(&ofd->ofd_objid_lock);
+                cfs_spin_unlock(&ofd->ofd_objid_lock);
         } else {
                 /* XXX: protocol incompatibility 1.6 vs. 1.8 */
                 group = 0;
@@ -567,14 +567,14 @@ static int filter_get_info(struct obd_export *exp, __u32 keylen, void *key,
         }
 
         if (KEY_IS("FLAVOR")) {
-                read_lock(&ofd->ofd_sptlrpc_lock);
+                cfs_read_lock(&ofd->ofd_sptlrpc_lock);
                 LBUG();
 #if 0
                 sptlrpc_rule_set_choose(&ofd->ofd_sptlrpc_rset,
                                         exp->exp_sp_peer,
                                         exp->exp_connection->c_peer.nid,
                                         &exp->exp_flvr);
-                read_unlock(&ofd->ofd_sptlrpc_lock);
+                cfs_read_unlock(&ofd->ofd_sptlrpc_lock);
 #endif
                 RETURN(0);
         }
@@ -902,7 +902,7 @@ static int filter_orphans_destroy(const struct lu_env *env,
         LASSERT(exp != NULL);
         skip_orphan = !!(exp->exp_connect_flags & OBD_CONNECT_SKIP_ORPHAN);
 
-        //LASSERT(mutex_try_down(&ofd->ofd_create_locks[gr]) != 0);
+        //LASSERT(cfs_mutex_try_down(&ofd->ofd_create_locks[gr]) != 0);
 
         last = filter_last_id(ofd, gr);
         CWARN("%s: deleting orphan objects from "LPU64" to "LPU64"\n",
@@ -980,9 +980,9 @@ static int filter_create(struct obd_export *exp,
                         GOTO(out, rc = 0);
                 }
                 /* This causes inflight precreates to abort and drop lock */
-                set_bit(group, &ofd->ofd_destroys_in_progress);
-                mutex_down(&ofd->ofd_create_locks[group]);
-                if (!test_bit(group, &ofd->ofd_destroys_in_progress)) {
+                cfs_set_bit(group, &ofd->ofd_destroys_in_progress);
+                cfs_mutex_down(&ofd->ofd_create_locks[group]);
+                if (!cfs_test_bit(group, &ofd->ofd_destroys_in_progress)) {
                         CERROR("%s:["LPU64"] destroys_in_progress already cleared\n",
                                exp->exp_obd->obd_name, group);
                         GOTO(out, rc = 0);
@@ -995,13 +995,13 @@ static int filter_create(struct obd_export *exp,
                         rc = 0;
                 } else if (diff < 0) {
                         rc = filter_orphans_destroy(&env, exp, ofd, oa);
-                        clear_bit(group, &ofd->ofd_destroys_in_progress);
+                        cfs_clear_bit(group, &ofd->ofd_destroys_in_progress);
                 } else {
                         /* XXX: Used by MDS for the first time! */
-                        clear_bit(group, &ofd->ofd_destroys_in_progress);
+                        cfs_clear_bit(group, &ofd->ofd_destroys_in_progress);
                 }
         } else {
-                mutex_down(&ofd->ofd_create_locks[group]);
+                cfs_mutex_down(&ofd->ofd_create_locks[group]);
                 if (oti->oti_conn_cnt < exp->exp_conn_cnt) {
                         CERROR("%s: dropping old precreate request\n",
                                filter_obd(ofd)->obd_name);
@@ -1043,7 +1043,7 @@ static int filter_create(struct obd_export *exp,
 
         filter_info2oti(info, oti);
 out:
-        mutex_up(&ofd->ofd_create_locks[group]);
+        cfs_mutex_up(&ofd->ofd_create_locks[group]);
         lu_env_fini(&env);
         return rc;
 }

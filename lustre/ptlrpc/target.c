@@ -42,6 +42,103 @@
 #include <obd.h>
 #include <lustre_fsfilt.h>
 /**
+ * Update client data in last_rcvd file. An obd API
+ */
+static int obt_client_data_update(struct obd_export *exp)
+{
+        struct lu_export_data *led = &exp->exp_target_data;
+        struct obd_device_target *obt = &exp->exp_obd->u.obt;
+        loff_t off = led->led_lr_off;
+        int rc = 0;
+
+        rc = fsfilt_write_record(exp->exp_obd, obt->obt_rcvd_filp,
+                                 led->led_lcd, sizeof(*led->led_lcd), &off, 0);
+
+        CDEBUG(D_INFO, "update client idx %u last_epoch %#x (%#x)\n",
+               led->led_lr_idx, le32_to_cpu(led->led_lcd->lcd_last_epoch),
+               le32_to_cpu(obt->obt_lsd->lsd_start_epoch));
+
+        return rc;
+}
+
+/**
+ * Update server data in last_rcvd file. An obd API
+ */
+int obt_server_data_update(struct obd_device *obd, int force_sync)
+{
+        struct obd_device_target *obt = &obd->u.obt;
+        loff_t off = 0;
+        int rc;
+        ENTRY;
+
+        CDEBUG(D_SUPER,
+               "%s: mount_count is "LPU64", last_transno is "LPU64"\n",
+               obt->obt_lsd->lsd_uuid,
+               le64_to_cpu(obt->obt_lsd->lsd_mount_count),
+               le64_to_cpu(obt->obt_lsd->lsd_last_transno));
+
+        rc = fsfilt_write_record(obd, obt->obt_rcvd_filp, obt->obt_lsd,
+                                 sizeof(*obt->obt_lsd), &off, force_sync);
+        if (rc)
+                CERROR("error writing lr_server_data: rc = %d\n", rc);
+
+        RETURN(rc);
+}
+
+/**
+ * Update client epoch with server's one
+ */
+void obt_client_epoch_update(struct obd_export *exp)
+{
+        struct lsd_client_data *lcd = exp->exp_target_data.led_lcd;
+        struct obd_device_target *obt = &exp->exp_obd->u.obt;
+
+        /** VBR: set client last_epoch to current epoch */
+        if (le32_to_cpu(lcd->lcd_last_epoch) >=
+            le32_to_cpu(obt->obt_lsd->lsd_start_epoch))
+                return;
+        lcd->lcd_last_epoch = obt->obt_lsd->lsd_start_epoch;
+        obt_client_data_update(exp);
+}
+
+/**
+ * Increment server epoch. An obd API
+ */
+static void obt_boot_epoch_update(struct obd_device *obd)
+{
+        __u32 start_epoch;
+        struct obd_device_target *obt = &obd->u.obt;
+        struct ptlrpc_request *req;
+        cfs_list_t client_list;
+
+        cfs_spin_lock(&obt->obt_translock);
+        start_epoch = lr_epoch(le64_to_cpu(obt->obt_last_transno)) + 1;
+        obt->obt_last_transno = cpu_to_le64((__u64)start_epoch <<
+                                            LR_EPOCH_BITS);
+        obt->obt_lsd->lsd_start_epoch = cpu_to_le32(start_epoch);
+        cfs_spin_unlock(&obt->obt_translock);
+
+        CFS_INIT_LIST_HEAD(&client_list);
+        cfs_spin_lock_bh(&obd->obd_processing_task_lock);
+        cfs_list_splice_init(&obd->obd_final_req_queue, &client_list);
+        cfs_spin_unlock_bh(&obd->obd_processing_task_lock);
+
+        /**
+         * go through list of exports participated in recovery and
+         * set new epoch for them
+         */
+        cfs_list_for_each_entry(req, &client_list, rq_list) {
+                LASSERT(!req->rq_export->exp_delayed);
+                obt_client_epoch_update(req->rq_export);
+        }
+        /** return list back at once */
+        cfs_spin_lock_bh(&obd->obd_processing_task_lock);
+        cfs_list_splice_init(&client_list, &obd->obd_final_req_queue);
+        cfs_spin_unlock_bh(&obd->obd_processing_task_lock);
+        obt_server_data_update(obd, 1);
+}
+
+/**
  * write data in last_rcvd file.
  */
 static int lut_last_rcvd_write(const struct lu_env *env, struct lu_target *lut,
@@ -117,9 +214,9 @@ static int lut_server_data_update(const struct lu_env *env,
                lut->lut_lsd.lsd_uuid, lut->lut_mount_count,
                lut->lut_last_transno);
 
-        spin_lock(&lut->lut_translock);
+        cfs_spin_lock(&lut->lut_translock);
         lut->lut_lsd.lsd_last_transno = lut->lut_last_transno;
-        spin_unlock(&lut->lut_translock);
+        cfs_spin_unlock(&lut->lut_translock);
 
         lsd_cpu_to_le(&lut->lut_lsd, &tmp_lsd);
         if (lut->lut_last_rcvd != NULL)
@@ -148,7 +245,7 @@ void lut_boot_epoch_update(struct lu_target *lut)
         struct lu_env env;
         struct ptlrpc_request *req;
         __u32 start_epoch;
-        struct list_head client_list;
+        cfs_list_t client_list;
         int rc;
 
         if (lut->lut_obd->obd_stopping)
@@ -162,34 +259,34 @@ void lut_boot_epoch_update(struct lu_target *lut)
                 return;
         }
 
-        spin_lock(&lut->lut_translock);
+        cfs_spin_lock(&lut->lut_translock);
         start_epoch = lr_epoch(lut->lut_last_transno) + 1;
         lut->lut_last_transno = (__u64)start_epoch << LR_EPOCH_BITS;
         lut->lut_lsd.lsd_start_epoch = start_epoch;
-        spin_unlock(&lut->lut_translock);
+        cfs_spin_unlock(&lut->lut_translock);
 
         CFS_INIT_LIST_HEAD(&client_list);
         /**
          * The recovery is not yet finished and final queue can still be updated
          * with resend requests. Move final list to separate one for processing
          */
-        spin_lock_bh(&lut->lut_obd->obd_processing_task_lock);
-        list_splice_init(&lut->lut_obd->obd_final_req_queue, &client_list);
-        spin_unlock_bh(&lut->lut_obd->obd_processing_task_lock);
+        cfs_spin_lock_bh(&lut->lut_obd->obd_processing_task_lock);
+        cfs_list_splice_init(&lut->lut_obd->obd_final_req_queue, &client_list);
+        cfs_spin_unlock_bh(&lut->lut_obd->obd_processing_task_lock);
 
         /**
          * go through list of exports participated in recovery and
          * set new epoch for them
          */
-        list_for_each_entry(req, &client_list, rq_list) {
+        cfs_list_for_each_entry(req, &client_list, rq_list) {
                 LASSERT(!req->rq_export->exp_delayed);
                 if (!req->rq_export->exp_vbr_failed)
                         lut_client_epoch_update(&env, lut, req->rq_export);
         }
         /** return list back at once */
-        spin_lock_bh(&lut->lut_obd->obd_processing_task_lock);
-        list_splice_init(&client_list, &lut->lut_obd->obd_final_req_queue);
-        spin_unlock_bh(&lut->lut_obd->obd_processing_task_lock);
+        cfs_spin_lock_bh(&lut->lut_obd->obd_processing_task_lock);
+        cfs_list_splice_init(&client_list, &lut->lut_obd->obd_final_req_queue);
+        cfs_spin_unlock_bh(&lut->lut_obd->obd_processing_task_lock);
         /** update server epoch */
         lut_server_data_update(&env, lut, 1);
         lu_env_fini(&env);
@@ -203,18 +300,18 @@ void lut_cb_last_committed(struct lu_target *lut, __u64 transno,
                            void *data, int err)
 {
         struct obd_export *exp = data;
-
-        spin_lock(&lut->lut_translock);
+        LASSERT(exp->exp_obd == lut->lut_obd);
+        cfs_spin_lock(&lut->lut_translock);
         if (transno > lut->lut_obd->obd_last_committed)
                 lut->lut_obd->obd_last_committed = transno;
 
         LASSERT(exp);
         if (transno > exp->exp_last_committed) {
                 exp->exp_last_committed = transno;
-                spin_unlock(&lut->lut_translock);
+                cfs_spin_unlock(&lut->lut_translock);
                 ptlrpc_commit_replies(exp);
         } else {
-                spin_unlock(&lut->lut_translock);
+                cfs_spin_unlock(&lut->lut_translock);
         }
         class_export_cb_put(exp);
         if (transno)
@@ -241,9 +338,9 @@ int lut_init(const struct lu_env *env, struct lu_target *lut,
 
         lut->lut_obd = obd;
 
-        spin_lock_init(&lut->lut_translock);
-        spin_lock_init(&lut->lut_client_bitmap_lock);
-        spin_lock_init(&lut->lut_trans_table_lock);
+        cfs_spin_lock_init(&lut->lut_translock);
+        cfs_spin_lock_init(&lut->lut_client_bitmap_lock);
+        cfs_spin_lock_init(&lut->lut_trans_table_lock);
 
         /** obdfilter has no lu_device stack yet */
         if (dt == NULL)
@@ -276,9 +373,9 @@ int lut_init2(const struct lu_env *env, struct lu_target *lut,
 
         lut->lut_obd = obd;
 
-        spin_lock_init(&lut->lut_translock);
-        spin_lock_init(&lut->lut_client_bitmap_lock);
-        spin_lock_init(&lut->lut_trans_table_lock);
+        cfs_spin_lock_init(&lut->lut_translock);
+        cfs_spin_lock_init(&lut->lut_client_bitmap_lock);
+        cfs_spin_lock_init(&lut->lut_trans_table_lock);
 
         /** obdfilter has no lu_device stack yet */
         if (dt == NULL)

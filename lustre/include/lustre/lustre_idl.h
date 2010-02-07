@@ -287,10 +287,16 @@ struct lustre_mdt_attrs {
         __u32   lma_incompat;
         /** FID of this inode */
         struct lu_fid  lma_self_fid;
-        /** SOM state, mdt/ost type, others */
+        /** mdt/ost type, others */
         __u64   lma_flags;
-        /** total sectors in objects */
-        __u64   lma_som_sectors;
+        /* IO Epoch SOM attributes belongs to */
+        __u64   lma_ioepoch;
+        /** total file size in objects */
+        __u64   lma_som_size;
+        /** total fs blocks in objects */
+        __u64   lma_som_blocks;
+        /** mds mount id the size is valid for */
+        __u64   lma_som_mountid;
 };
 
 /**
@@ -304,13 +310,16 @@ static inline void lustre_lma_init(struct lustre_mdt_attrs *lma,
         lma->lma_incompat    = 0;
         memcpy(&lma->lma_self_fid, fid, sizeof(*fid));
         lma->lma_flags       = 0;
-        lma->lma_som_sectors = 0;
+        lma->lma_ioepoch     = 0;
+        lma->lma_som_size    = 0;
+        lma->lma_som_blocks  = 0;
+        lma->lma_som_mountid = 0;
 
         /* If a field is added in struct lustre_mdt_attrs, zero it explicitly
          * and change the test below. */
         LASSERT(sizeof(*lma) ==
-                (offsetof(struct lustre_mdt_attrs, lma_som_sectors) +
-                 sizeof(lma->lma_som_sectors)));
+                (offsetof(struct lustre_mdt_attrs, lma_som_mountid) +
+                 sizeof(lma->lma_som_mountid)));
 };
 
 extern void lustre_swab_lu_fid(struct lu_fid *fid);
@@ -327,7 +336,10 @@ static inline void lustre_lma_swab(struct lustre_mdt_attrs *lma)
                 __swab32s(&lma->lma_incompat);
                 lustre_swab_lu_fid(&lma->lma_self_fid);
                 __swab64s(&lma->lma_flags);
-                __swab64s(&lma->lma_som_sectors);
+                __swab64s(&lma->lma_ioepoch);
+                __swab64s(&lma->lma_som_size);
+                __swab64s(&lma->lma_som_blocks);
+                __swab64s(&lma->lma_som_mountid);
         }
 };
 
@@ -924,7 +936,7 @@ enum obdo_flags {
         OBD_FL_NO_USRQUOTA  = 0x00000100, /* the object's owner is over quota */
         OBD_FL_NO_GRPQUOTA  = 0x00000200, /* the object's group is over quota */
         OBD_FL_CREATE_CROW  = 0x00000400, /* object should be create on write */
-        OBD_FL_TRUNCLOCK    = 0x00000800, /* delegate DLM locking during punch*/
+        OBD_FL_SRVLOCK      = 0x00000800, /* delegate DLM locking to server */
         OBD_FL_CKSUM_CRC32  = 0x00001000, /* CRC32 checksum type */
         OBD_FL_CKSUM_ADLER  = 0x00002000, /* ADLER checksum type */
         OBD_FL_CKSUM_RSVD1  = 0x00004000, /* for future cksum types */
@@ -1027,7 +1039,7 @@ struct lov_mds_md_v3 {            /* LOV EA mds/wire data (little-endian) */
 #define OBD_MD_FLCOOKIE    (0x00800000ULL) /* log cancellation cookie */
 #define OBD_MD_FLGROUP     (0x01000000ULL) /* group */
 #define OBD_MD_FLFID       (0x02000000ULL) /* ->ost write inline fid */
-#define OBD_MD_FLEPOCH     (0x04000000ULL) /* ->ost write easize is epoch */
+#define OBD_MD_FLEPOCH     (0x04000000ULL) /* ->ost write with ioepoch */
                                            /* ->mds if epoch opens or closes */
 #define OBD_MD_FLGRANT     (0x08000000ULL) /* ost preallocation space grant */
 #define OBD_MD_FLDIREA     (0x10000000ULL) /* dir's extended attribute data */
@@ -1048,7 +1060,8 @@ struct lov_mds_md_v3 {            /* LOV EA mds/wire data (little-endian) */
 #define OBD_MD_FLOSSCAPA   (0x0000040000000000ULL) /* OSS capability */
 #define OBD_MD_FLCKSPLIT   (0x0000080000000000ULL) /* Check split on server */
 #define OBD_MD_FLCROSSREF  (0x0000100000000000ULL) /* Cross-ref case */
-
+#define OBD_MD_FLGETATTRLOCK (0x0000200000000000ULL) /* Get IOEpoch attributes
+                                                      * under lock */
 #define OBD_FL_TRUNC       (0x0000200000000000ULL) /* for filter_truncate */
 
 #define OBD_MD_FLRMTLSETFACL    (0x0001000000000000ULL) /* lfs lsetfacl case */
@@ -1235,10 +1248,13 @@ enum md_op_flags {
         MF_MDC_CANCEL_FID2      = (1 << 4),
         MF_MDC_CANCEL_FID3      = (1 << 5),
         MF_MDC_CANCEL_FID4      = (1 << 6),
+        /* There is a pending attribute update. */
+        MF_SOM_AU               = (1 << 7),
+        /* Cancel OST locks while getattr OST attributes. */
+        MF_GETATTR_LOCK         = (1 << 8),
 };
 
-#define MF_SOM_LOCAL_FLAGS (MF_MDC_CANCEL_FID1 | MF_MDC_CANCEL_FID2 | \
-                            MF_MDC_CANCEL_FID3 | MF_MDC_CANCEL_FID4)
+#define MF_SOM_LOCAL_FLAGS (MF_SOM_CHANGE | MF_EPOCH_OPEN | MF_EPOCH_CLOSE)
 
 #define MDS_BFLAG_UNCOMMITTED_WRITES   0x1
 #define MDS_BFLAG_EXT_FLAGS     0x80000000 /* == EXT3_RESERVED_FL */
@@ -1364,14 +1380,14 @@ struct mdt_body {
 
 extern void lustre_swab_mdt_body (struct mdt_body *b);
 
-struct mdt_epoch {
+struct mdt_ioepoch {
         struct lustre_handle handle;
         __u64  ioepoch;
         __u32  flags;
         __u32  padding;
 };
 
-extern void lustre_swab_mdt_epoch (struct mdt_epoch *b);
+extern void lustre_swab_mdt_ioepoch (struct mdt_ioepoch *b);
 
 #define Q_QUOTACHECK    0x800100
 #define Q_INITQUOTA     0x800101        /* init slave limits */
@@ -1530,8 +1546,11 @@ extern void lustre_swab_mdt_rec_setattr (struct mdt_rec_setattr *sa);
 #define FMODE_WRITE              00000002
 #endif
 
+/* IO Epoch is opened on a closed file. */
 #define FMODE_EPOCH              01000000
-#define FMODE_EPOCHLCK           02000000
+/* IO Epoch is opened on a file truncate. */
+#define FMODE_TRUNC              02000000
+/* Size-on-MDS Attribute Update is pending. */
 #define FMODE_SOM                04000000
 #define FMODE_CLOSED             0
 
@@ -2338,8 +2357,7 @@ struct obdo {
         obd_count               o_nlink;        /* brw: checksum */
         obd_count               o_generation;
         obd_count               o_misc;         /* brw: o_dropped */
-        __u32                   o_easize;       /* epoch in ost writes */
-        __u32                   o_mds;
+        __u64                   o_ioepoch;      /* epoch in ost writes */
         __u32                   o_stripe_idx;   /* holds stripe idx */
         __u32                   o_padding_1;
         struct lustre_handle    o_handle;       /* brw: lock handle to prolong locks */

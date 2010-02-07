@@ -1,18 +1,84 @@
 tbd  Sun Microsystems, Inc.
        * version 2.0.0
-       * Support for kernels:
-        2.6.16.60-0.39.3 (SLES 10),
-        2.6.18-164.6.1.el5 (RHEL 5),
-        2.6.18-164.6.1.0.1.el5 (OEL 5),
-        2.6.27.19-5 (SLES11)
-        2.6.27 vanilla (kernel.org).
+       * Server support for kernels:
+         2.6.18-164.11.1.el5 (RHEL 5)
+         2.6.18-164.11.1.0.1.el5 (OEL 5)
        * Client support for unpatched kernels:
 	 (see http://wiki.lustre.org/index.php?title=Patchless_Client)
-	 2.6.16 - 2.6.27 vanilla (kernel.org)
+         2.6.18-164.11.1.el5 (RHEL 5),
+         2.6.18-164.11.1.0.1.el5 (OEL 5)
+         2.6.16.60-0.42.8 (SLES 10),
+         2.6.27.19-5 (SLES11)
        * Recommended e2fsprogs version: 1.41.6.sun1
        * Note that reiserfs quotas are disabled on SLES 10 in this kernel.
-       * RHEL 4 and RHEL 5/SLES 10 clients behaves differently on 'cd' to a
-	 removed cwd "./" (refer to Bugzilla 14399).
+
+
+Severity   : normal
+Bugzilla   : 21632
+Description: Update RHEL5.4 kernel to 2.6.18-164.11.1.el5 and
+	     OEL5.4 kernel to 2.6.18-164.11.1.0.1.el5.
+
+Severity   : normal
+Bugzilla   : 20057
+Description: New acc-sm script and various test-framework enhancments.
+
+Severity   : normal
+Bugzilla   : 15962
+Description: Previously landed patch was reverted.
+
+Severity   : normal
+Bugzilla   : 20758
+Description: Update SLES10 kernel to 2.6.16.60-0.42.8 (patchless)
+
+Severity   : normal
+Bugzilla   : 19673
+Description: Add ldiskfs maxdirsize mount option.
+
+Severity   : normal
+Bugzilla   : 20301
+Description: Fix mkfs.lustre support for 16TB LUNs.
+
+Severity   : normal
+Bugzilla   : 21547
+Description: Add cascading_rw to lustre mpi tests.
+
+Severity   : normal
+Bugzilla   : 19964
+Description: Store SOM data in EA.
+Details    : Also several SOM related cleanups.
+
+Severity   : normal
+Bugzilla   : 20098
+Description: Add refcount to md_open_data
+
+Severity   : normal
+Bugzilla   : 20607
+Description: Use refcount on lov_request_set to prevent memory corruption.
+
+Severity   : normal
+Bugzilla   : 15692
+Description: Statahead: use parent dir's i_mutex for synchronization.
+
+Severity   : normal
+Bugzilla   : 21571
+Description: loadgen improvements.
+
+Severity   : normal
+Bugzilla   : 16186
+Description: Enable peer health detection in ksocklnd and ko2iblnd.
+
+Severity   : normal
+Bugzilla   : 17545
+Description: Control DCACHE_LUSTRE_INVALID flag with MDS_INODE_LOOKCUP lock
+
+Severity   : normal
+Bugzilla   : 21591
+Description: Fix race on obd_devcie:md_stats
+
+Severity   : normal
+Bugzilla   : 21600
+Description: Fix SLES 11 client builds.
+Details    : Resolved uninitalized pointer gcc warnings.
 
 Severity   : normal
 Bugzilla   : 21513
@@ -43,12 +109,6 @@ Description: drop join file stuff.
 Severity   : enhancement
 Bugzilla   : 14250
 Description: Add 2.6.27 and SLES11 (patchless client) support
-
-Severity   : enhancement
-Bugzilla   : 19325
-Description: Adjust locks' extents on their first enqueue, so that at the time
-             they get granted, there is no need for another pass through the
-             queues since they are already shaped into the proper forms.
 
 Severity   : normal
 Bugzilla   : 20302
@@ -129,7 +189,7 @@ Severity   : normal
 Bugzilla   : 14951
 Description: Improved cleanup procedure for conf-sanity test_46a.
 
-Severity   : normal 
+Severity   : normal
 Bugzilla   : 18674
 Description: Do not start bulk transfer, if client tried to reconnect.
 Details    : Do not start bulk transfer, if client tried to reconnect,
@@ -146,7 +206,7 @@ Severity   : enhancement
 Bugzilla   : 19955
 Description: provide server to client comms path
 Details    : server to client communications path via new LDLM_SET_INFO rpc
-	
+
 Severity   : normal
 Bugzilla   : 20008
 Description: truncate starts GFP_FS allocation under transaction causing deadlock

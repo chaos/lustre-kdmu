@@ -10,7 +10,7 @@ set -e
 
 ONLY=${ONLY:-"$*"}
 # bug number for skipped test: 13297 2108 9789 3637 9789 3561 12622 12653 12653 5188 16260 19742 
-ALWAYS_EXCEPT="                27u   42a  42b  42c  42d  45   51d   65a   65e   68b  119d  130 $SANITY_EXCEPT"
+ALWAYS_EXCEPT="                27u   42a  42b  42c  42d  45   51d   65a   65e   68b  119d $SANITY_EXCEPT"
 # bug number for skipped test: 2108 9789 3637 9789 3561 5188/5749 1443
 #ALWAYS_EXCEPT=${ALWAYS_EXCEPT:-"27m 42a 42b 42c 42d 45 68 76"}
 # UPDATE THE COMMENT ABOVE WITH BUG NUMBERS WHEN CHANGING ALWAYS_EXCEPT!
@@ -84,8 +84,9 @@ LUSTRE=${LUSTRE:-$(cd $(dirname $0)/..; echo $PWD)}
 . $LUSTRE/tests/test-framework.sh
 init_test_env $@
 . ${CONFIG:=$LUSTRE/tests/cfg/${NAME}.sh}
+init_logging
 
-[ "$SLOW" = "no" ] && EXCEPT_SLOW="24o 24v 27m 36f 36g 51b 51c 60c 63 64b 68 71 73 77f 78 101 103 115 120g 124b"
+[ "$SLOW" = "no" ] && EXCEPT_SLOW="24o 24v 27m 36f 36g 36h 51b 51c 60c 63 64b 68 71 73 77f 78 101 103 115 120g 124b"
 
 SANITYLOG=${TESTSUITELOG:-$TMP/$(basename $0 .sh).log}
 FAIL_ON_ERROR=false
@@ -996,7 +997,7 @@ test_27m() {
 run_test 27m "create file while OST0 was full =================="
 
 sleep_maxage() {
-        local DELAY=$(do_facet mds lctl get_param -n lov.*.qos_maxage | head -n 1 | awk '{print $1 + 5}')
+        local DELAY=$(do_facet mds lctl get_param -n lov.*.qos_maxage | head -n 1 | awk '{print $1 * 2}')
         sleep $DELAY
 }
 
@@ -1250,6 +1251,12 @@ test_27y() {
         [ "$OSTCOUNT" -lt "2" ] && skip_env "$OSTCOUNT < 2 OSTs -- skipping" && return
         remote_mds_nodsh && skip "remote MDS with nodsh" && return
 
+        local last_id=$(do_facet $SINGLEMDS lctl get_param -n osc.*0000-osc-MDT0000.prealloc_last_id)
+        local next_id=$(do_facet $SINGLEMDS lctl get_param -n osc.*0000-osc-MDT0000.prealloc_next_id)
+        local fcount=$((last_id - next_id))
+        [ $fcount -eq 0 ] && skip "not enough space on OST0" && return
+        [ $fcount -gt $OSTCOUNT ] && fcount=$OSTCOUNT
+
         MDS_OSCS=`do_facet mds lctl dl | awk '/[oO][sS][cC].*md[ts]/ { print $4 }'`
         OFFSET=$(($OSTCOUNT-1))
         OST=-1
@@ -1268,7 +1275,7 @@ test_27y() {
 
         do_facet ost$OSTIDX lctl set_param -n obdfilter.$OST.degraded 1
         sleep_maxage
-        createmany -o $DIR/$tdir/$tfile $OSTCOUNT
+        createmany -o $DIR/$tdir/$tfile $fcount
         do_facet ost$OSTIDX lctl set_param -n obdfilter.$OST.degraded 0
 
         for i in `seq 0 $OFFSET`; do
@@ -1835,15 +1842,15 @@ test_36e() {
 }
 run_test 36e "utime on non-owned file (should return error) ===="
 
-test_36f() {
+subr_36fh() {
+	local fl="$1"
 	local LANG_SAVE=$LANG
 	local LC_LANG_SAVE=$LC_LANG
 	export LANG=C LC_LANG=C # for date language
 
 	DATESTR="Dec 20  2000"
 	mkdir -p $DIR/$tdir
-	#define OBD_FAIL_OST_BRW_PAUSE_BULK 0x214
-	lctl set_param fail_loc=0x80000214
+	lctl set_param fail_loc=$fl
 	date; date +%s
 	cp /etc/hosts $DIR/$tdir/$tfile
 	sync & # write RPC generated with "current" inode timestamp, but delayed
@@ -1861,6 +1868,11 @@ test_36f() {
 
 	export LANG=$LANG_SAVE LC_LANG=$LC_LANG_SAVE
 }
+
+test_36f() {
+	#define OBD_FAIL_OST_BRW_PAUSE_BULK 0x214
+	subr_36fh "0x80000214"
+}
 run_test 36f "utime on file racing with OST BRW write =========="
 
 test_36g() {
@@ -1877,6 +1889,12 @@ test_36g() {
 		error "fmd didn't expire after ping" || true
 }
 run_test 36g "filter mod data cache expiry ====================="
+
+test_36h() {
+	#define OBD_FAIL_OST_BRW_PAUSE_BULK2 0x227
+	subr_36fh "0x80000227"
+}
+run_test 36h "utime on file racing with OST BRW write =========="
 
 test_37() {
 	mkdir -p $DIR/$tdir
@@ -4342,7 +4360,7 @@ test_103 () {
 }
 run_test 103 "acl test ========================================="
 
-test_104() {
+test_104a() {
 	touch $DIR/$tfile
 	lfs df || error "lfs df failed"
 	lfs df -ih || error "lfs df -ih failed"
@@ -4358,7 +4376,18 @@ test_104() {
 	lfs df || error "lfs df with reactivated OSC failed"
 	rm -f $DIR/$tfile
 }
-run_test 104 "lfs df [-ih] [path] test ========================="
+run_test 104a "lfs df [-ih] [path] test ========================="
+
+test_104b() {
+	[ $RUNAS_ID -eq $UID ] && skip_env "RUNAS_ID = UID = $UID -- skipping" && return
+	chmod 666 /dev/obd
+	denied_cnt=$((`$RUNAS $LFS check servers 2>&1 | grep "Permission denied" | wc -l`))
+	if [ $denied_cnt -ne 0 ];
+	then
+	            error "lfs check servers test failed"
+	fi
+}
+run_test 104b "$RUNAS lfs check servers test ===================="
 
 test_105a() {
 	# doesn't work on 2.4 kernels
@@ -5940,8 +5969,11 @@ test_132() { #1028, SOM
         stat $DIR/$tfile >/dev/null
         gl2=$(get_ost_param "ldlm_glimpse_enqueue")
         echo "====> SOM is "$som1", "$((gl2 - gl1))" glimpse RPC occured"
-        cancel_lru_locks osc
+        rm $DIR/$tfile
         som_mode_switch $som1 $gl1 $gl2
+
+        dd if=/dev/zero of=$DIR/$tfile count=1 2>/dev/null
+        cancel_lru_locks osc
 
         som2=$(do_facet $mymds "$LCTL get_param mdt.*.som" |  awk -F= ' {print $2}' | head -n 1)
         if [ $som1 == $som2 ]; then

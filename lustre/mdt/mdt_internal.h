@@ -84,7 +84,7 @@ struct mdt_object;
 /* file data for open files on MDS */
 struct mdt_file_data {
         struct portals_handle mfd_handle; /* must be first */
-        struct list_head      mfd_list;   /* protected by med_open_lock */
+        cfs_list_t            mfd_list;   /* protected by med_open_lock */
         __u64                 mfd_xid;    /* xid of the open request */
         struct lustre_handle  mfd_old_handle; /* old handle in replay case */
         int                   mfd_mode;   /* open mode provided by client */
@@ -129,8 +129,8 @@ struct mdt_device {
         /* mdt state flags */
         __u32                      mdt_fl_cfglog:1,
                                    mdt_fl_synced:1;
-        /* lock to pretect epoch and write count */
-        spinlock_t                 mdt_ioepoch_lock;
+        /* lock to protect IOepoch */
+        cfs_spinlock_t             mdt_ioepoch_lock;
         __u64                      mdt_ioepoch;
 
         /* transaction callbacks */
@@ -144,7 +144,7 @@ struct mdt_device {
         struct upcall_cache        *mdt_identity_cache;
 
         /* sptlrpc rules */
-        rwlock_t                   mdt_sptlrpc_lock;
+        cfs_rwlock_t               mdt_sptlrpc_lock;
         struct sptlrpc_rule_set    mdt_sptlrpc_rset;
 
         /* capability keys */
@@ -162,10 +162,10 @@ struct mdt_device {
         /* root squash */
         uid_t                      mdt_squash_uid;
         gid_t                      mdt_squash_gid;
-        struct list_head           mdt_nosquash_nids;
+        cfs_list_t                 mdt_nosquash_nids;
         char                      *mdt_nosquash_str;
         int                        mdt_nosquash_strlen;
-        struct rw_semaphore        mdt_squash_sem;
+        cfs_rw_semaphore_t         mdt_squash_sem;
 
         cfs_proc_dir_entry_t      *mdt_proc_entry;
         struct lprocfs_stats      *mdt_stats;
@@ -191,8 +191,28 @@ struct mdt_object {
         struct md_object        mot_obj;
         __u64                   mot_ioepoch;
         __u64                   mot_flags;
-        int                     mot_epochcount;
+        int                     mot_ioepoch_count;
         int                     mot_writecount;
+        /* Lock to protect object's IO epoch. */
+        cfs_semaphore_t        mot_ioepoch_sem;
+};
+
+enum mdt_object_flags {
+        /** SOM attributes are changed. */
+        MOF_SOM_CHANGE  = (1 << 0),
+        /**
+         * The SOM recovery state for mdt object.
+         * This state is an in-memory equivalent of an absent SOM EA, used
+         * instead of invalidating SOM EA while IOEpoch is still opened when
+         * a client eviction occurs or a client fails to obtain SOM attributes.
+         * It indicates that the last IOEpoch holder will need to obtain SOM
+         * attributes under [0;EOF] extent lock to flush all the client's
+         * cached of evicted from MDS clients (but not necessary evicted from
+         * OST) before taking ost attributes.
+         */
+        MOF_SOM_RECOV   = (1 << 1),
+        /** File has been just created. */
+        MOF_SOM_CREATED = (1 << 2),
 };
 
 struct mdt_lock_handle {
@@ -352,17 +372,21 @@ struct mdt_thread_info {
                 struct obd_uuid    uuid[2];       /* for mdt_seq_init_cli()  */
                 char               ns_name[48];   /* for mdt_init0()         */
                 struct lustre_cfg_bufs bufs;      /* for mdt_stack_fini()    */
-                struct kstatfs     ksfs;          /* for mdt_statfs()        */
+                cfs_kstatfs_t      ksfs;          /* for mdt_statfs()        */
                 struct {
                         /* for mdt_readpage()      */
                         struct lu_rdpg     mti_rdpg;
                         /* for mdt_sendpage()      */
                         struct l_wait_info mti_wait_info;
                 } rdpg;
+                struct {
+                        struct md_attr attr;
+                        struct md_som_data data;
+                } som;
         } mti_u;
 
         /* IO epoch related stuff. */
-        struct mdt_epoch          *mti_epoch;
+        struct mdt_ioepoch        *mti_ioepoch;
         __u64                      mti_replayepoch;
 
         /* server and client data buffers */
@@ -523,8 +547,6 @@ void mdt_object_unlock_put(struct mdt_thread_info *,
 int mdt_close_unpack(struct mdt_thread_info *info);
 int mdt_reint_unpack(struct mdt_thread_info *info, __u32 op);
 int mdt_reint_rec(struct mdt_thread_info *, struct mdt_lock_handle *);
-void mdt_pack_size2body(struct mdt_thread_info *info,
-                        struct mdt_object *o);
 void mdt_pack_attr2body(struct mdt_thread_info *info, struct mdt_body *b,
                         const struct lu_attr *attr, const struct lu_fid *fid);
 
@@ -572,17 +594,30 @@ int mdt_reint_open(struct mdt_thread_info *info,
 
 struct mdt_file_data *mdt_handle2mfd(struct mdt_thread_info *,
                                      const struct lustre_handle *);
-int mdt_epoch_open(struct mdt_thread_info *info, struct mdt_object *o);
-void mdt_sizeonmds_enable(struct mdt_thread_info *info, struct mdt_object *mo);
-int mdt_sizeonmds_enabled(struct mdt_object *mo);
-int mdt_write_get(struct mdt_device *mdt, struct mdt_object *o);
-int mdt_write_read(struct mdt_device *mdt, struct mdt_object *o);
+
+enum {
+        MDT_IOEPOCH_CLOSED  = 0,
+        MDT_IOEPOCH_OPENED  = 1,
+        MDT_IOEPOCH_GETATTR = 2,
+};
+
+enum {
+        MDT_SOM_DISABLE = 0,
+        MDT_SOM_ENABLE  = 1,
+};
+
+int mdt_ioepoch_open(struct mdt_thread_info *info, struct mdt_object *o,
+                     int created);
+int mdt_object_is_som_enabled(struct mdt_object *mo);
+int mdt_write_get(struct mdt_object *o);
+void mdt_write_put(struct mdt_object *o);
+int mdt_write_read(struct mdt_object *o);
 struct mdt_file_data *mdt_mfd_new(void);
 int mdt_mfd_close(struct mdt_thread_info *info, struct mdt_file_data *mfd);
 void mdt_mfd_free(struct mdt_file_data *mfd);
 int mdt_close(struct mdt_thread_info *info);
 int mdt_attr_set(struct mdt_thread_info *info, struct mdt_object *mo,
-                 int flags);
+                 struct md_attr *ma, int flags);
 int mdt_done_writing(struct mdt_thread_info *info);
 void mdt_shrink_reply(struct mdt_thread_info *info);
 int mdt_handle_last_unlink(struct mdt_thread_info *, struct mdt_object *,

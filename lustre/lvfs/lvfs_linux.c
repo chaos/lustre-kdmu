@@ -67,7 +67,7 @@
 __u64 obd_max_pages = 0;
 __u64 obd_max_alloc = 0;
 struct lprocfs_stats *obd_memory = NULL;
-spinlock_t obd_updatemax_lock = SPIN_LOCK_UNLOCKED;
+cfs_spinlock_t obd_updatemax_lock = CFS_SPIN_LOCK_UNLOCKED;
 /* refine later and change to seqlock or simlar from libcfs */
 
 /* Debugging check only needed during development */
@@ -89,9 +89,13 @@ static void push_group_info(struct lvfs_run_ctxt *save,
                 save->ngroups = current_ngroups;
                 current_ngroups = 0;
         } else {
+                struct cred *cred;
                 task_lock(current);
-                save->group_info = current->group_info;
-                current->group_info = ginfo;
+                save->group_info = current_cred()->group_info;
+                if ((cred = prepare_creds())) {
+                        cred->group_info = ginfo;
+                        commit_creds(cred);
+                }
                 task_unlock(current);
         }
 }
@@ -102,8 +106,12 @@ static void pop_group_info(struct lvfs_run_ctxt *save,
         if (!ginfo) {
                 current_ngroups = save->ngroups;
         } else {
+                struct cred *cred;
                 task_lock(current);
-                current->group_info = save->group_info;
+                if ((cred = prepare_creds())) {
+                        cred->group_info = save->group_info;
+                        commit_creds(cred);
+                }
                 task_unlock(current);
         }
 }
@@ -117,12 +125,12 @@ void push_ctxt(struct lvfs_run_ctxt *save, struct lvfs_run_ctxt *new_ctx,
         OBD_SET_CTXT_MAGIC(save);
 
         save->fs = get_fs();
-        LASSERT(atomic_read(&cfs_fs_pwd(current->fs)->d_count));
-        LASSERT(atomic_read(&new_ctx->pwd->d_count));
+        LASSERT(cfs_atomic_read(&cfs_fs_pwd(current->fs)->d_count));
+        LASSERT(cfs_atomic_read(&new_ctx->pwd->d_count));
         save->pwd = dget(cfs_fs_pwd(current->fs));
         save->pwdmnt = mntget(cfs_fs_mnt(current->fs));
         save->luc.luc_umask = current->fs->umask;
-        save->ngroups = current->group_info->ngroups;
+        save->ngroups = current_cred()->group_info->ngroups;
 
         LASSERT(save->pwd);
         LASSERT(save->pwdmnt);
@@ -130,17 +138,21 @@ void push_ctxt(struct lvfs_run_ctxt *save, struct lvfs_run_ctxt *new_ctx,
         LASSERT(new_ctx->pwdmnt);
 
         if (uc) {
-                save->luc.luc_uid = current->uid;
-                save->luc.luc_gid = current->gid;
-                save->luc.luc_fsuid = current->fsuid;
-                save->luc.luc_fsgid = current->fsgid;
-                save->luc.luc_cap = current->cap_effective;
+                struct cred *cred;
+                save->luc.luc_uid = current_uid();
+                save->luc.luc_gid = current_gid();
+                save->luc.luc_fsuid = current_fsuid();
+                save->luc.luc_fsgid = current_fsgid();
+                save->luc.luc_cap = current_cap();
 
-                current->uid = uc->luc_uid;
-                current->gid = uc->luc_gid;
-                current->fsuid = uc->luc_fsuid;
-                current->fsgid = uc->luc_fsgid;
-                current->cap_effective = uc->luc_cap;
+                if ((cred = prepare_creds())) {
+                        cred->uid = uc->luc_uid;
+                        cred->gid = uc->luc_gid;
+                        cred->fsuid = uc->luc_fsuid;
+                        cred->fsgid = uc->luc_fsgid;
+                        cred->cap_effective = uc->luc_cap;
+                        commit_creds(cred);
+                }
 
                 push_group_info(save,
                                 uc->luc_ginfo ?:
@@ -171,11 +183,16 @@ void pop_ctxt(struct lvfs_run_ctxt *saved, struct lvfs_run_ctxt *new_ctx,
         mntput(saved->pwdmnt);
         current->fs->umask = saved->luc.luc_umask;
         if (uc) {
-                current->uid = saved->luc.luc_uid;
-                current->gid = saved->luc.luc_gid;
-                current->fsuid = saved->luc.luc_fsuid;
-                current->fsgid = saved->luc.luc_fsgid;
-                current->cap_effective = saved->luc.luc_cap;
+                struct cred *cred;
+                if ((cred = prepare_creds())) {
+                        cred->uid = saved->luc.luc_uid;
+                        cred->gid = saved->luc.luc_gid;
+                        cred->fsuid = saved->luc.luc_fsuid;
+                        cred->fsgid = saved->luc.luc_fsgid;
+                        cred->cap_effective = saved->luc.luc_cap;
+                        commit_creds(cred);
+                }
+
                 pop_group_info(saved,
                                uc->luc_ginfo ?:
                                uc->luc_identity ? uc->luc_identity->mi_ginfo :
@@ -367,7 +384,7 @@ struct l_file *l_dentry_open(struct lvfs_run_ctxt *ctxt, struct l_dentry *de,
                              int flags)
 {
         mntget(ctxt->pwdmnt);
-        return dentry_open(de, ctxt->pwdmnt, flags);
+        return ll_dentry_open(de, ctxt->pwdmnt, flags, current_cred());
 }
 EXPORT_SYMBOL(l_dentry_open);
 
@@ -391,7 +408,7 @@ static int l_filldir(void *__buf, const char *name, int namlen, loff_t offset,
         if (!dirent)
                 return -ENOMEM;
 
-        list_add_tail(&dirent->lld_list, buf->lrc_list);
+        cfs_list_add_tail(&dirent->lld_list, buf->lrc_list);
 
         buf->lrc_dirent = dirent;
         dirent->lld_ino = ino;
@@ -401,7 +418,7 @@ static int l_filldir(void *__buf, const char *name, int namlen, loff_t offset,
         return 0;
 }
 
-long l_readdir(struct file *file, struct list_head *dentry_list)
+long l_readdir(struct file *file, cfs_list_t *dentry_list)
 {
         struct l_linux_dirent *lastdirent;
         struct l_readdir_callback buf;
@@ -528,12 +545,12 @@ void obd_update_maxusage()
         max1 = obd_pages_sum();
         max2 = obd_memory_sum();
 
-        spin_lock(&obd_updatemax_lock);
+        cfs_spin_lock(&obd_updatemax_lock);
         if (max1 > obd_max_pages)
                 obd_max_pages = max1;
         if (max2 > obd_max_alloc)
                 obd_max_alloc = max2;
-        spin_unlock(&obd_updatemax_lock);
+        cfs_spin_unlock(&obd_updatemax_lock);
 
 }
 
@@ -541,9 +558,9 @@ __u64 obd_memory_max(void)
 {
         __u64 ret;
 
-        spin_lock(&obd_updatemax_lock);
+        cfs_spin_lock(&obd_updatemax_lock);
         ret = obd_max_alloc;
-        spin_unlock(&obd_updatemax_lock);
+        cfs_spin_unlock(&obd_updatemax_lock);
 
         return ret;
 }
@@ -552,9 +569,9 @@ __u64 obd_pages_max(void)
 {
         __u64 ret;
 
-        spin_lock(&obd_updatemax_lock);
+        cfs_spin_lock(&obd_updatemax_lock);
         ret = obd_max_pages;
-        spin_unlock(&obd_updatemax_lock);
+        cfs_spin_unlock(&obd_updatemax_lock);
 
         return ret;
 }
@@ -574,7 +591,7 @@ __s64 lprocfs_read_helper(struct lprocfs_counter *lc,
         if (!lc)
                 RETURN(0);
         do {
-                centry = atomic_read(&lc->lc_cntl.la_entry);
+                centry = cfs_atomic_read(&lc->lc_cntl.la_entry);
 
                 switch (field) {
                         case LPROCFS_FIELDS_FLAGS_CONFIG:
@@ -601,8 +618,8 @@ __s64 lprocfs_read_helper(struct lprocfs_counter *lc,
                         default:
                                 break;
                 };
-        } while (centry != atomic_read(&lc->lc_cntl.la_entry) &&
-                 centry != atomic_read(&lc->lc_cntl.la_exit));
+        } while (centry != cfs_atomic_read(&lc->lc_cntl.la_entry) &&
+                 centry != cfs_atomic_read(&lc->lc_cntl.la_exit));
 
         RETURN(ret);
 }

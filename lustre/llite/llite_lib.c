@@ -59,14 +59,14 @@
 
 cfs_mem_cache_t *ll_file_data_slab;
 
-LIST_HEAD(ll_super_blocks);
-spinlock_t ll_sb_lock = SPIN_LOCK_UNLOCKED;
+CFS_LIST_HEAD(ll_super_blocks);
+cfs_spinlock_t ll_sb_lock = CFS_SPIN_LOCK_UNLOCKED;
 
 extern struct address_space_operations ll_aops;
 extern struct address_space_operations ll_dir_aops;
 
 #ifndef log2
-#define log2(n) ffz(~(n))
+#define log2(n) cfs_ffz(~(n))
 #endif
 
 static struct ll_sb_info *ll_init_sbi(void)
@@ -82,10 +82,10 @@ static struct ll_sb_info *ll_init_sbi(void)
         if (!sbi)
                 RETURN(NULL);
 
-        spin_lock_init(&sbi->ll_lock);
-        init_mutex(&sbi->ll_lco.lco_lock);
-        spin_lock_init(&sbi->ll_pp_extent_lock);
-        spin_lock_init(&sbi->ll_process_lock);
+        cfs_spin_lock_init(&sbi->ll_lock);
+        cfs_init_mutex(&sbi->ll_lco.lco_lock);
+        cfs_spin_lock_init(&sbi->ll_pp_extent_lock);
+        cfs_spin_lock_init(&sbi->ll_process_lock);
         sbi->ll_rw_stats_on = 0;
 
         si_meminfo(&si);
@@ -105,16 +105,16 @@ static struct ll_sb_info *ll_init_sbi(void)
         sbi->ll_ra_info.ra_max_pages = sbi->ll_ra_info.ra_max_pages_per_file;
         sbi->ll_ra_info.ra_max_read_ahead_whole_pages =
                                            SBI_DEFAULT_READAHEAD_WHOLE_MAX;
-        INIT_LIST_HEAD(&sbi->ll_conn_chain);
-        INIT_LIST_HEAD(&sbi->ll_orphan_dentry_list);
+        CFS_INIT_LIST_HEAD(&sbi->ll_conn_chain);
+        CFS_INIT_LIST_HEAD(&sbi->ll_orphan_dentry_list);
 
         ll_generate_random_uuid(uuid);
         class_uuid_unparse(uuid, &sbi->ll_sb_uuid);
         CDEBUG(D_CONFIG, "generated uuid: %s\n", sbi->ll_sb_uuid.uuid);
 
-        spin_lock(&ll_sb_lock);
-        list_add_tail(&sbi->ll_list, &ll_super_blocks);
-        spin_unlock(&ll_sb_lock);
+        cfs_spin_lock(&ll_sb_lock);
+        cfs_list_add_tail(&sbi->ll_list, &ll_super_blocks);
+        cfs_spin_unlock(&ll_sb_lock);
 
 #ifdef ENABLE_LLITE_CHECKSUM
         sbi->ll_flags |= LL_SBI_CHECKSUM;
@@ -125,12 +125,14 @@ static struct ll_sb_info *ll_init_sbi(void)
 #endif
 
 #ifdef HAVE_EXPORT___IGET
-        INIT_LIST_HEAD(&sbi->ll_deathrow);
-        spin_lock_init(&sbi->ll_deathrow_lock);
+        CFS_INIT_LIST_HEAD(&sbi->ll_deathrow);
+        cfs_spin_lock_init(&sbi->ll_deathrow_lock);
 #endif
         for (i = 0; i <= LL_PROCESS_HIST_MAX; i++) {
-                spin_lock_init(&sbi->ll_rw_extents_info.pp_extents[i].pp_r_hist.oh_lock);
-                spin_lock_init(&sbi->ll_rw_extents_info.pp_extents[i].pp_w_hist.oh_lock);
+                cfs_spin_lock_init(&sbi->ll_rw_extents_info.pp_extents[i]. \
+                                   pp_r_hist.oh_lock);
+                cfs_spin_lock_init(&sbi->ll_rw_extents_info.pp_extents[i]. \
+                                   pp_w_hist.oh_lock);
         }
 
         /* metadata statahead is enabled by default */
@@ -145,9 +147,9 @@ void ll_free_sbi(struct super_block *sb)
         ENTRY;
 
         if (sbi != NULL) {
-                spin_lock(&ll_sb_lock);
-                list_del(&sbi->ll_list);
-                spin_unlock(&ll_sb_lock);
+                cfs_spin_lock(&ll_sb_lock);
+                cfs_list_del(&sbi->ll_list);
+                cfs_spin_unlock(&ll_sb_lock);
                 OBD_FREE(sbi, sizeof(*sbi));
         }
         EXIT;
@@ -250,7 +252,7 @@ static int client_common_fill_super(struct super_block *sb, char *md, char *dt)
                 GOTO(out_md, err);
         }
 
-        err = obd_statfs(obd, &osfs, cfs_time_current_64() - HZ, 0);
+        err = obd_statfs(obd, &osfs, cfs_time_current_64() - CFS_HZ, 0);
         if (err)
                 GOTO(out_md_fid, err);
 
@@ -387,11 +389,11 @@ static int client_common_fill_super(struct super_block *sb, char *md, char *dt)
                 GOTO(out_dt, err);
         }
 
-        mutex_down(&sbi->ll_lco.lco_lock);
+        cfs_mutex_down(&sbi->ll_lco.lco_lock);
         sbi->ll_lco.lco_flags = data->ocd_connect_flags;
         sbi->ll_lco.lco_md_exp = sbi->ll_md_exp;
         sbi->ll_lco.lco_dt_exp = sbi->ll_dt_exp;
-        mutex_up(&sbi->ll_lco.lco_lock);
+        cfs_mutex_up(&sbi->ll_lco.lco_lock);
 
         fid_zero(&sbi->ll_root_fid);
         err = md_getstatus(sbi->ll_md_exp, &sbi->ll_root_fid, &oc);
@@ -561,7 +563,7 @@ void lustre_dump_dentry(struct dentry *dentry, int recur)
         if (recur == 0)
                 return;
 
-        list_for_each(tmp, &dentry->d_subdirs) {
+       list_for_each(tmp, &dentry->d_subdirs) {
                 struct dentry *d = list_entry(tmp, struct dentry, d_child);
                 lustre_dump_dentry(d, recur - 1);
         }
@@ -617,7 +619,8 @@ static void prune_deathrow_one(struct ll_inode_info *lli)
                 goto out;
 
         CDEBUG(D_INODE, "inode %lu/%u(%d) looks a good candidate for prune\n",
-               inode->i_ino,inode->i_generation, atomic_read(&inode->i_count));
+               inode->i_ino,inode->i_generation,
+               atomic_read(&inode->i_count));
 
         /* seems nobody uses it anymore */
         inode->i_nlink = 0;
@@ -637,23 +640,23 @@ static void prune_deathrow(struct ll_sb_info *sbi, int try)
                         break;
 
                 if (try) {
-                        if (!spin_trylock(&sbi->ll_deathrow_lock))
+                        if (!cfs_spin_trylock(&sbi->ll_deathrow_lock))
                                 break;
                 } else {
-                        spin_lock(&sbi->ll_deathrow_lock);
+                        cfs_spin_lock(&sbi->ll_deathrow_lock);
                 }
 
                 empty = 1;
                 lli = NULL;
-                if (!list_empty(&sbi->ll_deathrow)) {
-                        lli = list_entry(sbi->ll_deathrow.next,
-                                         struct ll_inode_info,
-                                         lli_dead_list);
-                        list_del_init(&lli->lli_dead_list);
-                        if (!list_empty(&sbi->ll_deathrow))
+                if (!cfs_list_empty(&sbi->ll_deathrow)) {
+                        lli = cfs_list_entry(sbi->ll_deathrow.next,
+                                             struct ll_inode_info,
+                                             lli_dead_list);
+                        cfs_list_del_init(&lli->lli_dead_list);
+                        if (!cfs_list_empty(&sbi->ll_deathrow))
                                 empty = 0;
                 }
-                spin_unlock(&sbi->ll_deathrow_lock);
+                cfs_spin_unlock(&sbi->ll_deathrow_lock);
 
                 if (lli)
                         prune_deathrow_one(lli);
@@ -685,7 +688,7 @@ void client_common_put_super(struct super_block *sb)
         /* destroy inodes in deathrow */
         prune_deathrow(sbi, 0);
 
-        list_del(&sbi->ll_conn_chain);
+        cfs_list_del(&sbi->ll_conn_chain);
 
         obd_fid_fini(sbi->ll_dt_exp);
         obd_disconnect(sbi->ll_dt_exp);
@@ -860,24 +863,24 @@ next:
 void ll_lli_init(struct ll_inode_info *lli)
 {
         lli->lli_inode_magic = LLI_INODE_MAGIC;
-        sema_init(&lli->lli_size_sem, 1);
-        sema_init(&lli->lli_write_sem, 1);
-        sema_init(&lli->lli_trunc_sem, 1);
+        cfs_sema_init(&lli->lli_size_sem, 1);
+        cfs_sema_init(&lli->lli_write_sem, 1);
+        cfs_sema_init(&lli->lli_trunc_sem, 1);
         lli->lli_flags = 0;
         lli->lli_maxbytes = PAGE_CACHE_MAXBYTES;
-        spin_lock_init(&lli->lli_lock);
-        INIT_LIST_HEAD(&lli->lli_close_list);
+        cfs_spin_lock_init(&lli->lli_lock);
+        CFS_INIT_LIST_HEAD(&lli->lli_close_list);
         lli->lli_inode_magic = LLI_INODE_MAGIC;
-        sema_init(&lli->lli_och_sem, 1);
+        cfs_sema_init(&lli->lli_och_sem, 1);
         lli->lli_mds_read_och = lli->lli_mds_write_och = NULL;
         lli->lli_mds_exec_och = NULL;
         lli->lli_open_fd_read_count = lli->lli_open_fd_write_count = 0;
         lli->lli_open_fd_exec_count = 0;
-        INIT_LIST_HEAD(&lli->lli_dead_list);
+        CFS_INIT_LIST_HEAD(&lli->lli_dead_list);
         lli->lli_remote_perms = NULL;
         lli->lli_rmtperm_utime = 0;
-        sema_init(&lli->lli_rmtperm_sem, 1);
-        INIT_LIST_HEAD(&lli->lli_oss_capas);
+        cfs_sema_init(&lli->lli_rmtperm_sem, 1);
+        CFS_INIT_LIST_HEAD(&lli->lli_oss_capas);
 }
 
 int ll_fill_super(struct super_block *sb)
@@ -899,7 +902,7 @@ int ll_fill_super(struct super_block *sb)
         /* client additional sb info */
         lsi->lsi_llsbi = sbi = ll_init_sbi();
         if (!sbi) {
-                cfs_module_put();
+                cfs_module_put(THIS_MODULE);
                 RETURN(-ENOMEM);
         }
 
@@ -1019,7 +1022,7 @@ void ll_put_super(struct super_block *sb)
 
         LCONSOLE_WARN("client %s umount complete\n", ll_instance);
 
-        cfs_module_put();
+        cfs_module_put(THIS_MODULE);
 
         EXIT;
 } /* client_put_super */
@@ -1105,7 +1108,7 @@ void ll_clear_inode(struct inode *inode)
         }
 #ifdef CONFIG_FS_POSIX_ACL
         else if (lli->lli_posix_acl) {
-                LASSERT(atomic_read(&lli->lli_posix_acl->a_refcount) == 1);
+                LASSERT(cfs_atomic_read(&lli->lli_posix_acl->a_refcount) == 1);
                 LASSERT(lli->lli_remote_perms == NULL);
                 posix_acl_release(lli->lli_posix_acl);
                 lli->lli_posix_acl = NULL;
@@ -1114,9 +1117,9 @@ void ll_clear_inode(struct inode *inode)
         lli->lli_inode_magic = LLI_INODE_DEAD;
 
 #ifdef HAVE_EXPORT___IGET
-        spin_lock(&sbi->ll_deathrow_lock);
-        list_del_init(&lli->lli_dead_list);
-        spin_unlock(&sbi->ll_deathrow_lock);
+        cfs_spin_lock(&sbi->ll_deathrow_lock);
+        cfs_list_del_init(&lli->lli_dead_list);
+        cfs_spin_unlock(&sbi->ll_deathrow_lock);
 #endif
         ll_clear_inode_capas(inode);
         /*
@@ -1205,13 +1208,15 @@ static int ll_setattr_done_writing(struct inode *inode,
         CDEBUG(D_INODE, "Epoch "LPU64" closed on "DFID" for truncate\n",
                op_data->op_ioepoch, PFID(&lli->lli_fid));
 
-        op_data->op_flags = MF_EPOCH_CLOSE | MF_SOM_CHANGE;
+        op_data->op_flags = MF_EPOCH_CLOSE;
+        ll_done_writing_attr(inode, op_data);
+        ll_pack_inode2opdata(inode, op_data, NULL);
+
         rc = md_done_writing(ll_i2sbi(inode)->ll_md_exp, op_data, mod);
         if (rc == -EAGAIN) {
                 /* MDS has instructed us to obtain Size-on-MDS attribute
                  * from OSTs and send setattr to back to MDS. */
-                rc = ll_sizeonmds_update(inode, &op_data->op_handle,
-                                         op_data->op_ioepoch);
+                rc = ll_som_update(inode, op_data);
         } else if (rc) {
                 CERROR("inode %lu mdc truncate failed: rc = %d\n",
                        inode->i_ino, rc);
@@ -1279,22 +1284,22 @@ int ll_setattr_raw(struct inode *inode, struct iattr *attr)
 
         /* POSIX: check before ATTR_*TIME_SET set (from inode_change_ok) */
         if (ia_valid & (ATTR_MTIME_SET | ATTR_ATIME_SET)) {
-                if (current->fsuid != inode->i_uid &&
+                if (cfs_curproc_fsuid() != inode->i_uid &&
                     !cfs_capable(CFS_CAP_FOWNER))
                         RETURN(-EPERM);
         }
 
         /* We mark all of the fields "set" so MDS/OST does not re-set them */
         if (attr->ia_valid & ATTR_CTIME) {
-                attr->ia_ctime = CURRENT_TIME;
+                attr->ia_ctime = CFS_CURRENT_TIME;
                 attr->ia_valid |= ATTR_CTIME_SET;
         }
         if (!(ia_valid & ATTR_ATIME_SET) && (attr->ia_valid & ATTR_ATIME)) {
-                attr->ia_atime = CURRENT_TIME;
+                attr->ia_atime = CFS_CURRENT_TIME;
                 attr->ia_valid |= ATTR_ATIME_SET;
         }
         if (!(ia_valid & ATTR_MTIME_SET) && (attr->ia_valid & ATTR_MTIME)) {
-                attr->ia_mtime = CURRENT_TIME;
+                attr->ia_mtime = CFS_CURRENT_TIME;
                 attr->ia_valid |= ATTR_MTIME_SET;
         }
         if ((attr->ia_valid & ATTR_CTIME) && !(attr->ia_valid & ATTR_MTIME)) {
@@ -1328,7 +1333,7 @@ int ll_setattr_raw(struct inode *inode, struct iattr *attr)
         UNLOCK_INODE_MUTEX(inode);
         if (ia_valid & ATTR_SIZE)
                 UP_WRITE_I_ALLOC_SEM(inode);
-        down(&lli->lli_trunc_sem);
+        cfs_down(&lli->lli_trunc_sem);
         LOCK_INODE_MUTEX(inode);
         if (ia_valid & ATTR_SIZE)
                 DOWN_WRITE_I_ALLOC_SEM(inode);
@@ -1336,8 +1341,7 @@ int ll_setattr_raw(struct inode *inode, struct iattr *attr)
         memcpy(&op_data->op_attr, attr, sizeof(*attr));
 
         /* Open epoch for truncate. */
-        if ((ll_i2mdexp(inode)->exp_connect_flags & OBD_CONNECT_SOM) &&
-            (ia_valid & ATTR_SIZE))
+        if (exp_connect_som(ll_i2mdexp(inode)) && (ia_valid & ATTR_SIZE))
                 op_data->op_flags = MF_EPOCH_OPEN;
 
         rc = ll_md_setattr(inode, op_data, &mod);
@@ -1364,7 +1368,7 @@ out:
                         rc1 = ll_setattr_done_writing(inode, op_data, mod);
                 ll_finish_md_op_data(op_data);
         }
-        up(&lli->lli_trunc_sem);
+        cfs_up(&lli->lli_trunc_sem);
         return rc ? rc : rc1;
 }
 
@@ -1488,7 +1492,7 @@ void ll_inode_size_lock(struct inode *inode, int lock_lsm)
 
         lli = ll_i2info(inode);
         LASSERT(lli->lli_size_sem_owner != current);
-        down(&lli->lli_size_sem);
+        cfs_down(&lli->lli_size_sem);
         LASSERT(lli->lli_size_sem_owner == NULL);
         lli->lli_size_sem_owner = current;
         lsm = lli->lli_smd;
@@ -1511,7 +1515,7 @@ void ll_inode_size_unlock(struct inode *inode, int unlock_lsm)
                 lov_stripe_unlock(lsm);
         LASSERT(lli->lli_size_sem_owner == current);
         lli->lli_size_sem_owner = NULL;
-        up(&lli->lli_size_sem);
+        cfs_up(&lli->lli_size_sem);
 }
 
 void ll_update_inode(struct inode *inode, struct lustre_md *md)
@@ -1564,11 +1568,11 @@ void ll_update_inode(struct inode *inode, struct lustre_md *md)
         }
 #ifdef CONFIG_FS_POSIX_ACL
         else if (body->valid & OBD_MD_FLACL) {
-                spin_lock(&lli->lli_lock);
+                cfs_spin_lock(&lli->lli_lock);
                 if (lli->lli_posix_acl)
                         posix_acl_release(lli->lli_posix_acl);
                 lli->lli_posix_acl = md->posix_acl;
-                spin_unlock(&lli->lli_lock);
+                cfs_spin_unlock(&lli->lli_lock);
         }
 #endif
         inode->i_ino = cl_fid_build_ino(&body->fid1);
@@ -1854,7 +1858,7 @@ int ll_flush_ctx(struct inode *inode)
 {
         struct ll_sb_info  *sbi = ll_i2sbi(inode);
 
-        CDEBUG(D_SEC, "flush context for user %d\n", current->uid);
+        CDEBUG(D_SEC, "flush context for user %d\n", cfs_curproc_uid());
 
         obd_set_info_async(sbi->ll_md_exp,
                            sizeof(KEY_FLUSH_CTX), KEY_FLUSH_CTX,
@@ -1877,7 +1881,7 @@ void ll_umount_begin(struct super_block *sb)
         struct lustre_sb_info *lsi = s2lsi(sb);
         struct ll_sb_info *sbi = ll_s2sbi(sb);
         struct obd_device *obd;
-        struct obd_ioctl_data ioc_data = { 0 };
+        struct obd_ioctl_data *ioc_data;
         ENTRY;
 
 #ifdef HAVE_UMOUNTBEGIN_VFSMOUNT
@@ -1901,8 +1905,6 @@ void ll_umount_begin(struct super_block *sb)
                 return;
         }
         obd->obd_force = 1;
-        obd_iocontrol(IOC_OSC_SET_ACTIVE, sbi->ll_md_exp, sizeof ioc_data,
-                      &ioc_data, NULL);
 
         obd = class_exp2obd(sbi->ll_dt_exp);
         if (obd == NULL) {
@@ -1911,20 +1913,29 @@ void ll_umount_begin(struct super_block *sb)
                 EXIT;
                 return;
         }
-
         obd->obd_force = 1;
-        obd_iocontrol(IOC_OSC_SET_ACTIVE, sbi->ll_dt_exp, sizeof ioc_data,
-                      &ioc_data, NULL);
+
+        OBD_ALLOC_PTR(ioc_data);
+        if (ioc_data) {
+                obd_iocontrol(IOC_OSC_SET_ACTIVE, sbi->ll_md_exp,
+                              sizeof ioc_data, ioc_data, NULL);
+
+                obd_iocontrol(IOC_OSC_SET_ACTIVE, sbi->ll_dt_exp,
+                              sizeof ioc_data, ioc_data, NULL);
+
+                OBD_FREE_PTR(ioc_data);
+        }
+
 
         /* Really, we'd like to wait until there are no requests outstanding,
          * and then continue.  For now, we just invalidate the requests,
          * schedule() and sleep one second if needed, and hope.
          */
-        schedule();
+        cfs_schedule();
 #ifdef HAVE_UMOUNTBEGIN_VFSMOUNT
         if (atomic_read(&vfsmnt->mnt_count) > 2) {
-                cfs_schedule_timeout(CFS_TASK_INTERRUPTIBLE,
-                                     cfs_time_seconds(1));
+                cfs_schedule_timeout_and_set_state(CFS_TASK_INTERRUPTIBLE,
+                                                   cfs_time_seconds(1));
                 if (atomic_read(&vfsmnt->mnt_count) > 2)
                         LCONSOLE_WARN("Mount still busy with %d refs! You "
                                       "may try to umount it a bit later\n",
@@ -2113,8 +2124,8 @@ struct md_op_data * ll_prep_md_op_data(struct md_op_data *op_data,
         op_data->op_namelen = namelen;
         op_data->op_mode = mode;
         op_data->op_mod_time = cfs_time_current_sec();
-        op_data->op_fsuid = current->fsuid;
-        op_data->op_fsgid = current->fsgid;
+        op_data->op_fsuid = cfs_curproc_fsuid();
+        op_data->op_fsgid = cfs_curproc_fsgid();
         op_data->op_cap = cfs_curproc_cap_pack();
         op_data->op_bias = MDS_CHECK_SPLIT;
         op_data->op_opc = opc;

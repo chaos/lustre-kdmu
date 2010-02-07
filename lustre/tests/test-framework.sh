@@ -22,6 +22,7 @@ export QUOTA_AUTO=0
 # function used by scripts run on remote nodes
 LUSTRE=${LUSTRE:-$(cd $(dirname $0)/..; echo $PWD)}
 . $LUSTRE/tests/functions.sh
+. $LUSTRE/tests/yaml.sh
 
 LUSTRE_TESTS_CFG_DIR=${LUSTRE_TESTS_CFG_DIR:-${LUSTRE}/tests/cfg}
 
@@ -54,17 +55,17 @@ usage() {
 
 print_summary () {
     trap 0
-    [ "$TESTSUITE" == "lfscktest" ] && return 0
+    [ "$TESTSUITE" == "lfsck" ] && return 0
     [ -n "$ONLY" ] && echo "WARNING: ONLY is set to ${ONLY}."
     local form="%-13s %-17s %s\n"
     printf "$form" "status" "script" "skipped tests E(xcluded) S(low)"
     echo "------------------------------------------------------------------------------------"
-    for O in $TESTSUITE_LIST; do
+    for O in $DEFAULT_SUITES; do
         local skipped=""
         local slow=""
-        local o=$(echo $O | tr "[:upper:]" "[:lower:]")
+        O=$(echo $O  | tr "-" "_" | tr "[:lower:]" "[:upper:]")
+        local o=$(echo $O  | tr "[:upper:]" "[:lower:]")
         o=${o//_/-}
-        o=${o//tyn/tyN}
         local log=${TMP}/${o}.log
         [ -f $log ] && skipped=$(grep excluded $log | awk '{ printf " %s", $3 }' | sed 's/test_//g')
         [ -f $log ] && slow=$(grep SLOW $log | awk '{ printf " %s", $3 }' | sed 's/test_//g')
@@ -74,7 +75,8 @@ print_summary () {
 
     done
 
-    for O in $TESTSUITE_LIST; do
+    for O in $DEFAULT_SUITES; do
+        O=$(echo $O  | tr "-" "_" | tr "[:lower:]" "[:upper:]")
         if [ "${!O}" = "no" ]; then
             # FIXME.
             # only for those tests suits which are run directly from acc-sm script:
@@ -87,7 +89,8 @@ print_summary () {
         fi
     done
 
-    for O in $TESTSUITE_LIST; do
+    for O in $DEFAULT_SUITES; do
+        O=$(echo $O  | tr "-" "_" | tr "[:lower:]" "[:upper:]")
         [ "${!O}" = "done" -o "${!O}" = "no" ] || \
             printf "$form" "UNFINISHED" "$O" ""
     done
@@ -110,6 +113,10 @@ init_test_env() {
     #[ -d /r ] && export ROOT=${ROOT:-/r}
     export TMP=${TMP:-$ROOT/tmp}
     export TESTSUITELOG=${TMP}/${TESTSUITE}.log
+    if [[ -z $LOGDIRSET ]]; then
+        export LOGDIR=${LOGDIR:-${TMP}/test_logs/}/$(date +%s)
+        export LOGDIRSET=true
+    fi
     export HOSTNAME=${HOSTNAME:-`hostname`}
     if ! echo $PATH | grep -q $LUSTRE/utils; then
         export PATH=$PATH:$LUSTRE/utils
@@ -118,12 +125,14 @@ init_test_env() {
         export PATH=$PATH:$LUSTRE/utils/gss
     fi
     if ! echo $PATH | grep -q $LUSTRE/tests; then
-	export PATH=$PATH:$LUSTRE/tests
+        export PATH=$PATH:$LUSTRE/tests
     fi
+    export LST=${LST:-"$LUSTRE/../lnet/utils/lst"}
+    [ ! -f "$LST" ] && export LST=$(which lst)
     export MDSRATE=${MDSRATE:-"$LUSTRE/tests/mpi/mdsrate"}
     [ ! -f "$MDSRATE" ] && export MDSRATE=$(which mdsrate 2> /dev/null)
     if ! echo $PATH | grep -q $LUSTRE/tests/racer; then
-        export PATH=$PATH:$LUSTRE/tests/racer
+        export PATH=$LUSTRE/tests/racer:$PATH:
     fi
     if ! echo $PATH | grep -q $LUSTRE/../zfs/cmd/zfs; then
         export PATH=$PATH:$LUSTRE/../zfs/cmd/zfs:$LUSTRE/../zfs/cmd/zpool
@@ -170,7 +179,7 @@ init_test_env() {
         xkrb5*)
             echo "Using GSS/krb5 ptlrpc security flavor"
             which lgss_keyring > /dev/null 2>&1 || \
-                error "built with gss disabled! SEC=$SEC"
+                error_exit "built with gss disabled! SEC=$SEC"
             GSS=true
             GSS_KRB5=true
             ;;
@@ -232,7 +241,11 @@ load_module() {
 
     module_loaded ${BASE} && return
 
-    if [ -f ${LUSTRE}/${module}${EXT} ]; then
+    if [ "$BASE" == "lnet_selftest" ] && \
+            [ -f ${LUSTRE}/../lnet/selftest/${module}${EXT} ]; then
+        insmod ${LUSTRE}/../lnet/selftest/${module}${EXT}
+
+    elif [ -f ${LUSTRE}/${module}${EXT} ]; then
         insmod ${LUSTRE}/${module}${EXT} $@
     else
         # must be testing a "make install" or "rpm" installation
@@ -347,9 +360,11 @@ unload_modules() {
 
     if $LOAD_MODULES_REMOTE ; then
         local list=$(comma_list $(remote_nodes_list))
-        echo unloading modules on $list
-        do_rpc_nodes $list $LUSTRE_RMMOD $FSTYPE
-        do_rpc_nodes $list check_mem_leak
+        if [ ! -z $list ]; then
+            echo unloading modules on $list
+            do_rpc_nodes $list $LUSTRE_RMMOD $FSTYPE
+            do_rpc_nodes $list check_mem_leak
+        fi
     fi
 
     HAVE_MODULES=false
@@ -358,6 +373,17 @@ unload_modules() {
 
     echo "modules unloaded."
     return 0
+}
+
+check_gss_daemon_nodes() {
+    local list=$1
+    dname=$2
+
+    do_nodes --verbose $list "num=\\\$(ps -o cmd -C $dname | grep $dname | wc -l);
+if [ \\\"\\\$num\\\" -ne 1 ]; then
+    echo \\\$num instance of $dname;
+    exit 1;
+fi; "
 }
 
 check_gss_daemon_facet() {
@@ -373,27 +399,41 @@ check_gss_daemon_facet() {
 }
 
 send_sigint() {
-    local facet=$1
+    local list=$1
     shift
-    do_facet $facet "killall -2 $@ 2>/dev/null || true"
+    echo Stopping $@ on $list
+    do_nodes $list "killall -2 $@ 2>/dev/null || true"
 }
 
+# start gss daemons on all nodes, or
+# "daemon" on "list" if set
 start_gss_daemons() {
-    # starting on MDT
-    for num in `seq $MDSCOUNT`; do
-        do_facet mds$num "$LSVCGSSD -v"
-        if $GSS_PIPEFS; then
-            do_facet mds$num "$LGSSD -v"
-        fi
-    done
-    # starting on OSTs
-    for num in `seq $OSTCOUNT`; do
-        do_facet ost$num "$LSVCGSSD -v"
-    done
-    # starting on client
-    # FIXME: is "client" the right facet name?
+    local list=$1
+    local daemon=$2
+
+    if [ "$list" ] && [ "$daemon" ] ; then
+        echo "Starting gss daemon on nodes: $list"
+        do_nodes $list "$daemon" || return 8
+        return 0
+    fi
+
+    local list=$(comma_list $(mdts_nodes))
+
+    echo "Starting gss daemon on mds: $list"
+    do_nodes $list "$LSVCGSSD -v" || return 1
     if $GSS_PIPEFS; then
-        do_facet client "$LGSSD -v"
+        do_nodes $list "$LGSSD -v" || return 2
+    fi
+
+    list=$(comma_list $(osts_nodes))
+    echo "Starting gss daemon on ost: $list"
+    do_nodes $list "$LSVCGSSD -v" || return 3
+    # starting on clients
+
+    local clients=${CLIENTS:-`hostname`}
+    if $GSS_PIPEFS; then
+        echo "Starting $LGSSD on clients $clients "
+        do_nodes $clients  "$LGSSD -v" || return 4
     fi
 
     # wait daemons entering "stable" status
@@ -402,33 +442,37 @@ start_gss_daemons() {
     #
     # check daemons are running
     #
-    for num in `seq $MDSCOUNT`; do
-        check_gss_daemon_facet mds$num lsvcgssd
-        if $GSS_PIPEFS; then
-            check_gss_daemon_facet mds$num lgssd
-        fi
-    done
-    for num in `seq $OSTCOUNT`; do
-        check_gss_daemon_facet ost$num lsvcgssd
-    done
+    list=$(comma_list $(mdts_nodes) $(osts_nodes))
+    check_gss_daemon_nodes $list lsvcgssd || return 5
     if $GSS_PIPEFS; then
-        check_gss_daemon_facet client lgssd
+        list=$(comma_list $(mdts_nodes))
+        check_gss_daemon_nodes $list lgssd || return 6
+    fi
+    if $GSS_PIPEFS; then
+        check_gss_daemon_nodes $clients lgssd || return 7
     fi
 }
 
 stop_gss_daemons() {
-    for num in `seq $MDSCOUNT`; do
-        send_sigint mds$num lsvcgssd lgssd
-    done
-    for num in `seq $OSTCOUNT`; do
-        send_sigint ost$num lsvcgssd
-    done
-    send_sigint client lgssd
+    local list=$(comma_list $(mdts_nodes))
+    
+    send_sigint $list lsvcgssd lgssd
+
+    list=$(comma_list $(osts_nodes))
+    send_sigint $list lsvcgssd
+
+    list=${CLIENTS:-`hostname`}
+    send_sigint $list lgssd
 }
 
 init_gss() {
     if $GSS; then
-        start_gss_daemons
+        if ! module_loaded ptlrpc_gss; then
+            load_module ptlrpc/gss/ptlrpc_gss
+            module_loaded ptlrpc_gss ||
+                error_exit "init_gss : GSS=$GSS, but gss/krb5 is not supported!"
+        fi
+        start_gss_daemons || error_exit "start gss daemon failed! rc=$?"
 
         if [ -n "$LGSS_KEYRING_DEBUG" ]; then
             echo $LGSS_KEYRING_DEBUG > /proc/fs/lustre/sptlrpc/gss/lgss_keyring/debug_level
@@ -1493,24 +1537,24 @@ do_node() {
 
     if [ "$myPDSH" = "rsh" ]; then
 # we need this because rsh does not return exit code of an executed command
-	local command_status="$TMP/cs"
-	rsh $HOST ":> $command_status"
-	rsh $HOST "(PATH=\$PATH:$RLUSTRE/utils:$RLUSTRE/tests:/sbin:/usr/sbin;
-		    cd $RPWD; sh -c \"$@\") ||
-		    echo command failed >$command_status"
-	[ -n "$($myPDSH $HOST cat $command_status)" ] && return 1 || true
+        local command_status="$TMP/cs"
+        rsh $HOST ":> $command_status"
+        rsh $HOST "(PATH=\$PATH:$RLUSTRE/utils:$RLUSTRE/tests:/sbin:/usr/sbin;
+                    cd $RPWD; LUSTRE=\"$RLUSTRE\" sh -c \"$@\") ||
+                    echo command failed >$command_status"
+        [ -n "$($myPDSH $HOST cat $command_status)" ] && return 1 || true
         return 0
     fi
 
     if $verbose ; then
         # print HOSTNAME for myPDSH="no_dsh"
         if [[ $myPDSH = no_dsh ]]; then
-            $myPDSH $HOST "(PATH=\$PATH:$RLUSTRE/utils:$RLUSTRE/tests:/sbin:/usr/sbin; cd $RPWD; sh -c \"$@\")" | sed -e "s/^/${HOSTNAME}: /"
+            $myPDSH $HOST "(PATH=\$PATH:$RLUSTRE/utils:$RLUSTRE/tests:/sbin:/usr/sbin; cd $RPWD; LUSTRE=\"$RLUSTRE\" sh -c \"$@\")" | sed -e "s/^/${HOSTNAME}: /"
         else
-            $myPDSH $HOST "(PATH=\$PATH:$RLUSTRE/utils:$RLUSTRE/tests:/sbin:/usr/sbin; cd $RPWD; sh -c \"$@\")"
+            $myPDSH $HOST "(PATH=\$PATH:$RLUSTRE/utils:$RLUSTRE/tests:/sbin:/usr/sbin; cd $RPWD; LUSTRE=\"$RLUSTRE\" sh -c \"$@\")"
         fi
     else
-        $myPDSH $HOST "(PATH=\$PATH:$RLUSTRE/utils:$RLUSTRE/tests:/sbin:/usr/sbin; cd $RPWD; sh -c \"$@\")" | sed "s/^${HOST}: //"
+        $myPDSH $HOST "(PATH=\$PATH:$RLUSTRE/utils:$RLUSTRE/tests:/sbin:/usr/sbin; cd $RPWD; LUSTRE=\"$RLUSTRE\" sh -c \"$@\")" | sed "s/^${HOST}: //"
     fi
     return ${PIPESTATUS[0]}
 }
@@ -1530,7 +1574,7 @@ do_nodes() {
     local rnodes=$1
     shift
 
-    if $(single_local_node $rnodes); then
+    if single_local_node $rnodes; then
         if $verbose; then
            do_node --verbose $rnodes $@
         else
@@ -1551,9 +1595,9 @@ do_nodes() {
     fi
 
     if $verbose ; then
-        $myPDSH $rnodes "(PATH=\$PATH:$RLUSTRE/utils:$RLUSTRE/tests:/sbin:/usr/sbin; cd $RPWD; sh -c \"$@\")"
+        $myPDSH $rnodes "(PATH=\$PATH:$RLUSTRE/utils:$RLUSTRE/tests:/sbin:/usr/sbin; cd $RPWD; LUSTRE=\"$RLUSTRE\" sh -c \"$@\")"
     else
-        $myPDSH $rnodes "(PATH=\$PATH:$RLUSTRE/utils:$RLUSTRE/tests:/sbin:/usr/sbin; cd $RPWD; sh -c \"$@\")" | sed -re "s/\w+:\s//g"
+        $myPDSH $rnodes "(PATH=\$PATH:$RLUSTRE/utils:$RLUSTRE/tests:/sbin:/usr/sbin; cd $RPWD; LUSTRE=\"$RLUSTRE\" sh -c \"$@\")" | sed -re "s/\w+:\s//g"
     fi
     return ${PIPESTATUS[0]}
 }
@@ -1656,11 +1700,7 @@ formatall() {
         MDSn_MKFS_OPTS="$MDSn_MKFS_OPTS --iam-dir"
     fi
 
-    if [ ! -z $SEC ]; then
-        MDS_MKFS_OPTS="$MDS_MKFS_OPTS --param srpc.flavor.default=$SEC"
-        MDSn_MKFS_OPTS="$MDSn_MKFS_OPTS --param srpc.flavor.default=$SEC"
-        OST_MKFS_OPTS="$OST_MKFS_OPTS --param srpc.flavor.default=$SEC"
-    fi
+    [ "$FSTYPE" ] && FSTYPE_OPT="--backfstype $FSTYPE"
 
     stopall
     # We need ldiskfs here, may as well load them all
@@ -1745,8 +1785,8 @@ switch_identity() {
 
 remount_client()
 {
-	zconf_umount `hostname` $1 || error "umount failed"
-	zconf_mount `hostname` $1 || error "mount failed"
+        zconf_umount `hostname` $1 || error "umount failed"
+        zconf_mount `hostname` $1 || error "mount failed"
 }
 
 writeconf_facet () {
@@ -1775,7 +1815,7 @@ setupall() {
         error "environments are insane!"
 
     load_modules
-    init_gss
+
     if [ -z "$CLIENTONLY" ]; then
         echo Setup mgs, mdt, osts
         echo $WRITECONF | grep -q "writeconf" && \
@@ -1813,16 +1853,21 @@ setupall() {
 
         done
     fi
+
+    init_gss
+
     # wait a while to allow sptlrpc configuration be propogated to targets,
     # only needed when mounting new target devices.
-    $GSS && sleep 10
+    if $GSS; then
+        sleep 10
+    fi
 
     [ "$DAEMONFILE" ] && $LCTL debug_daemon start $DAEMONFILE $DAEMONSIZE
     mount_client $MOUNT
     [ -n "$CLIENTS" ] && zconf_mount_clients $CLIENTS $MOUNT
 
     if [ "$MOUNT_2" ]; then
-	mount_client $MOUNT2
+        mount_client $MOUNT2
         [ -n "$CLIENTS" ] && zconf_mount_clients $CLIENTS $MOUNT2
     fi
 
@@ -1834,6 +1879,7 @@ setupall() {
     # by a context negotiation rpc with $TIMEOUT.
     # FIXME better by monitoring import status.
     if $GSS; then
+        set_flavor_all $SEC
         sleep $((TIMEOUT + 5))
     else
         sleep 5
@@ -1841,7 +1887,7 @@ setupall() {
 }
 
 mounted_lustre_filesystems() {
-	awk '($3 ~ "lustre" && $1 ~ ":") { print $2 }' /proc/mounts
+        awk '($3 ~ "lustre" && $1 ~ ":") { print $2 }' /proc/mounts
 }
 
 init_facet_vars () {
@@ -2059,6 +2105,10 @@ check_and_setup_lustre() {
             lctl set_param debug_mb=${DEBUG_SIZE};
             sync"
     fi
+
+    init_gss
+    set_flavor_all $SEC
+
     if [ "$ONLY" == "setup" ]; then
         exit 0
     fi
@@ -2069,7 +2119,7 @@ cleanup_and_setup_lustre() {
         lctl set_param debug=0 || true
         cleanupall
         if [ "$ONLY" == "cleanup" ]; then
-    	    exit 0
+            exit 0
         fi
     fi
     check_and_setup_lustre
@@ -2205,9 +2255,9 @@ at_max_get() {
 
     # suppose that all ost-s has the same at_max set
     if [ $facet == "ost" ]; then
-	do_facet ost1 "lctl get_param -n at_max"
+        do_facet ost1 "lctl get_param -n at_max"
     else
-	do_facet $facet "lctl get_param -n at_max"
+        do_facet $facet "lctl get_param -n at_max"
     fi
 }
 
@@ -2219,15 +2269,15 @@ at_max_set() {
     for facet in $@; do
         if [ $facet == "ost" ]; then
             for i in `seq $OSTCOUNT`; do
-		do_facet ost$i "lctl set_param at_max=$at_max"
+                do_facet ost$i "lctl set_param at_max=$at_max"
 
             done
         elif [ $facet == "mds" ]; then
             for i in `seq $MDSCOUNT`; do
-		do_facet mds$i "lctl set_param at_max=$at_max"
+                do_facet mds$i "lctl set_param at_max=$at_max"
             done
         else
-	    do_facet $facet "lctl set_param at_max=$at_max"
+            do_facet $facet "lctl set_param at_max=$at_max"
         fi
     done
 }
@@ -2395,7 +2445,6 @@ stop_full_debug_logging() {
 
 error_noexit() {
     local TYPE=${TYPE:-"FAIL"}
-    local ERRLOG
 
     local dump=true
     # do not dump logs if $1=false
@@ -2406,15 +2455,14 @@ error_noexit() {
 
     log " ${TESTSUITE} ${TESTNAME}: @@@@@@ ${TYPE}: $@ "
 
+    # We need to dump the logs on all nodes
     if $dump; then
-        ERRLOG=$TMP/lustre_${TESTSUITE}_${TESTNAME}.$(date +%s)
-        echo "Dumping lctl log to $ERRLOG"
-        # We need to dump the logs on all nodes
-        do_nodes $(comma_list $(nodes_list)) $NODE $LCTL dk $ERRLOG
+        gather_logs $(comma_list $(nodes_list))
     fi
+
     debugrestore
     [ "$TESTSUITELOG" ] && echo "$0: ${TYPE}: $TESTNAME $@" >> $TESTSUITELOG
-    TEST_FAILED=true
+    echo "$@" > $LOGDIR/err
 }
 
 error() {
@@ -2469,7 +2517,7 @@ build_test_filter() {
     done
     for G in $GRANT_CHECK_LIST; do
         eval GCHECK_ONLY_${G}=true
-   	done
+        done
 }
 
 basetest() {
@@ -2490,13 +2538,13 @@ run_test() {
         testname=ONLY_$1
         if [ ${!testname}x != x ]; then
             [ "$LAST_SKIPPED" ] && echo "" && LAST_SKIPPED=
-            run_one $1 "$2"
+            run_one_logged $1 "$2"
             return $?
         fi
         testname=ONLY_$base
         if [ ${!testname}x != x ]; then
             [ "$LAST_SKIPPED" ] && echo "" && LAST_SKIPPED=
-            run_one $1 "$2"
+            run_one_logged $1 "$2"
             return $?
         fi
         LAST_SKIPPED="y"
@@ -2529,7 +2577,7 @@ run_test() {
     fi
 
     LAST_SKIPPED=
-    run_one $1 "$2"
+    run_one_logged $1 "$2"
 
     return $?
 }
@@ -2561,16 +2609,21 @@ log() {
 }
 
 trace() {
-	log "STARTING: $*"
-	strace -o $TMP/$1.strace -ttt $*
-	RC=$?
-	log "FINISHED: $*: rc $RC"
-	return 1
+        log "STARTING: $*"
+        strace -o $TMP/$1.strace -ttt $*
+        RC=$?
+        log "FINISHED: $*: rc $RC"
+        return 1
 }
 
 pass() {
-    $TEST_FAILED && echo -n "FAIL " || echo -n "PASS " 
-    echo $@
+    # Set TEST_STATUS here; will be used for logging the result
+    if [ -f $LOGDIR/err ]; then
+        TEST_STATUS="FAIL"
+    else
+        TEST_STATUS="PASS"
+    fi
+    echo $TEST_STATUS " " $@
 }
 
 check_mds() {
@@ -2590,28 +2643,47 @@ run_one() {
     message=$2
     tfile=f${testnum}
     export tdir=d0.${TESTSUITE}/d${base}
-
+    export TESTNAME=test_$testnum
     local SAVE_UMASK=`umask`
     umask 0022
 
-    local BEFORE=`date +%s`
     echo
-    log "== test $testnum: $message == `date +%H:%M:%S` ($BEFORE)"
-    #check_mds
-    export TESTNAME=test_$testnum
-    TEST_FAILED=false
+    log "== test $testnum: $message == `date +%H:%M:%S`"
     test_${testnum} || error "test_$testnum failed with $?"
-    #check_mds
     cd $SAVE_PWD
     reset_fail_loc
     check_grant ${testnum} || error "check_grant $testnum failed with $?"
     check_catastrophe || error "LBUG/LASSERT detected"
     ps auxww | grep -v grep | grep -q multiop && error "multiop still running"
-    pass "($((`date +%s` - $BEFORE))s)"
-    TEST_FAILED=false
     unset TESTNAME
     unset tdir
     umask $SAVE_UMASK
+    return 0
+}
+
+run_one_logged() {
+    local BEFORE=`date +%s`
+    local TEST_ERROR
+    local name=${TESTSUITE}.test_${1}.test_log.$(hostname).log
+    local test_log=$LOGDIR/$name
+    rm -rf $LOGDIR/err
+
+    run_one $1 "$2" 2>&1 | tee $test_log
+    local RC=${PIPESTATUS[0]}
+
+    [ $RC -ne 0 ] && [ ! -f $LOGDIR/err ] && \
+        echo "test_$1 returned $RC" | tee $LOGDIR/err
+
+    duration=$((`date +%s` - $BEFORE))
+    pass "(${duration}s)"
+    [ -f $LOGDIR/err ] && TEST_ERROR=$(cat $LOGDIR/err)
+    log_sub_test test_${1} $TEST_STATUS $duration "$RC" "$TEST_ERROR"
+
+    if [ -f $LOGDIR/err ]; then
+        $FAIL_ON_ERROR && exit $RC
+    fi
+
+    return 0
 }
 
 canonical_path() {
@@ -2621,50 +2693,50 @@ canonical_path() {
 sync_clients() {
     [ -d $DIR1 ] && cd $DIR1 && sync; sleep 1; sync
     [ -d $DIR2 ] && cd $DIR2 && sync; sleep 1; sync
-	cd $SAVE_PWD
+        cd $SAVE_PWD
 }
 
 check_grant() {
     export base=`basetest $1`
     [ "$CHECK_GRANT" == "no" ] && return 0
 
-	testname=GCHECK_ONLY_${base}
+        testname=GCHECK_ONLY_${base}
         [ ${!testname}x == x ] && return 0
 
     echo -n "checking grant......"
-	cd $SAVE_PWD
-	# write some data to sync client lost_grant
-	rm -f $DIR1/${tfile}_check_grant_* 2>&1
-	for i in `seq $OSTCOUNT`; do
-		$LFS setstripe $DIR1/${tfile}_check_grant_$i -i $(($i -1)) -c 1
-		dd if=/dev/zero of=$DIR1/${tfile}_check_grant_$i bs=4k \
-					      count=1 > /dev/null 2>&1
-	done
-	# sync all the data and make sure no pending data on server
-	sync_clients
-	
-	#get client grant and server grant
-	client_grant=0
+        cd $SAVE_PWD
+        # write some data to sync client lost_grant
+        rm -f $DIR1/${tfile}_check_grant_* 2>&1
+        for i in `seq $OSTCOUNT`; do
+                $LFS setstripe $DIR1/${tfile}_check_grant_$i -i $(($i -1)) -c 1
+                dd if=/dev/zero of=$DIR1/${tfile}_check_grant_$i bs=4k \
+                                              count=1 > /dev/null 2>&1
+        done
+        # sync all the data and make sure no pending data on server
+        sync_clients
+        
+        #get client grant and server grant
+        client_grant=0
     for d in `lctl get_param -n osc.*.cur_grant_bytes`; do
-		client_grant=$((client_grant + $d))
-	done
-	server_grant=0
-	for d in `lctl get_param -n obdfilter.*.tot_granted`; do
-		server_grant=$((server_grant + $d))
-	done
+                client_grant=$((client_grant + $d))
+        done
+        server_grant=0
+        for d in `lctl get_param -n obdfilter.*.tot_granted`; do
+                server_grant=$((server_grant + $d))
+        done
 
-	# cleanup the check_grant file
-	for i in `seq $OSTCOUNT`; do
-	        rm $DIR1/${tfile}_check_grant_$i
-	done
+        # cleanup the check_grant file
+        for i in `seq $OSTCOUNT`; do
+                rm $DIR1/${tfile}_check_grant_$i
+        done
 
-	#check whether client grant == server grant
-	if [ $client_grant != $server_grant ]; then
-		echo "failed: client:${client_grant} server: ${server_grant}"
-		return 1
-	else
-		echo "pass"
-	fi
+        #check whether client grant == server grant
+        if [ $client_grant != $server_grant ]; then
+                echo "failed: client:${client_grant} server: ${server_grant}"
+                return 1
+        else
+                echo "pass"
+        fi
 }
 
 ########################
@@ -2700,6 +2772,13 @@ remote_mds_nodsh()
     remote_mds && [ "$PDSH" = "no_dsh" -o -z "$PDSH" -o -z "$mds_HOST" ]
 }
 
+require_dsh_mds()
+{
+        remote_mds_nodsh && echo "SKIP: $TESTSUITE: remote MDS with nodsh" && \
+            MSKIPPED=1 && return 1
+        return 0
+}
+
 remote_ost ()
 {
     local node
@@ -2715,11 +2794,24 @@ remote_ost_nodsh()
     remote_ost && [ "$PDSH" = "no_dsh" -o -z "$PDSH" -o -z "$ost_HOST" ]
 }
 
+require_dsh_ost()
+{
+        remote_ost_nodsh && echo "SKIP: $TESTSUITE: remote OST with nodsh" && \
+            OSKIPPED=1 && return 1
+        return 0
+}
+
 remote_mgs_nodsh()
 {
     local MGS 
     MGS=$(facet_host mgs)
     remote_node $MGS && [ "$PDSH" = "no_dsh" -o -z "$PDSH" -o -z "$ost_HOST" ]
+}
+
+local_mode ()
+{
+    remote_mds_nodsh || remote_ost_nodsh || \
+        $(single_local_node $(comma_list $(nodes_list)))
 }
 
 mdts_nodes () {
@@ -3028,19 +3120,19 @@ exit \\\$rc;"
 # $2 file
 # $3 $RUNAS
 get_stripe_info() {
-	local tmp_file
+        local tmp_file
 
-	stripe_size=0
-	stripe_count=0
-	stripe_index=0
-	tmp_file=$(mktemp)
+        stripe_size=0
+        stripe_count=0
+        stripe_index=0
+        tmp_file=$(mktemp)
 
-	do_facet $1 $3 lfs getstripe -v $2 > $tmp_file
+        do_facet $1 $3 lfs getstripe -v $2 > $tmp_file
 
-	stripe_size=`awk '$1 ~ /size/ {print $2}' $tmp_file`
-	stripe_count=`awk '$1 ~ /count/ {print $2}' $tmp_file`
-	stripe_index=`awk '$1 ~ /stripe_offset/ {print $2}' $tmp_file`
-	rm -f $tmp_file
+        stripe_size=`awk '$1 ~ /size/ {print $2}' $tmp_file`
+        stripe_count=`awk '$1 ~ /count/ {print $2}' $tmp_file`
+        stripe_index=`awk '$1 ~ /stripe_offset/ {print $2}' $tmp_file`
+        rm -f $tmp_file
 }
 
 # CMD: determine mds index where directory inode presents
@@ -3203,7 +3295,6 @@ wait_osc_import_state() {
     log "${ost_facet} now in ${CONN_STATE} state"
     return 0
 }
-
 get_clientmdc_proc_path() {
     echo "${1}-mdc-*"
 }
@@ -3212,7 +3303,9 @@ do_rpc_nodes () {
     local list=$1
     shift
 
-    do_nodes --verbose $list "PATH=$LUSTRE/tests/:$PATH sh rpc.sh $@ " 
+    # Add paths to lustre tests for 32 and 64 bit systems.
+    local RPATH="$RLUSTRE/tests:/usr/lib/lustre/tests:/usr/lib64/lustre/tests:$PATH"
+    do_nodes --verbose $list "PATH=$RPATH sh rpc.sh $@ "
 }
 
 wait_clients_import_state () {
@@ -3358,27 +3451,30 @@ gather_logs () {
     # of writing the file to an NFS directory so it doesn't need to be copied.
     local tmp=$TMP
     local docp=true
-    [ -d "$SHARED_DIR_LOGS" ] && tmp=$SHARED_DIR_LOGS && docp=false
-
+    [ -f $LOGDIR/shared ] && docp=false
+ 
     # dump lustre logs, dmesg
-    do_nodes $list "log=$tmp/\\\$(hostname)-debug-$ts.log ;
-lctl dk \\\$log >/dev/null;
-log=$tmp/\\\$(hostname)-dmesg-$ts.log;
-dmesg > \\\$log; "
 
-    # FIXME: does it make sense to collect the logs for $ts only, but all
-    # TESTSUITE logs?
-    # rsync $TMP/*${TESTSUITE}* to gather the logs dumped by error fn
-    local logs=$TMP/'*'${TESTSUITE}'*'
-    if $docp; then
-        logs=$logs' '$tmp/'*'$ts'*'
+    prefix="$LOGDIR/${TESTSUITE}.${TESTNAME}"
+    suffix="$ts.log"
+    echo "Dumping lctl log to ${prefix}.*.${suffix}"
+
+    if [ "$CLIENTONLY" -o "$PDSH" == "no_dsh" ]; then
+        echo "Dumping logs only on local client."
+        $LCTL dk > ${prefix}.debug_log.$(hostname).${suffix}
+        dmesg > ${prefix}.dmesg.$(hostname).${suffix}
+        return
     fi
-    for node in ${list//,/ }; do
-        rsync -az $node:"$logs" $TMP 
-    done
 
-    local archive=$TMP/${TESTSUITE}-$ts.tar.bz2
-    tar -jcf $archive $tmp/*$ts* $TMP/*${TESTSUITE}*
+    do_nodes --verbose $list \
+        "$LCTL dk > ${prefix}.debug_log.\\\$(hostname).${suffix};
+         dmesg > ${prefix}.dmesg.\\\$(hostname).${suffix}"
+    if [ ! -f $LOGDIR/shared ]; then
+        do_nodes $list rsync -az "${prefix}.*.${suffix}" $HOSTNAME:$LOGDIR
+      fi
+
+    local archive=$LOGDIR/${TESTSUITE}-$ts.tar.bz2
+    tar -jcf $archive $LOGDIR/*$ts* $LOGDIR/*${TESTSUITE}*
 
     echo $archive
 }
@@ -3410,5 +3506,350 @@ do_ls () {
     done
 
     return $rc
+}
+
+get_clients_mount_count () {
+    local clients=${CLIENTS:-`hostname`}
+
+    # we need to take into account the clients mounts and
+    # exclude mds/ost mounts if any;
+    do_nodes $clients cat /proc/mounts | grep lustre | grep $MOUNT | wc -l
+}
+
+# gss functions
+PROC_CLI="srpc_info"
+
+combination()
+{
+    local M=$1
+    local N=$2
+    local R=1
+
+    if [ $M -lt $N ]; then
+        R=0
+    else
+        N=$((N + 1))
+        while [ $N -le $M ]; do
+            R=$((R * N))
+            N=$((N + 1))
+        done
+    fi
+
+    echo $R
+    return 0
+}
+
+calc_connection_cnt() {
+    local dir=$1
+
+    # MDT->MDT = 2 * C(M, 2)
+    # MDT->OST = M * O
+    # CLI->OST = C * O
+    # CLI->MDT = C * M
+    comb_m2=$(combination $MDSCOUNT 2)
+
+    local num_clients=$(get_clients_mount_count)
+
+    local cnt_mdt2mdt=$((comb_m2 * 2))
+    local cnt_mdt2ost=$((MDSCOUNT * OSTCOUNT))
+    local cnt_cli2ost=$((num_clients * OSTCOUNT))
+    local cnt_cli2mdt=$((num_clients * MDSCOUNT))
+    local cnt_all2ost=$((cnt_mdt2ost + cnt_cli2ost))
+    local cnt_all2mdt=$((cnt_mdt2mdt + cnt_cli2mdt))
+    local cnt_all2all=$((cnt_mdt2ost + cnt_mdt2mdt + cnt_cli2ost + cnt_cli2mdt))
+
+    local var=cnt_$dir
+    local res=${!var}
+
+    echo $res
+}
+
+set_rule()
+{
+    local tgt=$1
+    local net=$2
+    local dir=$3
+    local flavor=$4
+    local cmd="$tgt.srpc.flavor"
+
+    if [ $net == "any" ]; then
+        net="default"
+    fi
+    cmd="$cmd.$net"
+
+    if [ $dir != "any" ]; then
+        cmd="$cmd.$dir"
+    fi
+
+    cmd="$cmd=$flavor"
+    log "Setting sptlrpc rule: $cmd"
+    do_facet mgs "$LCTL conf_param $cmd"
+}
+
+count_flvr()
+{
+    local output=$1
+    local flavor=$2
+    local count=0
+
+    rpc_flvr=`echo $flavor | awk -F - '{ print $1 }'`
+    bulkspec=`echo $flavor | awk -F - '{ print $2 }'`
+
+    count=`echo "$output" | grep "rpc flavor" | grep $rpc_flvr | wc -l`
+
+    if [ "x$bulkspec" != "x" ]; then
+        algs=`echo $bulkspec | awk -F : '{ print $2 }'`
+
+        if [ "x$algs" != "x" ]; then
+            bulk_count=`echo "$output" | grep "bulk flavor" | grep $algs | wc -l`
+        else
+            bulk=`echo $bulkspec | awk -F : '{ print $1 }'`
+            if [ $bulk == "bulkn" ]; then
+                bulk_count=`echo "$output" | grep "bulk flavor" \
+                            | grep "null/null" | wc -l`
+            elif [ $bulk == "bulki" ]; then
+                bulk_count=`echo "$output" | grep "bulk flavor" \
+                            | grep "/null" | grep -v "null/" | wc -l`
+            else
+                bulk_count=`echo "$output" | grep "bulk flavor" \
+                            | grep -v "/null" | grep -v "null/" | wc -l`
+            fi
+        fi
+
+        [ $bulk_count -lt $count ] && count=$bulk_count
+    fi
+
+    echo $count
+}
+
+flvr_cnt_cli2mdt()
+{
+    local flavor=$1
+    local cnt
+
+    local clients=${CLIENTS:-`hostname`}
+
+    for c in ${clients//,/ }; do
+        output=`do_node $c lctl get_param -n mdc.*-MDT*-mdc-*.$PROC_CLI 2>/dev/null`
+        tmpcnt=`count_flvr "$output" $flavor`
+        cnt=$((cnt + tmpcnt))
+    done
+    echo $cnt
+}
+
+flvr_cnt_cli2ost()
+{
+    local flavor=$1
+    local cnt
+
+    local clients=${CLIENTS:-`hostname`}
+
+    for c in ${clients//,/ }; do
+        output=`do_node $c lctl get_param -n osc.*OST*-osc-[^M][^D][^T]*.$PROC_CLI 2>/dev/null`
+        tmpcnt=`count_flvr "$output" $flavor`
+        cnt=$((cnt + tmpcnt))
+    done
+    echo $cnt
+}
+
+flvr_cnt_mdt2mdt()
+{
+    local flavor=$1
+    local cnt=0
+
+    if [ $MDSCOUNT -le 1 ]; then
+        echo 0
+        return
+    fi
+
+    for num in `seq $MDSCOUNT`; do
+        output=`do_facet mds$num lctl get_param -n mdc.*-MDT*-mdc[0-9]*.$PROC_CLI 2>/dev/null`
+        tmpcnt=`count_flvr "$output" $flavor`
+        cnt=$((cnt + tmpcnt))
+    done
+    echo $cnt;
+}
+
+flvr_cnt_mdt2ost()
+{
+    local flavor=$1
+    local cnt=0
+
+    for num in `seq $MDSCOUNT`; do
+        output=`do_facet mds$num lctl get_param -n osc.*OST*-osc-MDT*.$PROC_CLI 2>/dev/null`
+        tmpcnt=`count_flvr "$output" $flavor`
+        cnt=$((cnt + tmpcnt))
+    done
+    echo $cnt;
+}
+
+flvr_cnt_mgc2mgs()
+{
+    local flavor=$1
+
+    output=`do_facet client lctl get_param -n mgc.*.$PROC_CLI 2>/dev/null`
+    count_flvr "$output" $flavor
+}
+
+do_check_flavor()
+{
+    local dir=$1        # from to
+    local flavor=$2     # flavor expected
+    local res=0
+
+    if [ $dir == "cli2mdt" ]; then
+        res=`flvr_cnt_cli2mdt $flavor`
+    elif [ $dir == "cli2ost" ]; then
+        res=`flvr_cnt_cli2ost $flavor`
+    elif [ $dir == "mdt2mdt" ]; then
+        res=`flvr_cnt_mdt2mdt $flavor`
+    elif [ $dir == "mdt2ost" ]; then
+        res=`flvr_cnt_mdt2ost $flavor`
+    elif [ $dir == "all2ost" ]; then
+        res1=`flvr_cnt_mdt2ost $flavor`
+        res2=`flvr_cnt_cli2ost $flavor`
+        res=$((res1 + res2))
+    elif [ $dir == "all2mdt" ]; then
+        res1=`flvr_cnt_mdt2mdt $flavor`
+        res2=`flvr_cnt_cli2mdt $flavor`
+        res=$((res1 + res2))
+    elif [ $dir == "all2all" ]; then
+        res1=`flvr_cnt_mdt2ost $flavor`
+        res2=`flvr_cnt_cli2ost $flavor`
+        res3=`flvr_cnt_mdt2mdt $flavor`
+        res4=`flvr_cnt_cli2mdt $flavor`
+        res=$((res1 + res2 + res3 + res4))
+    fi
+
+    echo $res
+}
+
+wait_flavor()
+{
+    local dir=$1        # from to
+    local flavor=$2     # flavor expected
+    local expect=${3:-$(calc_connection_cnt $dir)}     # number expected
+
+    local res=0
+
+    for ((i=0;i<20;i++)); do
+        echo -n "checking..."
+        res=$(do_check_flavor $dir $flavor)
+        if [ $res -eq $expect ]; then
+            echo "found $res $flavor connections of $dir, OK"
+            return 0
+        else
+            echo "found $res $flavor connections of $dir, not ready ($expect)"
+            sleep 4
+        fi
+    done
+
+    echo "Error checking $flavor of $dir: expect $expect, actual $res"
+    return 1
+}
+
+restore_to_default_flavor()
+{
+    local proc="mgs.MGS.live.$FSNAME"
+
+    echo "restoring to default flavor..."
+
+    nrule=`do_facet mgs lctl get_param -n $proc 2>/dev/null | grep ".srpc.flavor." | wc -l`
+
+    # remove all existing rules if any
+    if [ $nrule -ne 0 ]; then
+        echo "$nrule existing rules"
+        for rule in `do_facet mgs lctl get_param -n $proc 2>/dev/null | grep ".srpc.flavor."`; do
+            echo "remove rule: $rule"
+            spec=`echo $rule | awk -F = '{print $1}'`
+            do_facet mgs "$LCTL conf_param $spec="
+        done
+    fi
+
+    # verify no rules left
+    nrule=`do_facet mgs lctl get_param -n $proc 2>/dev/null | grep ".srpc.flavor." | wc -l`
+    [ $nrule -ne 0 ] && error "still $nrule rules left"
+
+    # wait for default flavor to be applied
+    # currently default flavor for all connections are 'null'
+    wait_flavor all2all null
+    echo "now at default flavor settings"
+}
+
+set_flavor_all()
+{
+    local flavor=${1:-null}
+
+    echo "setting all flavor to $flavor"
+
+    # FIXME need parameter to this fn
+    # and remove global vars
+    local cnt_all2all=$(calc_connection_cnt all2all)
+
+    local res=$(do_check_flavor all2all $flavor)
+    if [ $res -eq $cnt_all2all ]; then
+        echo "already have total $res $flavor connections"
+        return
+    fi
+
+    echo "found $res $flavor out of total $cnt_all2all connections"
+    restore_to_default_flavor
+
+    [[ $flavor = null ]] && return 0
+
+    set_rule $FSNAME any any $flavor
+    wait_flavor all2all $flavor
+}
+
+
+check_logdir() {
+    local dir=$1
+    # Checking for shared logdir
+    if [ ! -d $dir ]; then
+        # Not found. Create local logdir
+        mkdir -p $dir
+    else
+        touch $dir/node.$(hostname).yml
+    fi
+    return 0
+}
+
+check_write_access() {
+    local dir=$1
+    for node in $(nodes_list); do
+        if [ ! -f "$dir/node.${node}.yml" ]; then
+            # Logdir not accessible/writable from this node.
+            return 1
+        fi
+    done
+    return 0
+}
+
+init_logging() {
+    if [[ -n $YAML_LOG ]]; then
+        return
+    fi
+    export YAML_LOG=${LOGDIR}/results.yml
+    mkdir -p $LOGDIR
+    init_clients_lists
+
+    do_rpc_nodes $(comma_list $(nodes_list)) check_logdir $LOGDIR
+    if check_write_access $LOGDIR; then
+        touch $LOGDIR/shared
+        echo "Logging to shared log directory: $LOGDIR"
+    else
+        echo "Logging to local directory: $LOGDIR"
+    fi
+
+    yml_nodes_file $LOGDIR
+    yml_results_file >> $YAML_LOG
+}
+
+log_test() {
+    yml_log_test $1 >> $YAML_LOG
+}
+
+log_sub_test() {
+    yml_log_sub_test $@ >> $YAML_LOG
 }
 

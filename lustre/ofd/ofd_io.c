@@ -126,7 +126,7 @@ static int filter_preprw_write(const struct lu_env *env, struct obd_export *exp,
         *nr_local = j;
         LASSERT(*nr_local > 0 && *nr_local <= PTLRPC_MAX_BRW_PAGES);
 
-        mutex_down(&ofd->ofd_grant_sem);
+        cfs_mutex_down(&ofd->ofd_grant_sem);
         filter_grant_incoming(env, exp, oa);
         left = filter_grant_space_left(env, exp);
 
@@ -143,7 +143,7 @@ static int filter_preprw_write(const struct lu_env *env, struct obd_export *exp,
         if (oa->o_valid & OBD_MD_FLGRANT)
                 oa->o_grant = filter_grant(env, exp, oa->o_grant,
                                            oa->o_undirty, left);
-        mutex_up(&ofd->ofd_grant_sem);
+        cfs_mutex_up(&ofd->ofd_grant_sem);
 
         rc = dt_write_prep(env, filter_object_child(fo), res, *nr_local, &used);
 
@@ -200,11 +200,11 @@ int filter_preprw(int cmd, struct obd_export *exp, struct obdo *oa, int objcount
                                       capa, CAPA_OPC_OSS_READ);
                 if (rc == 0) {
                         if (oa && oa->o_valid & OBD_MD_FLGRANT) {
-                                mutex_down(&ofd->ofd_grant_sem);
+                                cfs_mutex_down(&ofd->ofd_grant_sem);
                                 filter_grant_incoming(&env, exp, oa);
                                 if (!(oa->o_flags & OBD_FL_SHRINK_GRANT))
                                         oa->o_grant = 0;
-                                mutex_up(&ofd->ofd_grant_sem);
+                                cfs_mutex_up(&ofd->ofd_grant_sem);
                         }
                         rc = filter_preprw_read(&env, ofd, &info->fti_fid,
                                                 &info->fti_attr, obj->ioo_bufcnt,

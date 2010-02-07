@@ -62,8 +62,8 @@ int filter_update_capa_key(struct filter_device *ofd, struct lustre_capa_key *ne
         struct filter_capa_key *k, *keys[2] = { NULL, NULL };
         int i;
 
-        spin_lock(&capa_lock);
-        list_for_each_entry(k, &ofd->ofd_capa_keys, k_list) {
+        cfs_spin_lock(&capa_lock);
+        cfs_list_for_each_entry(k, &ofd->ofd_capa_keys, k_list) {
                 if (k->k_key.lk_mdsid != new->lk_mdsid)
                         continue;
 
@@ -75,7 +75,7 @@ int filter_update_capa_key(struct filter_device *ofd, struct lustre_capa_key *ne
                         keys[0] = k;
                 }
         }
-        spin_unlock(&capa_lock);
+        cfs_spin_unlock(&capa_lock);
 
         for (i = 0; i < 2; i++) {
                 if (!keys[i])
@@ -85,9 +85,9 @@ int filter_update_capa_key(struct filter_device *ofd, struct lustre_capa_key *ne
                 /* maybe because of recovery or other reasons, MDS sent the
                  * the old capability key again.
                  */
-                spin_lock(&capa_lock);
+                cfs_spin_lock(&capa_lock);
                 keys[i]->k_key = *new;
-                spin_unlock(&capa_lock);
+                cfs_spin_unlock(&capa_lock);
 
                 RETURN(0);
         }
@@ -102,11 +102,11 @@ int filter_update_capa_key(struct filter_device *ofd, struct lustre_capa_key *ne
                 CFS_INIT_LIST_HEAD(&k->k_list);
         }
 
-        spin_lock(&capa_lock);
+        cfs_spin_lock(&capa_lock);
         k->k_key = *new;
-        if (list_empty(&k->k_list))
-                list_add(&k->k_list, &ofd->ofd_capa_keys);
-        spin_unlock(&capa_lock);
+        if (cfs_list_empty(&k->k_list))
+                cfs_list_add(&k->k_list, &ofd->ofd_capa_keys);
+        cfs_spin_unlock(&capa_lock);
 
         DEBUG_CAPA_KEY(D_SEC, new, "new");
         RETURN(0);
@@ -154,19 +154,19 @@ int filter_auth_capa(struct filter_device *ofd, struct lu_fid *fid,
 
         oc = capa_lookup(ofd->ofd_capa_hash, capa, 0);
         if (oc) {
-                spin_lock(&oc->c_lock);
+                cfs_spin_lock(&oc->c_lock);
                 if (capa_is_expired(oc)) {
                         DEBUG_CAPA(D_ERROR, capa, "expired");
                         rc = -ESTALE;
                 }
-                spin_unlock(&oc->c_lock);
+                cfs_spin_unlock(&oc->c_lock);
 
                 capa_put(oc);
                 RETURN(rc);
         }
 
-        spin_lock(&capa_lock);
-        list_for_each_entry(k, &ofd->ofd_capa_keys, k_list)
+        cfs_spin_lock(&capa_lock);
+        cfs_list_for_each_entry(k, &ofd->ofd_capa_keys, k_list)
                 if (k->k_key.lk_mdsid == mdsid) {
                         keys_ready = 1;
                         if (k->k_key.lk_keyid == capa_keyid(capa)) {
@@ -175,7 +175,7 @@ int filter_auth_capa(struct filter_device *ofd, struct lu_fid *fid,
                                 break;
                         }
                 }
-        spin_unlock(&capa_lock);
+        cfs_spin_unlock(&capa_lock);
 
         if (!keys_ready) {
                 CDEBUG(D_SEC, "MDS hasn't propagated capability keys yet, "
@@ -218,10 +218,10 @@ void filter_free_capa_keys(struct filter_device *ofd)
 {
         struct filter_capa_key *key, *n;
 
-        spin_lock(&capa_lock);
-        list_for_each_entry_safe(key, n, &ofd->ofd_capa_keys, k_list) {
-                list_del_init(&key->k_list);
+        cfs_spin_lock(&capa_lock);
+        cfs_list_for_each_entry_safe(key, n, &ofd->ofd_capa_keys, k_list) {
+                cfs_list_del_init(&key->k_list);
                 OBD_FREE(key, sizeof(*key));
         }
-        spin_unlock(&capa_lock);
+        cfs_spin_unlock(&capa_lock);
 }

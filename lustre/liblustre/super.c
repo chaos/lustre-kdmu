@@ -65,8 +65,6 @@
 #include <file.h>
 #endif
 
-#undef LIST_HEAD
-
 #include "llite_lib.h"
 
 #ifndef MAY_EXEC
@@ -84,7 +82,7 @@ static int ll_permission(struct inode *inode, int mask)
 
         if (current->fsuid == st->st_uid)
                 mode >>= 6;
-        else if (in_group_p(st->st_gid))
+        else if (cfs_curproc_is_in_groups(st->st_gid))
                 mode >>= 3;
 
         if ((mode & mask & (MAY_READ|MAY_WRITE|MAY_EXEC)) == mask)
@@ -111,7 +109,7 @@ static void llu_fsop_gone(struct filesys *fs)
         int next = 0;
         ENTRY;
 
-        list_del(&sbi->ll_conn_chain);
+        cfs_list_del(&sbi->ll_conn_chain);
         cl_sb_fini(sbi);
         obd_disconnect(sbi->ll_dt_exp);
         obd_disconnect(sbi->ll_md_exp);
@@ -340,10 +338,12 @@ void obdo_from_inode(struct obdo *dst, struct inode *src, obd_flag valid)
         dst->o_valid |= newvalid;
 }
 
-/*
- * really does the getattr on the inode and updates its fields
+/**
+ * Performs the getattr on the inode and updates its fields.
+ * If @sync != 0, perform the getattr under the server-side lock.
  */
-int llu_inode_getattr(struct inode *inode, struct obdo *obdo)
+int llu_inode_getattr(struct inode *inode, struct obdo *obdo,
+                      __u64 ioepoch, int sync)
 {
         struct llu_inode_info *lli = llu_i2info(inode);
         struct ptlrpc_request_set *set;
@@ -359,10 +359,16 @@ int llu_inode_getattr(struct inode *inode, struct obdo *obdo)
         oinfo.oi_oa->o_id = lsm->lsm_object_id;
         oinfo.oi_oa->o_gr = lsm->lsm_object_gr;
         oinfo.oi_oa->o_mode = S_IFREG;
+        oinfo.oi_oa->o_ioepoch = ioepoch;
         oinfo.oi_oa->o_valid = OBD_MD_FLID | OBD_MD_FLTYPE |
                                OBD_MD_FLSIZE | OBD_MD_FLBLOCKS |
                                OBD_MD_FLBLKSZ | OBD_MD_FLMTIME |
-                               OBD_MD_FLCTIME | OBD_MD_FLGROUP;
+                               OBD_MD_FLCTIME | OBD_MD_FLGROUP |
+                               OBD_MD_FLATIME | OBD_MD_FLEPOCH;
+        if (sync) {
+                oinfo.oi_oa->o_valid |= OBD_MD_FLFLAGS;
+                oinfo.oi_oa->o_flags |= OBD_FL_SRVLOCK;
+        }
 
         set = ptlrpc_prep_set();
         if (set == NULL) {
@@ -640,7 +646,8 @@ static int inode_setattr(struct inode * inode, struct iattr * attr)
                 st->st_ctime = attr->ia_ctime;
         if (ia_valid & ATTR_MODE) {
                 st->st_mode = attr->ia_mode;
-                if (!in_group_p(st->st_gid) && !cfs_capable(CFS_CAP_FSETID))
+                if (!cfs_curproc_is_in_groups(st->st_gid) &&
+                    !cfs_capable(CFS_CAP_FSETID))
                         st->st_mode &= ~S_ISGID;
         }
         /* mark_inode_dirty(inode); */
@@ -704,13 +711,15 @@ static int llu_setattr_done_writing(struct inode *inode,
         CDEBUG(D_INODE, "Epoch "LPU64" closed on "DFID" for truncate\n",
                op_data->op_ioepoch, PFID(&lli->lli_fid));
 
-        op_data->op_flags = MF_EPOCH_CLOSE | MF_SOM_CHANGE;
+        op_data->op_flags = MF_EPOCH_CLOSE;
+        llu_done_writing_attr(inode, op_data);
+        llu_pack_inode2opdata(inode, op_data, NULL);
+
         rc = md_done_writing(llu_i2sbi(inode)->ll_md_exp, op_data, mod);
         if (rc == -EAGAIN) {
                 /* MDS has instructed us to obtain Size-on-MDS attribute
                  * from OSTs and send setattr to back to MDS. */
-                rc = llu_sizeonmds_update(inode, &op_data->op_handle,
-                                          op_data->op_ioepoch);
+                rc = llu_som_update(inode, op_data);
         } else if (rc) {
                 CERROR("inode %llu mdc truncate failed: rc = %d\n",
                        (unsigned long long)st->st_ino, rc);
@@ -756,15 +765,15 @@ int llu_setattr_raw(struct inode *inode, struct iattr *attr)
 
         /* We mark all of the fields "set" so MDS/OST does not re-set them */
         if (attr->ia_valid & ATTR_CTIME) {
-                attr->ia_ctime = CURRENT_TIME;
+                attr->ia_ctime = CFS_CURRENT_TIME;
                 attr->ia_valid |= ATTR_CTIME_SET;
         }
         if (!(ia_valid & ATTR_ATIME_SET) && (attr->ia_valid & ATTR_ATIME)) {
-                attr->ia_atime = CURRENT_TIME;
+                attr->ia_atime = CFS_CURRENT_TIME;
                 attr->ia_valid |= ATTR_ATIME_SET;
         }
         if (!(ia_valid & ATTR_MTIME_SET) && (attr->ia_valid & ATTR_MTIME)) {
-                attr->ia_mtime = CURRENT_TIME;
+                attr->ia_mtime = CFS_CURRENT_TIME;
                 attr->ia_valid |= ATTR_MTIME_SET;
         }
         if ((attr->ia_valid & ATTR_CTIME) && !(attr->ia_valid & ATTR_MTIME)) {
@@ -782,7 +791,7 @@ int llu_setattr_raw(struct inode *inode, struct iattr *attr)
                 CDEBUG(D_INODE, "setting mtime "CFS_TIME_T", ctime "CFS_TIME_T
 		       ", now = "CFS_TIME_T"\n",
                        LTIME_S(attr->ia_mtime), LTIME_S(attr->ia_ctime),
-                       LTIME_S(CURRENT_TIME));
+                       LTIME_S(CFS_CURRENT_TIME));
 
         /* NB: ATTR_SIZE will only be set after this point if the size
          * resides on the MDS, ie, this file has no objects. */
@@ -796,7 +805,7 @@ int llu_setattr_raw(struct inode *inode, struct iattr *attr)
                 memcpy(&op_data.op_attr, attr, sizeof(*attr));
 
                 /* Open epoch for truncate. */
-                if ((llu_i2mdexp(inode)->exp_connect_flags & OBD_CONNECT_SOM) &&
+                if (exp_connect_som(llu_i2mdexp(inode)) &&
                     (ia_valid & ATTR_SIZE))
                         op_data.op_flags = MF_EPOCH_OPEN;
                 rc = llu_md_setattr(inode, &op_data, &mod);
@@ -892,7 +901,7 @@ static int llu_iop_setattr(struct pnode *pno,
         }
 
         iattr.ia_valid |= ATTR_RAW | ATTR_CTIME;
-        iattr.ia_ctime = CURRENT_TIME;
+        iattr.ia_ctime = CFS_CURRENT_TIME;
 
         rc = llu_setattr_raw(ino, &iattr);
         liblustre_wait_idle();
@@ -1201,7 +1210,7 @@ static int llu_statfs(struct llu_sb_info *sbi, struct statfs *sfs)
         /* For now we will always get up-to-date statfs values, but in the
          * future we may allow some amount of caching on the client (e.g.
          * from QOS or lprocfs updates). */
-        rc = llu_statfs_internal(sbi, &osfs, cfs_time_current_64() - HZ);
+        rc = llu_statfs_internal(sbi, &osfs, cfs_time_current_64() - CFS_HZ);
         if (rc)
                 return rc;
 
@@ -1662,7 +1671,7 @@ static int llu_lov_dir_setstripe(struct inode *ino, unsigned long arg)
         LASSERT(sizeof(lum) == sizeof(*lump));
         LASSERT(sizeof(lum.lmm_objects[0]) ==
                 sizeof(lump->lmm_objects[0]));
-        if (copy_from_user(&lum, lump, sizeof(lum)))
+        if (cfs_copy_from_user(&lum, lump, sizeof(lum)))
                 return(-EFAULT);
 
         switch (lum.lmm_magic) {
@@ -1770,7 +1779,7 @@ static int llu_lov_file_setstripe(struct inode *ino, unsigned long arg)
 
         LASSERT(sizeof(lum) == sizeof(*lump));
         LASSERT(sizeof(lum.lmm_objects[0]) == sizeof(lump->lmm_objects[0]));
-        if (copy_from_user(&lum, lump, sizeof(lum)))
+        if (cfs_copy_from_user(&lum, lump, sizeof(lum)))
                 RETURN(-EFAULT);
 
         rc = llu_lov_setstripe_ea_info(ino, flags, &lum, sizeof(lum));

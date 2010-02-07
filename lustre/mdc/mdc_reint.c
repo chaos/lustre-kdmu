@@ -77,7 +77,7 @@ static int mdc_reint(struct ptlrpc_request *request,
  * found by @fid. Found locks are added into @cancel list. Returns the amount of
  * locks added to @cancels list. */
 int mdc_resource_get_unused(struct obd_export *exp, struct lu_fid *fid,
-                            struct list_head *cancels, ldlm_mode_t mode,
+                            cfs_list_t *cancels, ldlm_mode_t mode,
                             __u64 bits)
 {
         ldlm_policy_data_t policy = {{0}};
@@ -102,7 +102,7 @@ int mdc_resource_get_unused(struct obd_export *exp, struct lu_fid *fid,
 }
 
 static int mdc_prep_elc_req(struct obd_export *exp, struct ptlrpc_request *req,
-                            struct list_head *cancels, int count)
+                            cfs_list_t *cancels, int count)
 {
         return ldlm_prep_elc_req(exp, req, LUSTRE_MDS_VERSION, MDS_REINT,
                                  0, cancels, count);
@@ -176,7 +176,7 @@ int mdc_setattr(struct obd_export *exp, struct md_op_data *op_data,
         {
                 LASSERT(*mod == NULL);
 
-                OBD_ALLOC_PTR(*mod);
+                *mod = obd_mod_alloc();
                 if (*mod == NULL) {
                         DEBUG_REQ(D_ERROR, req, "Can't allocate "
                                   "md_open_data");
@@ -185,6 +185,13 @@ int mdc_setattr(struct obd_export *exp, struct md_op_data *op_data,
                         req->rq_cb_data = *mod;
                         (*mod)->mod_open_req = req;
                         req->rq_commit_cb = mdc_commit_open;
+                        /**
+                         * Take an extra reference on \var mod, it protects \var
+                         * mod from being freed on eviction (commit callback is
+                         * called despite rq_replay flag).
+                         * Will be put on mdc_done_writing().
+                         */
+                        obd_mod_get(*mod);
                 }
         }
 
@@ -192,7 +199,7 @@ int mdc_setattr(struct obd_export *exp, struct md_op_data *op_data,
 
         /* Save the obtained info in the original RPC for the replay case. */
         if (rc == 0 && (op_data->op_flags & MF_EPOCH_OPEN)) {
-                struct mdt_epoch *epoch;
+                struct mdt_ioepoch *epoch;
                 struct mdt_body  *body;
 
                 epoch = req_capsule_client_get(&req->rq_pill, &RMF_MDT_EPOCH);
@@ -209,8 +216,11 @@ int mdc_setattr(struct obd_export *exp, struct md_op_data *op_data,
                 rc = 0;
         }
         *request = req;
-        if (rc && req->rq_commit_cb)
+        if (rc && req->rq_commit_cb) {
+                /* Put an extra reference on \var mod on error case. */
+                obd_mod_put(*mod);
                 req->rq_commit_cb(req);
+        }
         RETURN(rc);
 }
 

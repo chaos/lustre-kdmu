@@ -202,9 +202,9 @@ static inline void mdc_clear_replay_flag(struct ptlrpc_request *req, int rc)
 {
         /* Don't hold error requests for replay. */
         if (req->rq_replay) {
-                spin_lock(&req->rq_lock);
+                cfs_spin_lock(&req->rq_lock);
                 req->rq_replay = 0;
-                spin_unlock(&req->rq_lock);
+                cfs_spin_unlock(&req->rq_lock);
         }
         if (rc && req->rq_transno != 0) {
                 DEBUG_REQ(D_ERROR, req, "transno returned on error rc %d", rc);
@@ -305,9 +305,9 @@ static struct ptlrpc_request *mdc_intent_open_pack(struct obd_export *exp,
                 return NULL;
         }
 
-        spin_lock(&req->rq_lock);
+        cfs_spin_lock(&req->rq_lock);
         req->rq_replay = req->rq_import->imp_replayable;
-        spin_unlock(&req->rq_lock);
+        cfs_spin_unlock(&req->rq_lock);
 
         /* pack the intent */
         lit = req_capsule_client_get(&req->rq_pill, &RMF_LDLM_INTENT);
@@ -608,7 +608,11 @@ int mdc_enqueue(struct obd_export *exp, struct ldlm_enqueue_info *einfo,
         int                    flags = extra_lock_flags;
         int                    rc;
         struct ldlm_res_id res_id;
-        ldlm_policy_data_t policy = { .l_inodebits = { MDS_INODELOCK_LOOKUP } };
+        static const ldlm_policy_data_t lookup_policy =
+                            { .l_inodebits = { MDS_INODELOCK_LOOKUP } };
+        static const ldlm_policy_data_t update_policy =
+                            { .l_inodebits = { MDS_INODELOCK_UPDATE } };
+        ldlm_policy_data_t const *policy = &lookup_policy;
         ENTRY;
 
         LASSERTF(!it || einfo->ei_type == LDLM_IBITS, "lock type %d\n",
@@ -619,7 +623,7 @@ int mdc_enqueue(struct obd_export *exp, struct ldlm_enqueue_info *einfo,
         if (it)
                 flags |= LDLM_FL_HAS_INTENT;
         if (it && it->it_op & (IT_UNLINK | IT_GETATTR | IT_READDIR))
-                policy.l_inodebits.bits = MDS_INODELOCK_UPDATE;
+                policy = &update_policy;
 
         if (reqp)
                 req = *reqp;
@@ -630,12 +634,12 @@ int mdc_enqueue(struct obd_export *exp, struct ldlm_enqueue_info *einfo,
                 LASSERT(lmm && lmmsize == 0);
                 LASSERTF(einfo->ei_type == LDLM_FLOCK, "lock type %d\n",
                          einfo->ei_type);
-                policy = *(ldlm_policy_data_t *)lmm;
+                policy = (ldlm_policy_data_t *)lmm;
                 res_id.name[3] = LDLM_FLOCK;
         } else if (it->it_op & IT_OPEN) {
                 req = mdc_intent_open_pack(exp, it, op_data, lmm, lmmsize,
                                            einfo->ei_cbdata);
-                policy.l_inodebits.bits = MDS_INODELOCK_UPDATE;
+                policy = &update_policy;
                 einfo->ei_cbdata = NULL;
                 lmm = NULL;
         } else if (it->it_op & IT_UNLINK)
@@ -660,7 +664,8 @@ int mdc_enqueue(struct obd_export *exp, struct ldlm_enqueue_info *einfo,
                 mdc_get_rpc_lock(obddev->u.cli.cl_rpc_lock, it);
                 mdc_enter_request(&obddev->u.cli);
         }
-        rc = ldlm_cli_enqueue(exp, &req, einfo, &res_id, &policy, &flags, NULL,
+
+        rc = ldlm_cli_enqueue(exp, &req, einfo, &res_id, policy, &flags, NULL,
                               0, lockh, 0);
         if (reqp)
                 *reqp = req;
@@ -1023,8 +1028,7 @@ int mdc_revalidate_lock(struct obd_export *exp,
            owner/group/acls are under lookup lock, we need both
            ibits for GETATTR. */
         policy.l_inodebits.bits = (it->it_op == IT_GETATTR) ?
-                MDS_INODELOCK_UPDATE | MDS_INODELOCK_LOOKUP :
-                MDS_INODELOCK_LOOKUP;
+                MDS_INODELOCK_UPDATE : MDS_INODELOCK_LOOKUP;
 
         mode = ldlm_lock_match(exp->exp_obd->obd_namespace,
                                LDLM_FL_BLOCK_GRANTED, &res_id, LDLM_IBITS,

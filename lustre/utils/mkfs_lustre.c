@@ -586,17 +586,32 @@ static void enable_default_backfs_features(struct mkfs_opts *mop)
 /* Build fs according to type */
 int make_lustre_backfs(struct mkfs_opts *mop)
 {
+        __u64 device_sz = mop->mo_device_sz, block_count = 0;
         char mkfs_cmd[PATH_MAX];
         char buf[64];
         char *dev;
         int ret = 0;
-        int block_count = 0;
+
+        if (mop->mo_ldd.ldd_mount_type != LDD_MT_ZFS) {
+                if (!(mop->mo_flags & MO_IS_LOOP)) {
+                        mop->mo_device_sz = get_device_size(mop->mo_device);
+
+                        if (mop->mo_device_sz == 0)
+                                return ENODEV;
+
+                        /* Compare to real size */
+                        if (device_sz == 0 || device_sz > mop->mo_device_sz)
+                                device_sz = mop->mo_device_sz;
+                        else
+                                mop->mo_device_sz = device_sz;
+                }
+        }
 
         if (mop->mo_device_sz != 0) {
-                if (mop->mo_device_sz < 8096){
-                        fprintf(stderr, "%s: size of filesystem must be larger "
-                                "than 8MB, but is set to %lldKB\n",
-                                progname, (long long)mop->mo_device_sz);
+                if (mop->mo_device_sz < 8192) {
+                        fprintf(stderr, "%s: size of filesystem must be larger"
+                                " than 8MB, but is set to "LPU64"KB\n",
+                                progname, mop->mo_device_sz);
                         return EINVAL;
                 }
                 block_count = mop->mo_device_sz / (L_BLOCK_SIZE >> 10);
@@ -605,15 +620,6 @@ int make_lustre_backfs(struct mkfs_opts *mop)
         if ((mop->mo_ldd.ldd_mount_type == LDD_MT_EXT3) ||
             (mop->mo_ldd.ldd_mount_type == LDD_MT_LDISKFS) ||
             (mop->mo_ldd.ldd_mount_type == LDD_MT_LDISKFS2)) {
-                __u64 device_sz = mop->mo_device_sz;
-
-                /* we really need the size */
-                if (device_sz == 0) {
-                        device_sz = get_device_size(mop->mo_device);
-                        if (device_sz == 0)
-                                return ENODEV;
-                }
-
                 /* Journal size in MB */
                 if (strstr(mop->mo_mkfsopts, "-J") == NULL) {
                         /* Choose our own default journal size */
@@ -727,7 +733,6 @@ int make_lustre_backfs(struct mkfs_opts *mop)
                         snprintf(mkfs_cmd, sizeof(mkfs_cmd),
                                  "zpool create %s%s", force_zpool ? "-f " : "",
                                  pool_name);
-                        mkfs_cmd[sizeof(mkfs_cmd) - 1] = '\0';
 
                         /* Add the vdevs to the cmd line */
                         while (*mop->mo_pool_vdevs != NULL) {
@@ -747,13 +752,32 @@ int make_lustre_backfs(struct mkfs_opts *mop)
                                         "(%d)\n", pool_name, ret);
                                 return ret;
                         }
+                } else if (mop->mo_flags & MO_FORCEFORMAT) {
+                        /* If --reformat was given, destroy previous ZFS
+                           filesystem (if it exists).  */
+                        snprintf(mkfs_cmd, sizeof(mkfs_cmd), "zfs destroy %s",
+                                 mop->mo_device);
+
+                        vprint("\nDestroying previous filesystem if it exists"
+                               " (--reformat was given)...\n");
+                        vprint("zfs_cmd = \"%s\"\n", mkfs_cmd);
+
+                        /* run_command_err() will return -2 if the zfs command
+                           spits out 'dataset does not exist' */
+                        ret = run_command_err(mkfs_cmd, sizeof(mkfs_cmd),
+                                              "dataset does not exist");
+                        if (ret && ret != -2) {
+                                fatal();
+                                fprintf(stderr, "Unable to destroy filesystem"
+                                        " %s (%d)\n", mop->mo_device, ret);
+                                return ret;
+                        }
                 }
 
                 /* Create the ZFS filesystem */
                 snprintf(mkfs_cmd, sizeof(mkfs_cmd), "zfs create%s%s %s",
                          mop->mo_mkfsopts[0] ? " -o " : "", mop->mo_mkfsopts,
                          mop->mo_device);
-                mkfs_cmd[sizeof(mkfs_cmd) - 1] = '\0';
 
                 vprint("\ncreating ZFS filesystem \"%s\"...\n", mop->mo_device);
                 vprint("zfs_cmd = \"%s\"\n", mkfs_cmd);
@@ -773,7 +797,6 @@ int make_lustre_backfs(struct mkfs_opts *mop)
                          mop->mo_ldd.ldd_flags & LDD_F_SV_TYPE_MDT ? "MDT":"OST",
                          mop->mo_ldd.ldd_svindex,
                          mop->mo_device);
-                mkfs_cmd[sizeof(mkfs_cmd) - 1] = '\0';
 
                 vprint("\nsetting label to \"%s\"...\n", mop->mo_ldd.ldd_svname);
                 vprint("zfs_cmd = \"%s\"\n", mkfs_cmd);
@@ -784,6 +807,25 @@ int make_lustre_backfs(struct mkfs_opts *mop)
                         fprintf(stderr, "Unable to set label to %s (%d)\n",
                                 mop->mo_ldd.ldd_svname, ret);
                         return ret;
+                }
+
+                /* Set refquota if --device-size was given */
+                if (mop->mo_device_sz != 0) {
+                        snprintf(mkfs_cmd, sizeof(mkfs_cmd), "zfs set "
+                                 "refquota="LPU64"K %s", mop->mo_device_sz,
+                                 mop->mo_device);
+
+                        vprint("\nsetting max filesystem size to "
+                               "\""LPU64"K\"...\n", mop->mo_device_sz);
+                        vprint("zfs_cmd = \"%s\"\n", mkfs_cmd);
+
+                        ret = run_command(mkfs_cmd, sizeof(mkfs_cmd));
+                        if (ret) {
+                                fatal();
+                                fprintf(stderr, "Unable to set refquota (%d)\n",
+                                        ret);
+                                return ret;
+                        }
                 }
 
                 goto skip_format;
@@ -802,7 +844,7 @@ int make_lustre_backfs(struct mkfs_opts *mop)
         vprint("formatting backing filesystem %s on %s\n",
                MT_STR(&mop->mo_ldd), dev);
         vprint("\ttarget name  %s\n", mop->mo_ldd.ldd_svname);
-        vprint("\t4k blocks     %d\n", block_count);
+        vprint("\t4k blocks     %llu\n", block_count);
         vprint("\toptions       %s\n", mop->mo_mkfsopts);
 
         /* mkfs_cmd's trailing space is important! */
@@ -810,7 +852,7 @@ int make_lustre_backfs(struct mkfs_opts *mop)
         strscat(mkfs_cmd, " ", sizeof(mkfs_cmd));
         strscat(mkfs_cmd, dev, sizeof(mkfs_cmd));
         if (block_count != 0) {
-                sprintf(buf, " %d", block_count);
+                sprintf(buf, " %llu", block_count);
                 strscat(mkfs_cmd, buf, sizeof(mkfs_cmd));
         }
 
@@ -939,7 +981,8 @@ int write_local_files(struct mkfs_opts *mop)
         if (mop->mo_flags & MO_IS_LOOP)
                 dev = mop->mo_loopdev;
 
-        ret = mount(dev, mntpt, MT_STR(&mop->mo_ldd), 0, NULL);
+        ret = mount(dev, mntpt, MT_STR(&mop->mo_ldd), 0,
+                    mop->mo_ldd.ldd_mount_opts);
         if (ret) {
                 fprintf(stderr, "%s: Unable to mount %s: %s\n",
                         progname, dev, strerror(errno));
@@ -1534,6 +1577,76 @@ int parse_opts(int argc, char *const argv[], struct mkfs_opts *mop,
                 ++print_only;
 
         return 0;
+}
+
+/* Search for opt in mntlist, returning true if found.
+ */
+static int in_mntlist(char *opt, char *mntlist)
+{
+        char *ml, *mlp, *item, *ctx = NULL;
+
+        if (!(ml = strdup(mntlist))) {
+                fprintf(stderr, "%s: out of memory\n", progname);
+                exit(1);
+        }
+        mlp = ml;
+        while ((item = strtok_r(mlp, ",", &ctx))) {
+                if (!strcmp(opt, item))
+                        break;
+                mlp = NULL;
+        }
+        free(ml);
+        return (item != NULL);
+}
+
+/* Issue a message on stderr for every item in wanted_mountopts that is not
+ * present in mountopts.  The justwarn boolean toggles between error and
+ * warning message.  Return an error count.
+ */
+static int check_mountfsoptions(char *mountopts, char *wanted_mountopts,
+                                int justwarn)
+{
+        char *ml, *mlp, *item, *ctx = NULL;
+        int errors = 0;
+
+        if (!(ml = strdup(wanted_mountopts))) {
+                fprintf(stderr, "%s: out of memory\n", progname);
+                exit(1);
+        }
+        mlp = ml;
+        while ((item = strtok_r(mlp, ",", &ctx))) {
+                if (!in_mntlist(item, mountopts)) {
+                        fprintf(stderr, "%s: %s mount option `%s' is missing\n",
+                                progname, justwarn ? "Warning: default"
+                                : "Error: mandatory", item);
+                        errors++;
+                }
+                mlp = NULL;
+        }
+        free(ml);
+        return errors;
+}
+
+/* Trim embedded white space, leading and trailing commas from string s.
+ */
+static void trim_mountfsoptions(char *s)
+{
+        char *p;
+
+        for (p = s; *p; ) {
+                if (isspace(*p)) {
+                        memmove(p, p + 1, strlen(p + 1) + 1);
+                        continue;
+                }
+                p++;
+        }
+
+        while (s[0] == ',')
+                memmove(&s[0], &s[1], strlen(&s[1]) + 1);
+
+        p = s + strlen(s) - 1;
+        while (p >= s && *p == ',')
+                *p-- = '\0';
 }
 
 int main(int argc, char *const argv[])

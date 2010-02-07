@@ -85,7 +85,7 @@ struct dt_device_operations {
          * Return device-wide statistics.
          */
         int   (*dt_statfs)(const struct lu_env *env,
-                           struct dt_device *dev, struct kstatfs *sfs);
+                           struct dt_device *dev, cfs_kstatfs_t *sfs);
         /**
          * Create transaction, described by \a param.
          */
@@ -349,7 +349,7 @@ struct dt_object_operations {
                             struct dt_allocation_hint *ah,
                             struct dt_object *parent,
                             struct dt_object *child,
-                            umode_t child_mode);
+                            cfs_umode_t child_mode);
         /**
          * Create new object on this device.
          *
@@ -576,7 +576,7 @@ struct dt_device {
          * way, because callbacks are supposed to be added/deleted only during
          * single-threaded start-up shut-down procedures.
          */
-        struct list_head                   dd_txn_callbacks;
+        cfs_list_t                         dd_txn_callbacks;
 };
 
 int  dt_device_init(struct dt_device *dev, struct lu_device_type *t);
@@ -657,9 +657,9 @@ struct dt_txn_callback {
                             struct thandle *txn, void *cookie);
         int (*dtc_txn_commit)(const struct lu_env *env,
                               struct thandle *txn, void *cookie);
-        void            *dtc_cookie;
-        __u32            dtc_tag;
-        struct list_head dtc_linkage;
+        void                *dtc_cookie;
+        __u32                dtc_tag;
+        cfs_list_t           dtc_linkage;
 };
 
 void dt_txn_callback_add(struct dt_device *dev, struct dt_txn_callback *cb);
@@ -938,7 +938,7 @@ static inline int dt_read_prep(const struct lu_env *env, struct dt_object *d,
 }
 
 static inline int dt_statfs(const struct lu_env *env, struct dt_device *dev,
-                            struct kstatfs *sfs)
+                            cfs_kstatfs_t *sfs)
 {
         return dev->dd_ops->dt_statfs(env, dev, sfs);
 }

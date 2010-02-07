@@ -72,7 +72,7 @@ static enum interval_iter filter_intent_cb(struct interval_node *n,
         if (interval_high(n) <= size)
                 return INTERVAL_ITER_STOP;
 
-        list_for_each_entry(lck, &node->li_group, l_sl_policy) {
+        cfs_list_for_each_entry(lck, &node->li_group, l_sl_policy) {
                 /* Don't send glimpse ASTs to liblustre clients.
                  * They aren't listening for them, and they do
                  * entirely synchronous I/O anyways. */
@@ -149,13 +149,13 @@ static int filter_intent_policy(struct ldlm_namespace *ns,
 
         /* FIXME: we should change the policy function slightly, to not make
          * this list at all, since we just turn around and free it */
-        while (!list_empty(&rpc_list)) {
+        while (!cfs_list_empty(&rpc_list)) {
                 struct ldlm_lock *wlock =
-                        list_entry(rpc_list.next, struct ldlm_lock, l_cp_ast);
+                        cfs_list_entry(rpc_list.next, struct ldlm_lock, l_cp_ast);
                 LASSERT((lock->l_flags & LDLM_FL_AST_SENT) == 0);
                 LASSERT(lock->l_flags & LDLM_FL_CP_REQD);
                 lock->l_flags &= ~LDLM_FL_CP_REQD;
-                list_del_init(&wlock->l_cp_ast);
+                cfs_list_del_init(&wlock->l_cp_ast);
                 LDLM_LOCK_RELEASE(wlock);
         }
 
@@ -299,10 +299,10 @@ static int filter_process_config(const struct lu_env *env,
                         break;
                 }
 
-                write_lock(&m->ofd_sptlrpc_lock);
+                cfs_write_lock(&m->ofd_sptlrpc_lock);
                 sptlrpc_rule_set_free(&m->ofd_sptlrpc_rset);
                 m->ofd_sptlrpc_rset = tmp_rset;
-                write_unlock(&m->ofd_sptlrpc_lock);
+                cfs_write_unlock(&m->ofd_sptlrpc_lock);
 
                 sptlrpc_target_update_exp_flavor(d->ld_obd, &tmp_rset);
 #endif
@@ -651,27 +651,27 @@ static int filter_init0(const struct lu_env *env, struct filter_device *m,
         }
 #endif
 
-        spin_lock_init(&m->ofd_transno_lock);
+        cfs_spin_lock_init(&m->ofd_transno_lock);
 
         m->ofd_fmd_max_num = FILTER_FMD_MAX_NUM_DEFAULT;
         m->ofd_fmd_max_age = FILTER_FMD_MAX_AGE_DEFAULT;
 
         /* grant data */
-        spin_lock_init(&m->ofd_grant_lock);
-        sema_init(&m->ofd_grant_sem, 1);
+        cfs_spin_lock_init(&m->ofd_grant_lock);
+        cfs_sema_init(&m->ofd_grant_sem, 1);
         m->ofd_tot_dirty = 0;
         m->ofd_tot_granted = 0;
         m->ofd_tot_pending = 0;
 
 #if 0
-        rwlock_init(&m->ofd_sptlrpc_lock);
+        cfs_rwlock_init(&m->ofd_sptlrpc_lock);
         sptlrpc_rule_set_init(&m->ofd_sptlrpc_rset);
 #else
         filter = &obd->u.filter;
-        rwlock_init(&filter->fo_sptlrpc_lock);
+        cfs_rwlock_init(&filter->fo_sptlrpc_lock);
         sptlrpc_rule_set_init(&filter->fo_sptlrpc_rset);
 #endif
-        spin_lock_init(&filter->fo_obt.obt_translock);
+        cfs_spin_lock_init(&filter->fo_obt.obt_translock);
 
         m->ofd_fl_oss_capa = 0;
         CFS_INIT_LIST_HEAD(&m->ofd_capa_keys);
@@ -680,7 +680,7 @@ static int filter_init0(const struct lu_env *env, struct filter_device *m,
                 RETURN(-ENOMEM);
 
         CFS_INIT_LIST_HEAD(&m->ofd_llog_list);
-        spin_lock_init(&m->ofd_llog_list_lock);
+        cfs_spin_lock_init(&m->ofd_llog_list_lock);
         m->ofd_lcm = NULL;
 
         dt_device_init(&m->ofd_dt_dev, ldt);
@@ -800,7 +800,9 @@ static void filter_fini(const struct lu_env *env, struct filter_device *m)
          * The three references that should be remaining are the
          * obd_self_export and the attach and setup references.
          */
-        while (atomic_read(&obd->obd_refcount) > 3) {
+#if 0
+        /* XXX */
+        while (cfs_atomic_read(&obd->obd_refcount) > 3) {
                 cfs_schedule_timeout(CFS_TASK_UNINT, cfs_time_seconds(1));
                 ++waited;
                 if (waited > 5 && IS_PO2(waited))
@@ -808,8 +810,9 @@ static void filter_fini(const struct lu_env *env, struct filter_device *m)
                                       "more than %d seconds to destroy all "
                                       "the exports. The current obd refcount ="
                                       " %d. Is it stuck there?\n",
-                                      waited, atomic_read(&obd->obd_refcount));
+                                      waited, cfs_atomic_read(&obd->obd_refcount));
         }
+#endif
         target_recovery_fini(obd);
 
 #if 0
@@ -837,7 +840,7 @@ static void filter_fini(const struct lu_env *env, struct filter_device *m)
         filter_stack_fini(env, m, &m->ofd_osd->dd_lu_dev);
 
         server_put_mount(obd->obd_name);
-        LASSERT(atomic_read(&d->ld_ref) == 0);
+        LASSERT(cfs_atomic_read(&d->ld_ref) == 0);
 
         EXIT;
 }
@@ -938,7 +941,7 @@ int __init ofd_init(void)
 
         lprocfs_filter_init_vars(&lvars);
 
-        request_module("lquota");
+        cfs_request_module("lquota");
 
         rc = ofd_fmd_init();
         if (rc)

@@ -35,7 +35,7 @@
 #define FILTER_GRANT_SHRINK_LIMIT (16ULL * FILTER_GRANT_CHUNK)
 #define GRANT_FOR_LLOG      16
 
-#define FILTER_RECOVERY_TIMEOUT (obd_timeout * 5 * HZ / 2) /* *waves hands* */
+#define FILTER_RECOVERY_TIMEOUT (obd_timeout * 5 * CFS_HZ / 2) /* *waves hands* */
 
 extern struct file_operations filter_per_export_stats_fops;
 
@@ -54,7 +54,7 @@ struct filter_client_data {
 
 /* per-client-per-object persistent state (LRU) */
 struct filter_mod_data {
-        struct list_head fmd_list;      /* linked to fed_mod_list */
+        cfs_list_t       fmd_list;      /* linked to fed_mod_list */
         struct lu_fid    fmd_fid;       /* FID being written to */
         __u64            fmd_mactime_xid;/* xid highest {m,a,c}time setattr */
         cfs_time_t       fmd_expire;    /* time when the fmd should expire */
@@ -66,7 +66,7 @@ struct filter_mod_data {
 #else
 #define FILTER_FMD_MAX_NUM_DEFAULT  32
 #endif
-#define FILTER_FMD_MAX_AGE_DEFAULT ((obd_timeout + 10) * HZ)
+#define FILTER_FMD_MAX_AGE_DEFAULT ((obd_timeout + 10) * CFS_HZ)
 
 int ofd_fmd_init(void);
 void ofd_fmd_exit(void);
@@ -134,7 +134,7 @@ struct filter_device {
 
         /* transaction callbacks */
         struct dt_txn_callback   ofd_txn_cb;
-        spinlock_t               ofd_transno_lock;
+        cfs_spinlock_t           ofd_transno_lock;
         __u64                    ofd_last_transno;
 
         /* last_rcvd file */
@@ -144,38 +144,38 @@ struct filter_device {
 
         int                      ofd_subdir_count;
 
-        struct list_head         ofd_llog_list;
-        spinlock_t               ofd_llog_list_lock;
+        cfs_list_t               ofd_llog_list;
+        cfs_spinlock_t           ofd_llog_list_lock;
         void                    *ofd_lcm;
 
         /* XXX: make the following dynamic */
         int                      ofd_max_group;
         obd_id                   ofd_last_objids[FILTER_MAX_GROUPS];
-        struct semaphore         ofd_create_locks[FILTER_MAX_GROUPS];
+        cfs_semaphore_t          ofd_create_locks[FILTER_MAX_GROUPS];
         struct dt_object        *ofd_lastid_obj[FILTER_MAX_GROUPS];
-        spinlock_t               ofd_objid_lock;
+        cfs_spinlock_t           ofd_objid_lock;
         unsigned long            ofd_destroys_in_progress;
 
         /* grants: all values in bytes */
-        spinlock_t               ofd_grant_lock;
+        cfs_spinlock_t           ofd_grant_lock;
         obd_size                 ofd_tot_dirty;
         obd_size                 ofd_tot_granted;
         obd_size                 ofd_tot_pending;
         int                      ofd_tot_granted_clients;
-        struct semaphore         ofd_grant_sem;
+        cfs_semaphore_t          ofd_grant_sem;
 
         /* filter mod data: filter_device wide values */
         int                      ofd_fmd_max_num; /* per ofd filter_mod_data */
         cfs_duration_t           ofd_fmd_max_age; /* time to fmd expiry */
 
         /* sptlrpc stuff */
-        rwlock_t                 ofd_sptlrpc_lock;
+        cfs_rwlock_t             ofd_sptlrpc_lock;
         struct sptlrpc_rule_set  ofd_sptlrpc_rset;
 
         /* capability related */
         unsigned int             ofd_fl_oss_capa;
-        struct list_head         ofd_capa_keys;
-        struct hlist_head       *ofd_capa_hash;
+        cfs_list_t               ofd_capa_keys;
+        cfs_hlist_head_t        *ofd_capa_hash;
 };
 
 #define ofd_last_rcvd ofd_lut.lut_last_rcvd
@@ -273,7 +273,7 @@ struct filter_thread_info {
         union {
                 char               ns_name[48];   /* for obdfilter_init0()     */
                 struct lustre_cfg_bufs bufs;      /* for obdfilter_stack_fini()*/
-                struct kstatfs     ksfs;          /* for obdfilter_statfs()    */
+                cfs_kstatfs_t      ksfs;          /* for obdfilter_statfs()    */
         } fti_u;
 
         /* server and client data buffers */

@@ -81,8 +81,8 @@ extern int at_early_margin;
 extern int at_extra;
 extern unsigned int obd_sync_filter;
 extern unsigned int obd_max_dirty_pages;
-extern atomic_t obd_dirty_pages;
-extern atomic_t obd_dirty_transit_pages;
+extern cfs_atomic_t obd_dirty_pages;
+extern cfs_atomic_t obd_dirty_transit_pages;
 extern cfs_waitq_t obd_race_waitq;
 extern int obd_race_state;
 extern unsigned int obd_alloc_fail_rate;
@@ -273,6 +273,7 @@ int obd_alloc_fail(const void *ptr, const char *name, const char *type,
 #define OBD_FAIL_OST_BRW_PAUSE_PACK      0x224
 #define OBD_FAIL_OST_CONNECT_NET2        0x225
 #define OBD_FAIL_OST_NOMEM               0x226
+#define OBD_FAIL_OST_BRW_PAUSE_BULK2     0x227
 
 #define OBD_FAIL_LDLM                    0x300
 #define OBD_FAIL_LDLM_NAMESPACE_NEW      0x301
@@ -373,6 +374,7 @@ int obd_alloc_fail(const void *ptr, const char *name, const char *type,
 
 #define OBD_FAIL_QUOTA_RET_QDATA         0xA02
 #define OBD_FAIL_QUOTA_DELAY_REL         0xA03
+#define OBD_FAIL_QUOTA_DELAY_SD          0xA04
 
 #define OBD_FAIL_LPROC_REMOVE            0xB00
 
@@ -503,7 +505,7 @@ static inline void obd_race(__u32 id)
                 } else {
                         CERROR("obd_fail_race id %x waking\n", id);
                         obd_race_state = 1;
-                        wake_up(&obd_race_waitq);
+                        cfs_waitq_signal(&obd_race_waitq);
                 }
         }
 }
@@ -515,7 +517,7 @@ static inline void obd_race(__u32 id)
 
 #define fixme() CDEBUG(D_OTHER, "FIXME\n");
 
-extern atomic_t libcfs_kmemory;
+extern cfs_atomic_t libcfs_kmemory;
 
 #ifdef LPROCFS
 #define obd_memory_add(size)                                                  \
@@ -664,7 +666,7 @@ do {                                                                          \
                 CERROR("vmalloc of '" #ptr "' (%d bytes) failed\n",           \
                        (int)(size));                                          \
                 CERROR(LPU64" total bytes allocated by Lustre, %d by LNET\n", \
-                       obd_memory_sum(), atomic_read(&libcfs_kmemory));       \
+                       obd_memory_sum(), cfs_atomic_read(&libcfs_kmemory));   \
         } else {                                                              \
                 memset(ptr, 0, size);                                         \
                 OBD_ALLOC_POST(ptr, size, "vmalloced");                       \
@@ -746,7 +748,7 @@ do {                                                                          \
 })
 #define OBD_SLAB_ALLOC(ptr, slab, type, size)                                 \
 do {                                                                          \
-        LASSERT(ergo(type != CFS_ALLOC_ATOMIC, !in_interrupt()));             \
+        LASSERT(ergo(type != CFS_ALLOC_ATOMIC, !cfs_in_interrupt()));         \
         (ptr) = cfs_mem_cache_alloc(slab, (type));                            \
         if (likely((ptr) != NULL &&                                           \
                    (!HAS_FAIL_ALLOC_FLAG || obd_alloc_fail_rate == 0 ||       \
@@ -791,7 +793,7 @@ do {                                                                          \
                        obd_memory_sum(),                                      \
                        obd_pages_sum() << CFS_PAGE_SHIFT,                     \
                        obd_pages_sum(),                                       \
-                       atomic_read(&libcfs_kmemory));                         \
+                       cfs_atomic_read(&libcfs_kmemory));                     \
         } else {                                                              \
                 obd_pages_add(order);                                         \
                 CDEBUG(D_MALLOC, "alloc_pages '" #ptr "': %d page(s) / "      \

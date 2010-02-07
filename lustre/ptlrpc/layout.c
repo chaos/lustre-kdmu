@@ -509,7 +509,12 @@ static const struct req_msg_field *ost_brw_client[] = {
         &RMF_CAPA1
 };
 
-static const struct req_msg_field *ost_brw_server[] = {
+static const struct req_msg_field *ost_brw_read_server[] = {
+        &RMF_PTLRPC_BODY,
+        &RMF_OST_BODY
+};
+
+static const struct req_msg_field *ost_brw_write_server[] = {
         &RMF_PTLRPC_BODY,
         &RMF_OST_BODY,
         &RMF_RCS
@@ -591,7 +596,8 @@ static const struct req_format *req_formats[] = {
         &RQF_OST_PUNCH,
         &RQF_OST_SYNC,
         &RQF_OST_DESTROY,
-        &RQF_OST_BRW,
+        &RQF_OST_BRW_READ,
+        &RQF_OST_BRW_WRITE,
         &RQF_OST_STATFS,
         &RQF_OST_SET_GRANT_INFO,
         &RQF_OST_GET_INFO_GENERIC,
@@ -743,8 +749,8 @@ const struct req_msg_field RMF_QUNIT_DATA =
 EXPORT_SYMBOL(RMF_QUNIT_DATA);
 
 const struct req_msg_field RMF_MDT_EPOCH =
-        DEFINE_MSGF("mdt_epoch", 0,
-                    sizeof(struct mdt_epoch), lustre_swab_mdt_epoch, NULL);
+        DEFINE_MSGF("mdt_ioepoch", 0,
+                    sizeof(struct mdt_ioepoch), lustre_swab_mdt_ioepoch, NULL);
 EXPORT_SYMBOL(RMF_MDT_EPOCH);
 
 const struct req_msg_field RMF_PTLRPC_BODY =
@@ -1259,9 +1265,13 @@ const struct req_format RQF_OST_DESTROY =
         DEFINE_REQ_FMT0("OST_DESTROY", ost_destroy_client, ost_body_only);
 EXPORT_SYMBOL(RQF_OST_DESTROY);
 
-const struct req_format RQF_OST_BRW =
-        DEFINE_REQ_FMT0("OST_BRW", ost_brw_client, ost_brw_server);
-EXPORT_SYMBOL(RQF_OST_BRW);
+const struct req_format RQF_OST_BRW_READ =
+        DEFINE_REQ_FMT0("OST_BRW_READ", ost_brw_client, ost_brw_read_server);
+EXPORT_SYMBOL(RQF_OST_BRW_READ);
+
+const struct req_format RQF_OST_BRW_WRITE =
+        DEFINE_REQ_FMT0("OST_BRW_WRITE", ost_brw_client, ost_brw_write_server);
+EXPORT_SYMBOL(RQF_OST_BRW_WRITE);
 
 const struct req_format RQF_OST_STATFS =
         DEFINE_REQ_FMT0("OST_STATFS", empty, obd_statfs_server);
@@ -1897,7 +1907,8 @@ int req_capsule_fmt_size(__u32 magic, const struct req_format *fmt,
 
         for (; i < fmt->rf_fields[loc].nr; ++i)
                 if (fmt->rf_fields[loc].d[i]->rmf_size != -1)
-                        size += size_round(fmt->rf_fields[loc].d[i]->rmf_size);
+                        size += cfs_size_round(fmt->rf_fields[loc].d[i]->
+                                               rmf_size);
         return size;
 }
 

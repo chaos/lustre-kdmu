@@ -315,9 +315,9 @@ int ll_getxattr_common(struct inode *inode, const char *name,
                 struct ll_inode_info *lli = ll_i2info(inode);
                 struct posix_acl *acl;
 
-                spin_lock(&lli->lli_lock);
+                cfs_spin_lock(&lli->lli_lock);
                 acl = posix_acl_dup(lli->lli_posix_acl);
-                spin_unlock(&lli->lli_lock);
+                cfs_spin_unlock(&lli->lli_lock);
 
                 if (!acl)
                         RETURN(-ENODATA);
@@ -357,6 +357,9 @@ do_getxattr:
                        body->eadatasize, (int)size);
                 GOTO(out, rc = -ERANGE);
         }
+
+        if (body->eadatasize == 0)
+                GOTO(out, rc = -ENODATA);
 
         /* do not need swab xattr data */
         xdata = req_capsule_server_sized_get(&req->rq_pill, &RMF_EADATA,

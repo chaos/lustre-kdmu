@@ -84,7 +84,7 @@ struct md_ucred {
         __u32               mu_suppgids[2];
         cfs_cap_t           mu_cap;
         __u32               mu_umask;
-        struct group_info  *mu_ginfo;
+        cfs_group_info_t   *mu_ginfo;
         struct md_identity *mu_identity;
 };
 
@@ -151,6 +151,16 @@ struct md_hsm {
         __u32  mh_flags;
 };
 #define ma_hsm_flags ma_hsm.mh_flags
+#define HSM_FLAGS_MASK 0
+
+#define IOEPOCH_INVAL 0
+
+struct md_som_data {
+        __u64 msd_ioepoch;
+        __u64 msd_size;
+        __u64 msd_blocks;
+        __u64 msd_mountid;
+};
 
 struct md_attr {
         __u64                   ma_valid;
@@ -167,7 +177,7 @@ struct md_attr {
         int                     ma_cookie_size;
         struct lustre_capa     *ma_capa;
         struct md_hsm           ma_hsm;
-/* XXX:  struct md_som_data   *ma_som; */
+        struct md_som_data     *ma_som;
 };
 
 /** Additional parameters for create */
@@ -334,7 +344,7 @@ struct md_device_operations {
                                int *md_size, int *cookie_size);
 
         int (*mdo_statfs)(const struct lu_env *env, struct md_device *m,
-                          struct kstatfs *sfs);
+                          cfs_kstatfs_t *sfs);
 
         int (*mdo_init_capa_ctxt)(const struct lu_env *env, struct md_device *m,
                                   int mode, unsigned long timeout, __u32 alg,
@@ -437,7 +447,7 @@ enum md_upcall_event {
 struct md_upcall {
         /** this lock protects upcall using against its removal
          * read lock is for usage the upcall, write - for init/fini */
-        struct rw_semaphore     mu_upcall_sem;
+        cfs_rw_semaphore_t      mu_upcall_sem;
         /** device to call, upper layer normally */
         struct md_device       *mu_upcall_dev;
         /** upcall function */
@@ -453,38 +463,38 @@ struct md_device {
 
 static inline void md_upcall_init(struct md_device *m, void *upcl)
 {
-        init_rwsem(&m->md_upcall.mu_upcall_sem);
+        cfs_init_rwsem(&m->md_upcall.mu_upcall_sem);
         m->md_upcall.mu_upcall_dev = NULL;
         m->md_upcall.mu_upcall = upcl;
 }
 
 static inline void md_upcall_dev_set(struct md_device *m, struct md_device *up)
 {
-        down_write(&m->md_upcall.mu_upcall_sem);
+        cfs_down_write(&m->md_upcall.mu_upcall_sem);
         m->md_upcall.mu_upcall_dev = up;
-        up_write(&m->md_upcall.mu_upcall_sem);
+        cfs_up_write(&m->md_upcall.mu_upcall_sem);
 }
 
 static inline void md_upcall_fini(struct md_device *m)
 {
-        down_write(&m->md_upcall.mu_upcall_sem);
+        cfs_down_write(&m->md_upcall.mu_upcall_sem);
         m->md_upcall.mu_upcall_dev = NULL;
         m->md_upcall.mu_upcall = NULL;
-        up_write(&m->md_upcall.mu_upcall_sem);
+        cfs_up_write(&m->md_upcall.mu_upcall_sem);
 }
 
 static inline int md_do_upcall(const struct lu_env *env, struct md_device *m,
                                enum md_upcall_event ev, void *data)
 {
         int rc = 0;
-        down_read(&m->md_upcall.mu_upcall_sem);
+        cfs_down_read(&m->md_upcall.mu_upcall_sem);
         if (m->md_upcall.mu_upcall_dev != NULL &&
             m->md_upcall.mu_upcall_dev->md_upcall.mu_upcall != NULL) {
                 rc = m->md_upcall.mu_upcall_dev->md_upcall.mu_upcall(env,
                                               m->md_upcall.mu_upcall_dev,
                                               ev, data);
         }
-        up_read(&m->md_upcall.mu_upcall_sem);
+        cfs_up_read(&m->md_upcall.mu_upcall_sem);
         return rc;
 }
 
@@ -867,8 +877,8 @@ struct lu_local_obj_desc {
         const char                      *llod_name;
         __u32                            llod_oid;
         int                              llod_is_index;
-        const struct dt_index_features * llod_feat;
-        struct list_head                 llod_linkage;
+        const struct dt_index_features  *llod_feat;
+        cfs_list_t                       llod_linkage;
 };
 
 struct md_object *llo_store_resolve(const struct lu_env *env,

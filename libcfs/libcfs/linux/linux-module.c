@@ -84,7 +84,7 @@ int libcfs_ioctl_getdata(char *buf, char *end, void *arg)
 
         if (data->ioc_inllen2)
                 data->ioc_inlbuf2 = &data->ioc_bulk[0] +
-                        size_round(data->ioc_inllen1);
+                        cfs_size_round(data->ioc_inllen1);
 
         RETURN(0);
 }
@@ -138,7 +138,7 @@ libcfs_ioctl(struct inode *inode, struct file *file,
 	struct cfs_psdev_file	 pfile;
 	int    rc = 0;
 
-	if (current->fsuid != 0)
+	if (current_fsuid() != 0)
 		return -EACCES;
 
 	if ( _IOC_TYPE(cmd) != IOC_LIBCFS_TYPE ||

@@ -186,7 +186,8 @@ int lprocfs_filter_rd_fmd_max_age(char *page, char **start, off_t off,
         struct obd_device *obd = data;
         int rc;
 
-        rc = snprintf(page, count, "%u\n", obd->u.filter.fo_fmd_max_age / HZ);
+        rc = snprintf(page, count, "%u\n",
+                      obd->u.filter.fo_fmd_max_age / CFS_HZ);
         return rc;
 }
 
@@ -204,7 +205,7 @@ int lprocfs_filter_wr_fmd_max_age(struct file *file, const char *buffer,
         if (val > 65536 || val < 1)
                 return -EINVAL;
 
-        obd->u.filter.fo_fmd_max_age = val * HZ;
+        obd->u.filter.fo_fmd_max_age = val * CFS_HZ;
         return count;
 }
 
@@ -396,7 +397,7 @@ static void brw_stats_show(struct seq_file *seq, struct brw_stats *brw_stats)
         struct timeval now;
 
         /* this sampling races with updates */
-        do_gettimeofday(&now);
+        cfs_gettimeofday(&now);
         seq_printf(seq, "snapshot_time:         %lu.%lu (secs.usecs)\n",
                    now.tv_sec, now.tv_usec);
 
@@ -422,7 +423,7 @@ static void brw_stats_show(struct seq_file *seq, struct brw_stats *brw_stats)
 
         {
                 char title[24];
-                sprintf(title, "I/O time (1/%ds)", HZ);
+                sprintf(title, "I/O time (1/%ds)", CFS_HZ);
                 display_brw_stats(seq, title, "ios",
                                   &brw_stats->hist[BRW_R_IO_TIME],
                                   &brw_stats->hist[BRW_W_IO_TIME], 1);

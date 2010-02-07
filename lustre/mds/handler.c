@@ -300,7 +300,7 @@ static int mds_precleanup(struct obd_device *obd, enum obd_cleanup_stage stage)
                 break;
         case OBD_CLEANUP_EXPORTS:
                 mds_lov_early_clean(obd);
-                down_write(&mds->mds_notify_lock);
+                cfs_down_write(&mds->mds_notify_lock);
                 mds_lov_disconnect(obd);
                 mds_lov_clean(obd);
                 ctxt = llog_get_context(obd, LLOG_CONFIG_ORIG_CTXT);
@@ -311,7 +311,7 @@ static int mds_precleanup(struct obd_device *obd, enum obd_cleanup_stage stage)
                         llog_cleanup(ctxt);
                 rc = obd_llog_finish(obd, 0);
                 mds->mds_osc_exp = NULL;
-                up_write(&mds->mds_notify_lock);
+                cfs_up_write(&mds->mds_notify_lock);
                 break;
         }
         RETURN(rc);
@@ -377,7 +377,7 @@ static int mds_cmd_setup(struct obd_device *obd, struct lustre_cfg *lcfg)
         lmi = server_get_mount_2(dev);
         LASSERT(lmi != NULL);
 
-        init_rwsem(&mds->mds_notify_lock);
+        cfs_init_rwsem(&mds->mds_notify_lock);
 
         OBD_SET_CTXT_MAGIC(&obd->obd_lvfs_ctxt);
         obd->obd_lvfs_ctxt.dt = lmi->lmi_dt;
@@ -512,7 +512,7 @@ static int __init mds_cmd_init(void)
         struct lprocfs_static_vars lvars;
         int rc;
 
-        request_module("%s", "lquota");
+        cfs_request_module("%s", "lquota");
         mds_quota_interface_ref = PORTAL_SYMBOL_GET(mds_quota_interface);
         rc = lquota_init(mds_quota_interface_ref);
         if (rc) {

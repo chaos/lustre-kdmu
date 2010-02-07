@@ -101,14 +101,14 @@ struct osd_device {
         unsigned long             od_capa_timeout;
         __u32                     od_capa_alg;
         struct lustre_capa_key   *od_capa_keys;
-        struct hlist_head        *od_capa_hash;
+        cfs_hlist_head_t         *od_capa_hash;
 
         /*
          * statfs optimization: we cache a bit.
          */
         cfs_time_t                od_osfs_age;
-        struct kstatfs            od_kstatfs;
-        spinlock_t                od_osfs_lock;
+        cfs_kstatfs_t             od_kstatfs;
+        cfs_spinlock_t            od_osfs_lock;
 
         cfs_proc_dir_entry_t     *od_proc_entry;
         struct lprocfs_stats     *od_stats;
@@ -121,7 +121,7 @@ struct osd_device {
         char                      od_label[MAXNAMELEN];
 };
 
-int osd_statfs(const struct lu_env *env, struct dt_device *d, struct kstatfs *sfs);
+int osd_statfs(const struct lu_env *env, struct dt_device *d, cfs_kstatfs_t *sfs);
 
 void lprocfs_osd_init_vars(struct lprocfs_static_vars *lvars);
 int osd_procfs_fini(struct osd_device *osd);

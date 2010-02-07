@@ -154,7 +154,7 @@ static void ll_drop_negative_dentry(struct inode *dir)
 {
         struct dentry *dentry, *tmp_alias, *tmp_subdir;
 
-        spin_lock(&ll_lookup_lock);
+        cfs_spin_lock(&ll_lookup_lock);
         spin_lock(&dcache_lock);
 restart:
         list_for_each_entry_safe(dentry, tmp_alias,
@@ -175,7 +175,7 @@ restart:
                 }
         }
         spin_unlock(&dcache_lock);
-        spin_unlock(&ll_lookup_lock);
+        cfs_spin_unlock(&ll_lookup_lock);
 }
 
 
@@ -270,7 +270,7 @@ int ll_md_blocking_ast(struct ldlm_lock *lock, struct ldlm_lock_desc *desc,
 
 __u32 ll_i2suppgid(struct inode *i)
 {
-        if (in_group_p(i->i_gid))
+        if (cfs_curproc_is_in_groups(i->i_gid))
                 return (__u32)i->i_gid;
         else
                 return (__u32)(-1);
@@ -350,7 +350,7 @@ static struct dentry *ll_find_alias(struct inode *inode, struct dentry *de)
         struct dentry *dentry;
         struct dentry *last_discon = NULL;
 
-        spin_lock(&ll_lookup_lock);
+        cfs_spin_lock(&ll_lookup_lock);
         spin_lock(&dcache_lock);
         list_for_each(tmp, &inode->i_dentry) {
                 dentry = list_entry(tmp, struct dentry, d_alias);
@@ -387,7 +387,7 @@ static struct dentry *ll_find_alias(struct inode *inode, struct dentry *de)
                 ll_dops_init(dentry, 0);
                 d_rehash_cond(dentry, 0); /* avoid taking dcache_lock inside */
                 spin_unlock(&dcache_lock);
-                spin_unlock(&ll_lookup_lock);
+                cfs_spin_unlock(&ll_lookup_lock);
                 iput(inode);
                 CDEBUG(D_DENTRY, "alias dentry %.*s (%p) parent %p inode %p "
                        "refc %d\n", de->d_name.len, de->d_name.name, de,
@@ -404,7 +404,7 @@ static struct dentry *ll_find_alias(struct inode *inode, struct dentry *de)
                 last_discon->d_flags |= DCACHE_LUSTRE_INVALID;
                 unlock_dentry(last_discon);
                 spin_unlock(&dcache_lock);
-                spin_unlock(&ll_lookup_lock);
+                cfs_spin_unlock(&ll_lookup_lock);
                 ll_dops_init(last_discon, 1);
                 d_rehash(de);
                 d_move(last_discon, de);
@@ -415,7 +415,7 @@ static struct dentry *ll_find_alias(struct inode *inode, struct dentry *de)
         ll_d_add(de, inode);
 
         spin_unlock(&dcache_lock);
-        spin_unlock(&ll_lookup_lock);
+        cfs_spin_unlock(&ll_lookup_lock);
 
         return de;
 }
@@ -861,7 +861,7 @@ static int ll_new_node(struct inode *dir, struct qstr *name,
                 GOTO(err_exit, err = PTR_ERR(op_data));
 
         err = md_create(sbi->ll_md_exp, op_data, tgt, tgt_len, mode,
-                        current->fsuid, current->fsgid,
+                        cfs_curproc_fsuid(), cfs_curproc_fsgid(),
                         cfs_curproc_cap_pack(), rdev, &request);
         ll_finish_md_op_data(op_data);
         if (err)

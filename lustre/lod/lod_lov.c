@@ -101,13 +101,13 @@ static int lov_add_target(struct lov_obd *lov, struct obd_device *tgt_obd,
                 RETURN(-EINVAL);
         }
 
-        mutex_down(&lov->lov_lock);
+        cfs_mutex_down(&lov->lov_lock);
 
         if ((index < lov->lov_tgt_size) && (lov->lov_tgts[index] != NULL)) {
                 tgt = lov->lov_tgts[index];
                 CERROR("UUID %s already assigned at LOV target index %d\n",
                        obd_uuid2str(&tgt->ltd_uuid), index);
-                mutex_up(&lov->lov_lock);
+                cfs_mutex_up(&lov->lov_lock);
                 RETURN(-EEXIST);
         }
 
@@ -121,7 +121,7 @@ static int lov_add_target(struct lov_obd *lov, struct obd_device *tgt_obd,
                         newsize = newsize << 1;
                 OBD_ALLOC(newtgts, sizeof(*newtgts) * newsize);
                 if (newtgts == NULL) {
-                        mutex_up(&lov->lov_lock);
+                        cfs_mutex_up(&lov->lov_lock);
                         RETURN(-ENOMEM);
                 }
 
@@ -146,13 +146,13 @@ static int lov_add_target(struct lov_obd *lov, struct obd_device *tgt_obd,
 
         OBD_ALLOC_PTR(tgt);
         if (!tgt) {
-                mutex_up(&lov->lov_lock);
+                cfs_mutex_up(&lov->lov_lock);
                 RETURN(-ENOMEM);
         }
 
         rc = lov_ost_pool_add(&lov->lov_packed, index, lov->lov_tgt_size);
         if (rc) {
-                mutex_up(&lov->lov_lock);
+                cfs_mutex_up(&lov->lov_lock);
                 OBD_FREE_PTR(tgt);
                 RETURN(rc);
         }
@@ -170,7 +170,7 @@ static int lov_add_target(struct lov_obd *lov, struct obd_device *tgt_obd,
         if (index >= lov->desc.ld_tgt_count)
                 lov->desc.ld_tgt_count = index + 1;
 
-        mutex_up(&lov->lov_lock);
+        cfs_mutex_up(&lov->lov_lock);
 
         CDEBUG(D_CONFIG, "idx=%d ltd_gen=%d ld_tgt_count=%d\n",
                 index, tgt->ltd_gen, lov->desc.ld_tgt_count);
@@ -225,7 +225,7 @@ int lod_lov_add_device(const struct lu_env *env, struct lod_device *m,
 
         d = lu2dt_dev(obd->obd_lu_dev);
 
-        mutex_down(&m->mbd_mutex);
+        cfs_mutex_down(&m->mbd_mutex);
 
         rc = lov_add_target(&m->mbd_obd->u.lov, obd, index, gen, 1);
         if (rc) {
@@ -252,7 +252,7 @@ int lod_lov_add_device(const struct lu_env *env, struct lod_device *m,
         }
 
 out:
-        mutex_up(&m->mbd_mutex);
+        cfs_mutex_up(&m->mbd_mutex);
 
         if (rc) {
                 /* XXX: obd_disconnect(), qos_del_tgt(), lov_del_target() */
@@ -411,7 +411,7 @@ static int lod_parse_striping(const struct lu_env *env, struct lod_object *mo)
                 if (unlikely(n == NULL)) {
                         CERROR("can't find slice\n");
                         lu_object_put(env, o);
-                        GOTO(out, rc = ERR_PTR(-EINVAL));
+                        GOTO(out, rc = -EINVAL);
                 }
 
                 mo->mbo_stripe[i] = container_of(n, struct dt_object, do_lu);

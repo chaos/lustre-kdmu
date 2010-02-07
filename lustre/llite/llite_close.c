@@ -52,11 +52,12 @@ void vvp_write_pending(struct ccc_object *club, struct ccc_page *page)
         struct ll_inode_info *lli = ll_i2info(club->cob_inode);
 
         ENTRY;
-        spin_lock(&lli->lli_lock);
+        cfs_spin_lock(&lli->lli_lock);
         lli->lli_flags |= LLIF_SOM_DIRTY;
-        if (page != NULL && list_empty(&page->cpg_pending_linkage))
-                list_add(&page->cpg_pending_linkage, &club->cob_pending_list);
-        spin_unlock(&lli->lli_lock);
+        if (page != NULL && cfs_list_empty(&page->cpg_pending_linkage))
+                cfs_list_add(&page->cpg_pending_linkage,
+                             &club->cob_pending_list);
+        cfs_spin_unlock(&lli->lli_lock);
         EXIT;
 }
 
@@ -67,12 +68,12 @@ void vvp_write_complete(struct ccc_object *club, struct ccc_page *page)
         int rc = 0;
 
         ENTRY;
-        spin_lock(&lli->lli_lock);
-        if (page != NULL && !list_empty(&page->cpg_pending_linkage)) {
-                list_del_init(&page->cpg_pending_linkage);
+        cfs_spin_lock(&lli->lli_lock);
+        if (page != NULL && !cfs_list_empty(&page->cpg_pending_linkage)) {
+                cfs_list_del_init(&page->cpg_pending_linkage);
                 rc = 1;
         }
-        spin_unlock(&lli->lli_lock);
+        cfs_spin_unlock(&lli->lli_lock);
         if (rc)
                 ll_queue_done_writing(club->cob_inode, 0);
         EXIT;
@@ -87,11 +88,11 @@ void ll_queue_done_writing(struct inode *inode, unsigned long flags)
         struct ccc_object *club = cl2ccc(ll_i2info(inode)->lli_clob);
         ENTRY;
 
-        spin_lock(&lli->lli_lock);
+        cfs_spin_lock(&lli->lli_lock);
         lli->lli_flags |= flags;
 
         if ((lli->lli_flags & LLIF_DONE_WRITING) &&
-            list_empty(&club->cob_pending_list)) {
+            cfs_list_empty(&club->cob_pending_list)) {
                 struct ll_close_queue *lcq = ll_i2sbi(inode)->ll_lcq;
 
                 if (lli->lli_flags & LLIF_MDS_SIZE_LOCK)
@@ -100,12 +101,12 @@ void ll_queue_done_writing(struct inode *inode, unsigned long flags)
                                inode->i_ino, inode->i_generation,
                                lli->lli_flags);
                 /* DONE_WRITING is allowed and inode has no dirty page. */
-                spin_lock(&lcq->lcq_lock);
+                cfs_spin_lock(&lcq->lcq_lock);
 
-                LASSERT(list_empty(&lli->lli_close_list));
+                LASSERT(cfs_list_empty(&lli->lli_close_list));
                 CDEBUG(D_INODE, "adding inode %lu/%u to close list\n",
                        inode->i_ino, inode->i_generation);
-                list_add_tail(&lli->lli_close_list, &lcq->lcq_head);
+                cfs_list_add_tail(&lli->lli_close_list, &lcq->lcq_head);
 
                 /* Avoid a concurrent insertion into the close thread queue:
                  * an inode is already in the close thread, open(), write(),
@@ -115,24 +116,44 @@ void ll_queue_done_writing(struct inode *inode, unsigned long flags)
                  * it. */
                 lli->lli_flags &= ~LLIF_DONE_WRITING;
 
-                wake_up(&lcq->lcq_waitq);
-                spin_unlock(&lcq->lcq_lock);
+                cfs_waitq_signal(&lcq->lcq_waitq);
+                cfs_spin_unlock(&lcq->lcq_lock);
         }
-        spin_unlock(&lli->lli_lock);
+        cfs_spin_unlock(&lli->lli_lock);
         EXIT;
 }
 
-/** Closes epoch and sends Size-on-MDS attribute update if possible.  Call
- * this under ll_inode_info::lli_lock spinlock. */
-void ll_epoch_close(struct inode *inode, struct md_op_data *op_data,
-                    struct obd_client_handle **och, unsigned long flags)
+/** Pack SOM attributes info @opdata for CLOSE, DONE_WRITING rpc. */
+void ll_done_writing_attr(struct inode *inode, struct md_op_data *op_data)
+{
+        struct ll_inode_info *lli = ll_i2info(inode);
+        ENTRY;
+
+        op_data->op_flags |= MF_SOM_CHANGE;
+        /* Check if Size-on-MDS attributes are valid. */
+        if (lli->lli_flags & LLIF_MDS_SIZE_LOCK)
+                CERROR("ino %lu/%u(flags %lu) som valid it just after "
+                       "recovery\n", inode->i_ino, inode->i_generation,
+                       lli->lli_flags);
+
+        if (!cl_local_size(inode)) {
+                /* Send Size-on-MDS Attributes if valid. */
+                op_data->op_attr.ia_valid |= ATTR_MTIME_SET | ATTR_CTIME_SET |
+                                ATTR_ATIME_SET | ATTR_SIZE | ATTR_BLOCKS;
+        }
+        EXIT;
+}
+
+/** Closes ioepoch and packs Size-on-MDS attribute if needed into @op_data. */
+void ll_ioepoch_close(struct inode *inode, struct md_op_data *op_data,
+                      struct obd_client_handle **och, unsigned long flags)
 {
         struct ll_inode_info *lli = ll_i2info(inode);
         struct ccc_object *club = cl2ccc(ll_i2info(inode)->lli_clob);
         ENTRY;
 
-        spin_lock(&lli->lli_lock);
-        if (!(list_empty(&club->cob_pending_list))) {
+        cfs_spin_lock(&lli->lli_lock);
+        if (!(cfs_list_empty(&club->cob_pending_list))) {
                 if (!(lli->lli_flags & LLIF_EPOCH_PENDING)) {
                         LASSERT(*och != NULL);
                         LASSERT(lli->lli_pending_och == NULL);
@@ -140,7 +161,7 @@ void ll_epoch_close(struct inode *inode, struct md_op_data *op_data,
                          * request yet, DONE_WRITE is to be sent later. */
                         lli->lli_flags |= LLIF_EPOCH_PENDING;
                         lli->lli_pending_och = *och;
-                        spin_unlock(&lli->lli_lock);
+                        cfs_spin_unlock(&lli->lli_lock);
 
                         inode = igrab(inode);
                         LASSERT(inode);
@@ -152,7 +173,7 @@ void ll_epoch_close(struct inode *inode, struct md_op_data *op_data,
                          * and try DONE_WRITE again later. */
                         LASSERT(!(lli->lli_flags & LLIF_DONE_WRITING));
                         lli->lli_flags |= LLIF_DONE_WRITING;
-                        spin_unlock(&lli->lli_lock);
+                        cfs_spin_unlock(&lli->lli_lock);
 
                         inode = igrab(inode);
                         LASSERT(inode);
@@ -172,93 +193,105 @@ void ll_epoch_close(struct inode *inode, struct md_op_data *op_data,
         } else {
                 /* Pack Size-on-MDS inode attributes only if they has changed */
                 if (!(lli->lli_flags & LLIF_SOM_DIRTY)) {
-                        spin_unlock(&lli->lli_lock);
+                        cfs_spin_unlock(&lli->lli_lock);
                         GOTO(out, 0);
                 }
 
                 /* There is a pending DONE_WRITE -- close epoch with no
                  * attribute change. */
                 if (lli->lli_flags & LLIF_EPOCH_PENDING) {
-                        spin_unlock(&lli->lli_lock);
+                        cfs_spin_unlock(&lli->lli_lock);
                         GOTO(out, 0);
                 }
         }
 
-        LASSERT(list_empty(&club->cob_pending_list));
+        LASSERT(cfs_list_empty(&club->cob_pending_list));
         lli->lli_flags &= ~LLIF_SOM_DIRTY;
-        spin_unlock(&lli->lli_lock);
-        op_data->op_flags |= MF_SOM_CHANGE;
+        cfs_spin_unlock(&lli->lli_lock);
+        ll_done_writing_attr(inode, op_data);
 
-        /* Check if Size-on-MDS attributes are valid. */
-        if (lli->lli_flags & LLIF_MDS_SIZE_LOCK)
-                CWARN("ino %lu/%u(flags %lu) som valid it just after "
-                      "recovery\n",
-                      inode->i_ino, inode->i_generation, lli->lli_flags);
-
-        if (!cl_local_size(inode)) {
-                /* Send Size-on-MDS Attributes if valid. Atime is sent along
-                 * with all the attributes. */
-                op_data->op_attr.ia_valid |= ATTR_MTIME_SET | ATTR_CTIME_SET |
-                                ATTR_ATIME_SET | ATTR_SIZE | ATTR_BLOCKS;
-        }
         EXIT;
 out:
         return;
 }
 
-int ll_sizeonmds_update(struct inode *inode, struct lustre_handle *fh,
-                        __u64 ioepoch)
+/**
+ * Cliens updates SOM attributes on MDS (including llog cookies):
+ * obd_getattr with no lock and md_setattr.
+ */
+int ll_som_update(struct inode *inode, struct md_op_data *op_data)
 {
         struct ll_inode_info *lli = ll_i2info(inode);
-        struct md_op_data *op_data;
+        struct ptlrpc_request *request = NULL;
+        __u32 old_flags;
         struct obdo *oa;
         int rc;
         ENTRY;
 
-        /* LASSERT(!(lli->lli_flags & LLIF_MDS_SIZE_LOCK)); */
-        /* After recovery that can be valid. */
+        LASSERT(op_data != NULL);
         if (lli->lli_flags & LLIF_MDS_SIZE_LOCK)
-                CWARN("ino %lu/%u(flags %lu) som valid it just after "
-                      "recovery\n", inode->i_ino, inode->i_generation,
-                      lli->lli_flags);
+                CERROR("ino %lu/%u(flags %lu) som valid it just after "
+                       "recovery\n", inode->i_ino, inode->i_generation,
+                       lli->lli_flags);
 
         OBDO_ALLOC(oa);
-        OBD_ALLOC_PTR(op_data);
-        if (!oa || !op_data) {
+        if (!oa) {
                 CERROR("can't allocate memory for Size-on-MDS update.\n");
                 RETURN(-ENOMEM);
         }
-        rc = ll_inode_getattr(inode, oa);
-        if (rc == -ENOENT) {
-                oa->o_valid = 0;
-                CDEBUG(D_INODE, "objid "LPX64" is already destroyed\n",
-                       lli->lli_smd->lsm_object_id);
-        } else if (rc) {
-                CERROR("inode_getattr failed (%d): unable to send a "
-                       "Size-on-MDS attribute update for inode %lu/%u\n",
-                       rc, inode->i_ino, inode->i_generation);
-                GOTO(out, rc);
+
+        old_flags = op_data->op_flags;
+        op_data->op_flags = MF_SOM_CHANGE;
+
+        /* If inode is already in another epoch, skip getattr from OSTs. */
+        if (lli->lli_ioepoch == op_data->op_ioepoch) {
+                rc = ll_inode_getattr(inode, oa, op_data->op_ioepoch,
+                                      old_flags & MF_GETATTR_LOCK);
+                if (rc) {
+                        oa->o_valid = 0;
+                        if (rc == -ENOENT)
+                                CDEBUG(D_INODE, "objid "LPX64" is destroyed\n",
+                                       lli->lli_smd->lsm_object_id);
+                        else
+                                CERROR("inode_getattr failed (%d): unable to "
+                                       "send a Size-on-MDS attribute update "
+                                       "for inode %lu/%u\n", rc, inode->i_ino,
+                                       inode->i_generation);
+                } else {
+                        CDEBUG(D_INODE, "Size-on-MDS update on "DFID"\n",
+                               PFID(&lli->lli_fid));
+                }
+                /* Install attributes into op_data. */
+                md_from_obdo(op_data, oa, oa->o_valid);
         }
-        CDEBUG(D_INODE, "Size-on-MDS update on "DFID"\n", PFID(&lli->lli_fid));
 
-        md_from_obdo(op_data, oa, oa->o_valid);
-        memcpy(&op_data->op_handle, fh, sizeof(*fh));
+        rc = md_setattr(ll_i2sbi(inode)->ll_md_exp, op_data,
+                        NULL, 0, NULL, 0, &request, NULL);
+        ptlrpc_req_finished(request);
 
-        op_data->op_ioepoch = ioepoch;
-        op_data->op_flags |= MF_SOM_CHANGE;
-
-        rc = ll_md_setattr(inode, op_data, NULL);
-        EXIT;
-out:
-        if (oa)
-                OBDO_FREE(oa);
-        if (op_data)
-                ll_finish_md_op_data(op_data);
-        return rc;
+        OBDO_FREE(oa);
+        RETURN(rc);
 }
 
-/** Sends a DONE_WRITING rpc, packs Size-on-MDS attributes into it, if
- * possible */
+/**
+ * Closes the ioepoch and packs all the attributes into @op_data for
+ * DONE_WRITING rpc.
+ */
+static void ll_prepare_done_writing(struct inode *inode,
+                                    struct md_op_data *op_data,
+                                    struct obd_client_handle **och)
+{
+        ll_ioepoch_close(inode, op_data, och, LLIF_DONE_WRITING);
+        /* If there is no @och, we do not do D_W yet. */
+        if (*och == NULL)
+                return;
+
+        ll_pack_inode2opdata(inode, op_data, &(*och)->och_fh);
+        ll_prep_md_op_data(op_data, inode, NULL, NULL,
+                           0, 0, LUSTRE_OPC_ANY, NULL);
+}
+
+/** Send a DONE_WRITING rpc. */
 static void ll_done_writing(struct inode *inode)
 {
         struct obd_client_handle *och = NULL;
@@ -266,7 +299,7 @@ static void ll_done_writing(struct inode *inode)
         int rc;
         ENTRY;
 
-        LASSERT(ll_i2mdexp(inode)->exp_connect_flags & OBD_CONNECT_SOM);
+        LASSERT(exp_connect_som(ll_i2mdexp(inode)));
 
         OBD_ALLOC_PTR(op_data);
         if (op_data == NULL) {
@@ -275,19 +308,16 @@ static void ll_done_writing(struct inode *inode)
                 return;
         }
 
-        ll_epoch_close(inode, op_data, &och, LLIF_DONE_WRITING);
+        ll_prepare_done_writing(inode, op_data, &och);
         /* If there is no @och, we do not do D_W yet. */
         if (och == NULL)
                 GOTO(out, 0);
-
-        ll_pack_inode2opdata(inode, op_data, &och->och_fh);
 
         rc = md_done_writing(ll_i2sbi(inode)->ll_md_exp, op_data, NULL);
         if (rc == -EAGAIN) {
                 /* MDS has instructed us to obtain Size-on-MDS attribute from
                  * OSTs and send setattr to back to MDS. */
-                rc = ll_sizeonmds_update(inode, &och->och_fh,
-                                         op_data->op_ioepoch);
+                rc = ll_som_update(inode, op_data);
         } else if (rc) {
                 CERROR("inode %lu mdc done_writing failed: rc = %d\n",
                        inode->i_ino, rc);
@@ -305,16 +335,16 @@ static struct ll_inode_info *ll_close_next_lli(struct ll_close_queue *lcq)
 {
         struct ll_inode_info *lli = NULL;
 
-        spin_lock(&lcq->lcq_lock);
+        cfs_spin_lock(&lcq->lcq_lock);
 
-        if (!list_empty(&lcq->lcq_head)) {
-                lli = list_entry(lcq->lcq_head.next, struct ll_inode_info,
-                                 lli_close_list);
-                list_del_init(&lli->lli_close_list);
-        } else if (atomic_read(&lcq->lcq_stop))
+        if (!cfs_list_empty(&lcq->lcq_head)) {
+                lli = cfs_list_entry(lcq->lcq_head.next, struct ll_inode_info,
+                                     lli_close_list);
+                cfs_list_del_init(&lli->lli_close_list);
+        } else if (cfs_atomic_read(&lcq->lcq_stop))
                 lli = ERR_PTR(-EALREADY);
 
-        spin_unlock(&lcq->lcq_lock);
+        cfs_spin_unlock(&lcq->lcq_lock);
         return lli;
 }
 
@@ -329,7 +359,7 @@ static int ll_close_thread(void *arg)
                 cfs_daemonize(name);
         }
 
-        complete(&lcq->lcq_comp);
+        cfs_complete(&lcq->lcq_comp);
 
         while (1) {
                 struct l_wait_info lwi = { 0 };
@@ -350,7 +380,7 @@ static int ll_close_thread(void *arg)
         }
 
         CDEBUG(D_INFO, "ll_close exiting\n");
-        complete(&lcq->lcq_comp);
+        cfs_complete(&lcq->lcq_comp);
         RETURN(0);
 }
 
@@ -366,27 +396,27 @@ int ll_close_thread_start(struct ll_close_queue **lcq_ret)
         if (lcq == NULL)
                 return -ENOMEM;
 
-        spin_lock_init(&lcq->lcq_lock);
-        INIT_LIST_HEAD(&lcq->lcq_head);
-        init_waitqueue_head(&lcq->lcq_waitq);
-        init_completion(&lcq->lcq_comp);
+        cfs_spin_lock_init(&lcq->lcq_lock);
+        CFS_INIT_LIST_HEAD(&lcq->lcq_head);
+        cfs_waitq_init(&lcq->lcq_waitq);
+        cfs_init_completion(&lcq->lcq_comp);
 
-        pid = kernel_thread(ll_close_thread, lcq, 0);
+        pid = cfs_kernel_thread(ll_close_thread, lcq, 0);
         if (pid < 0) {
                 OBD_FREE(lcq, sizeof(*lcq));
                 return pid;
         }
 
-        wait_for_completion(&lcq->lcq_comp);
+        cfs_wait_for_completion(&lcq->lcq_comp);
         *lcq_ret = lcq;
         return 0;
 }
 
 void ll_close_thread_shutdown(struct ll_close_queue *lcq)
 {
-        init_completion(&lcq->lcq_comp);
-        atomic_inc(&lcq->lcq_stop);
-        wake_up(&lcq->lcq_waitq);
-        wait_for_completion(&lcq->lcq_comp);
+        cfs_init_completion(&lcq->lcq_comp);
+        cfs_atomic_inc(&lcq->lcq_stop);
+        cfs_waitq_signal(&lcq->lcq_waitq);
+        cfs_wait_for_completion(&lcq->lcq_comp);
         OBD_FREE(lcq, sizeof(*lcq));
 }

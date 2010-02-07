@@ -81,6 +81,7 @@
 #include <libcfs/libcfs.h>
 #include <obd_support.h>
 #include <obd_class.h>
+#include <lnet/lnetctl.h>
 #include <lprocfs_status.h>
 #include <lustre_ver.h>
 #include <lustre/lustre_build_version.h>
@@ -98,7 +99,7 @@ int obd_ioctl_getdata(char **buf, int *len, void *arg)
         int offset = 0;
         ENTRY;
 
-        err = copy_from_user(&hdr, (void *)arg, sizeof(hdr));
+        err = cfs_copy_from_user(&hdr, (void *)arg, sizeof(hdr));
         if ( err )
                 RETURN(err);
 
@@ -130,7 +131,7 @@ int obd_ioctl_getdata(char **buf, int *len, void *arg)
         *len = hdr.ioc_len;
         data = (struct obd_ioctl_data *)*buf;
 
-        err = copy_from_user(*buf, (void *)arg, hdr.ioc_len);
+        err = cfs_copy_from_user(*buf, (void *)arg, hdr.ioc_len);
         if ( err ) {
                 OBD_VFREE(*buf, hdr.ioc_len);
                 RETURN(err);
@@ -144,17 +145,17 @@ int obd_ioctl_getdata(char **buf, int *len, void *arg)
 
         if (data->ioc_inllen1) {
                 data->ioc_inlbuf1 = &data->ioc_bulk[0];
-                offset += size_round(data->ioc_inllen1);
+                offset += cfs_size_round(data->ioc_inllen1);
         }
 
         if (data->ioc_inllen2) {
                 data->ioc_inlbuf2 = &data->ioc_bulk[0] + offset;
-                offset += size_round(data->ioc_inllen2);
+                offset += cfs_size_round(data->ioc_inllen2);
         }
 
         if (data->ioc_inllen3) {
                 data->ioc_inlbuf3 = &data->ioc_bulk[0] + offset;
-                offset += size_round(data->ioc_inllen3);
+                offset += cfs_size_round(data->ioc_inllen3);
         }
 
         if (data->ioc_inllen4) {
@@ -169,7 +170,7 @@ int obd_ioctl_popdata(void *arg, void *data, int len)
 {
         int err;
 
-        err = copy_to_user(arg, data, len);
+        err = cfs_copy_to_user(arg, data, len);
         if (err)
                 err = -EFAULT;
         return err;
@@ -178,23 +179,22 @@ int obd_ioctl_popdata(void *arg, void *data, int len)
 EXPORT_SYMBOL(obd_ioctl_getdata);
 EXPORT_SYMBOL(obd_ioctl_popdata);
 
-#define OBD_MINOR 241
-extern struct cfs_psdev_ops          obd_psdev_ops;
-
 /*  opening /dev/obd */
 static int obd_class_open(struct inode * inode, struct file * file)
 {
-        if (obd_psdev_ops.p_open != NULL)
-                return obd_psdev_ops.p_open(0, NULL);
-        return -EPERM;
+        ENTRY;
+
+        PORTAL_MODULE_USE;
+        RETURN(0);
 }
 
 /*  closing /dev/obd */
 static int obd_class_release(struct inode * inode, struct file * file)
 {
-        if (obd_psdev_ops.p_close != NULL)
-                return obd_psdev_ops.p_close(0, NULL);
-        return -EPERM;
+        ENTRY;
+
+        PORTAL_MODULE_UNUSE;
+        RETURN(0);
 }
 
 /* to control /dev/obd */
@@ -209,10 +209,7 @@ static int obd_class_ioctl(struct inode *inode, struct file *filp,
         if ((cmd & 0xffffff00) == ((int)'T') << 8) /* ignore all tty ioctls */
                 RETURN(err = -ENOTTY);
 
-        if (obd_psdev_ops.p_ioctl != NULL)
-                err = obd_psdev_ops.p_ioctl(NULL, cmd, (void *)arg);
-        else
-                err = -EPERM;
+        err = class_handle_ioctl(cmd, (unsigned long)arg);
 
         RETURN(err);
 }
@@ -227,8 +224,8 @@ static struct file_operations obd_psdev_fops = {
 
 /* modules setup */
 cfs_psdev_t obd_psdev = {
-        .minor = OBD_MINOR,
-        .name  = "obd_psdev",
+        .minor = OBD_DEV_MINOR,
+        .name  = OBD_DEV_NAME,
         .fops  = &obd_psdev_fops,
 };
 
@@ -287,7 +284,7 @@ static int obd_proc_read_health(char *page, char **start, off_t off,
         if (libcfs_catastrophe)
                 rc += snprintf(page + rc, count - rc, "LBUG\n");
 
-        spin_lock(&obd_dev_lock);
+        cfs_spin_lock(&obd_dev_lock);
         for (i = 0; i < class_devno_max(); i++) {
                 struct obd_device *obd;
 
@@ -300,7 +297,7 @@ static int obd_proc_read_health(char *page, char **start, off_t off,
                         continue;
 
                 class_incref(obd, __FUNCTION__, cfs_current());
-                spin_unlock(&obd_dev_lock);
+                cfs_spin_unlock(&obd_dev_lock);
 
                 if (obd_health_check(obd)) {
                         rc += snprintf(page + rc, count - rc,
@@ -308,9 +305,9 @@ static int obd_proc_read_health(char *page, char **start, off_t off,
                                        obd->obd_name);
                 }
                 class_decref(obd, __FUNCTION__, cfs_current());
-                spin_lock(&obd_dev_lock);
+                cfs_spin_lock(&obd_dev_lock);
         }
-        spin_unlock(&obd_dev_lock);
+        cfs_spin_unlock(&obd_dev_lock);
 
         if (rc == 0)
                 return snprintf(page, count, "healthy\n");
@@ -378,7 +375,7 @@ static int obd_device_list_seq_show(struct seq_file *p, void *v)
         return seq_printf(p, "%3d %s %s %s %s %d\n",
                           (int)index, status, obd->obd_type->typ_name,
                           obd->obd_name, obd->obd_uuid.uuid,
-                          atomic_read(&obd->obd_refcount));
+                          cfs_atomic_read(&obd->obd_refcount));
 }
 
 struct seq_operations obd_device_list_sops = {

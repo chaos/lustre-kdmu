@@ -246,8 +246,7 @@ check_obdo(void)
         CHECK_MEMBER(obdo, o_nlink);
         CHECK_MEMBER(obdo, o_generation);
         CHECK_MEMBER(obdo, o_misc);
-        CHECK_MEMBER(obdo, o_easize);
-        CHECK_MEMBER(obdo, o_mds);
+        CHECK_MEMBER(obdo, o_ioepoch);
         CHECK_MEMBER(obdo, o_stripe_idx);
         CHECK_MEMBER(obdo, o_padding_1);
         CHECK_MEMBER(obdo, o_handle);
@@ -303,7 +302,7 @@ check_obdo(void)
         CHECK_CVALUE(OBD_FL_DEBUG_CHECK);
         CHECK_CVALUE(OBD_FL_NO_USRQUOTA);
         CHECK_CVALUE(OBD_FL_NO_GRPQUOTA);
-        CHECK_CVALUE(OBD_FL_TRUNCLOCK);
+        CHECK_CVALUE(OBD_FL_SRVLOCK);
         CHECK_CVALUE(OBD_FL_CKSUM_CRC32);
         CHECK_CVALUE(OBD_FL_CKSUM_ADLER);
         CHECK_CVALUE(OBD_FL_SHRINK_GRANT);

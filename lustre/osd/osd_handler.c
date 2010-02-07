@@ -242,9 +242,9 @@ static struct lu_object *osd_object_alloc(const struct lu_env *env,
                         mo->oo_dt.do_ops = &osd_obj_ops;
 
                 l->lo_ops = &osd_lu_obj_ops;
-                init_rwsem(&mo->oo_sem);
-                init_rwsem(&mo->oo_ext_idx_sem);
-                spin_lock_init(&mo->oo_guard);
+                cfs_init_rwsem(&mo->oo_sem);
+                cfs_init_rwsem(&mo->oo_ext_idx_sem);
+                cfs_spin_lock_init(&mo->oo_guard);
                 return l;
         } else
                 return NULL;
@@ -511,7 +511,7 @@ static struct thandle *osd_trans_create(const struct lu_env *env,
         ENTRY;
        
         /* on pending IO in this thread should left from prev. request */
-        LASSERT(atomic_read(&iobuf->dr_numreqs) == 0);
+        LASSERT(cfs_atomic_read(&iobuf->dr_numreqs) == 0);
 
         th = ERR_PTR(-ENOMEM);
         OBD_ALLOC_GFP(oh, sizeof *oh, CFS_ALLOC_IO);
@@ -617,7 +617,7 @@ static int osd_trans_stop(const struct lu_env *env, struct thandle *th)
         /* see comments in osd_declare_punch() */
         if (oh->ot_alloc_sem_obj) {
                 /* XXX: we don't grab reference on the object - hope it's OK */
-                up_write(&oh->ot_alloc_sem_obj->oo_inode->i_alloc_sem);
+                cfs_up_write(&oh->ot_alloc_sem_obj->oo_inode->i_alloc_sem);
                 oh->ot_alloc_sem_obj = NULL;
         }
 
@@ -658,7 +658,7 @@ static int osd_trans_stop(const struct lu_env *env, struct thandle *th)
          * IMPORTANT: we have to wait till any IO submited by the thread is
          * completed otherwise iobuf may be corrupted by different request
          */
-        wait_event(iobuf->dr_wait, atomic_read(&iobuf->dr_numreqs) == 0);
+        cfs_wait_event(iobuf->dr_wait, cfs_atomic_read(&iobuf->dr_numreqs) == 0);
         if (!result)
                 result = iobuf->dr_error;
 
@@ -726,13 +726,13 @@ static int osd_object_print(const struct lu_env *env, void *cookie,
  * Concurrency: shouldn't matter.
  */
 int osd_statfs(const struct lu_env *env, struct dt_device *d,
-               struct kstatfs *sfs)
+               cfs_kstatfs_t *sfs)
 {
         struct osd_device *osd = osd_dt_dev(d);
         struct super_block *sb = osd_sb(osd);
         int result = 0;
 
-        spin_lock(&osd->od_osfs_lock);
+        cfs_spin_lock(&osd->od_osfs_lock);
         /* cache 1 second */
         if (cfs_time_before_64(osd->od_osfs_age, cfs_time_shift_64(-1))) {
                 result = ll_do_statfs(sb, &osd->od_kstatfs);
@@ -742,7 +742,7 @@ int osd_statfs(const struct lu_env *env, struct dt_device *d,
 
         if (likely(result == 0))
                 *sfs = osd->od_kstatfs;
-        spin_unlock(&osd->od_osfs_lock);
+        cfs_spin_unlock(&osd->od_osfs_lock);
 
         return result;
 }
@@ -1052,7 +1052,7 @@ static void osd_object_read_lock(const struct lu_env *env,
         LINVRNT(osd_invariant(obj));
 
         LASSERT(obj->oo_owner != env);
-        down_read_nested(&obj->oo_sem, role);
+        cfs_down_read_nested(&obj->oo_sem, role);
 
         LASSERT(obj->oo_owner == NULL);
         oti->oti_r_locks++;
@@ -1067,7 +1067,7 @@ static void osd_object_write_lock(const struct lu_env *env,
         LINVRNT(osd_invariant(obj));
 
         LASSERT(obj->oo_owner != env);
-        down_write_nested(&obj->oo_sem, role);
+        cfs_down_write_nested(&obj->oo_sem, role);
 
         LASSERT(obj->oo_owner == NULL);
         obj->oo_owner = env;
@@ -1084,7 +1084,7 @@ static void osd_object_read_unlock(const struct lu_env *env,
 
         LASSERT(oti->oti_r_locks > 0);
         oti->oti_r_locks--;
-        up_read(&obj->oo_sem);
+        cfs_up_read(&obj->oo_sem);
 }
 
 static void osd_object_write_unlock(const struct lu_env *env,
@@ -1099,7 +1099,7 @@ static void osd_object_write_unlock(const struct lu_env *env,
         LASSERT(oti->oti_w_locks > 0);
         oti->oti_w_locks--;
         obj->oo_owner = NULL;
-        up_write(&obj->oo_sem);
+        cfs_up_write(&obj->oo_sem);
 }
 
 static int osd_object_write_locked(const struct lu_env *env,
@@ -1138,14 +1138,14 @@ static int capa_is_sane(const struct lu_env *env,
                 RETURN(-ESTALE);
         }
 
-        spin_lock(&capa_lock);
+        cfs_spin_lock(&capa_lock);
         for (i = 0; i < 2; i++) {
                 if (keys[i].lk_keyid == capa->lc_keyid) {
                         oti->oti_capa_key = keys[i];
                         break;
                 }
         }
-        spin_unlock(&capa_lock);
+        cfs_spin_unlock(&capa_lock);
 
         if (i == 2) {
                 DEBUG_CAPA(D_ERROR, capa, "no matched capa key");
@@ -1260,9 +1260,9 @@ static int osd_attr_get(const struct lu_env *env,
         if (osd_object_auth(env, dt, capa, CAPA_OPC_META_READ))
                 return -EACCES;
 
-        spin_lock(&obj->oo_guard);
+        cfs_spin_lock(&obj->oo_guard);
         osd_inode_getattr(env, obj->oo_inode, attr);
-        spin_unlock(&obj->oo_guard);
+        cfs_spin_unlock(&obj->oo_guard);
         return 0;
 }
 
@@ -1373,9 +1373,9 @@ static int osd_attr_set(const struct lu_env *env,
 
         OSD_EXEC_OP(handle, attr_set);
 
-        spin_lock(&obj->oo_guard);
+        cfs_spin_lock(&obj->oo_guard);
         rc = osd_inode_setattr(env, obj->oo_inode, attr);
-        spin_unlock(&obj->oo_guard);
+        cfs_spin_unlock(&obj->oo_guard);
 
         if (!rc)
                 mark_inode_dirty(obj->oo_inode);
@@ -1415,7 +1415,7 @@ static int osd_declare_punch(const struct lu_env *env, struct dt_object *dt,
         oh->ot_alloc_sem_obj = oo;
 
         LASSERT(oo->oo_inode != NULL);
-        down_write(&oo->oo_inode->i_alloc_sem);
+        cfs_down_write(&oo->oo_inode->i_alloc_sem);
 
         RETURN(0);
 }
@@ -1515,7 +1515,7 @@ struct dentry * osd_child_dentry_get(const struct lu_env *env,
 }
 
 static int osd_mkfile(struct osd_thread_info *info, struct osd_object *obj,
-                      umode_t mode,
+                      cfs_umode_t mode,
                       struct dt_allocation_hint *hint,
                       struct thandle *th)
 {
@@ -1667,7 +1667,7 @@ static int osd_mknod(struct osd_thread_info *info, struct osd_object *obj,
                      struct dt_object_format *dof,
                      struct thandle *th)
 {
-        umode_t mode = attr->la_mode & (S_IFMT | S_IRWXUGO | S_ISVTX);
+        cfs_umode_t mode = attr->la_mode & (S_IFMT | S_IRWXUGO | S_ISVTX);
         int result;
 
         LINVRNT(osd_invariant(obj));
@@ -1721,7 +1721,7 @@ static osd_obj_type_f osd_create_type_f(enum dt_format_type type)
 
 static void osd_ah_init(const struct lu_env *env, struct dt_allocation_hint *ah,
                         struct dt_object *parent, struct dt_object *child,
-                        umode_t child_mode)
+                        cfs_umode_t child_mode)
 {
         LASSERT(ah);
 
@@ -1922,9 +1922,9 @@ static int __osd_xattr_set(const struct lu_env *env, struct dt_object *dt,
         rc = inode->i_op->setxattr(dentry, name, buf->lb_buf,
                                    buf->lb_len, fs_flags);
         /* ctime should not be updated with server-side time. */
-        spin_lock(&obj->oo_guard);
+        cfs_spin_lock(&obj->oo_guard);
         inode->i_ctime = *t;
-        spin_unlock(&obj->oo_guard);
+        cfs_spin_unlock(&obj->oo_guard);
         mark_inode_dirty(inode);
         return rc;
 }
@@ -2131,10 +2131,10 @@ static void osd_object_ref_add(const struct lu_env *env,
         
         OSD_EXEC_OP(th, ref_add);
 
-        spin_lock(&obj->oo_guard);
+        cfs_spin_lock(&obj->oo_guard);
         LASSERT(inode->i_nlink < LDISKFS_LINK_MAX);
         inode->i_nlink++;
-        spin_unlock(&obj->oo_guard);
+        cfs_spin_unlock(&obj->oo_guard);
         mark_inode_dirty(inode);
         LINVRNT(osd_invariant(obj));
 }
@@ -2174,10 +2174,10 @@ static void osd_object_ref_del(const struct lu_env *env,
 
         OSD_EXEC_OP(th, ref_del);
 
-        spin_lock(&obj->oo_guard);
+        cfs_spin_lock(&obj->oo_guard);
         LASSERT(inode->i_nlink > 0);
         inode->i_nlink--;
-        spin_unlock(&obj->oo_guard);
+        cfs_spin_unlock(&obj->oo_guard);
         mark_inode_dirty(inode);
         LINVRNT(osd_invariant(obj));
 }
@@ -2314,9 +2314,9 @@ static int osd_xattr_del(const struct lu_env *env,
         *t = inode->i_ctime;
         rc = inode->i_op->removexattr(dentry, name);
         /* ctime should not be updated with server-side time. */
-        spin_lock(&obj->oo_guard);
+        cfs_spin_lock(&obj->oo_guard);
         inode->i_ctime = *t;
-        spin_unlock(&obj->oo_guard);
+        cfs_spin_unlock(&obj->oo_guard);
         mark_inode_dirty(inode);
         return rc;
 }
@@ -2363,9 +2363,9 @@ static struct obd_capa *osd_capa_get(const struct lu_env *env,
                 __u32 d[4], s[4];
 
                 s[0] = obj->oo_inode->i_uid;
-                get_random_bytes(&(s[1]), sizeof(__u32));
+                ll_get_random_bytes(&(s[1]), sizeof(__u32));
                 s[2] = obj->oo_inode->i_gid;
-                get_random_bytes(&(s[3]), sizeof(__u32));
+                ll_get_random_bytes(&(s[3]), sizeof(__u32));
                 rc = capa_encrypt_id(d, s, key->lk_key, CAPA_HMAC_KEY_MAX_LEN);
                 if (unlikely(rc))
                         RETURN(ERR_PTR(rc));
@@ -2391,9 +2391,9 @@ static struct obd_capa *osd_capa_get(const struct lu_env *env,
                 RETURN(oc);
         }
 
-        spin_lock(&capa_lock);
+        cfs_spin_lock(&capa_lock);
         *key = dev->od_capa_keys[1];
-        spin_unlock(&capa_lock);
+        cfs_spin_unlock(&capa_lock);
 
         capa->lc_keyid = key->lk_keyid;
         capa->lc_expiry = cfs_time_current_sec() + dev->od_capa_timeout;
@@ -2551,7 +2551,7 @@ static int osd_index_try(const struct lu_env *env, struct dt_object *dt,
                 OBD_ALLOC_PTR(dir);
                 if (dir != NULL) {
 
-                        spin_lock(&obj->oo_guard);
+                        cfs_spin_lock(&obj->oo_guard);
                         if (obj->oo_dir == NULL)
                                 obj->oo_dir = dir;
                         else
@@ -2559,12 +2559,12 @@ static int osd_index_try(const struct lu_env *env, struct dt_object *dt,
                                  * Concurrent thread allocated container data.
                                  */
                                 OBD_FREE_PTR(dir);
-                        spin_unlock(&obj->oo_guard);
+                        cfs_spin_unlock(&obj->oo_guard);
                         /*
                          * Now, that we have container data, serialize its
                          * initialization.
                          */
-                        down_write(&obj->oo_ext_idx_sem);
+                        cfs_down_write(&obj->oo_ext_idx_sem);
                         /*
                          * recheck under lock.
                          */
@@ -2572,7 +2572,7 @@ static int osd_index_try(const struct lu_env *env, struct dt_object *dt,
                                 result = osd_iam_container_init(env, obj, dir);
                         else
                                 result = 0;
-                        up_write(&obj->oo_ext_idx_sem);
+                        cfs_up_write(&obj->oo_ext_idx_sem);
                 } else
                         result = -ENOMEM;
         } else
@@ -2788,7 +2788,7 @@ static int osd_index_ea_delete(const struct lu_env *env, struct dt_object *dt,
         dentry = osd_child_dentry_get(env, obj,
                                       (char *)key, strlen((char *)key));
 
-        down_write(&obj->oo_ext_idx_sem);
+        cfs_down_write(&obj->oo_ext_idx_sem);
         bh = ll_ldiskfs_find_entry(dir, dentry, &de);
         if (bh) {
                 struct osd_thread_info *oti = osd_oti_get(env);
@@ -2800,16 +2800,16 @@ static int osd_index_ea_delete(const struct lu_env *env, struct dt_object *dt,
                 rc = ldiskfs_delete_entry(oh->ot_handle,
                                 dir, de, bh);
                 /* xtime should not be updated with server-side time. */
-                spin_lock(&obj->oo_guard);
+                cfs_spin_lock(&obj->oo_guard);
                 dir->i_ctime = *ctime;
                 dir->i_mtime = *mtime;
-                spin_unlock(&obj->oo_guard);
+                cfs_spin_unlock(&obj->oo_guard);
                 mark_inode_dirty(dir);
                 brelse(bh);
         } else
                 rc = -ENOENT;
 
-        up_write(&obj->oo_ext_idx_sem);
+        cfs_up_write(&obj->oo_ext_idx_sem);
         LASSERT(osd_invariant(obj));
         RETURN(rc);
 }
@@ -3083,7 +3083,7 @@ static int osd_ea_lookup_rec(const struct lu_env *env, struct osd_object *obj,
         dentry = osd_child_dentry_get(env, obj,
                                       (char *)key, strlen((char *)key));
 
-        down_read(&obj->oo_ext_idx_sem);
+        cfs_down_read(&obj->oo_ext_idx_sem);
         bh = ll_ldiskfs_find_entry(dir, dentry, &de);
         if (bh) {
                 ino = le32_to_cpu(de->inode);
@@ -3092,7 +3092,7 @@ static int osd_ea_lookup_rec(const struct lu_env *env, struct osd_object *obj,
         } else
                 rc = -ENOENT;
 
-        up_read(&obj->oo_ext_idx_sem);
+        cfs_up_read(&obj->oo_ext_idx_sem);
         RETURN (rc);
 }
 
@@ -3223,18 +3223,18 @@ static int osd_index_ea_insert(const struct lu_env *env, struct dt_object *dt,
                 else
                         current->cap_effective &= ~CFS_CAP_SYS_RESOURCE_MASK;
 #endif
-                down_write(&obj->oo_ext_idx_sem);
+                cfs_down_write(&obj->oo_ext_idx_sem);
                 rc = osd_ea_add_rec(env, obj, child, name, th);
-                up_write(&obj->oo_ext_idx_sem);
+                cfs_up_write(&obj->oo_ext_idx_sem);
 #ifdef HAVE_QUOTA_SUPPORT
                 current->cap_effective = save;
 #endif
                 osd_object_put(env, child);
                 /* xtime should not be updated with server-side time. */
-                spin_lock(&obj->oo_guard);
+                cfs_spin_lock(&obj->oo_guard);
                 inode->i_ctime = *ctime;
                 inode->i_mtime = *mtime;
-                spin_unlock(&obj->oo_guard);
+                cfs_spin_unlock(&obj->oo_guard);
                 mark_inode_dirty(inode);
         } else {
                 rc = PTR_ERR(child);
@@ -3620,7 +3620,7 @@ static int osd_ldiskfs_filldir(char *buf, const char *name, int namelen,
         memcpy(ent->oied_name, name, namelen);
 
         it->oie_rd_dirent++;
-        it->oie_dirent = (void *) ent + size_round(sizeof(*ent) + namelen);
+        it->oie_dirent = (void *) ent + cfs_size_round(sizeof(*ent) + namelen);
         RETURN(0);
 }
 
@@ -3644,11 +3644,11 @@ static int osd_ldiskfs_it_fill(const struct dt_it *di)
         it->oie_dirent = it->oie_buf;
         it->oie_rd_dirent = 0;
 
-        down_read(&obj->oo_ext_idx_sem);
+        cfs_down_read(&obj->oo_ext_idx_sem);
         result = inode->i_fop->readdir(&it->oie_file, it,
                                        (filldir_t) osd_ldiskfs_filldir);
 
-        up_read(&obj->oo_ext_idx_sem);
+        cfs_up_read(&obj->oo_ext_idx_sem);
 
         if (it->oie_rd_dirent == 0) {
                 result = -EIO;
@@ -3679,9 +3679,10 @@ static int osd_it_ea_next(const struct lu_env *env, struct dt_it *di)
         ENTRY;
 
         if (it->oie_it_dirent < it->oie_rd_dirent) {
-                it->oie_dirent = (void *) it->oie_dirent +
-                                 size_round(sizeof(struct osd_it_ea_dirent) +
-                                            it->oie_dirent->oied_namelen);
+                it->oie_dirent =
+                        (void *) it->oie_dirent +
+                        cfs_size_round(sizeof(struct osd_it_ea_dirent) +
+                                       it->oie_dirent->oied_namelen);
                 it->oie_it_dirent++;
                 RETURN(0);
         } else {
@@ -4048,7 +4049,7 @@ static struct lu_device *osd_device_alloc(const struct lu_env *env,
                         l = osd2lu_dev(o);
                         l->ld_ops = &osd_lu_ops;
                         o->od_dt_dev.dd_ops = &osd_dt_ops;
-                        spin_lock_init(&o->od_osfs_lock);
+                        cfs_spin_lock_init(&o->od_osfs_lock);
                         o->od_osfs_age = cfs_time_shift_64(-1000);
                         o->od_capa_hash = init_capa_hash();
                         if (o->od_capa_hash == NULL) {

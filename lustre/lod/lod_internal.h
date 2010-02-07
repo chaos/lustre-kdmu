@@ -71,7 +71,7 @@ struct lod_device {
 
         /* number of known OSTs */
         int                              mbd_ostnr;
-        struct semaphore                 mbd_mutex;
+        cfs_semaphore_t                  mbd_mutex;
 };
 
 struct lod_object {

@@ -2,7 +2,17 @@
 
 # vim:expandtab:shiftwidth=4:softtabstop=4:tabstop=4:
 
+# this is an alternative FD for stdout, to be used especially when we are
+# taking stdout from a function as it's return value.  i.e. foo=$(bar)
+# this is a workaround until a version of bash where we can put xtrace
+# on a specific FD
+exec 3>&1; STDOUT=3
+
 #set -x
+xtrace="+x"
+if [[ $SHELLOPTS = *xtrace* ]]; then
+    xtrace="-x"
+fi
 shopt -s extdebug
 
 # include the exit_traps library
@@ -102,7 +112,7 @@ cleanup() {
 error() {
     local msg="$1"
 
-    [ -n "$msg" ] && echo -e "\n${0##*/}: $msg" >&2
+    [ -n "$msg" ] && echo -e "\n${0##*/}: $msg" >&3
 
 }
 
@@ -324,27 +334,37 @@ check_options() {
     fi
 
     if [ -n "$CCACHE" ]; then
-        which "$DISTCC" 2>/dev/null && export DISTCC RPM_BUILD_NCPUS
+        which "$DISTCC" &>/dev/null && export DISTCC RPM_BUILD_NCPUS
 
-        if which "$CCACHE" 2>/dev/null; then
+        if which "$CCACHE" &>/dev/null; then
             local ccache=$(which "$CCACHE")
             local bindir="$TOPDIR/bin"
 
-            [ -d $bindir ] || mkdir -p $bindir
-            if [ -d $bindir ]; then
-                rm ${bindir}/* > /dev/null 2>&1
-                ln -s "$ccache" ${bindir}/ccache
-                ln -s "$ccache" ${bindir}/cc
-                ln -s "$ccache" ${bindir}/$CC
-                export PATH=$bindir:$PATH
+            if [ ! -d $bindir ]; then
+                mkdir -p $bindir || fatal 1 "error trying to create $bindir"
+            else
+                rm ${bindir}/* > /dev/null 2>&1 || true
             fi
+            ln -s "$ccache" ${bindir}/ccache
+            ln -s "$ccache" ${bindir}/cc
+            ln -s "$ccache" ${bindir}/$CC
+            export PATH=$bindir:$PATH
             export CCACHE && export CC="ccache $CC"
             # zero the cache so we can see how effective we are being with it
+            echo -n "ccache "
             ccache -z
+
+            # get some ccache stats when we are done
+            push_exit_trap '[ -n "$CCACHE" ] && ccache -s' "ccache_summary"
+            # should remove the ccache trap if lbuild is interrupted
+            trap 'echo "Received an INT TERM or HUP signal, terminating."; delete_exit_trap "ccache_summary"; exit 1' INT TERM HUP
         fi
     fi
 
     [ -z "$DISTRO" ] && DISTRO=$(autodetect_distro)
+
+    return 0
+
 }
 
 # autodetect used Distro
@@ -363,8 +383,7 @@ autodetect_distro() {
                   sed -e 's/^[^0-9.]*//g' | sed -e 's/[ \.].*//')
     fi
     if [ -z "$name" -o -z "$version" ]; then
-        fatal 1 "I don't know how to determine distro type/version.\n" \
-                "Either update autodetect_distro() or use the --distro argument"
+        fatal 1 "I don't know how to determine distro type/version.\nEither update autodetect_distro() or use the --distro argument"
     fi
 
     echo ${name}${version}
@@ -388,11 +407,10 @@ download_srpm() {
         if $DOWNLOAD; then
             local location="http://downloads.lustre.org/public/kernels/$target/old"
             echo "Downloading $location/$srpm..."
-            if ! wget -nv "$location/$srpm" -O "$KERNELDIR/$srpm" ||
+            if ! wget -nv "$location/$srpm" -O "$KERNELDIR/$srpm" 2>&1 ||
                [ ! -s "$KERNELDIR/$srpm" ]; then
                 rm -f $KERNELDIR/$srpm
-                fatal 1 "Could not download target $target's kernel SRPM" \
-                        "$srpm from $location."
+                fatal 1 "Could not download target $target's kernel SRPM $srpm from $location."
             fi
         else
             fatal 1 "$srpm not found in directory $KERNELDIR."
@@ -438,21 +456,21 @@ download_file() {
             return 1
         fi
 
-        if ! $(is_downloading) && [ -r "$to" ] && [ -s "$to" ]; then
+        if ! is_downloading && [ -r "$to" ] && [ -s "$to" ]; then
             return 0
         fi
 
         return 1
     }
 
-    if $force || ! $(is_downloaded); then
-        if $(is_downloading); then
+    if $force || ! is_downloaded; then
+        if is_downloading; then
             echo "Somebody else is downloading $from..."
-            while $(is_downloading); do
+            while is_downloading; do
                 echo "Waiting for $to to finish downloading"
                 sleep 60
             done
-            if $(is_downloaded); then
+            if is_downloaded; then
                 return 0
             else
                 echo "The download we were waiting for seems to have been aborted"
@@ -567,7 +585,7 @@ load_target() {
     [ -z "$RPMSMPTYPE" ] && set_rpm_smp_type
 
     # CC might have been overwriten in TARGET_FILE
-    if [[ $CC != ccache\ * ]] && which "$CCACHE" 2>/dev/null; then
+    if [[ $CC != ccache\ * ]] && which "$CCACHE" &>/dev/null; then
         export CCACHE && export CC="ccache $CC"
     fi
 
@@ -582,9 +600,7 @@ load_target() {
             for patchesdir in "$EXTERNAL_PATCHES" "$TOPDIR/lustre/lustre/kernel_patches"; do
                 [ -r "$patchesdir/series/$series" ] && continue 2
             done
-            fatal 1 "Target $TARGET's series $SERIES could not be" \
-                    "found.\nSearched:\n\t$EXTERNAL_PATCHES/series\n" \
-                    "\t$TOPDIR/lustre/lustre/kernel_patches/series."
+            fatal 1 "Target $TARGET's series $SERIES could not be found.\nSearched:\n\t$EXTERNAL_PATCHES/series\n\t$TOPDIR/lustre/lustre/kernel_patches/series."
         done
     fi
 
@@ -607,8 +623,7 @@ load_target() {
     PRISTINE_EXTRA_VERSION=$EXTRA_VERSION
 
     if ! $PATCHLESS && [ ! -f "$CONFIG_FILE" ]; then
-        fatal 1 "Config file for target $TARGET missing from" \
-                "$TOPDIR/lustre/lustre/kernel_patches/kernel_configs/."
+        fatal 1 "Config file for target $TARGET missing from $TOPDIR/lustre/lustre/kernel_patches/kernel_configs/."
     fi
 
     if [ "$EXTRA_VERSION_save" ]; then
@@ -748,7 +763,7 @@ do_patch_linux() {
                     fatal 1 "Error adding patch $patch to full patch."
                 }
                 if $do_patch; then
-                    patch -s -p1 < "$PATCH_FILE" || {
+                    patch -s -p1 < "$PATCH_FILE" 2>&1 || {
                         rm -f $FULL_PATCH
                         fatal 1 "Error applying patch $patch."
                     }
@@ -785,7 +800,7 @@ build_lustre() {
         confoptions="$confoptions --with-linux-obj=${linuxobj}"
     fi
 
-    ./configure $confoptions ${CONFIGURE_FLAGS}
+    ./configure $confoptions ${CONFIGURE_FLAGS} 2>&1
     if [ "$?" != "0" ]; then
         local saved_config="../config.log.$(date +%s)"
         cp config.log $saved_config
@@ -828,14 +843,14 @@ build_lustre() {
     $RPMBUILD $targets $rpmbuildopt ../lustre.spec \
         ${is_patchless:+--define "lustre_name lustre-client"} \
         --define "_tmppath $TMPDIR" \
-        --define "_topdir $TOPDIR" || \
+        --define "_topdir $TOPDIR" 2>&1 || \
         fatal 1 "Error building rpms for $BUILD_ARCHS."
 
     popd >/dev/null
     ( $(skeep_ldiskfs_rpm $TAG) ) && return
 
     pushd lustre/ldiskfs || return 255
-    make dist
+    make dist 2>&1
     if [ "$?" != "0" ]; then
         popd
         return 255
@@ -850,19 +865,17 @@ build_lustre() {
     < $ldiskfs_spec \
     > ../lustre-ldiskfs.spec
 
-    $RPMBUILD $targets $rpmbuildopt ../lustre-ldiskfs.spec \
+    if ! $RPMBUILD $targets $rpmbuildopt ../lustre-ldiskfs.spec \
         --define "_tmppath /var/tmp" \
-        --define "_topdir $TOPDIR"
-    if [ "$?" != "0" ]; then
+        --define "_topdir $TOPDIR" 2>&1; then
         popd
         return 255
     fi
 
     if $DO_SRC; then
-            $RPMBUILD -bs ../lustre-ldiskfs.spec \
+        if ! $RPMBUILD -bs ../lustre-ldiskfs.spec \
             --define "_tmppath /var/tmp" \
-            --define "_topdir $TOPDIR"
-        if [ "$?" != "0" ]; then
+            --define "_topdir $TOPDIR" 2>&1; then
             popd
             return 255
         fi
@@ -973,7 +986,8 @@ find_linux_rpm() {
     for arch in $TARGET_ARCHS_ALL; do
         local found_rpm="" rpm
         for rpm in ${pathtorpms}/${arch}/*.rpm; do
-            if rpm -q --provides -p "$rpm" | grep -q "kernel${prefix} = $wanted_kernel"; then
+            if rpm -q --provides -p "$rpm" 2>&3 | grep -q "kernel${prefix} = $wanted_kernel" 2>&3; then
+
                 found_rpm="$rpm"
                 ret=0
                 break
@@ -1003,7 +1017,7 @@ unpack_linux_devel_rpm() {
     [ -f "$kernelrpm" ] || return 255
     [ -d $TOPDIR/reused ] || mkdir $TOPDIR/reused || return 255
 
-    pushd $TOPDIR/reused || return 255
+    pushd $TOPDIR/reused &>/dev/null || return 255
 
     if ! rpm2cpio < "$kernelrpm" | cpio -id > /dev/null 2>&1; then
         return 255
@@ -1014,7 +1028,7 @@ unpack_linux_devel_rpm() {
         unpack_linux_devel_rpm-$DISTRO "$kernelrpm"
     fi
 
-    popd
+    popd &>/dev/null
 
     find_linux_devel_paths $TOPDIR/reused
 
@@ -1129,16 +1143,14 @@ EOF
     fi
 
     local linuxrelease=$(find_linux_release "$linux")
-    $RPMBUILD $BUILD_TYPE --define 'build_kernel_ib 1' --define 'build_kernel_ib_devel 1' \
-              --define "_topdir ${TOPDIR}" --target ${TARGET_ARCH} \
-              --define "KVERSION ${linuxrelease}" \
-              --define "$K_SRC ${linux}" \
-              --define "LIB_MOD_DIR /lib/modules/${linuxrelease}/updates" \
-              ${OFA_KERNEL_RELEASE:+--define "_release $OFA_KERNEL_RELEASE"} \
-              --define "configure_options --without-quilt $OFED_CORE $OFED_HARDWARE $OFED_ISCSI" \
-              ${SOURCE}
-
-    if [ ${PIPESTATUS[0]} != 0 ]; then
+    if ! $RPMBUILD $BUILD_TYPE --define 'build_kernel_ib 1' --define 'build_kernel_ib_devel 1' \
+                  --define "_topdir ${TOPDIR}" --target ${TARGET_ARCH} \
+                  --define "KVERSION ${linuxrelease}" \
+                  --define "$K_SRC ${linux}" \
+                  --define "LIB_MOD_DIR /lib/modules/${linuxrelease}/updates" \
+                  ${OFA_KERNEL_RELEASE:+--define "_release $OFA_KERNEL_RELEASE"} \
+                  --define "configure_options --without-quilt $OFED_CORE $OFED_HARDWARE $OFED_ISCSI" \
+                  ${SOURCE} 2>&1; then
         fatal 1 "Error building kernel-ib"
     fi
 
@@ -1199,9 +1211,7 @@ reuse() {
             # signal that the caching was completed.  if that flag is not
             # there, then the cache is invalid (and should be removed in fact)
             mv "$REUSEBUILD/$signature/$module"{,-bad-$(date +%s)} ||
-                fatal 1 "failed to clean up a bad cache in location" \
-                      "\"$REUSEBUILD/$signature/$module\" -- manual cleanup" \
-                      "will be necessary"
+                fatal 1 "failed to clean up a bad cache in location $REUSEBUILD/$signature/$module\" -- manual cleanup will be necessary"
             return 1
         fi
 
@@ -1276,7 +1286,7 @@ find_rpm() {
         case "$match_type" in
             provides)
                 # match is any valid ERE (i.e. given to egrep) match
-                if rpm -q --provides -p "$file" | egrep -q "$match"; then
+                if rpm -q --provides -p "$file" 2>&3 | egrep -q "$match"; then
                     echo "$file"
                     popd >/dev/null
                     return 0
@@ -1294,9 +1304,14 @@ find_rpm() {
 }
 
 build_kernel_with_srpm() {
+    local outfd=$1
+
+    if [ -z "$outfd" ] || [ $outfd = 1 ]; then
+        fatal 1 "You must supply a file descriptor to ${FUNCNAME[0]} and it cannot be 1"
+    fi
 
     # need to generate the patch for this target
-    do_patch_linux false >&2    # sets global $FULL_PATCH (yeah, yuck)
+    do_patch_linux false >&${outfd}    # sets global $FULL_PATCH (yeah, yuck)
 
     # get an md5sum of the kernel patch + config for reuse check
     # XXX really, there needs to be a signature and a CONFIG_FILE per arch
@@ -1311,7 +1326,7 @@ build_kernel_with_srpm() {
     # XXX - hrm.  i'm not convinced this doesn't belong in the reuse "library"
     local CAN_LINK_FOR_REUSE=false
     touch $REUSEBUILD/$$
-    if cp -al $REUSEBUILD/$$ $TOPDIR/; then
+    if cp -al $REUSEBUILD/$$ $TOPDIR/ 2>/dev/null; then
         CAN_LINK_FOR_REUSE=true
     fi
     rm $REUSEBUILD/$$
@@ -1323,11 +1338,12 @@ build_kernel_with_srpm() {
                                    "$REUSE_SIGNATURE"; then
         # nothing cached, build from scratch
         if [ ! -r "$KERNELDIR/$KERNEL_SRPM" ]; then
-            download_srpm "$CANONICAL_TARGET" "$KERNEL_SRPM" >&2
+            echo "Downloading kernel SRPM"
+            download_srpm "$CANONICAL_TARGET" "$KERNEL_SRPM" >&${outfd}
         fi
 
         if ! rpm -ivh $KERNELDIR/$KERNEL_SRPM \
-                  --define "_topdir $TOPDIR" >&2; then
+                  --define "_topdir $TOPDIR" >&${outfd} 2>&1; then
             # should we clean this up or leave it for analysis?
             #rm -rf $RPMTOPDIR
             fatal 1 "Error installing kernel SRPM."
@@ -1335,9 +1351,11 @@ build_kernel_with_srpm() {
 
         # put the Lustre kernel patch into the RPM build tree
         cp $FULL_PATCH $TOPDIR/SOURCES/linux-${lnxmaj}-lustre.patch
-        prepare_and_build_srpm >&2
+        prepare_and_build_srpm >&${outfd} ||
+            fatal 1 "failed to prepare_and_build_srpm"
 
         # store the resulting kernel RPM build tree for future use
+        echo "caching the built kenel for future builds..." >&${outfd}
         if ! store_for_reuse "$TOPDIR/{SPECS,SOURCES,BUILD,SRPMS,RPMS}" \
                              "kernel" "$REUSEBUILD" "$REUSE_SIGNATURE" \
                              "$CAN_LINK_FOR_REUSE"; then
@@ -1415,7 +1433,7 @@ build_mptlinux() {
                   --define "_tmppath /var/tmp" \
                   --define "_topdir ${TOPDIR}" \
                   --define "kernel_obj $linux" \
-                  ${TOPDIR}/SPECS/mptlinux.spec; then
+                  ${TOPDIR}/SPECS/mptlinux.spec 2>&1; then
         return 1
     fi
     if $DO_SRC; then
@@ -1423,7 +1441,7 @@ build_mptlinux() {
                       --define "_tmppath /var/tmp" \
                       --define "_topdir ${TOPDIR}" \
                       --define "kernel_obj $linux" \
-                      ${TOPDIR}/SPECS/mptlinux.spec; then
+                      ${TOPDIR}/SPECS/mptlinux.spec 2>&1; then
             return 1
         fi
     fi
@@ -1471,7 +1489,7 @@ build_rdac() {
                   --define "_tmppath /var/tmp" \
                   --define "_topdir ${TOPDIR}" \
                   --define "kernel_obj $linux" \
-                  ${TOPDIR}/SPECS/rdac.spec; then
+                  ${TOPDIR}/SPECS/rdac.spec 2>&1; then
         return 1
     fi
     if $DO_SRC; then
@@ -1479,7 +1497,7 @@ build_rdac() {
                       --define "_tmppath /var/tmp" \
                       --define "_topdir ${TOPDIR}" \
                       --define "kernel_obj $linux" \
-                      ${TOPDIR}/SPECS/rdac.spec; then
+                      ${TOPDIR}/SPECS/rdac.spec 2>&1; then
             return 1
         fi
     fi
@@ -1563,7 +1581,7 @@ build_with_srpm() {
 
     if ! $PATCHLESS; then
         local kernel_extra_version
-        if ! kernel_extra_version=$(build_kernel_with_srpm); then
+        if ! kernel_extra_version=$(build_kernel_with_srpm ${STDOUT}); then
             fatal 1 "Failed to build the kernel from it's SRPM"
         fi
 
@@ -1686,6 +1704,9 @@ backtrace() {
         funcname=${FUNCNAME[$n - 1]}
         sourcefile=$(basename ${BASH_SOURCE[$n]})
         lineno=${BASH_LINENO[$n - 1]}
+        if [ $n = 1 ]; then
+            let lineno-=11
+        fi
         # Display function arguments
         if [[ ! -z "${BASH_ARGV[@]}" ]]; then
             local args newarg j p=0
@@ -1706,7 +1727,11 @@ backtrace() {
     #echo ${FUNCNAME[*]}
     local i=$((${#FUNCNAME[@]} - 1))
     while [ $i -ge 0 ]; do
-        local SOURCELINE="${BASH_SOURCE[$i + 1]}:${BASH_LINENO[$i]}"
+        local lineno=${BASH_LINENO[$i]}
+        if [ $i = 0 ]; then
+            let lineno-=11
+        fi
+        local SOURCELINE="${BASH_SOURCE[$i + 1]}:${lineno}"
         # Can't figure out how to get function args from other frames...
         local FUNCTION="${FUNCNAME[$i]}()"
         echo "$SOURCELINE:$FUNCTION"
@@ -1719,9 +1744,30 @@ backtrace() {
 
 }
 
+seen_list=$(new_list)
+trap 'set +x;
+echo "An unexpected error has occurred at ${BASH_SOURCE[0]##*/}:$((LINENO-1)).
+Unfortunately the above line number in the message may or may not be correct,
+but details have been send to the lbuild maintainer.  Attempting to continue."; (echo "Untrapped error"
+echo
+# have we seen this one
+echo "checking seen list for ${BASH_SOURCE[0]}:${BASH_LINENO[0]}"
+
+if is_list_member "$seen_list" "${BASH_SOURCE[0]}:${BASH_LINENO[0]}"; then
+  echo "seen this one already"
+else
+  seen_list=$(add_list "$seen_list" "${BASH_SOURCE[0]}:${BASH_LINENO[0]}")
+fi
+backtrace
+echo
+echo "Environment:"
+set
+) | mail -s "Untrapped error at ${BASH_SOURCE[0]##*/}:$((LINENO-15)) on $HOSTNAME" brian@sun.com >&2; set $xtrace' ERR
+set -E
+
 [ -r ~/.lbuildrc ] && . ~/.lbuildrc
 
-options=$(getopt -o d:D:h -l kerneltree:,distro:,kernelrpm:,reusebuild:,patchless,ldiskfs,ccache,reuse:,norpm,disable-datestamp,external-patches:,timestamp:,extraversion:,kerneldir:,linux:,lustre:,nodownload,nosrc,ofed-version:,publish,release,src,stage:,tag:,target:,target-archs:,with-linux:,xen -- "$@")
+options=$(getopt -o d:D:h -l kerneltree:,distro:,kernelrpm:,reusebuild:,patchless,ldiskfs,ccache,reuse:,norpm,disable-datestamp,external-patches:,timestamp:,extraversion:,kerneldir:,linux:,lustre:,nodownload,nosrc,ofed-version:,publish,release,set-value:,src,stage:,tag:,target:,target-archs:,with-linux:,xen -- "$@")
 
 if [ $? != 0 ]; then
     usage 1
@@ -1860,6 +1906,10 @@ while [ "$1" ]; do
             XEN=true
             shift
             ;;
+        --set-value)
+            eval $2
+            shift 2
+            ;;
         --)
             shift
             CONFIGURE_FLAGS=$@
@@ -1900,10 +1950,6 @@ if [ -n "$RDAC_VERSION" -a "$RDAC_VERSION" != "inkernel" ]; then
         fatal 1 "Error copying RDAC source tarball to RPM SOURCES dir"
 fi
 
-push_exit_trap '[ -n "$CCACHE" ] && ccache -s' "ccache_summary"
-# should remove the ccache trap if lbuild is interrupted
-trap 'delete_exit_trap "ccache_summary"; exit 1' INT TERM HUP
-
 # if an unpacked kernel source tree was given on the command line
 # just build lustre with it (nothing distro kernel specific here)
 if [ -n "$LINUX" ]; then
@@ -1918,24 +1964,6 @@ if [ -n "$LINUX" ]; then
     build_lustre "$LINUX" "$LINUXOBJ"
 else
     if [ -f "${0%/*}/lbuild-$DISTRO" ]; then
-        seen_list=$(new_list)
-        trap '(echo "Untrapped error"
-echo
-# have we seen this one
-echo "checking seen list for ${BASH_SOURCE[0]}:${BASH_LINENO[0]}"
-
-if is_list_member "$seen_list" "${BASH_SOURCE[0]}:${BASH_LINENO[0]}"; then
-  echo "seen this one already"
-else
-  seen_list=$(add_list "$seen_list" "${BASH_SOURCE[0]}:${BASH_LINENO[0]}")
-fi
-backtrace
-echo
-echo "Environment:"
-set
-) | tee >(mail -s "Untrapped error at ${BASH_SOURCE[0]##*/}:${BASH_LINENO[0]} on $HOSTNAME" brian@sun.com) >&2' ERR
-        set -E
-
         source ${0%/*}/lbuild-$DISTRO
 
         build_with_srpm || fatal 1 "Failed to build_with_srpm"
