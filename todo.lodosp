@@ -2,9 +2,7 @@
  *  - connect data in obd_connect()
 
  * LOD TODO
- *  - shutdown
  *  - support for different LOV EA formats
- *  - load/init striping info on demand
  *  - object allocation
  *  - ost removal/deactivation
  *  - lod_ah_init() to grab default striping from parent or fs
@@ -19,9 +17,6 @@
  *  - qos_add_tgt() to learn configuration (how OSTs map OSSs)
  
 * OSP TODO
- *  - shutdown
- *  - global lu_idif_build()
- *  - ->do_create() to set initial attributes
  *  - send uid/gid changes immediately?
  *  - adaptive precreation (shouldn't block in most cases)
  *  - support for CMD (group = mds #)
