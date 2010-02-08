@@ -2107,7 +2107,9 @@ check_and_setup_lustre() {
     fi
 
     init_gss
-    set_flavor_all $SEC
+    if $GSS; then
+        set_flavor_all $SEC
+    fi
 
     if [ "$ONLY" == "setup" ]; then
         exit 0
