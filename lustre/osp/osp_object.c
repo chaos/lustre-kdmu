@@ -250,6 +250,7 @@ static int osp_declare_object_create(const struct lu_env *env,
                                       struct thandle *th)
 {
         struct osp_device  *d = lu2osp_dev(dt->do_lu.lo_dev);
+        struct osp_object   *o = dt2osp_obj(dt);
         int                 rc = 0;
         ENTRY;
 
@@ -267,6 +268,10 @@ static int osp_declare_object_create(const struct lu_env *env,
          * this can be made in osd_object_release()
          */
         if (rc == 0) {
+                /* mark id is reserved: in create we don't want to talk to OST */
+                LASSERT(o->opo_reserved == 0);
+                o->opo_reserved = 1;
+
                 /* XXX: for compatibility use common for all OSPs file */
                 rc = dt_declare_record_write(env, d->opd_last_used_file, 8, 0, th);
         }
@@ -293,9 +298,14 @@ static int osp_object_create(const struct lu_env *env,
 
         /* XXX: to support CMD we need group here */
 
+        LASSERT(o->opo_reserved != 0);
+        o->opo_reserved = 0;
+
         /* grab next id from the pool */
         spin_lock(&d->opd_pre_lock);
+        LASSERT(d->opd_pre_next <= d->opd_pre_last_created);
         objid = d->opd_pre_next++;
+        d->opd_pre_reserved--;
         spin_unlock(&d->opd_pre_lock);
 
         /* assign fid to anonymous object */
@@ -500,10 +510,22 @@ static void osp_object_free(const struct lu_env *env, struct lu_object *o)
 
 static void osp_object_release(const struct lu_env *env, struct lu_object *o)
 {
+        struct osp_object *po = lu2osp_obj(o);
+        struct osp_device *d  = lu2osp_dev(o->lo_dev);
+
         /*
          * release reservation if object was declared but not created
          * this may require lu_object_put() in LOD
          */
+        if (unlikely(po->opo_reserved)) {
+                LASSERT(d->opd_pre_reserved > 0);
+                cfs_spin_lock(&d->opd_pre_lock);
+                d->opd_pre_reserved--;
+                cfs_spin_unlock(&d->opd_pre_lock);
+
+                /* not needed in cache any more */
+                set_bit(LU_OBJECT_HEARD_BANSHEE, &o->lo_header->loh_flags);
+        }
 }
 
 static int osp_object_print(const struct lu_env *env, void *cookie,

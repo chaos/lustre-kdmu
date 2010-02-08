@@ -131,6 +131,7 @@ struct osp_object {
         struct lu_object_header opo_header;
         struct dt_object        opo_obj;
         int                     opo_no_attrs;
+        int                     opo_reserved;
 };
 
 struct osp_thread_info {
