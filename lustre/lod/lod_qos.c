@@ -178,7 +178,7 @@ out:
 static void lod_qos_statfs_update(const struct lu_env *env,
                                    struct lod_device *m)
 {
-        struct obd_device *obd = m->mbd_obd;
+        struct obd_device *obd = m->lod_obd;
         struct lov_obd    *lov = &obd->u.lov;
         struct ost_pool   *osts = &(lov->lov_packed);
         int                i, idx, rc = 0;
@@ -198,7 +198,7 @@ static void lod_qos_statfs_update(const struct lu_env *env,
 
         for (i = 0; i < osts->op_count; i++) {
                 idx = osts->op_array[i];
-                rc = dt_statfs(env, m->mbd_ost[i], &sfs);
+                rc = dt_statfs(env, m->lod_ost[i], &sfs);
                 if (rc) {
                         /* XXX: disable this OST till next refresh? */
                         CERROR("can't refresh statfs: %d\n", rc);
@@ -627,9 +627,9 @@ static struct dt_object *lod_qos_declare_object_on(const struct lu_env *env,
         LASSERT(d);
         LASSERT(ost_idx >= 0);
         LASSERT(ost_idx < LOD_MAX_OSTNR);
-        LASSERT(d->mbd_ost[ost_idx]);
+        LASSERT(d->lod_ost[ost_idx]);
 
-        nd = &d->mbd_ost[ost_idx]->dd_lu_dev;
+        nd = &d->lod_ost[ost_idx]->dd_lu_dev;
 
         /* 
          * allocate anonymous object with zero fid, real fid
@@ -675,7 +675,7 @@ static int lod_alloc_rr(const struct lu_env *env, struct lod_object *lo,
                         struct thandle *th)
 {
         struct lod_device *m = lu2lod_dev(lo->mbo_obj.do_lu.lo_dev);
-        struct lov_obd    *lov = &m->mbd_obd->u.lov;
+        struct lov_obd    *lov = &m->lod_obd->u.lov;
         struct dt_object  *o;
         unsigned array_idx;
         int i, rc;
@@ -750,7 +750,7 @@ repeat_find:
                 if (OBD_FAIL_CHECK(OBD_FAIL_MDS_OSC_PRECREATE) && ost_idx == 0)
                         continue;
 
-                rc = dt_statfs(env, m->mbd_ost[ost_idx], &sfs);
+                rc = dt_statfs(env, m->lod_ost[ost_idx], &sfs);
                 if (rc) {
                         /* this OSP doesn't feel well */
                         CERROR("can't statfs #%u: %d\n", ost_idx, rc);
@@ -902,7 +902,7 @@ out:
 
 static int inline lod_qos_is_usable(struct lod_device *m)
 {
-        struct lov_obd *lov = &m->mbd_obd->u.lov;
+        struct lov_obd *lov = &m->lod_obd->u.lov;
 
 #ifdef FORCE_QOS
         /* to be able to debug QoS code */
@@ -929,7 +929,7 @@ static int lod_alloc_qos(const struct lu_env *env, struct lod_object *lo,
 {
         struct lod_device *m = lu2lod_dev(lo->mbo_obj.do_lu.lo_dev);
         struct dt_object  *o;
-        struct lov_obd *lov = &m->mbd_obd->u.lov;
+        struct lov_obd *lov = &m->lod_obd->u.lov;
         __u64 total_weight = 0;
         int nfound, good_osts, i, rc = 0;
         int stripe_cnt = lo->mbo_stripenr;

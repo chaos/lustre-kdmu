@@ -457,7 +457,7 @@ static int lod_declare_striped_object(const struct lu_env *env,
         LASSERT(!dt_object_exists(&mo->mbo_obj));
 
         /* no OST available */
-        if (md->mbd_ostnr == 0)
+        if (md->lod_ostnr == 0)
                 GOTO(out, rc = -EIO);
 
         /*
@@ -473,7 +473,7 @@ static int lod_declare_striped_object(const struct lu_env *env,
          * decide on # of stripes
          */
         /* XXX: stripe over all OSTs for a while */
-        mo->mbo_stripenr = md->mbd_ostnr;
+        mo->mbo_stripenr = md->lod_ostnr;
 
         i = sizeof(struct dt_object *) * mo->mbo_stripenr;
         OBD_ALLOC(mo->mbo_stripe, i);
@@ -800,7 +800,7 @@ static int lod_object_init(const struct lu_env *env, struct lu_object *o,
         /*
          * create local object
          */
-        under = &d->mbd_child->dd_lu_dev;
+        under = &d->lod_child->dd_lu_dev;
         below = under->ld_ops->ldo_object_alloc(env, o->lo_header, under);
         if (below == NULL)
                 RETURN(-ENOMEM);

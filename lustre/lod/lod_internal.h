@@ -53,25 +53,25 @@
 #define LOD_BITMAP_SIZE                (LOD_MAX_OSTNR / sizeof(unsigned long) + 1)
 
 struct lod_device {
-        struct dt_device                 mbd_dt_dev;
-        struct obd_export               *mbd_child_exp;
-        struct dt_device                *mbd_child;
-        struct obd_device               *mbd_obd;
-        struct dt_txn_callback           mbd_txn_cb;
-        cfs_proc_dir_entry_t            *mbd_proc_entry;
-        struct lprocfs_stats            *mbd_stats;
+        struct dt_device                 lod_dt_dev;
+        struct obd_export               *lod_child_exp;
+        struct dt_device                *lod_child;
+        struct obd_device               *lod_obd;
+        struct dt_txn_callback           lod_txn_cb;
+        cfs_proc_dir_entry_t            *lod_proc_entry;
+        struct lprocfs_stats            *lod_stats;
         int                              lod_connects;
 
         /* list of known OSTs */
-        struct dt_device                *mbd_ost[LOD_MAX_OSTNR];
-        struct obd_export               *mbd_ost_exp[LOD_MAX_OSTNR];
+        struct dt_device                *lod_ost[LOD_MAX_OSTNR];
+        struct obd_export               *lod_ost_exp[LOD_MAX_OSTNR];
 
         /* bitmap of OSTs available */
-        unsigned long                    mbd_ost_bitmap[LOD_BITMAP_SIZE];
+        unsigned long                    lod_ost_bitmap[LOD_BITMAP_SIZE];
 
         /* number of known OSTs */
-        int                              mbd_ostnr;
-        cfs_semaphore_t                  mbd_mutex;
+        int                              lod_ostnr;
+        cfs_semaphore_t                  lod_mutex;
 };
 
 struct lod_object {
@@ -101,18 +101,18 @@ static inline int lu_device_is_lod(struct lu_device *d)
 static inline struct lod_device* lu2lod_dev(struct lu_device *d)
 {
         LASSERT(lu_device_is_lod(d));
-        return container_of0(d, struct lod_device, mbd_dt_dev.dd_lu_dev);
+        return container_of0(d, struct lod_device, lod_dt_dev.dd_lu_dev);
 }
 
 static inline struct lu_device *lod2lu_dev(struct lod_device *d)
 {
-        return (&d->mbd_dt_dev.dd_lu_dev);
+        return (&d->lod_dt_dev.dd_lu_dev);
 }
 
 static inline struct lod_device *dt2lod_dev(struct dt_device *d)
 {
         LASSERT(lu_device_is_lod(&d->dd_lu_dev));
-        return container_of0(d, struct lod_device, mbd_dt_dev);
+        return container_of0(d, struct lod_device, lod_dt_dev);
 }
 
 static inline struct lod_object *lu2lod_obj(struct lu_object *o)

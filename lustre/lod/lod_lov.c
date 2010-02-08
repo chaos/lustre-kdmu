@@ -221,30 +221,30 @@ int lod_lov_add_device(const struct lu_env *env, struct lod_device *m,
         }
 
         LASSERT(obd->obd_lu_dev);
-        LASSERT(obd->obd_lu_dev->ld_site = m->mbd_dt_dev.dd_lu_dev.ld_site);
+        LASSERT(obd->obd_lu_dev->ld_site = m->lod_dt_dev.dd_lu_dev.ld_site);
 
         d = lu2dt_dev(obd->obd_lu_dev);
 
-        cfs_mutex_down(&m->mbd_mutex);
+        cfs_mutex_down(&m->lod_mutex);
 
-        rc = lov_add_target(&m->mbd_obd->u.lov, obd, index, gen, 1);
+        rc = lov_add_target(&m->lod_obd->u.lov, obd, index, gen, 1);
         if (rc) {
                 CERROR("can't add target: %d\n", rc);
                 GOTO(out, rc);
         }
 
-        rc = qos_add_tgt(m->mbd_obd, index);
+        rc = qos_add_tgt(m->lod_obd, index);
         if (rc) {
                 CERROR("can't add: %d\n", rc);
                 GOTO(out, rc);
         }
 
-        if (m->mbd_ost[index] == NULL) {
+        if (m->lod_ost[index] == NULL) {
                 /* XXX: grab reference on the device */
-                m->mbd_ost[index] = d;
-                m->mbd_ost_exp[index] = exp;
-                m->mbd_ostnr++;
-                set_bit(index, m->mbd_ost_bitmap);
+                m->lod_ost[index] = d;
+                m->lod_ost_exp[index] = exp;
+                m->lod_ostnr++;
+                set_bit(index, m->lod_ost_bitmap);
                 rc = 0;
         } else {
                 CERROR("device %d is registered already\n", index);
@@ -252,7 +252,7 @@ int lod_lov_add_device(const struct lu_env *env, struct lod_device *m,
         }
 
 out:
-        cfs_mutex_up(&m->mbd_mutex);
+        cfs_mutex_up(&m->lod_mutex);
 
         if (rc) {
                 /* XXX: obd_disconnect(), qos_del_tgt(), lov_del_target() */
@@ -400,8 +400,8 @@ static int lod_parse_striping(const struct lu_env *env, struct lod_object *mo)
                 idx = le64_to_cpu(lmm->lmm_objects[i].l_ost_idx);
                 lu_idif_build(&fid, le64_to_cpu(lmm->lmm_objects[i].l_object_id), idx);
 
-                LASSERT(md->mbd_ost[idx]);
-                nd = &md->mbd_ost[idx]->dd_lu_dev;
+                LASSERT(md->lod_ost[idx]);
+                nd = &md->lod_ost[idx]->dd_lu_dev;
 
                 o = lu_object_find_at(env, nd, &fid, NULL);
                 if (IS_ERR(o))
@@ -469,18 +469,18 @@ int lod_lov_init(struct lod_device *m, struct lustre_cfg *cfg)
         int                         rc;
         ENTRY;
 
-        m->mbd_obd = class_name2obd(lustre_cfg_string(cfg, 0));
-        LASSERT(m->mbd_obd != NULL);
-        m->mbd_obd->obd_lu_dev = &m->mbd_dt_dev.dd_lu_dev;
+        m->lod_obd = class_name2obd(lustre_cfg_string(cfg, 0));
+        LASSERT(m->lod_obd != NULL);
+        m->lod_obd->obd_lu_dev = &m->lod_dt_dev.dd_lu_dev;
 
-        rc = lov_setup(m->mbd_obd, cfg);
+        rc = lov_setup(m->lod_obd, cfg);
 
         RETURN(rc);
 }
 
 int lod_lov_fini(struct lod_device *m)
 {
-        struct obd_device   *obd = m->mbd_obd;
+        struct obd_device   *obd = m->lod_obd;
         struct lov_obd      *lov = &obd->u.lov;
         struct list_head    *pos, *tmp;
         struct pool_desc    *pool;
@@ -499,11 +499,11 @@ int lod_lov_fini(struct lod_device *m)
         lov_ost_pool_free(&lov->lov_packed);
 
         for (i = 0; i < LOD_MAX_OSTNR; i++) {
-                exp = m->mbd_ost_exp[i];
+                exp = m->lod_ost_exp[i];
                 if (exp == NULL)
                         continue;
 
-                rc = qos_del_tgt(m->mbd_obd, i);
+                rc = qos_del_tgt(m->lod_obd, i);
                 LASSERT(rc == 0);
 
                 rc = obd_disconnect(exp);

@@ -108,7 +108,7 @@ static int lod_process_config(const struct lu_env *env,
                                struct lustre_cfg *lcfg)
 {
         struct lod_device *lod = lu2lod_dev(dev);
-        struct lu_device  *next = &lod->mbd_child->dd_lu_dev;
+        struct lu_device  *next = &lod->lod_child->dd_lu_dev;
         char              *arg1;
         int                rc, i;
         ENTRY;
@@ -139,9 +139,9 @@ static int lod_process_config(const struct lu_env *env,
                         if (rc)
                                 CERROR("can't process %u: %d\n", lcfg->lcfg_command, rc);
                         for (i = 0; i < LOD_MAX_OSTNR; i++) {
-                                if (lod->mbd_ost[i] == NULL)
+                                if (lod->lod_ost[i] == NULL)
                                         continue;
-                                next = &lod->mbd_ost[i]->dd_lu_dev; 
+                                next = &lod->lod_ost[i]->dd_lu_dev; 
                                 rc = next->ld_ops->ldo_process_config(env, next, lcfg);
                                 if (rc)
                                 CERROR("can't process %u: %d\n", lcfg->lcfg_command, rc);
@@ -162,7 +162,7 @@ static int lod_recovery_complete(const struct lu_env *env,
                                      struct lu_device *dev)
 {
         struct lod_device *lod = lu2lod_dev(dev);
-        struct lu_device   *next = &lod->mbd_child->dd_lu_dev;
+        struct lu_device   *next = &lod->lod_child->dd_lu_dev;
         int rc;
         ENTRY;
         rc = next->ld_ops->ldo_recovery_complete(env, next);
@@ -174,7 +174,7 @@ static int lod_prepare(const struct lu_env *env,
                        struct lu_device *cdev)
 {
         struct lod_device *lod = lu2lod_dev(cdev);
-        struct lu_device   *next = &lod->mbd_child->dd_lu_dev;
+        struct lu_device   *next = &lod->lod_child->dd_lu_dev;
         int rc;
         ENTRY;
         rc = next->ld_ops->ldo_prepare(env, pdev, next);
@@ -192,7 +192,7 @@ static int lod_root_get(const struct lu_env *env,
                         struct dt_device *dev, struct lu_fid *f)
 {
         struct lod_device *d = dt2lod_dev(dev);
-        struct dt_device   *next = d->mbd_child;
+        struct dt_device   *next = d->lod_child;
         int                 rc;
         ENTRY;
 
@@ -205,7 +205,7 @@ static int lod_statfs(const struct lu_env *env,
                        struct dt_device *dev, struct kstatfs *sfs)
 {
         struct lod_device *d = dt2lod_dev(dev);
-        struct dt_device   *next = d->mbd_child;
+        struct dt_device   *next = d->lod_child;
         int                 rc;
         ENTRY;
 
@@ -218,7 +218,7 @@ static struct thandle *lod_trans_create(const struct lu_env *env,
                                          struct dt_device *dev)
 {
         struct lod_device *d = dt2lod_dev(dev);
-        struct dt_device   *next = d->mbd_child;
+        struct dt_device   *next = d->lod_child;
         struct thandle     *th;
         ENTRY;
 
@@ -231,7 +231,7 @@ static int lod_trans_start(const struct lu_env *env, struct dt_device *dev,
                             struct thandle *th)
 {
         struct lod_device *d = dt2lod_dev(dev);
-        struct dt_device   *next = d->mbd_child;
+        struct dt_device   *next = d->lod_child;
         int                 rc;
         ENTRY;
 
@@ -257,7 +257,7 @@ static void lod_conf_get(const struct lu_env *env,
                           struct dt_device_param *param)
 {
         struct lod_device *d = dt2lod_dev((struct dt_device *) dev);
-        struct dt_device   *next = d->mbd_child;
+        struct dt_device   *next = d->lod_child;
         ENTRY;
 
         next->dd_ops->dt_conf_get(env, next, param);
@@ -269,7 +269,7 @@ static void lod_conf_get(const struct lu_env *env,
 static int lod_sync(const struct lu_env *env, struct dt_device *dev)
 {
         struct lod_device *d = dt2lod_dev(dev);
-        struct dt_device   *next = d->mbd_child;
+        struct dt_device   *next = d->lod_child;
         int                 rc;
         ENTRY;
 
@@ -281,7 +281,7 @@ static int lod_sync(const struct lu_env *env, struct dt_device *dev)
 static void lod_ro(const struct lu_env *env, struct dt_device *dev)
 {
         struct lod_device *d = dt2lod_dev(dev);
-        struct dt_device   *next = d->mbd_child;
+        struct dt_device   *next = d->lod_child;
         ENTRY;
 
         next->dd_ops->dt_ro(env, next);
@@ -292,7 +292,7 @@ static void lod_ro(const struct lu_env *env, struct dt_device *dev)
 static int lod_commit_async(const struct lu_env *env, struct dt_device *dev)
 {
         struct lod_device *d = dt2lod_dev(dev);
-        struct dt_device   *next = d->mbd_child;
+        struct dt_device   *next = d->lod_child;
         int                 rc;
         ENTRY;
 
@@ -307,7 +307,7 @@ static int lod_init_capa_ctxt(const struct lu_env *env,
                                    __u32 alg, struct lustre_capa_key *keys)
 {
         struct lod_device *d = dt2lod_dev(dev);
-        struct dt_device   *next = d->mbd_child;
+        struct dt_device   *next = d->lod_child;
         int                 rc;
         ENTRY;
 
@@ -321,7 +321,7 @@ static void lod_init_quota_ctxt(const struct lu_env *env,
                                    struct dt_quota_ctxt *ctxt, void *data)
 {
         struct lod_device *d = dt2lod_dev(dev);
-        struct dt_device   *next = d->mbd_child;
+        struct dt_device   *next = d->lod_child;
         ENTRY;
 
         next->dd_ops->dt_init_quota_ctxt(env, next, ctxt, data);
@@ -332,7 +332,7 @@ static void lod_init_quota_ctxt(const struct lu_env *env,
 static char *lod_label_get(const struct lu_env *env, const struct dt_device *dev)
 {
         struct lod_device *d = dt2lod_dev((struct dt_device *) dev);
-        struct dt_device   *next = d->mbd_child;
+        struct dt_device   *next = d->lod_child;
         char *l;
         ENTRY;
 
@@ -346,7 +346,7 @@ static int lod_label_set(const struct lu_env *env, const struct dt_device *dev,
                           char *l)
 {
         struct lod_device *d = dt2lod_dev((struct dt_device *) dev);
-        struct dt_device   *next = d->mbd_child;
+        struct dt_device   *next = d->lod_child;
         int                 rc;
         ENTRY;
 
@@ -379,7 +379,7 @@ static int lod_connect_to_osd(const struct lu_env *env, struct lod_device *m,
         int                      rc;
         ENTRY;
 
-        LASSERT(m->mbd_child_exp == NULL);
+        LASSERT(m->lod_child_exp == NULL);
 
         OBD_ALLOC(data, sizeof(*data));
         if (data == NULL)
@@ -407,16 +407,16 @@ static int lod_connect_to_osd(const struct lu_env *env, struct lod_device *m,
 #endif
         data->ocd_version = LUSTRE_VERSION_CODE;
         
-        rc = obd_connect(NULL, &m->mbd_child_exp, obd, &obd->obd_uuid, data, NULL);
+        rc = obd_connect(NULL, &m->lod_child_exp, obd, &obd->obd_uuid, data, NULL);
         if (rc) {
                 CERROR("cannot connect to next dev %s (%d)\n", nextdev, rc);
                 GOTO(out, rc);
         }
 
-        m->mbd_dt_dev.dd_lu_dev.ld_site =
-                m->mbd_child_exp->exp_obd->obd_lu_dev->ld_site;
-        LASSERT(m->mbd_dt_dev.dd_lu_dev.ld_site);
-        m->mbd_child = lu2dt_dev(m->mbd_child_exp->exp_obd->obd_lu_dev);
+        m->lod_dt_dev.dd_lu_dev.ld_site =
+                m->lod_child_exp->exp_obd->obd_lu_dev->ld_site;
+        LASSERT(m->lod_dt_dev.dd_lu_dev.ld_site);
+        m->lod_child = lu2dt_dev(m->lod_child_exp->exp_obd->obd_lu_dev);
 
 out:
         if (data)
@@ -430,7 +430,7 @@ static int lod_init0(const struct lu_env *env, struct lod_device *m,
         int rc;
         ENTRY;
 
-        dt_device_init(&m->mbd_dt_dev, ldt);
+        dt_device_init(&m->lod_dt_dev, ldt);
 
         rc = lod_connect_to_osd(env, m, lustre_cfg_string(cfg, 3));
         if (rc)
@@ -439,7 +439,7 @@ static int lod_init0(const struct lu_env *env, struct lod_device *m,
         /* setup obd to be used with old lov code */
         rc = lod_lov_init(m, cfg);
 
-        sema_init(&m->mbd_mutex, 1);
+        sema_init(&m->lod_mutex, 1);
 
         RETURN(0);
 }
@@ -458,8 +458,8 @@ static struct lu_device *lod_device_alloc(const struct lu_env *env,
                 lod_init0(env, m, t, lcfg);
                 l = lod2lu_dev(m);
                 l->ld_ops = &lod_lu_ops;
-                m->mbd_dt_dev.dd_ops = &lod_dt_ops;
-                /* XXX: dt_upcall_init(&m->mbd_dt_dev, NULL); */
+                m->lod_dt_dev.dd_ops = &lod_dt_ops;
+                /* XXX: dt_upcall_init(&m->lod_dt_dev, NULL); */
         }
 
         return l;
@@ -474,7 +474,7 @@ static struct lu_device *lod_device_fini(const struct lu_env *env,
 
         rc = lod_lov_fini(m);
 
-        rc = obd_disconnect(m->mbd_child_exp);
+        rc = obd_disconnect(m->lod_child_exp);
         if (rc)
                 CERROR("error in disconnect from storage: %d\n", rc);
 
@@ -485,11 +485,11 @@ static struct lu_device *lod_device_free(const struct lu_env *env,
                                          struct lu_device *lu)
 {
         struct lod_device *m = lu2lod_dev(lu);
-        struct lu_device   *next = &m->mbd_child->dd_lu_dev;
+        struct lu_device   *next = &m->lod_child->dd_lu_dev;
         ENTRY;
 
         LASSERT(atomic_read(&lu->ld_ref) == 0);
-        dt_device_fini(&m->mbd_dt_dev);
+        dt_device_fini(&m->lod_dt_dev);
         OBD_FREE_PTR(m);
         RETURN(next);
 }
