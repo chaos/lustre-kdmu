@@ -488,12 +488,17 @@ int osp_sync_add(const struct lu_env *env, struct osp_object *o,
                         CERROR("unknown record type: %x\n", rec->lrh_type);
                         break;
         }
-        
+
         cfs_spin_lock(&d->opd_syn_lock);
-        d->opd_syn_changes--;
+        if (d->opd_syn_prev_done) {
+                LASSERT(d->opd_syn_changes > 0); 
+                d->opd_syn_changes--;
+        }
+        d->opd_syn_rpc_in_progress++;
         cfs_spin_unlock(&d->opd_syn_lock);
 
-        CDEBUG(D_HA, "found record %x, %d: %d\n", rec->lrh_type, rec->lrh_len, rc);
+        CDEBUG(D_HA, "found record %x, %d, idx %u: %d\n",
+                rec->lrh_type, rec->lrh_len, rec->lrh_index, rc);
         return 0;
 }
 
@@ -544,7 +549,7 @@ int osp_sync_add(const struct lu_env *env, struct osp_object *o,
         llog_ctxt_put(ctxt);
 
         //printk("%d changes synced\n", done);
-        LASSERT(d->opd_syn_rpc_in_progress <= done);
+        LASSERT(d->opd_syn_rpc_in_progress >= done);
         cfs_spin_lock(&d->opd_syn_lock);
         d->opd_syn_rpc_in_progress -= done;
         cfs_spin_unlock(&d->opd_syn_lock);
