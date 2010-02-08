@@ -302,27 +302,25 @@ static int osp_object_create(const struct lu_env *env,
         o->opo_reserved = 0;
 
         /* grab next id from the pool */
-        spin_lock(&d->opd_pre_lock);
+        cfs_spin_lock(&d->opd_pre_lock);
         LASSERT(d->opd_pre_next <= d->opd_pre_last_created);
         objid = d->opd_pre_next++;
         d->opd_pre_reserved--;
-        spin_unlock(&d->opd_pre_lock);
-
-        /* assign fid to anonymous object */
-        lu_idif_build(&fid, objid, d->opd_index);
-        lu_object_assign_fid(env, &dt->do_lu, &fid);
 
         /*
          * update last_used object id for our OST
          * XXX: can we use 0-copy OSD methods to save memcpy()
          * which is going to be each creation * <# stripes>
          */
-        spin_lock(&d->opd_pre_lock);
         if (objid > d->opd_last_used_id) {
                 d->opd_last_used_id = objid;
                 update = 1;
         }
-        spin_unlock(&d->opd_pre_lock);
+        cfs_spin_unlock(&d->opd_pre_lock);
+
+        /* assign fid to anonymous object */
+        lu_idif_build(&fid, objid, d->opd_index);
+        lu_object_assign_fid(env, &dt->do_lu, &fid);
 
         if (update) {
                 /* we updated last_used in-core, so we update on a disk */

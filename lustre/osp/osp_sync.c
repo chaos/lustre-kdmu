@@ -670,9 +670,9 @@ int osp_sync_add(const struct lu_env *env, struct osp_object *o,
                 cfs_daemonize(pname);
         }
 
-        spin_lock(&d->opd_syn_lock);
+        cfs_spin_lock(&d->opd_syn_lock);
         thread->t_flags = SVC_RUNNING;
-        spin_unlock(&d->opd_syn_lock);
+        cfs_spin_unlock(&d->opd_syn_lock);
         cfs_waitq_signal(&thread->t_ctl_waitq);
 
 

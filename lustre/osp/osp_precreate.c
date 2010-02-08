@@ -195,9 +195,9 @@ static inline int osp_precreate_near_empty(struct osp_device *d)
 {
         int rc;
 
-        spin_lock(&d->opd_pre_lock);
+        cfs_spin_lock(&d->opd_pre_lock);
         rc = osp_precreate_near_empty_nolock(d);
-        spin_unlock(&d->opd_pre_lock);
+        cfs_spin_unlock(&d->opd_pre_lock);
 
         return rc;
 }
@@ -245,9 +245,9 @@ static int osp_precreate_send(struct osp_device *d)
         CDEBUG(D_HA, "new last_created %lu\n", (unsigned long) body->oa.o_id);
 
         LASSERT(body->oa.o_id > d->opd_pre_next);
-        spin_lock(&d->opd_pre_lock);
+        cfs_spin_lock(&d->opd_pre_lock);
         d->opd_pre_last_created = body->oa.o_id;
-        spin_unlock(&d->opd_pre_lock);
+        cfs_spin_unlock(&d->opd_pre_lock);
 
 out_req:
         ptlrpc_req_finished(req);
@@ -353,11 +353,11 @@ static int osp_precreate_clean_orphans(struct osp_device *d)
          */
         CDEBUG(D_HA, "got next id %lu\n", (unsigned long) body->oa.o_id);
 
-        spin_lock(&d->opd_pre_lock);
+        cfs_spin_lock(&d->opd_pre_lock);
         d->opd_pre_next = body->oa.o_id;
         /* nothing precreated yet, the pool is empty */
         d->opd_pre_last_created = body->oa.o_id; 
-        spin_unlock(&d->opd_pre_lock);
+        cfs_spin_unlock(&d->opd_pre_lock);
 
 out_req:
         ptlrpc_req_finished(req);
@@ -403,9 +403,9 @@ static int osp_precreate_thread(void *_arg)
                 cfs_daemonize(pname);
         }
 
-        spin_lock(&d->opd_pre_lock);
+        cfs_spin_lock(&d->opd_pre_lock);
         thread->t_flags = SVC_RUNNING;
-        spin_unlock(&d->opd_pre_lock);
+        cfs_spin_unlock(&d->opd_pre_lock);
         cfs_waitq_signal(&thread->t_ctl_waitq);
        
         while (osp_precreate_running(d)) {
@@ -497,7 +497,7 @@ int osp_precreate_reserve(struct osp_device *d)
 
         LASSERT(d->opd_pre_last_created >= d->opd_pre_next);
 
-        spin_lock(&d->opd_pre_lock);
+        cfs_spin_lock(&d->opd_pre_lock);
         precreated = d->opd_pre_last_created - d->opd_pre_next;
         if (precreated > d->opd_pre_reserved) {
                 d->opd_pre_reserved++;
@@ -509,7 +509,7 @@ int osp_precreate_reserve(struct osp_device *d)
                 cfs_waitq_signal(&d->opd_pre_waitq);
                 rc = -EAGAIN;
         }
-        spin_unlock(&d->opd_pre_lock);
+        cfs_spin_unlock(&d->opd_pre_lock);
 
         RETURN(rc);
 }
@@ -525,7 +525,7 @@ int osp_init_precreate(struct osp_device *d)
         d->opd_pre_last_created = 1;
         d->opd_pre_reserved = 0;
 
-        spin_lock_init(&d->opd_pre_lock);
+        cfs_spin_lock_init(&d->opd_pre_lock);
         cfs_waitq_init(&d->opd_pre_waitq);
         cfs_waitq_init(&d->opd_pre_thread.t_ctl_waitq);
 
