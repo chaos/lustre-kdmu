@@ -37,6 +37,7 @@
  *  - a mechanism to learn committness ASAP?
  *  - what ->statfs() returns when connection is down?
  *  - osp_statfs() to return number of precreated objects in f_ffiles
+ *  - batching in osp_sync.c so that the thread doesn't wake up for a single job
 
 
 

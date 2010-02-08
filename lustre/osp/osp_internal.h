@@ -78,7 +78,7 @@ struct osp_device {
         /* 
          * Precreation pool
          */
-        spinlock_t                      opd_pre_lock;
+        cfs_spinlock_t                  opd_pre_lock;
         /* next id to assign in creation */
         __u64                           opd_pre_next;
         /* last created id OST reported, next-created - available id's */
@@ -93,7 +93,7 @@ struct osp_device {
         /*
          * OST synchronization
          */
-        spinlock_t                      opd_syn_lock;
+        cfs_spinlock_t                  opd_syn_lock;
         /* unique generation, to recognize where new records start in the llog */
         struct llog_gen                 opd_syn_generation;
         /* number of changes to sync, used to wake up sync thread */
@@ -101,22 +101,27 @@ struct osp_device {
         /* processing of changes from previous mount is done? */
         int                             opd_syn_prev_done;
         /* found records */
-        int                             opd_syn_found;
         struct ptlrpc_thread            opd_syn_thread;
         cfs_waitq_t                     opd_syn_waitq;
-        /* list where jobs are awaiting for commit notify */
-        struct list_head                opd_syn_waiting_for_commit;
-        /* list where jobs are collected to run cancels */
-        struct list_head                opd_syn_waiting_for_cancel;
+        /* list where rpcs are awaiting for local commit */
+        cfs_list_t                      opd_syn_waiting_for_commit;
+        /* list of locally committed rpc */
+        cfs_list_t                      opd_syn_committed_here;
+        /* list of remotely committed rpc */
+        cfs_list_t                      opd_syn_committed_there;
         /* number of changes being under sync */
         int                             opd_syn_sync_in_progress;
+        /* number of RPCs in flight - flow control */
+        int                             opd_syn_rpc_in_flight;
+        /* number of RPC in processing (including non-committed by OST) */
+        int                             opd_syn_rpc_in_progress;
         /* osd api's commit cb control structure */
         struct dt_txn_callback          opd_syn_txn_cb;
 
         /*
          * statfs related fields: OSP maintains it on its own
          */
-        struct kstatfs                  opd_statfs;
+        cfs_kstatfs_t                   opd_statfs;
         cfs_time_t                      opd_statfs_fresh_till;
         cfs_timer_t                     opd_statfs_timer;
 };

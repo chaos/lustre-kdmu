@@ -79,8 +79,9 @@
 
 /* XXX: do math to learn reasonable threshold
  * should it be ~ number of changes fitting bulk? */
-#define OSP_SYN_THRESHOLD       10
-
+#define OSP_SYN_THRESHOLD       3
+#define OSP_MAX_IN_FLIGHT       5
+#define OSP_MAX_IN_PROGRESS     3
 
 /*
  * Job is a job.
@@ -88,11 +89,56 @@
  * Job contains request to OST, set of llog cookies corresponding the request
  */
 struct osp_sync_job {
-        struct list_head       osj_list;
+        cfs_list_t             osj_list;
         struct ptlrpc_request *osj_req;
         struct llog_cookie     osj_cookie;
-        struct osp_device     *osj_device;
+        unsigned long          osj_magic;
 };
+
+#define OSP_JOB_MAGIC         0x26112005
+
+ inline int osp_sync_running(struct osp_device *d)
+{
+        return !!(d->opd_syn_thread.t_flags & SVC_RUNNING);
+}
+
+ inline int osp_sync_stopped(struct osp_device *d)
+{
+        return !!(d->opd_syn_thread.t_flags & SVC_STOPPED);
+}
+
+ inline int osp_sync_has_new_job(struct osp_device *d)
+{
+        return d->opd_syn_changes > OSP_SYN_THRESHOLD || !d->opd_syn_prev_done;
+}
+
+ inline int osp_sync_low_in_progress(struct osp_device *d)
+{
+        return d->opd_syn_rpc_in_progress < OSP_MAX_IN_PROGRESS;
+}
+
+ inline int osp_sync_has_work(struct osp_device *d)
+{
+        /* has locally committed and low in-flight? */
+        if (!cfs_list_empty(&d->opd_syn_committed_here)
+                        && d->opd_syn_rpc_in_flight < OSP_MAX_IN_FLIGHT)
+                return 1;
+
+        /* has new/old changes and low in-progress? */
+        if (osp_sync_has_new_job(d) && osp_sync_low_in_progress(d))
+                return 1;
+
+        /* has remotely committed? */
+        if (!cfs_list_empty(&d->opd_syn_committed_there))
+                return 1;
+
+        return 0;
+}
+
+ inline int osp_sync_can_process_new(struct osp_device *d)
+{
+        return (osp_sync_low_in_progress(d) && osp_sync_has_new_job(d));
+}
 
 int osp_sync_declare_add(const struct lu_env *env, struct osp_object *o,
                          llog_op_type type, struct thandle *th)
@@ -167,22 +213,22 @@ int osp_sync_add(const struct lu_env *env, struct osp_object *o,
         rc = llog_add_2(ctxt, &u.hdr, NULL, &cookie, 1, th);
         llog_ctxt_put(ctxt);
 
-        CERROR("new record %lu:%lu:%lu/%lu: %d\n",
+        /*printk("new record %lu:%lu:%lu/%lu: %d\n",
                 (unsigned long) cookie.lgc_lgl.lgl_oid,
                 (unsigned long) cookie.lgc_lgl.lgl_ogr,
                 (unsigned long) cookie.lgc_lgl.lgl_ogen,
-                (unsigned long) cookie.lgc_index, rc);
+                (unsigned long) cookie.lgc_index, rc);*/
 
         if (rc > 0)
                 rc = 0;
 
         if (likely(rc == 0)) {
-                spin_lock(&d->opd_syn_lock);
+                cfs_spin_lock(&d->opd_syn_lock);
                 d->opd_syn_changes++;
-                spin_unlock(&d->opd_syn_lock);
+                cfs_spin_unlock(&d->opd_syn_lock);
 
-                if (d->opd_syn_changes >= OSP_SYN_THRESHOLD)
-                       cfs_waitq_signal(&d->opd_syn_waitq);
+                if (osp_sync_has_work(d))
+                        cfs_waitq_signal(&d->opd_syn_waitq);
         }
 
         RETURN(rc);
@@ -202,61 +248,35 @@ int osp_sync_add(const struct lu_env *env, struct osp_object *o,
  *  subsequent commit callback (at the most)
  */
 
-static inline int osp_sync_running(struct osp_device *d)
-{
-        return !!(d->opd_syn_thread.t_flags & SVC_RUNNING);
-}
-
-static inline int osp_sync_stopped(struct osp_device *d)
-{
-        return !!(d->opd_syn_thread.t_flags & SVC_STOPPED);
-}
-
-static inline int osp_sync_has_work(struct osp_device *d)
-{
-        return d->opd_syn_sync_in_progress == 0 && (!d->opd_syn_prev_done 
-                || d->opd_syn_changes >= OSP_SYN_THRESHOLD);
-}
-
-
 /*
  * called for each atomic on-disk change (not once per transaction batch)
  * and goes over the list
  * XXX: should be optimized?
  */
-static int osp_sync_txn_commit_cb(const struct lu_env *env,
+ int osp_sync_txn_commit_cb(const struct lu_env *env,
                                   struct thandle *th,
                                   void *cookie)
 {
-        struct osp_device   *d = cookie;
-        struct osp_sync_job *j, *tmp;
-        struct list_head     list;
-        int                  rc;
+        struct osp_device *d = cookie;
+        cfs_list_t         list;
         
         /* even in case of some race there will be another commit callback
          * probably except the last one at umount ? */
-        if (list_empty(&d->opd_syn_waiting_for_commit))
+        if (cfs_list_empty(&d->opd_syn_waiting_for_commit))
                 return 0;
 
         /*
          *  All jobs listed on opd_syn_waiting_for_commit can be started now
          */
         CFS_INIT_LIST_HEAD(&list);
-        spin_lock(&d->opd_syn_lock);
-        list_splice(&d->opd_syn_waiting_for_commit, &list);
+        cfs_spin_lock(&d->opd_syn_lock);
+        cfs_list_splice(&d->opd_syn_waiting_for_commit,
+                        &d->opd_syn_committed_here);
         CFS_INIT_LIST_HEAD(&d->opd_syn_waiting_for_commit);
-        spin_unlock(&d->opd_syn_lock);
+        cfs_spin_unlock(&d->opd_syn_lock);
 
-        /*
-         * fire RPCs off
-         */
-        list_for_each_entry_safe(j, tmp, &list, osj_list) {
-                LASSERT(j->osj_req);
-                list_del(&j->osj_list);
-                CFS_INIT_LIST_HEAD(&j->osj_list);
-                rc = ptlrpcd_add_req(j->osj_req, PSCOPE_OTHER);
-                LASSERT(rc == 0); /* XXX: error handling here? */
-        }
+        if (osp_sync_has_work(d))
+                cfs_waitq_signal(&d->opd_syn_waitq);
 
         return 0;
 }
@@ -264,37 +284,48 @@ static int osp_sync_txn_commit_cb(const struct lu_env *env,
 /**
  * called for each RPC reported committed
  */
-static void osp_sync_request_commit_cb(struct ptlrpc_request *req)
+ void osp_sync_request_commit_cb(struct ptlrpc_request *req)
 {
-        struct osp_sync_job *j = req->rq_cb_data;
-        struct osp_device   *d;
+        struct osp_device   *d = req->rq_cb_data;
+        struct osp_sync_job *j;
 
-        CERROR("request %p %d transno %x\n", req, atomic_read(&req->rq_refcount),
-                (unsigned) req->rq_transno);
-        LASSERT(j);
-        LASSERT(list_empty(&j->osj_list));
-
-        d = j->osj_device;
+        j = (struct osp_sync_job *) &req->rq_async_args;
         LASSERT(d);
+        LASSERT(j->osj_magic == OSP_JOB_MAGIC);
+        LASSERT(j->osj_magic == OSP_JOB_MAGIC);
+        LASSERT(cfs_list_empty(&j->osj_list));
 
-        spin_lock(&d->opd_syn_lock);
-        list_add(&j->osj_list, &d->opd_syn_waiting_for_cancel);
-        spin_unlock(&d->opd_syn_lock);
+        cfs_spin_lock(&d->opd_syn_lock);
+        cfs_list_add(&j->osj_list, &d->opd_syn_committed_there);
+        cfs_spin_unlock(&d->opd_syn_lock);
         
         /* XXX: some batching wouldn't hurt */
         cfs_waitq_signal(&d->opd_syn_waitq);
-
-        req->rq_cb_data = NULL;
 }
 
-static void osp_sync_done_job(struct osp_sync_job *j)
+ int osp_sync_interpret(const struct lu_env *env,
+                              struct ptlrpc_request *req,
+                              void *aa, int rc)
 {
-        LASSERT(j);
-        LASSERT(list_empty(&j->osj_list));
-        OBD_FREE_PTR(j);
+        struct osp_device    *d = req->rq_cb_data;
+        struct osp_sync_job  *j;
+       
+        j = (struct osp_sync_job *) &req->rq_async_args;
+        LASSERT(j->osj_magic == OSP_JOB_MAGIC);
+        LASSERT(d);
+
+        LASSERT(d->opd_syn_rpc_in_flight > 0);
+        cfs_spin_lock(&d->opd_syn_lock);
+        d->opd_syn_rpc_in_flight--;
+        cfs_spin_unlock(&d->opd_syn_lock);
+       
+        if (osp_sync_has_work(d))
+                cfs_waitq_signal(&d->opd_syn_waitq);
+
+        return 0; 
 }
 
-static struct osp_sync_job *osp_sync_new_job(struct osp_device *d,
+ struct osp_sync_job *osp_sync_new_job(struct osp_device *d,
                                     struct llog_handle *llh,
                                     struct llog_rec_hdr *h,
                                     ost_cmd_t op,
@@ -306,51 +337,42 @@ static struct osp_sync_job *osp_sync_new_job(struct osp_device *d,
         int                     rc;
 
         /*
-         * Prepare the job
-         */
-        OBD_ALLOC_PTR(j);
-        if (j == NULL)
-                RETURN(ERR_PTR(-ENOMEM));
-
-        CFS_INIT_LIST_HEAD(&j->osj_list);
-        j->osj_cookie.lgc_lgl = llh->lgh_id;
-        j->osj_cookie.lgc_subsys = LLOG_MDS_OST_ORIG_CTXT;
-        j->osj_cookie.lgc_index = h->lrh_index;
-        j->osj_device = d;
-
-        /*
          * Prepare the request
          */
         imp = d->opd_obd->u.cli.cl_import;
         LASSERT(imp);
         req = ptlrpc_request_alloc(imp, format);
-        if (req == NULL) {
-                OBD_FREE_PTR(j);
+        if (req == NULL)
                 RETURN(ERR_PTR(-ENOMEM));
-        }
 
         rc = ptlrpc_request_pack(req, LUSTRE_OST_VERSION, op);
         if (rc) {
-                osp_sync_done_job(j);
+                ptlrpc_req_finished(req);
                 return(ERR_PTR(rc));
         }
 
-        req->rq_commit_cb = osp_sync_request_commit_cb;
-        req->rq_cb_data = j;
+        j = (struct osp_sync_job *) &req->rq_async_args;
+        j->osj_magic = OSP_JOB_MAGIC;
+        CFS_INIT_LIST_HEAD(&j->osj_list);
+        j->osj_cookie.lgc_lgl = llh->lgh_id;
+        j->osj_cookie.lgc_subsys = LLOG_MDS_OST_ORIG_CTXT;
+        j->osj_cookie.lgc_index = h->lrh_index;
         j->osj_req = req;
+
+        ptlrpc_request_addref(req);
+        req->rq_interpret_reply = osp_sync_interpret;
+        req->rq_commit_cb = osp_sync_request_commit_cb;
+        req->rq_cb_data = d;
 
         ptlrpc_request_set_replen(req);
 
         return j;
 }
 
-static void osp_sync_add_job(struct osp_sync_job *j)
+ void osp_sync_add_job(struct osp_sync_job *j, struct osp_device *d)
 {
-        struct osp_device *d;
-
         LASSERT(j);
-        d = j->osj_device;
-        LASSERT(d);
+        LASSERT(j->osj_magic = OSP_JOB_MAGIC);
 
         /*
          * Put the job on a list where it'll be awaiting commit notify
@@ -359,15 +381,15 @@ static void osp_sync_add_job(struct osp_sync_job *j)
          * also maintain counter of changes being under sync, so that
          * we don't start processing them again till they get cancelled
          */
-        LASSERT(list_empty(&j->osj_list));
-        spin_lock(&d->opd_syn_lock);
-        list_add(&j->osj_list, &d->opd_syn_waiting_for_commit);
+        LASSERT(cfs_list_empty(&j->osj_list));
+        cfs_spin_lock(&d->opd_syn_lock);
+        cfs_list_add(&j->osj_list, &d->opd_syn_waiting_for_commit);
         d->opd_syn_sync_in_progress++;
-        spin_unlock(&d->opd_syn_lock);
+        cfs_spin_unlock(&d->opd_syn_lock);
 
 }
 
-static int osp_sync_new_setattr_job(struct osp_device *d,
+ int osp_sync_new_setattr_job(struct osp_device *d,
                                     struct llog_handle *llh,
                                     struct llog_rec_hdr *h)
 {
@@ -390,12 +412,12 @@ static int osp_sync_new_setattr_job(struct osp_device *d,
         body->oa.o_valid = OBD_MD_FLGROUP | OBD_MD_FLID |
                            OBD_MD_FLUID | OBD_MD_FLGID;
 
-        osp_sync_add_job(j);
+        osp_sync_add_job(j, d);
 
         RETURN(0);
 }
 
-static int osp_sync_new_unlink_job(struct osp_device *d,
+ int osp_sync_new_unlink_job(struct osp_device *d,
                                     struct llog_handle *llh,
                                     struct llog_rec_hdr *h)
 {
@@ -415,22 +437,22 @@ static int osp_sync_new_unlink_job(struct osp_device *d,
         body->oa.o_gr = rec->lur_ogr;
         body->oa.o_valid = OBD_MD_FLGROUP | OBD_MD_FLID;
 
-        osp_sync_add_job(j);
+        osp_sync_add_job(j, d);
 
         RETURN(0);
 }
 
-static int osp_sync_process_record(struct llog_handle *llh,
-                                   struct llog_rec_hdr *rec, void *data)
+ int osp_sync_process_record(struct osp_device *d,
+                                   struct llog_handle *llh,
+                                   struct llog_rec_hdr *rec)
 {
-        struct osp_device *d = data;
-        struct llog_cookie cookie;
-        int                rc = 0;
+        struct llog_cookie  cookie;
+        int                 rc = 0;
 
         cookie.lgc_lgl = llh->lgh_id;
         cookie.lgc_subsys = LLOG_MDS_OST_ORIG_CTXT;
         cookie.lgc_index = rec->lrh_index;
-                
+               
         if (unlikely(rec->lrh_type == LLOG_GEN_REC)) {
                 struct llog_gen_rec *gen = (struct llog_gen_rec *) rec;
                 /* we're waiting for the record generated by this instance */
@@ -446,9 +468,6 @@ static int osp_sync_process_record(struct llog_handle *llh,
                 
                 return rc;
         }
-
-        /* no lock is required as we don't modify found concurrently */
-        d->opd_syn_found++;
 
         /*
          * now we prepare and fill requests to OST, put them on the queue
@@ -469,69 +488,33 @@ static int osp_sync_process_record(struct llog_handle *llh,
                         CERROR("unknown record type: %x\n", rec->lrh_type);
                         break;
         }
+        
+        cfs_spin_lock(&d->opd_syn_lock);
+        d->opd_syn_changes--;
+        cfs_spin_unlock(&d->opd_syn_lock);
 
         CDEBUG(D_HA, "found record %x, %d: %d\n", rec->lrh_type, rec->lrh_len, rc);
         return 0;
 }
 
-static int osp_sync_process_records(struct osp_device *d)
+ void osp_sync_process_committed(struct osp_device *d)
 {
-        struct obd_device   *obd = d->opd_obd;
-        struct llog_handle  *llh;
-        struct llog_ctxt    *ctxt;
-        int                  rc;
+        struct obd_device    *obd = d->opd_obd;
+        struct osp_sync_job  *j, *tmp;
+        struct llog_ctxt     *ctxt;
+        struct llog_handle   *llh;
+        cfs_list_t            list;
+        int                   rc, done = 0;
         ENTRY;
 
-        if (d->opd_syn_sync_in_progress)
-                RETURN(0);
-
-        ctxt = llog_get_context(obd, LLOG_MDS_OST_ORIG_CTXT);
-        LASSERT(ctxt);
-
-        llh = ctxt->loc_handle;
-        LASSERT(llh);
-
-        /* XXX: how well it works if llog is being appended concurrently? */
-        CERROR("start to process %lu changes\n", d->opd_syn_changes);
-        d->opd_syn_found = 0;
-        rc = llog_cat_process(llh, osp_sync_process_record, d, 0, 0);
-        if (rc)
-                CERROR("can't process llog: %d\n", rc);
-        CERROR("processed %d changes\n", d->opd_syn_found);
-
-        spin_lock(&d->opd_syn_lock);
-        d->opd_syn_changes -= d->opd_syn_found;
-        spin_unlock(&d->opd_syn_lock);
-
-        llog_ctxt_put(ctxt);
-
-        RETURN(rc);
-}
-
-/*
- * handles committed RPCs: goes over cookies and cancel them
- */
-static int osp_sync_process_cancels(struct osp_device *d)
-{
-        struct obd_device   *obd = d->opd_obd;
-        struct osp_sync_job *j, *tmp;
-        struct llog_ctxt    *ctxt;
-        struct llog_handle  *llh;
-        struct list_head     list;
-        int                  rc = 0, count = 0;
-        ENTRY;
-
-        /* don't block opd_syn_lock for a long */
-        CFS_INIT_LIST_HEAD(&list);
-        spin_lock(&d->opd_syn_lock);
-        list_splice(&d->opd_syn_waiting_for_cancel, &list);
-        CFS_INIT_LIST_HEAD(&d->opd_syn_waiting_for_cancel);
-        spin_unlock(&d->opd_syn_lock);
+        if (cfs_list_empty(&d->opd_syn_committed_there))
+                return;
 
         /*
          * now cancel them all
          * XXX: can we improve this using some batching?
          *      with batch RPC that'll happen automatically?
+         * XXX: can we store ctxt in lod_device and save few cycles ?
          */
         ctxt = llog_get_context(obd, LLOG_MDS_OST_ORIG_CTXT);
         LASSERT(ctxt);
@@ -539,33 +522,140 @@ static int osp_sync_process_cancels(struct osp_device *d)
         llh = ctxt->loc_handle;
         LASSERT(llh);
 
-        list_for_each_entry_safe(j, tmp, &list, osj_list) {
-                LASSERT(j->osj_req);
-                list_del_init(&j->osj_list);
-                rc = llog_cat_cancel_records(llh, 1, &j->osj_cookie);
-                osp_sync_done_job(j);
-                count++;
-        }
+        CFS_INIT_LIST_HEAD(&list);
+        cfs_spin_lock(&d->opd_syn_lock);
+        cfs_list_splice(&d->opd_syn_committed_there, &list);
+        CFS_INIT_LIST_HEAD(&d->opd_syn_committed_there);
+        cfs_spin_unlock(&d->opd_syn_lock);
 
+        cfs_list_for_each_entry_safe(j, tmp, &list, osj_list) {
+               
+                LASSERT(j->osj_magic == OSP_JOB_MAGIC);
+                cfs_list_del_init(&j->osj_list);
+
+                rc = llog_cat_cancel_records(llh, 1, &j->osj_cookie);
+                if (rc)
+                        CERROR("can't cancel record: %d\n", rc);
+                
+                ptlrpc_req_finished(j->osj_req);
+                done++;
+        }
+        
         llog_ctxt_put(ctxt);
 
-        /* if all in-progress sync are done, start with another batch */
-        spin_lock(&d->opd_syn_lock);
-        d->opd_syn_sync_in_progress -= count;
-        if (d->opd_syn_sync_in_progress == 0) {
-                printk("all in-progress syncs are done\n");
-                cfs_waitq_signal(&d->opd_syn_waitq);
-        }
-        spin_unlock(&d->opd_syn_lock);
+        //printk("%d changes synced\n", done);
+        LASSERT(d->opd_syn_rpc_in_progress <= done);
+        cfs_spin_lock(&d->opd_syn_lock);
+        d->opd_syn_rpc_in_progress -= done;
+        cfs_spin_unlock(&d->opd_syn_lock);
 
-        RETURN(rc);
+        if (osp_sync_has_work(d))
+                cfs_waitq_signal(&d->opd_syn_waitq);
+
+        EXIT;
 }
 
-static int osp_sync_thread(void *_arg)
+ void osp_sync_send_new_rpcs(struct osp_device *d)
+{
+        struct osp_sync_job *j;
+        int rc;
+        ENTRY;
+
+        if (cfs_list_empty(&d->opd_syn_committed_here))
+                return;
+
+        if (d->opd_syn_rpc_in_flight >= OSP_MAX_IN_FLIGHT)
+                return;
+
+        while (d->opd_syn_rpc_in_flight < OSP_MAX_IN_FLIGHT) {
+                cfs_spin_lock(&d->opd_syn_lock);
+                if (!cfs_list_empty(&d->opd_syn_committed_here)) {
+                        j = cfs_list_entry(d->opd_syn_committed_here.next,
+                                           struct osp_sync_job,
+                                           osj_list);
+                  
+                        cfs_list_del_init(&j->osj_list);
+                        d->opd_syn_rpc_in_flight++;
+                        cfs_spin_unlock(&d->opd_syn_lock);
+                        
+                        if (j->osj_magic != OSP_JOB_MAGIC) {
+                                CERROR("send new rpc %p, job %p\n", j->osj_req, j);      
+                                LBUG();
+                        }
+                        rc = ptlrpcd_add_req(j->osj_req, PSCOPE_OTHER);
+                        if (rc) {
+                                CERROR("can't send RPC: %d\n", rc);
+                                break;
+                        }
+                } else {
+                        cfs_spin_unlock(&d->opd_syn_lock);
+                        break;
+                }
+        }
+       
+        EXIT;
+}
+
+/*
+ * 
+ * we have three queues of work:
+ * llog records to be read, records awaiting commit and records to be cancelled
+ *
+ * we read records (from llog itself) when it's not empty (so that processing
+ * loop, llog_proces(), doesn't exit) and when 2nd queue isn't too full
+ *
+ * 2nd queue is essentially RPCs sent to OST - it's a flow control point.
+ *
+ * 3rd queue is RPCs reported committed by OST
+ *
+ */
+ int osp_sync_process_queues(struct llog_handle *llh,
+                                   struct llog_rec_hdr *rec,
+                                   void *data)
+{
+        struct osp_device *d = data;
+        int                rc;
+
+        do { 
+                struct l_wait_info lwi = { 0 };
+
+                /* process requests committed by OST */
+                osp_sync_process_committed(d);
+
+                /* send new rpc to OST if something is committed locally
+                 * and number of in-flight rpc isn't too high */
+                osp_sync_send_new_rpcs(d);
+
+                /* if we there are changes to be processed and we have
+                 * resources for this ... do now */
+                if (osp_sync_can_process_new(d)) {
+                        if (llh == NULL) {
+                                /* ask llog for another record */
+                                return 0;
+                        }
+                        rc = osp_sync_process_record(d, llh, rec);
+                        LASSERT(rc == 0);
+                        llh = NULL;
+                        rec = NULL;
+                }
+
+                l_wait_event(d->opd_syn_waitq,
+                                !osp_sync_running(d) || osp_sync_has_work(d),
+                                &lwi);
+
+                if (!osp_sync_running(d))
+                        return LLOG_PROC_BREAK;
+                
+        } while (1);
+}
+
+ int osp_sync_thread(void *_arg)
 {
         struct osp_device      *d = _arg;
         struct ptlrpc_thread   *thread = &d->opd_syn_thread;
         struct llog_ctxt       *ctxt;
+        struct obd_device      *obd = d->opd_obd;
+        struct llog_handle     *llh;
         int                     rc;
         ENTRY;
        
@@ -579,25 +669,27 @@ static int osp_sync_thread(void *_arg)
         thread->t_flags = SVC_RUNNING;
         spin_unlock(&d->opd_syn_lock);
         cfs_waitq_signal(&thread->t_ctl_waitq);
-       
-        while (1) {
-                struct l_wait_info lwi = { 0 };
 
-                l_wait_event(d->opd_syn_waitq,
-                             !osp_sync_running(d) || osp_sync_has_work(d) ||
-                             !list_empty(&d->opd_syn_waiting_for_cancel),
-                             &lwi);
 
-                if (!osp_sync_running(d))
-                        break;
-                
-                if (osp_sync_has_work(d))
-                        osp_sync_process_records(d);
+        if (d->opd_syn_sync_in_progress)
+                RETURN(0);
 
-                if (!list_empty(&d->opd_syn_waiting_for_cancel))
-                        osp_sync_process_cancels(d);
-
+        ctxt = llog_get_context(obd, LLOG_MDS_OST_ORIG_CTXT);
+        if (ctxt == NULL) {
+                CERROR("can't get appropriate context\n");
+                GOTO(out, rc = -EINVAL);
         }
+
+        llh = ctxt->loc_handle;
+        if (llh == NULL) {
+                CERROR("can't get llh\n");
+                llog_ctxt_put(ctxt);
+                GOTO(out, rc = -EINVAL);
+        }
+
+        rc = llog_cat_process(llh, osp_sync_process_queues, d, 0, 0);
+        LASSERT(rc == 0 || rc == LLOG_PROC_BREAK);
+        LASSERT(thread->t_flags != SVC_RUNNING);
 
         /* abort all in-flights */
         CERROR("abort all in-flight RPCs\n");
@@ -605,24 +697,20 @@ static int osp_sync_thread(void *_arg)
         /* finish all jobs */
         CERROR("abort all jobs\n");
 
+        rc = llog_cleanup(ctxt);
+        if (rc)
+                CERROR("can't cleanup llog: %d\n", rc);
 
-        ctxt = llog_get_context(d->opd_obd, LLOG_MDS_OST_ORIG_CTXT);
-        if (ctxt) {
-                rc = llog_cleanup(ctxt);
-                if (rc)
-                        CERROR("can't cleanup llog: %d\n", rc);
-        }
-
+out:
         thread->t_flags = SVC_STOPPED;
         cfs_waitq_signal(&thread->t_ctl_waitq);
-        CERROR("@@@@@@@@@ EXIT\n");
 
         RETURN(0);
 }
 
-static struct llog_operations osp_mds_ost_orig_logops;
+ struct llog_operations osp_mds_ost_orig_logops;
 
-static int osp_sync_llog_init(struct osp_device *d)
+ int osp_sync_llog_init(struct osp_device *d)
 {
         struct obd_device   *obd = d->opd_obd;
         struct llog_gen_rec  genrecord;
@@ -707,6 +795,8 @@ int osp_sync_init(struct osp_device *d)
         int                rc;
         ENTRY;
 
+        LASSERT(sizeof(struct osp_sync_job) <= sizeof(union ptlrpc_async_args));
+
         /*
          * initialize llog storing changes
          */
@@ -726,11 +816,12 @@ int osp_sync_init(struct osp_device *d)
         /*
          * Start synchronization thread
          */
-        spin_lock_init(&d->opd_syn_lock);
+        cfs_spin_lock_init(&d->opd_syn_lock);
         cfs_waitq_init(&d->opd_syn_waitq);
         cfs_waitq_init(&d->opd_syn_thread.t_ctl_waitq);
         CFS_INIT_LIST_HEAD(&d->opd_syn_waiting_for_commit);
-        CFS_INIT_LIST_HEAD(&d->opd_syn_waiting_for_cancel);
+        CFS_INIT_LIST_HEAD(&d->opd_syn_committed_here);
+        CFS_INIT_LIST_HEAD(&d->opd_syn_committed_there);
 
         rc = cfs_kernel_thread(osp_sync_thread, d, 0);
         if (rc < 0) {
