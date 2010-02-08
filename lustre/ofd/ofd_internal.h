@@ -509,23 +509,6 @@ void filter_grant_commit(struct obd_export *exp, int niocount,
 
 /* IDIF stuff */
 #include <lustre_fid.h>
-static inline void lu_idif_build(struct lu_fid *fid, obd_id id, obd_gr gr)
-{
-        LASSERT((id >> 48) == 0);
-        fid->f_seq = (IDIF_SEQ_START| id >> 32);
-        fid->f_oid = (__u32)(id & 0xffffffff);
-        fid->f_ver = gr;
-}
-
-static inline obd_id lu_idif_id(const struct lu_fid *fid)
-{
-        return ((fid->f_seq & 0xffff) << 32) | fid->f_oid;
-}
-
-static inline obd_gr lu_idif_gr(const struct lu_fid * fid)
-{
-        return fid->f_ver;
-}
 
 static inline struct ldlm_res_id * lu_idif_resid(const struct lu_fid *fid,
                                                  struct ldlm_res_id *name)

@@ -81,17 +81,6 @@
  * should it be ~ number of changes fitting bulk? */
 #define OSP_SYN_THRESHOLD       10
 
-/* XXX: make the following definitions global */
-static inline obd_id lu_idif_id(const struct lu_fid *fid)
-{
-        return ((fid->f_seq & 0xffff) << 32) | fid->f_oid;
-}
-
-static inline obd_gr lu_idif_gr(const struct lu_fid * fid)
-{
-        return fid->f_ver;
-}
-
 
 /*
  * Job is a job.

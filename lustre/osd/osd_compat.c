@@ -270,16 +270,6 @@ int osd_compat_add_entry(struct osd_thread_info *info,
         RETURN(rc);
 }
 
-static inline obd_id lu_idif_id(const struct lu_fid *fid)
-{
-        return ((fid->f_seq & 0xffff) << 32) | fid->f_oid;
-}
-
-static inline obd_gr lu_idif_gr(const struct lu_fid * fid)
-{
-        return fid->f_ver;
-}
-
 /* external locking is required */
 int __osd_compat_load_group(struct osd_device *osd, int group)
 {

@@ -43,7 +43,6 @@
 /*
  * TODO
  *  - shutdown
- *  - global lu_idif_build()
  *  - ->do_create() to set initial attributes
  *  - send uid/gid changes immediately?
  *  - adaptive precreation (shouldn't block in most cases)

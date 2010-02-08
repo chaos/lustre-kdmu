@@ -61,14 +61,6 @@
 
 #include "osp_internal.h"
 
-static inline void lu_idif_build(struct lu_fid *fid, obd_id id, obd_gr gr)
-{
-        LASSERT((id >> 48) == 0);
-        fid->f_seq = (IDIF_SEQ_START| id >> 32);
-        fid->f_oid = (__u32)(id & 0xffffffff);
-        fid->f_ver = gr;
-}
-
 static void osp_object_read_lock(const struct lu_env *env,
                                   struct dt_object *dt, unsigned role)
 {

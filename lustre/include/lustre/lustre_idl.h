@@ -403,6 +403,25 @@ static inline int fid_is_idif(const struct lu_fid *fid)
         return fid_seq(fid) >= IDIF_SEQ_START  && fid_seq(fid) < FID_SEQ_START;
 }
 
+static inline void lu_idif_build(struct lu_fid *fid, __u64 id, __u64 gr)
+{
+        LASSERT((id >> 48) == 0);
+        fid->f_seq = (IDIF_SEQ_START| id >> 32);
+        fid->f_oid = (__u32)(id & 0xffffffff);
+        fid->f_ver = gr;
+}
+
+static inline __u64 lu_idif_id(const struct lu_fid *fid)
+{
+        return ((fid->f_seq & 0xffff) << 32) | fid->f_oid;
+}
+
+static inline __u64 lu_idif_gr(const struct lu_fid * fid)
+{
+        return fid->f_ver;
+}
+
+
 /**
  * Get inode number from a igif.
  * \param fid a igif to get inode number from.
