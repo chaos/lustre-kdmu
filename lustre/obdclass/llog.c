@@ -265,6 +265,7 @@ static int llog_process_thread(void *arg)
                 if (index == last_index + 1)
                         break;
 
+repeat:
                 CDEBUG(D_OTHER, "index: %d last_index %d\n",
                        index, last_index);
 
@@ -292,8 +293,12 @@ static int llog_process_thread(void *arg)
                         CDEBUG(D_OTHER, "after swabbing, type=%#x idx=%d\n",
                                rec->lrh_type, rec->lrh_index);
 
-                        if (rec->lrh_index == 0)
+                        if (rec->lrh_index == 0) {
+                                /* probably another rec just got added? */
+                                if (ext2_test_bit(index, llh->llh_bitmap))
+                                        GOTO(repeat, rc = 0);
                                 GOTO(out, 0); /* no more records */
+                        }
 
                         if (rec->lrh_len == 0 || rec->lrh_len >LLOG_CHUNK_SIZE){
                                 CWARN("invalid length %d in llog record for "
