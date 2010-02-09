@@ -1,40 +1,72 @@
- * all
- *  - negotiate proper connect data
-
  * LOD TODO
- *  - support for different LOV EA formats
- *  - object allocation
- *  - ost removal/deactivation
- *  - lod_ah_init() to grab default striping from parent or fs
- *  - lod_qos_prep_create() to support non-zero files w/o objects
- *  - lod_alloc_idx_array() to support object creation on specified OSTs
- *  - lod_qos_prep_create() to support pools
- *  - how lod_alloc_qos() can learn OST slowness w/o obd_precreate()
- *  - improve locking in lod_qos_statfs_update()
- *  - lod_qos_statfs_update() to recalculate space with fixed block size
- *  - do we need read/write support in LOD ?
- *  - qos_add_tgt() to learn configuration (how OSTs map OSSs)
  
+
+
+* all
+   - negotiate proper connect data
+   - error handling
+   - a way to find lu_site
+
+* MDD, OSD
+   - ->do_create() to set initial attributes
+   - mdd never manipulate striping
+
+* LOD TODO
+   - call osp with ->ldo_recovery_complete() to initiate orphan cleanup
+   - lod_sync() to call all known osp
+   - lod to pass initial object size if case of late object creation
+   - support for >1K OSTs (dynamic lod_ost in struct lod_device)
+   - lprocfs support
+   - support for different LOV EA formats
+   - ost removal/deactivation
+   - lod_ah_init() to grab default striping from parent or fs
+   - lod_qos_prep_create() to support non-zero files w/o objects
+   - lod_alloc_idx_array() to support object creation on specified OSTs
+   - lod_qos_prep_create() to support pools
+   - how lod_alloc_qos() can learn OST slowness w/o obd_precreate()
+   - improve locking in lod_qos_statfs_update()
+   - lod_qos_statfs_update() to recalculate space with fixed block size
+   - qos_add_tgt() to learn configuration (how OSTs map OSSs)
+   - lod_process_config() to support default striping setting
+   - pass next device in all the methods (like cursor, lod_trans_stop(), etc)
+
 * OSP TODO
- *  - send uid/gid changes immediately?
- *  - adaptive precreation (shouldn't block in most cases)
- *  - support for CMD (group = mds #)
- *  - start orphan cleanup when recovery is over
- *  - how to handle precreation failure
- *  - ost_precreate_reserve() to return -EIO if connection is broken
- *  - a mechanism to learn committness ASAP?
- *  - what ->statfs() returns when connection is down?
- *  - osp_statfs() to return number of precreated objects in f_ffiles
- *  - batching in osp_sync.c so that the thread doesn't wake up for a single job
+   - version of llog_cat_process() working in current thread
+   - get a cleaner copy of lov_setup()
+   - adaptive precreation (shouldn't block in most cases)
+   - support for CMD (group = mds #) (where do we take mds #? encoded in config?)
+   - batching in osp_sync.c so that the thread doesn't wake up for a single job
+   - at umount be able to about in-flight PRCs
+   - in RPC interpret/commit callbacks handle errors
+   - don't wake up the thread if precreation RPC is in-flight
+   - send uid/gid changes immediately?
+   - probably a mechanism to learn committness ASAP?
+   - start orphan cleanup from osp_recovery_complete()
+   - sanity check to make sure osp stores last_used on the right device
+   - osp_sync() to flush changes to OST
+   - osp_create() to support with initial non-zero size (RPC to OST?) 
+   - osp_statfs() to return number of precreated objects in f_ffiles
+   - high 32bit in uid/gid (osp_sync_new_setattr())
+   - lprocfs support
+   - small optimizations here and there
+   - batch support
 
 
+
+* testing scenarios
+   - OSP's window of ids is empty
+   - umount with RPC (precreation, statfs, destroy, setattr) in flight
 
 Questions:
- *   - what do we do when none of OSP can provide with an object ?
- *   - what do we do if number of objects we can get at the moment is
-       less when required for the given pattern?
- *   - what happens if administrator deactivates OST between declare and create?
- *   - how do we control ltd_active?
- *   - how to test QoS/RR
- *   - how do we block in creation till at least one OST is connected?
+   - how do we do if none of OSP can provide with an object ?
+   - what do we do if number of objects we can get at the moment is
+     less when required for the given pattern?
+   - what happens if administrator deactivates OST between declare and create?
+   - how do we control ltd_active?
+   - how to test QoS/RR
+   - how do we block in creation till at least one OST is connected?
+   - what ->statfs() returns when connection is down?
+
+
+
 
