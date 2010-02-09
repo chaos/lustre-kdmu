@@ -832,7 +832,7 @@ static int lprocfs_wr_mdt_som(libcfs_file_t *file, const char *buffer,
 
         if (libcfs_param_copy(flag, kernbuf, buffer, count))
                 return -EFAULT;
-
+      
         kernbuf[count] = '\0';
 
         if (!strcmp(kernbuf, "enabled"))

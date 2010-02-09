@@ -211,7 +211,7 @@ int lprocfs_filter_rd_fmd_max_age(char *page, char **start, off_t off,
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         *eof = 1;
-        temp = obd->u.filter.fo_fmd_max_age / HZ;
+        temp = obd->u.filter.fo_fmd_max_age / CFS_HZ;
 
         return libcfs_param_snprintf(page, count, data, LP_D32, "%u\n", temp);
 }

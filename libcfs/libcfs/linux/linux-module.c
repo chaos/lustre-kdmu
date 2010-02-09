@@ -159,7 +159,6 @@ libcfs_ioctl(struct inode *inode, struct file *file,
 	struct cfs_psdev_file	 pfile;
 	int    rc = 0;
 
-	if (current_fsuid() != 0)
         /* ioctl should be permitted for non-root users with read operation */
 	if (current->fsuid != 0 &&
             (cmd != IOC_LIBCFS_GET_PARAM && cmd != IOC_LIBCFS_LIST_PARAM))
