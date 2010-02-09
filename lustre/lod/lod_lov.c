@@ -35,8 +35,6 @@
  *
  * lustre/lod/lod_lov.c
  *
- * Lustre Multi-oBject Device
- *
  * Author: Alex Zhuravlev <bzzz@sun.com>
  */
 
@@ -221,7 +219,6 @@ int lod_lov_add_device(const struct lu_env *env, struct lod_device *m,
         }
 
         if (m->lod_ost[index] == NULL) {
-                /* XXX: grab reference on the device */
                 m->lod_ost[index] = d;
                 m->lod_ost_exp[index] = exp;
                 m->lod_ostnr++;

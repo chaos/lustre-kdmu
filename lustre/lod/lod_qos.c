@@ -35,8 +35,6 @@
  *
  * lustre/lod/lod_lov.c
  *
- * Lustre Multi-oBject Device
- *
  */
 
 #ifndef EXPORT_SYMTAB
@@ -512,95 +510,6 @@ static int lod_qos_calc_rr(struct lov_obd *lov, struct ost_pool *src_pool,
 
 struct lov_request_set;
 struct lov_request;
-
-void lod_qos_shrink_lsm(struct lov_request_set *set)
-{
-        LBUG();
-#if 0
-        struct lov_stripe_md *lsm = set->set_oi->oi_md, *lsm_new;
-        /* XXX LOV STACKING call into osc for sizes */
-        unsigned oldsize, newsize;
-
-        if (set->set_oti && set->set_cookies && set->set_cookie_sent) {
-                struct llog_cookie *cookies;
-                oldsize = lsm->lsm_stripe_count * sizeof(*cookies);
-                newsize = set->set_count * sizeof(*cookies);
-
-                cookies = set->set_cookies;
-                oti_alloc_cookies(set->set_oti, set->set_count);
-                if (set->set_oti->oti_logcookies) {
-                        memcpy(set->set_oti->oti_logcookies, cookies, newsize);
-                        OBD_FREE(cookies, oldsize);
-                        set->set_cookies = set->set_oti->oti_logcookies;
-                } else {
-                        CWARN("'leaking' %d bytes\n", oldsize - newsize);
-                }
-        }
-
-        CWARN("using fewer stripes for object "LPU64": old %u new %u\n",
-              lsm->lsm_object_id, lsm->lsm_stripe_count, set->set_count);
-        LASSERT(lsm->lsm_stripe_count >= set->set_count);
-
-        newsize = lov_stripe_md_size(set->set_count);
-        OBD_ALLOC(lsm_new, newsize);
-        if (lsm_new != NULL) {
-                int i;
-                memcpy(lsm_new, lsm, sizeof(*lsm));
-                for (i = 0; i < lsm->lsm_stripe_count; i++) {
-                        if (i < set->set_count) {
-                                lsm_new->lsm_oinfo[i] = lsm->lsm_oinfo[i];
-                                continue;
-                        }
-                        OBD_SLAB_FREE(lsm->lsm_oinfo[i], lov_oinfo_slab,
-                                      sizeof(struct lov_oinfo));
-                }
-                lsm_new->lsm_stripe_count = set->set_count;
-                OBD_FREE(lsm, sizeof(struct lov_stripe_md) +
-                         lsm->lsm_stripe_count * sizeof(struct lov_oinfo *));
-                set->set_oi->oi_md = lsm_new;
-        } else {
-                CWARN("'leaking' few bytes\n");
-        }
-#endif
-}
-
-int qos_remedy_create(struct lov_request_set *set, struct lov_request *req)
-{
-        LBUG();
-        return 0;
-#if 0
-        struct lov_stripe_md *lsm = set->set_oi->oi_md;
-        struct lov_obd *lov = &set->set_exp->exp_obd->u.lov;
-        unsigned ost_idx, ost_count = lov->desc.ld_tgt_count;
-        int stripe, i, rc = -EIO;
-        ENTRY;
-
-        ost_idx = (req->rq_idx + lsm->lsm_stripe_count) % ost_count;
-        for (i = 0; i < ost_count; i++, ost_idx = (ost_idx + 1) % ost_count) {
-                if (!lov->lov_tgts[ost_idx] ||
-                    !lov->lov_tgts[ost_idx]->ltd_active)
-                        continue;
-                /* check if objects has been created on this ost */
-                for (stripe = 0; stripe < lsm->lsm_stripe_count; stripe++) {
-                        /* we try send create to this ost but he is failed */
-                        if (stripe == req->rq_stripe)
-                                continue;
-                        /* already have object at this stripe */
-                        if (ost_idx == lsm->lsm_oinfo[stripe]->loi_ost_idx)
-                                break;
-                }
-                if (stripe >= lsm->lsm_stripe_count) {
-                        req->rq_idx = ost_idx;
-                        rc = obd_create(lov->lov_tgts[ost_idx]->ltd_exp,
-                                        req->rq_oi.oi_oa, &req->rq_oi.oi_md,
-                                        set->set_oti);
-                        if (!rc)
-                                break;
-                }
-        }
-        RETURN(rc);
-#endif
-}
 
 /**
  * A helper function to:

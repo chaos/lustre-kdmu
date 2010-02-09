@@ -41,24 +41,6 @@
  */
 
 
-/*
- * TODO
- *  - shutdown
- *  - support for different LOV EA formats
- *  - load/init striping info on demand
- *  - object allocation
- *  - ost removal/deactivation
- *  - lod_ah_init() to grab default striping from parent or fs
- *  - lod_qos_prep_create() to support non-zero files w/o objects
- *  - lod_alloc_idx_array() to support object creation on specified OSTs
- *  - lod_qos_prep_create() to support pools
- *  - how lod_alloc_qos() can learn OST slowness w/o obd_precreate()
- *  - improve locking in lod_qos_statfs_update()
- *  - lod_qos_statfs_update() to recalculate space with fixed block size
- *
- */
-
-
 #ifndef EXPORT_SYMTAB
 # define EXPORT_SYMTAB
 #endif
@@ -202,11 +184,11 @@ static int lod_root_get(const struct lu_env *env,
 }
 
 static int lod_statfs(const struct lu_env *env,
-                       struct dt_device *dev, struct kstatfs *sfs)
+                      struct dt_device *dev, struct kstatfs *sfs)
 {
         struct lod_device *d = dt2lod_dev(dev);
-        struct dt_device   *next = d->lod_child;
-        int                 rc;
+        struct dt_device  *next = d->lod_child;
+        int                rc;
         ENTRY;
 
         rc = next->dd_ops->dt_statfs(env, next, sfs);
@@ -215,11 +197,11 @@ static int lod_statfs(const struct lu_env *env,
 }
 
 static struct thandle *lod_trans_create(const struct lu_env *env,
-                                         struct dt_device *dev)
+                                        struct dt_device *dev)
 {
         struct lod_device *d = dt2lod_dev(dev);
-        struct dt_device   *next = d->lod_child;
-        struct thandle     *th;
+        struct dt_device  *next = d->lod_child;
+        struct thandle    *th;
         ENTRY;
 
         th = next->dd_ops->dt_trans_create(env, next);
@@ -231,8 +213,8 @@ static int lod_trans_start(const struct lu_env *env, struct dt_device *dev,
                             struct thandle *th)
 {
         struct lod_device *d = dt2lod_dev(dev);
-        struct dt_device   *next = d->lod_child;
-        int                 rc;
+        struct dt_device  *next = d->lod_child;
+        int                rc;
         ENTRY;
 
         rc = next->dd_ops->dt_trans_start(env, next, th);

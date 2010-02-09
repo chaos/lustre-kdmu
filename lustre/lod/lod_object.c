@@ -35,8 +35,6 @@
  *
  * lustre/lod/lod_object.c
  *
- * Lustre Multi-oBject Device
- *
  * Author: Alex Zhuravlev <bzzz@sun.com>
  */
 
@@ -63,8 +61,8 @@
 static const struct dt_body_operations lod_body_lnk_ops;
 
 static int lod_index_lookup(const struct lu_env *env, struct dt_object *dt,
-                             struct dt_rec *rec, const struct dt_key *key,
-                             struct lustre_capa *capa)
+                            struct dt_rec *rec, const struct dt_key *key,
+                            struct lustre_capa *capa)
 {
         struct dt_object   *next = dt_object_child(dt);
         int                 rc;
@@ -76,10 +74,10 @@ static int lod_index_lookup(const struct lu_env *env, struct dt_object *dt,
 }
 
 static int lod_declare_index_insert(const struct lu_env *env,
-                                     struct dt_object *dt,
-                                     const struct dt_rec *rec,
-                                     const struct dt_key *key,
-                                     struct thandle *handle)
+                                    struct dt_object *dt,
+                                    const struct dt_rec *rec,
+                                    const struct dt_key *key,
+                                    struct thandle *handle)
 {
         struct dt_object   *next = dt_object_child(dt);
         int                 rc;
@@ -91,12 +89,12 @@ static int lod_declare_index_insert(const struct lu_env *env,
 }
 
 static int lod_index_insert(const struct lu_env *env,
-                             struct dt_object *dt,
-                             const struct dt_rec *rec,
-                             const struct dt_key *key,
-                             struct thandle *th, 
-                             struct lustre_capa *capa,
-                             int ign)
+                            struct dt_object *dt,
+                            const struct dt_rec *rec,
+                            const struct dt_key *key,
+                            struct thandle *th,
+                            struct lustre_capa *capa,
+                            int ign)
 {
         struct dt_object   *next = dt_object_child(dt);
         int                 rc;
@@ -108,9 +106,9 @@ static int lod_index_insert(const struct lu_env *env,
 }
 
 static int lod_declare_index_delete(const struct lu_env *env,
-                                     struct dt_object *dt,
-                                     const struct dt_key *key, 
-                                     struct thandle *th)
+                                    struct dt_object *dt,
+                                    const struct dt_key *key,
+                                    struct thandle *th)
 {
         struct dt_object   *next = dt_object_child(dt);
         int                 rc;
@@ -122,10 +120,10 @@ static int lod_declare_index_delete(const struct lu_env *env,
 }
 
 static int lod_index_delete(const struct lu_env *env,
-                             struct dt_object *dt,
-                             const struct dt_key *key, 
-                             struct thandle *th, 
-                             struct lustre_capa *capa)
+                            struct dt_object *dt,
+                            const struct dt_key *key,
+                            struct thandle *th,
+                            struct lustre_capa *capa)
 {
         struct dt_object   *next = dt_object_child(dt);
         int                 rc;
@@ -137,8 +135,8 @@ static int lod_index_delete(const struct lu_env *env,
 }
 
 static struct dt_it *lod_it_init(const struct lu_env *env,
-                                  struct dt_object *dt,
-                                  struct lustre_capa *capa)
+                                 struct dt_object *dt,
+                                 struct lustre_capa *capa)
 {
         struct dt_object   *next = dt_object_child(dt);
         struct dt_it       *it;
@@ -161,7 +159,7 @@ static struct dt_index_operations lod_index_ops = {
 };
 
 static void lod_object_read_lock(const struct lu_env *env,
-                                  struct dt_object *dt, unsigned role)
+                                 struct dt_object *dt, unsigned role)
 {
         struct dt_object *next = dt_object_child(dt);
         ENTRY;
@@ -170,7 +168,7 @@ static void lod_object_read_lock(const struct lu_env *env,
 }
 
 static void lod_object_write_lock(const struct lu_env *env,
-                                   struct dt_object *dt, unsigned role)
+                                  struct dt_object *dt, unsigned role)
 {
         struct dt_object *next = dt_object_child(dt);
         ENTRY;
@@ -179,7 +177,7 @@ static void lod_object_write_lock(const struct lu_env *env,
 }
 
 static void lod_object_read_unlock(const struct lu_env *env,
-                                    struct dt_object *dt)
+                                   struct dt_object *dt)
 {
         struct dt_object *next = dt_object_child(dt);
         ENTRY;
@@ -188,7 +186,7 @@ static void lod_object_read_unlock(const struct lu_env *env,
 }
 
 static void lod_object_write_unlock(const struct lu_env *env,
-                                     struct dt_object *dt)
+                                    struct dt_object *dt)
 {
         struct dt_object *next = dt_object_child(dt);
         ENTRY;
@@ -197,7 +195,7 @@ static void lod_object_write_unlock(const struct lu_env *env,
 }
 
 static int lod_object_write_locked(const struct lu_env *env,
-                                    struct dt_object *dt)
+                                   struct dt_object *dt)
 {
         struct dt_object *next = dt_object_child(dt);
         int               rc;
@@ -207,9 +205,9 @@ static int lod_object_write_locked(const struct lu_env *env,
 }
 
 static int lod_attr_get(const struct lu_env *env,
-                         struct dt_object *dt,
-                         struct lu_attr *attr,
-                         struct lustre_capa *capa)
+                        struct dt_object *dt,
+                        struct lu_attr *attr,
+                        struct lustre_capa *capa)
 {
         struct dt_object   *next = dt_object_child(dt);
         int                 rc;
@@ -221,9 +219,9 @@ static int lod_attr_get(const struct lu_env *env,
 }
 
 static int lod_declare_attr_set(const struct lu_env *env,
-                                 struct dt_object *dt,
-                                 const struct lu_attr *attr,
-                                 struct thandle *handle)
+                                struct dt_object *dt,
+                                const struct lu_attr *attr,
+                                struct thandle *handle)
 {
         struct dt_object   *next = dt_object_child(dt);
         struct lod_object *mo = lod_dt_obj(dt);
@@ -263,10 +261,10 @@ static int lod_declare_attr_set(const struct lu_env *env,
 }
 
 static int lod_attr_set(const struct lu_env *env,
-                         struct dt_object *dt,
-                         const struct lu_attr *attr,
-                         struct thandle *handle,
-                         struct lustre_capa *capa)
+                        struct dt_object *dt,
+                        const struct lu_attr *attr,
+                        struct thandle *handle,
+                        struct lustre_capa *capa)
 {
         struct dt_object   *next = dt_object_child(dt);
         struct lod_object *mo = lod_dt_obj(dt);
@@ -297,7 +295,7 @@ static int lod_attr_set(const struct lu_env *env,
 }
 
 static int lod_declare_punch(const struct lu_env *env, struct dt_object *dt,
-                              __u64 from, __u64 to, struct thandle *th)
+                             __u64 from, __u64 to, struct thandle *th)
 {
         struct dt_object   *next = dt_object_child(dt);
         int                 rc;
@@ -309,8 +307,8 @@ static int lod_declare_punch(const struct lu_env *env, struct dt_object *dt,
 }
 
 static int lod_punch(const struct lu_env *env, struct dt_object *dt,
-                      __u64 from, __u64 to, struct thandle *th,
-                      struct lustre_capa *capa)
+                     __u64 from, __u64 to, struct thandle *th,
+                     struct lustre_capa *capa)
 {
         struct dt_object   *next = dt_object_child(dt);
         int                 rc;
@@ -322,8 +320,8 @@ static int lod_punch(const struct lu_env *env, struct dt_object *dt,
 }
 
 static int lod_xattr_get(const struct lu_env *env, struct dt_object *dt,
-                          struct lu_buf *buf, const char *name,
-                          struct lustre_capa *capa)
+                         struct lu_buf *buf, const char *name,
+                         struct lustre_capa *capa)
 {
         struct dt_object   *next = dt_object_child(dt);
         int                 rc;
@@ -335,9 +333,9 @@ static int lod_xattr_get(const struct lu_env *env, struct dt_object *dt,
 }
 
 static int lod_declare_xattr_set(const struct lu_env *env,
-                                  struct dt_object *dt,
-                                  const int buflen, const char *name, int fl,
-                                  struct thandle *th)
+                                 struct dt_object *dt,
+                                 const int buflen, const char *name, int fl,
+                                 struct thandle *th)
 {
         struct dt_object   *next = dt_object_child(dt);
         int                 rc;
@@ -349,9 +347,9 @@ static int lod_declare_xattr_set(const struct lu_env *env,
 }
 
 static int lod_xattr_set(const struct lu_env *env,
-                          struct dt_object *dt, const struct lu_buf *buf,
-                          const char *name, int fl, struct thandle *th,
-                          struct lustre_capa *capa)
+                         struct dt_object *dt, const struct lu_buf *buf,
+                         const char *name, int fl, struct thandle *th,
+                         struct lustre_capa *capa)
 {
         struct dt_object   *next = dt_object_child(dt);
         int                 rc;
@@ -363,9 +361,9 @@ static int lod_xattr_set(const struct lu_env *env,
 }
 
 static int lod_declare_xattr_del(const struct lu_env *env,
-                                  struct dt_object *dt,
-                                  const char *name,
-                                  struct thandle *th)
+                                 struct dt_object *dt,
+                                 const char *name,
+                                 struct thandle *th)
 {
         struct dt_object   *next = dt_object_child(dt);
         int                 rc;
@@ -377,9 +375,9 @@ static int lod_declare_xattr_del(const struct lu_env *env,
 }
 
 static int lod_xattr_del(const struct lu_env *env,
-                          struct dt_object *dt,
-                          const char *name, struct thandle *th,
-                          struct lustre_capa *capa)
+                         struct dt_object *dt,
+                         const char *name, struct thandle *th,
+                         struct lustre_capa *capa)
 {
         struct dt_object   *next = dt_object_child(dt);
         int                 rc;
@@ -391,8 +389,8 @@ static int lod_xattr_del(const struct lu_env *env,
 }
 
 static int lod_xattr_list(const struct lu_env *env,
-                           struct dt_object *dt, struct lu_buf *buf,
-                           struct lustre_capa *capa)
+                          struct dt_object *dt, struct lu_buf *buf,
+                          struct lustre_capa *capa)
 {
         struct dt_object   *next = dt_object_child(dt);
         int                 rc;
@@ -407,10 +405,10 @@ static int lod_xattr_list(const struct lu_env *env,
  * used to transfer default striping data to the object being created
  */
 static void lod_ah_init(const struct lu_env *env,
-                         struct dt_allocation_hint *ah,
-                         struct dt_object *parent,
-                         struct dt_object *child,
-                         umode_t child_mode)
+                        struct dt_allocation_hint *ah,
+                        struct dt_object *parent,
+                        struct dt_object *child,
+                        umode_t child_mode)
 {
         struct dt_object   *nextp = dt_object_child(parent);
         struct dt_object   *nextc = dt_object_child(parent);
@@ -442,11 +440,11 @@ static void lod_ah_init(const struct lu_env *env,
  * Create declaration of striped object
  */
 static int lod_declare_striped_object(const struct lu_env *env,
-                                       struct dt_object *dt,
-                                       struct lu_attr *attr,
-                                       struct dt_allocation_hint *hint,
-                                       struct dt_object_format *dof,
-                                       struct thandle *th)
+                                      struct dt_object *dt,
+                                      struct lu_attr *attr,
+                                      struct dt_allocation_hint *hint,
+                                      struct dt_object_format *dof,
+                                      struct thandle *th)
 {
         struct dt_object   *next = dt_object_child(dt);
         struct lod_object  *mo = lod_dt_obj(dt);
@@ -459,17 +457,10 @@ static int lod_declare_striped_object(const struct lu_env *env,
         LASSERT(!dt_object_exists(&mo->mbo_obj));
 
         /* no OST available */
+        /* XXX: should we be waiting a bit to prevent failures during
+         * cluster initialization? */
         if (md->lod_ostnr == 0)
                 GOTO(out, rc = -EIO);
-
-        /*
-         * choose 
-         *    b) declare setting of striping data to local object
-         *    c) choose servers the object will be striped over
-         *    d) generate fids for selected servers
-         *    e) allocate corresponded objects
-         *    f) declare creation of these objects
-         */
 
         /*
          * decide on # of stripes
@@ -485,6 +476,8 @@ static int lod_declare_striped_object(const struct lu_env *env,
 
         /* choose OST and generate appropriate objects */
         rc = lod_qos_prep_create(env, mo, attr, th);
+        if (rc)
+                GOTO(out, rc);
 
         /*
          * declare storage for striping data
@@ -497,11 +490,11 @@ out:
 }
 
 static int lod_declare_object_create(const struct lu_env *env,
-                                      struct dt_object *dt,
-                                      struct lu_attr *attr,
-                                      struct dt_allocation_hint *hint,
-                                      struct dt_object_format *dof,
-                                      struct thandle *th)
+                                     struct dt_object *dt,
+                                     struct lu_attr *attr,
+                                     struct dt_allocation_hint *hint,
+                                     struct dt_object_format *dof,
+                                     struct thandle *th)
 {
         struct dt_object    *next = dt_object_child(dt);
         const struct lu_fid *fid = lu_object_fid(&dt->do_lu);
@@ -535,14 +528,14 @@ out:
 }
 
 static int lod_object_create(const struct lu_env *env,
-                              struct dt_object *dt,
-                              struct lu_attr *attr,
-                              struct dt_allocation_hint *hint,
-                              struct dt_object_format *dof,
-                              struct thandle *th)
+                             struct dt_object *dt,
+                             struct lu_attr *attr,
+                             struct dt_allocation_hint *hint,
+                             struct dt_object_format *dof,
+                             struct thandle *th)
 {
         struct dt_object   *next = dt_object_child(dt);
-        struct lod_object *mo = lod_dt_obj(dt);
+        struct lod_object  *mo = lod_dt_obj(dt);
         int                 rc, i;
         ENTRY;
 
@@ -629,7 +622,7 @@ static int lod_object_destroy(const struct lu_env *env,
 }
 
 static int lod_index_try(const struct lu_env *env, struct dt_object *dt,
-                          const struct dt_index_features *feat)
+                         const struct dt_index_features *feat)
 {
         struct dt_object   *next = dt_object_child(dt);
         int                 rc;
@@ -652,7 +645,7 @@ static int lod_index_try(const struct lu_env *env, struct dt_object *dt,
 }
 
 static int lod_declare_ref_add(const struct lu_env *env,
-                                struct dt_object *dt, struct thandle *th)
+                               struct dt_object *dt, struct thandle *th)
 {
         struct dt_object   *next = dt_object_child(dt);
         int                 rc;
@@ -664,7 +657,7 @@ static int lod_declare_ref_add(const struct lu_env *env,
 }
 
 static void lod_ref_add(const struct lu_env *env,
-                         struct dt_object *dt, struct thandle *th)
+                        struct dt_object *dt, struct thandle *th)
 {
         struct dt_object   *next = dt_object_child(dt);
         ENTRY;
@@ -675,7 +668,7 @@ static void lod_ref_add(const struct lu_env *env,
 }
 
 static int lod_declare_ref_del(const struct lu_env *env,
-                                struct dt_object *dt, struct thandle *th)
+                               struct dt_object *dt, struct thandle *th)
 {
         struct dt_object   *next = dt_object_child(dt);
         int                 rc;
@@ -687,7 +680,7 @@ static int lod_declare_ref_del(const struct lu_env *env,
 }
 
 static void lod_ref_del(const struct lu_env *env,
-                         struct dt_object *dt, struct thandle *th)
+                        struct dt_object *dt, struct thandle *th)
 {
         struct dt_object   *next = dt_object_child(dt);
         ENTRY;
@@ -698,9 +691,9 @@ static void lod_ref_del(const struct lu_env *env,
 }
 
 static struct obd_capa *lod_capa_get(const struct lu_env *env,
-                                      struct dt_object *dt,
-                                      struct lustre_capa *old,
-                                      __u64 opc)
+                                     struct dt_object *dt,
+                                     struct lustre_capa *old,
+                                     __u64 opc)
 {
         struct dt_object   *next = dt_object_child(dt);
         struct obd_capa    *capa;
@@ -723,7 +716,7 @@ static int lod_object_sync(const struct lu_env *env, struct dt_object *dt)
 }
 
 static dt_obj_version_t lod_object_version_get(const struct lu_env *env,
-                                                struct dt_object *dt)
+                                               struct dt_object *dt)
 {
         struct dt_object   *next = dt_object_child(dt);
         dt_obj_version_t    ver;
@@ -735,8 +728,8 @@ static dt_obj_version_t lod_object_version_get(const struct lu_env *env,
 }
 
 static void lod_object_version_set(const struct lu_env *env,
-                                    struct dt_object *dt,
-                                    dt_obj_version_t new_version)
+                                   struct dt_object *dt,
+                                   dt_obj_version_t new_version)
 {
         struct dt_object   *next = dt_object_child(dt);
         ENTRY;
@@ -747,7 +740,7 @@ static void lod_object_version_set(const struct lu_env *env,
 }
 
 static int lod_data_get(const struct lu_env *env, struct dt_object *dt,
-                         void **data)
+                        void **data)
 {
         struct dt_object   *next = dt_object_child(dt);
         int                 rc;
@@ -839,7 +832,7 @@ static const struct dt_body_operations lod_body_lnk_ops = {
 };
 
 static int lod_object_init(const struct lu_env *env, struct lu_object *o,
-                            const struct lu_object_conf *conf)
+                           const struct lu_object_conf *conf)
 {
         struct lod_device *d = lu2lod_dev(o->lo_dev);
         struct lu_object  *below;
@@ -870,21 +863,10 @@ static int lod_object_start(const struct lu_env *env, struct lu_object *o)
         return 0;
 }
 
-/*
- * Called just before object is freed
- */
-static void lod_object_delete(const struct lu_env *env, struct lu_object *o)
-{
-        ENTRY;
-
-        /* XXX: anything we have to do here? */
-        EXIT;
-}
-
 static void lod_object_free(const struct lu_env *env, struct lu_object *o)
 {
         struct lod_object *mo = lu2lod_obj(o);
-        int                 i;
+        int                i;
         ENTRY;
 
         /*
@@ -912,6 +894,8 @@ static void lod_object_free(const struct lu_env *env, struct lu_object *o)
 
 static void lod_object_release(const struct lu_env *env, struct lu_object *o)
 {
+        /* XXX: shouldn't we release everything here in case if object
+         * creation failed before? */
 }
 
 static int lod_object_print(const struct lu_env *env, void *cookie,
@@ -922,19 +906,12 @@ static int lod_object_print(const struct lu_env *env, void *cookie,
         return (*p)(env, cookie, LUSTRE_LOD_NAME"-object@%p", o);
 }
 
-static int lod_object_invariant(const struct lu_object *o)
-{
-        LBUG();
-}
-
 
 struct lu_object_operations lod_lu_obj_ops = {
         .loo_object_init      = lod_object_init,
         .loo_object_start     = lod_object_start,
-        .loo_object_delete    = lod_object_delete,
         .loo_object_free      = lod_object_free,
         .loo_object_release   = lod_object_release,
         .loo_object_print     = lod_object_print,
-        .loo_object_invariant = lod_object_invariant
 };
 
