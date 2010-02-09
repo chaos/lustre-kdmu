@@ -89,6 +89,10 @@ struct osp_device {
         struct ptlrpc_thread            opd_pre_thread;
         /* thread waits for signals about pool going empty */
         cfs_waitq_t                     opd_pre_waitq;
+        /* consumers (who needs new ids) wait here */
+        cfs_waitq_t                     opd_pre_user_waitq;
+        /* current precreation status: working, failed, stopping? */
+        int                             opd_pre_status;
 
         /*
          * OST synchronization
