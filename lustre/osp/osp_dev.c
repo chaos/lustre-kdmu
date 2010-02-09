@@ -166,7 +166,7 @@ static int osp_root_get(const struct lu_env *env,
  *
  */
 static int osp_statfs(const struct lu_env *env,
-                       struct dt_device *dev, struct kstatfs *sfs)
+                       struct dt_device *dev, cfs_kstatfs_t *sfs)
 {
         struct osp_device *d = dt2osp_dev(dev);
         ENTRY;
@@ -182,6 +182,14 @@ static int osp_statfs(const struct lu_env *env,
 
         /* return recently updated data */
         *sfs = d->opd_statfs;
+
+        /*
+         * layer above osp (usually lod) can use ffree to estimate
+         * how many objects are available for immediate creation
+         */
+        cfs_spin_lock(&d->opd_pre_lock);
+        sfs->f_ffree = d->opd_pre_last_created - d->opd_pre_next;
+        cfs_spin_unlock(&d->opd_pre_lock);
 
         RETURN(0);
 }

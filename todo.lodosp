@@ -1,6 +1,3 @@
- * LOD TODO
- 
-
 
 * all
    - negotiate proper connect data
@@ -45,7 +42,6 @@
    - sanity check to make sure osp stores last_used on the right device
    - osp_sync() to flush changes to OST
    - osp_create() to support with initial non-zero size (RPC to OST?) 
-   - osp_statfs() to return number of precreated objects in f_ffiles
    - high 32bit in uid/gid (osp_sync_new_setattr())
    - lprocfs support
    - small optimizations here and there
