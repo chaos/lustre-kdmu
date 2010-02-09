@@ -782,7 +782,6 @@ out:
         LASSERT(ctxt);
         rc = llog_add(ctxt, &genrecord.lgr_hdr, NULL, &cookie, 1);
         llog_ctxt_put(ctxt);
-        CERROR("add generation: %d\n", rc);
 
         if (rc == 1)
                 rc = 0;
