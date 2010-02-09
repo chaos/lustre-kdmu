@@ -61,50 +61,6 @@
 
 #include "osp_internal.h"
 
-static void osp_object_read_lock(const struct lu_env *env,
-                                  struct dt_object *dt, unsigned role)
-{
-        LBUG();
-        return;
-}
-
-static void osp_object_write_lock(const struct lu_env *env,
-                                   struct dt_object *dt, unsigned role)
-{
-        LBUG();
-        return;
-}
-
-static void osp_object_read_unlock(const struct lu_env *env,
-                                    struct dt_object *dt)
-{
-        LBUG();
-        return;
-}
-
-static void osp_object_write_unlock(const struct lu_env *env,
-                                     struct dt_object *dt)
-{
-        LBUG();
-        return;
-}
-
-static int osp_object_write_locked(const struct lu_env *env,
-                                    struct dt_object *dt)
-{
-        LBUG();
-        return 0;
-}
-
-static int osp_attr_get(const struct lu_env *env,
-                         struct dt_object *dt,
-                         struct lu_attr *attr,
-                         struct lustre_capa *capa)
-{
-        LBUG();
-        return 0;
-}
-
 static int osp_declare_attr_set(const struct lu_env *env,
                                  struct dt_object *dt,
                                  const struct lu_attr *attr,
@@ -150,10 +106,6 @@ static int osp_attr_set(const struct lu_env *env,
                 RETURN(0);
 
         /*
-         * track all UID/GID changes via llog
-         */
-
-        /*
          * once transaction is committed put proper command on
          * the queue going to our OST
          */
@@ -164,82 +116,6 @@ static int osp_attr_set(const struct lu_env *env,
         /* XXX: send new uid/gid to OST ASAP? */
 
         RETURN(rc);
-}
-
-static int osp_declare_punch(const struct lu_env *env, struct dt_object *dt,
-                              __u64 from, __u64 to, struct thandle *th)
-{
-        LBUG();
-        return 0;
-}
-
-static int osp_punch(const struct lu_env *env, struct dt_object *dt,
-                      __u64 from, __u64 to, struct thandle *th,
-                      struct lustre_capa *capa)
-{
-        LBUG();
-        return 0;
-}
-
-static int osp_xattr_get(const struct lu_env *env, struct dt_object *dt,
-                          struct lu_buf *buf, const char *name,
-                          struct lustre_capa *capa)
-{
-        LBUG();
-        return 0;
-}
-
-static int osp_declare_xattr_set(const struct lu_env *env,
-                                  struct dt_object *dt,
-                                  const int buflen, const char *name, int fl,
-                                  struct thandle *th)
-{
-        LBUG();
-        return 0;
-}
-
-static int osp_xattr_set(const struct lu_env *env,
-                          struct dt_object *dt, const struct lu_buf *buf,
-                          const char *name, int fl, struct thandle *th,
-                          struct lustre_capa *capa)
-{
-        LBUG();
-        return 0;
-}
-
-static int osp_declare_xattr_del(const struct lu_env *env,
-                                  struct dt_object *dt,
-                                  const char *name,
-                                  struct thandle *th)
-{
-        LBUG();
-        return 0;
-}
-
-static int osp_xattr_del(const struct lu_env *env,
-                          struct dt_object *dt,
-                          const char *name, struct thandle *th,
-                          struct lustre_capa *capa)
-{
-        LBUG();
-        return 0;
-}
-
-static int osp_xattr_list(const struct lu_env *env,
-                           struct dt_object *dt, struct lu_buf *buf,
-                           struct lustre_capa *capa)
-{
-        LBUG();
-        return 0;
-}
-
-static void osp_ah_init(const struct lu_env *env,
-                         struct dt_allocation_hint *ah,
-                         struct dt_object *parent,
-                         struct dt_object *child,
-                         umode_t child_mode)
-{
-        LBUG();
 }
 
 static int osp_declare_object_create(const struct lu_env *env,
@@ -296,7 +172,7 @@ static int osp_object_create(const struct lu_env *env,
         int                  update = 0;
         ENTRY;
 
-        /* XXX: to support CMD we need group here */
+        /* XXX: to support CMD we need group here, to be put into config? */
 
         LASSERT(o->opo_reserved != 0);
         o->opo_reserved = 0;
@@ -378,108 +254,13 @@ static int osp_object_destroy(const struct lu_env *env,
         RETURN(rc);
 }
 
-static int osp_index_try(const struct lu_env *env, struct dt_object *dt,
-                          const struct dt_index_features *feat)
-{
-        LBUG();
-        return 0;
-}
-
-static int osp_declare_ref_add(const struct lu_env *env,
-                                struct dt_object *dt, struct thandle *th)
-{
-        LBUG();
-        return 0;
-}
-
-static void osp_ref_add(const struct lu_env *env,
-                         struct dt_object *dt, struct thandle *th)
-{
-        LBUG();
-}
-
-static int osp_declare_ref_del(const struct lu_env *env,
-                                struct dt_object *dt, struct thandle *th)
-{
-        LBUG();
-        return 0;
-}
-
-static void osp_ref_del(const struct lu_env *env,
-                         struct dt_object *dt, struct thandle *th)
-{
-        LBUG();
-}
-
-static struct obd_capa *osp_capa_get(const struct lu_env *env,
-                                      struct dt_object *dt,
-                                      struct lustre_capa *old,
-                                      __u64 opc)
-{
-        LBUG();
-        return NULL;
-}
-
-static int osp_object_sync(const struct lu_env *env, struct dt_object *dt)
-{
-        LBUG();
-        return 0;
-}
-
-static dt_obj_version_t osp_object_version_get(const struct lu_env *env,
-                                                struct dt_object *dt)
-{
-        LBUG();
-        return 0;
-}
-
-static void osp_object_version_set(const struct lu_env *env,
-                                    struct dt_object *dt,
-                                    dt_obj_version_t new_version)
-{
-        LBUG();
-}
-
-static int osp_data_get(const struct lu_env *env, struct dt_object *dt,
-                         void **data)
-{
-        LBUG();
-        return 0;
-}
-
-
 struct dt_object_operations osp_obj_ops = {
-        .do_read_lock         = osp_object_read_lock,
-        .do_write_lock        = osp_object_write_lock,
-        .do_read_unlock       = osp_object_read_unlock,
-        .do_write_unlock      = osp_object_write_unlock,
-        .do_write_locked      = osp_object_write_locked,
-        .do_attr_get          = osp_attr_get,
         .do_declare_attr_set  = osp_declare_attr_set,
         .do_attr_set          = osp_attr_set,
-        .do_declare_punch     = osp_declare_punch,
-        .do_punch             = osp_punch,
-        .do_xattr_get         = osp_xattr_get,
-        .do_declare_xattr_set = osp_declare_xattr_set,
-        .do_xattr_set         = osp_xattr_set,
-        .do_declare_xattr_del = osp_declare_xattr_del,
-        .do_xattr_del         = osp_xattr_del,
-        .do_xattr_list        = osp_xattr_list,
-        .do_ah_init           = osp_ah_init,
         .do_declare_create    = osp_declare_object_create,
         .do_create            = osp_object_create,
         .do_declare_destroy   = osp_declare_object_destroy,
         .do_destroy           = osp_object_destroy,
-        .do_index_try         = osp_index_try,
-        .do_declare_ref_add   = osp_declare_ref_add,
-        .do_ref_add           = osp_ref_add,
-        .do_declare_ref_del   = osp_declare_ref_del,
-        .do_ref_del           = osp_ref_del,
-        .do_capa_get          = osp_capa_get,
-        .do_object_sync       = osp_object_sync,
-        .do_version_get       = osp_object_version_get,
-        .do_version_set       = osp_object_version_set,
-        .do_data_get          = osp_data_get,
 };
 
 static int osp_object_init(const struct lu_env *env, struct lu_object *o,
@@ -490,11 +271,6 @@ static int osp_object_init(const struct lu_env *env, struct lu_object *o,
         po->opo_obj.do_ops = &osp_obj_ops;
 
         return 0;
-}
-
-static void osp_object_delete(const struct lu_env *env, struct lu_object *o)
-{
-        /* XXX: anything we need to do here? */
 }
 
 static void osp_object_free(const struct lu_env *env, struct lu_object *o)
@@ -542,7 +318,6 @@ static int osp_object_invariant(const struct lu_object *o)
 
 struct lu_object_operations osp_lu_obj_ops = {
         .loo_object_init      = osp_object_init,
-        .loo_object_delete    = osp_object_delete,
         .loo_object_free      = osp_object_free,
         .loo_object_release   = osp_object_release,
         .loo_object_print     = osp_object_print,

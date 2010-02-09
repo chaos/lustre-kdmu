@@ -40,23 +40,6 @@
  * Author: Alex Zhuravlev <bzzz@sun.com>
  */
 
-/*
- * TODO
- *  - shutdown
- *  - ->do_create() to set initial attributes
- *  - send uid/gid changes immediately?
- *  - adaptive precreation (shouldn't block in most cases)
- *  - support for CMD (group = mds #)
- *  - release object reservation when object is created or released
- *  - start orphan cleanup when recovery is over
- *  - negotiate proper connect data
- *  - how to handle precreation failure
- *  - ost_precreate_reserve() to return -EIO if connection is broken
- *  - bulk RPC to OST
- *  - llog_process() to get a cursor to skip non-committed-yet changes
- *  - a mechanism to learn committness ASAP?
- *  - what ->statfs() returns when connection is down?
- */
 #ifndef EXPORT_SYMTAB
 # define EXPORT_SYMTAB
 #endif
@@ -158,24 +141,10 @@ static int osp_recovery_complete(const struct lu_env *env,
         RETURN(rc);
 }
 
-static int osp_prepare(const struct lu_env *env,
-                       struct lu_device *pdev,
-                       struct lu_device *cdev)
-{
-        struct osp_device *osp = lu2osp_dev(cdev);
-        struct lu_device   *next = &osp->opd_storage->dd_lu_dev;
-        int rc;
-        ENTRY;
-        LBUG();
-        rc = next->ld_ops->ldo_prepare(env, pdev, next);
-        RETURN(rc);
-}
-
 const struct lu_device_operations osp_lu_ops = {
         .ldo_object_alloc      = osp_object_alloc,
         .ldo_process_config    = osp_process_config,
         .ldo_recovery_complete = osp_recovery_complete,
-        .ldo_prepare           = osp_prepare,
 };
 
 static int osp_root_get(const struct lu_env *env,
@@ -217,61 +186,6 @@ static int osp_statfs(const struct lu_env *env,
         RETURN(0);
 }
 
-static struct thandle *osp_trans_create(const struct lu_env *env,
-                                         struct dt_device *dev)
-{
-        struct osp_device *d = dt2osp_dev(dev);
-        struct dt_device   *next = d->opd_storage;
-        struct thandle     *th;
-        ENTRY;
-
-        LBUG();
-        th = next->dd_ops->dt_trans_create(env, next);
-
-        RETURN(th);
-}
-
-static int osp_trans_start(const struct lu_env *env, struct dt_device *dev,
-                            struct thandle *th)
-{
-        struct osp_device *d = dt2osp_dev(dev);
-        struct dt_device   *next = d->opd_storage;
-        int                 rc;
-        ENTRY;
-
-        LBUG();
-        rc = next->dd_ops->dt_trans_start(env, next, th);
-
-        RETURN(rc);
-}
-
-static int osp_trans_stop(const struct lu_env *env, struct thandle *th)
-{
-        struct dt_device   *next = th->th_dev;
-        int                 rc;
-        ENTRY;
-
-        /* XXX: currently broken as we don't know next device */
-        rc = next->dd_ops->dt_trans_stop(env, th);
-
-        RETURN(rc);
-}
-
-static void osp_conf_get(const struct lu_env *env,
-                          const struct dt_device *dev,
-                          struct dt_device_param *param)
-{
-        struct osp_device *d = dt2osp_dev((struct dt_device *) dev);
-        struct dt_device   *next = d->opd_storage;
-        ENTRY;
-
-        LBUG();
-        next->dd_ops->dt_conf_get(env, next, param);
-
-        EXIT;
-        return;
-}
-
 static int osp_sync(const struct lu_env *env, struct dt_device *dev)
 {
         struct osp_device *d = dt2osp_dev(dev);
@@ -285,103 +199,10 @@ static int osp_sync(const struct lu_env *env, struct dt_device *dev)
         RETURN(rc);
 }
 
-static void osp_ro(const struct lu_env *env, struct dt_device *dev)
-{
-        struct osp_device *d = dt2osp_dev(dev);
-        struct dt_device   *next = d->opd_storage;
-        ENTRY;
-
-        LBUG();
-        next->dd_ops->dt_ro(env, next);
-
-        EXIT;
-}
-
-static int osp_commit_async(const struct lu_env *env, struct dt_device *dev)
-{
-        struct osp_device *d = dt2osp_dev(dev);
-        struct dt_device   *next = d->opd_storage;
-        int                 rc;
-        ENTRY;
-
-        LBUG();
-        rc = next->dd_ops->dt_commit_async(env, next);
-
-        RETURN(rc);
-}
-
-static int osp_init_capa_ctxt(const struct lu_env *env,
-                                   struct dt_device *dev,
-                                   int mode, unsigned long timeout,
-                                   __u32 alg, struct lustre_capa_key *keys)
-{
-        struct osp_device *d = dt2osp_dev(dev);
-        struct dt_device   *next = d->opd_storage;
-        int                 rc;
-        ENTRY;
-
-        LBUG();
-        rc = next->dd_ops->dt_init_capa_ctxt(env, next, mode, timeout, alg, keys);
-
-        RETURN(rc);
-}
-
-static void osp_init_quota_ctxt(const struct lu_env *env,
-                                   struct dt_device *dev,
-                                   struct dt_quota_ctxt *ctxt, void *data)
-{
-        struct osp_device *d = dt2osp_dev(dev);
-        struct dt_device   *next = d->opd_storage;
-        ENTRY;
-
-        LBUG();
-        next->dd_ops->dt_init_quota_ctxt(env, next, ctxt, data);
-
-        EXIT;
-}
-
-static char *osp_label_get(const struct lu_env *env, const struct dt_device *dev)
-{
-        struct osp_device *d = dt2osp_dev((struct dt_device *) dev);
-        struct dt_device   *next = d->opd_storage;
-        char *l;
-        ENTRY;
-
-        LBUG();
-        l = next->dd_ops->dt_label_get(env, next);
-
-        RETURN(l);
-}
-
-
-static int osp_label_set(const struct lu_env *env, const struct dt_device *dev,
-                          char *l)
-{
-        struct osp_device *d = dt2osp_dev((struct dt_device *) dev);
-        struct dt_device   *next = d->opd_storage;
-        int                 rc;
-        ENTRY;
-
-        LBUG();
-        rc = next->dd_ops->dt_label_set(env, next, l);
-
-        RETURN(rc);
-}
-
 static const struct dt_device_operations osp_dt_ops = {
         .dt_root_get       = osp_root_get,
         .dt_statfs         = osp_statfs,
-        .dt_trans_create   = osp_trans_create,
-        .dt_trans_start    = osp_trans_start,
-        .dt_trans_stop     = osp_trans_stop,
-        .dt_conf_get       = osp_conf_get,
         .dt_sync           = osp_sync,
-        .dt_ro             = osp_ro,
-        .dt_commit_async   = osp_commit_async,
-        .dt_init_capa_ctxt = osp_init_capa_ctxt,
-        .dt_init_quota_ctxt= osp_init_quota_ctxt,
-        .dt_label_get      = osp_label_get,
-        .dt_label_set      = osp_label_set
 };
 
 static int osp_init_last_used(const struct lu_env *env, struct osp_device *m)
