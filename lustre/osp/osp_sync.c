@@ -170,6 +170,10 @@ int osp_sync_declare_add(const struct lu_env *env, struct osp_object *o,
         int                  rc;
         ENTRY;
 
+        /* XXX: it's a layering violation, to access internals of th,
+         * but we can do this as a sanity check, for a while */
+        LASSERT(th->th_dev == d->opd_storage);
+
         switch (type) {
                 case MDS_UNLINK_REC:
                         hdr.lrh_len = sizeof(struct llog_unlink_rec);
@@ -207,6 +211,10 @@ int osp_sync_add(const struct lu_env *env, struct osp_object *o,
         } u;
         int                  rc;
         ENTRY;
+
+        /* XXX: it's a layering violation, to access internals of th,
+         * but we can do this as a sanity check, for a while */
+        LASSERT(th->th_dev == d->opd_storage);
 
         switch (type) {
                 case MDS_UNLINK_REC:

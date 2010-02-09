@@ -39,7 +39,6 @@
    - send uid/gid changes immediately?
    - probably a mechanism to learn committness ASAP?
    - start orphan cleanup from osp_recovery_complete()
-   - sanity check to make sure osp stores last_used on the right device
    - osp_sync() to flush changes to OST
    - osp_create() to support with initial non-zero size (RPC to OST?) 
    - high 32bit in uid/gid (osp_sync_new_setattr())
