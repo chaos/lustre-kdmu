@@ -452,9 +452,6 @@ static int osp_connect_to_osd(const struct lu_env *env, struct osp_device *m,
                 GOTO(out, rc = -ENOTCONN);
         }
 
-        /* XXX: which flags we need on OSD? */
-        data->ocd_version = LUSTRE_VERSION_CODE;
-
         rc = obd_connect(NULL, &m->opd_storage_exp, obd, &obd->obd_uuid, data, NULL);
         if (rc) {
                 CERROR("cannot connect to next dev %s (%d)\n", nextdev, rc);
@@ -645,10 +642,11 @@ static int osp_obd_connect(const struct lu_env *env, struct obd_export **exp,
                            struct obd_device *obd, struct obd_uuid *cluuid,
                            struct obd_connect_data *data, void *localdata)
 {
-        struct osp_device    *osp = lu2osp_dev(obd->obd_lu_dev);
-        struct obd_import    *imp;
-        struct lustre_handle  conn;
-        int                   rc;
+        struct osp_device       *osp = lu2osp_dev(obd->obd_lu_dev);
+        struct obd_connect_data *ocd;
+        struct obd_import       *imp;
+        struct lustre_handle     conn;
+        int                      rc;
         ENTRY;
 
         CDEBUG(D_CONFIG, "connect #%d\n", osp->opd_connects);
@@ -666,6 +664,16 @@ static int osp_obd_connect(const struct lu_env *env, struct obd_export **exp,
 
         imp = osp->opd_obd->u.cli.cl_import;
         imp->imp_dlm_handle = conn;
+
+        /* XXX: which flags we need on OST? */
+        ocd = &imp->imp_connect_data;
+        ocd->ocd_version = LUSTRE_VERSION_CODE;
+        ocd->ocd_connect_flags = OBD_CONNECT_VERSION
+                                 | OBD_CONNECT_AT
+                                 | OBD_CONNECT_MDS
+                                 | OBD_CONNECT_SKIP_ORPHAN;
+        imp->imp_connect_flags_orig = ocd->ocd_connect_flags;
+
         rc = ptlrpc_connect_import(imp, NULL);
         LASSERT(rc == 0);
 
