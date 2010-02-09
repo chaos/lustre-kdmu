@@ -147,20 +147,6 @@ const struct lu_device_operations osp_lu_ops = {
         .ldo_recovery_complete = osp_recovery_complete,
 };
 
-static int osp_root_get(const struct lu_env *env,
-                        struct dt_device *dev, struct lu_fid *f)
-{
-        struct osp_device *d = dt2osp_dev(dev);
-        struct dt_device  *next = d->opd_storage;
-        int                 rc;
-        ENTRY;
-
-        LBUG();
-        rc = next->dd_ops->dt_root_get(env, next, f);
-
-        RETURN(rc);
-}
-
 /**
  * provides with statfs from corresponded OST
  *
@@ -208,7 +194,6 @@ static int osp_sync(const struct lu_env *env, struct dt_device *dev)
 }
 
 static const struct dt_device_operations osp_dt_ops = {
-        .dt_root_get       = osp_root_get,
         .dt_statfs         = osp_statfs,
         .dt_sync           = osp_sync,
 };
