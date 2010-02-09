@@ -516,7 +516,7 @@ int osp_precreate_reserve(struct osp_device *d)
                         cfs_spin_unlock(&d->opd_pre_lock);
 
                         /* XXX: don't wake up if precreation is in progress */
-                        if (0 && osp_precreate_near_empty_nolock(d))
+                        if (osp_precreate_near_empty_nolock(d))
                                cfs_waitq_signal(&d->opd_pre_waitq);
 
                         break;
