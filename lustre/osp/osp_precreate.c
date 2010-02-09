@@ -182,10 +182,11 @@ static inline int osp_precreate_stopped(struct osp_device *d)
 
 static inline int osp_precreate_near_empty_nolock(struct osp_device *d)
 {
-        int rc = 0;
+        int window, rc = 0;
 
         /* XXX: of course 10 should be replaced with something more smart */
-        if (d->opd_pre_last_created - d->opd_pre_next - d->opd_pre_reserved < 10)
+        window = d->opd_pre_last_created - d->opd_pre_next;
+        if (window - d->opd_pre_reserved < 10)
                 rc = 1;
 
         return rc;
@@ -195,6 +196,7 @@ static inline int osp_precreate_near_empty(struct osp_device *d)
 {
         int rc;
 
+        /* XXX: do we really need locking here? */
         cfs_spin_lock(&d->opd_pre_lock);
         rc = osp_precreate_near_empty_nolock(d);
         cfs_spin_unlock(&d->opd_pre_lock);
@@ -228,7 +230,8 @@ static int osp_precreate_send(struct osp_device *d)
 
         body = req_capsule_client_get(&req->rq_pill, &RMF_OST_BODY);
         LASSERT(body);
-        body->oa.o_id = d->opd_pre_last_created + 100;
+        /* XXX: the window should be adaptive */
+        body->oa.o_id = d->opd_pre_last_created + 50;
         body->oa.o_gr = mdt_to_obd_objgrp(0);
         body->oa.o_valid = OBD_MD_FLGROUP;
 
@@ -248,6 +251,9 @@ static int osp_precreate_send(struct osp_device *d)
         cfs_spin_lock(&d->opd_pre_lock);
         d->opd_pre_last_created = body->oa.o_id;
         cfs_spin_unlock(&d->opd_pre_lock);
+
+        /* probably somebody has been waiting for new id? */
+        cfs_waitq_signal(&d->opd_pre_user_waitq);
 
 out_req:
         ptlrpc_req_finished(req);
@@ -354,9 +360,9 @@ static int osp_precreate_clean_orphans(struct osp_device *d)
         CDEBUG(D_HA, "got next id %lu\n", (unsigned long) body->oa.o_id);
 
         cfs_spin_lock(&d->opd_pre_lock);
-        d->opd_pre_next = body->oa.o_id;
+        d->opd_pre_next = body->oa.o_id + 1;
         /* nothing precreated yet, the pool is empty */
-        d->opd_pre_last_created = body->oa.o_id; 
+        d->opd_pre_last_created = d->opd_pre_next; 
         cfs_spin_unlock(&d->opd_pre_lock);
 
 out_req:
@@ -492,24 +498,39 @@ static int osp_precreate_thread(void *_arg)
  */
 int osp_precreate_reserve(struct osp_device *d)
 {
-        int precreated, rc = 0;
+        struct l_wait_info lwi = { 0 };
+        int                precreated, rc;
         ENTRY;
 
         LASSERT(d->opd_pre_last_created >= d->opd_pre_next);
 
-        cfs_spin_lock(&d->opd_pre_lock);
-        precreated = d->opd_pre_last_created - d->opd_pre_next;
-        if (precreated > d->opd_pre_reserved) {
-                d->opd_pre_reserved++;
-                rc = 0;
-                if (osp_precreate_near_empty_nolock(d))
-                       cfs_waitq_signal(&d->opd_pre_waitq);
-        } else {
+        while ((rc = d->opd_pre_status) == 0) {
+
+                /*
+                 * we never use the last object in the window
+                 */
+                cfs_spin_lock(&d->opd_pre_lock);
+                precreated = d->opd_pre_last_created - d->opd_pre_next;
+                if (precreated > d->opd_pre_reserved) {
+                        d->opd_pre_reserved++;
+                        cfs_spin_unlock(&d->opd_pre_lock);
+
+                        /* XXX: don't wake up if precreation is in progress */
+                        if (0 && osp_precreate_near_empty_nolock(d))
+                               cfs_waitq_signal(&d->opd_pre_waitq);
+
+                        break;
+                }
+                cfs_spin_unlock(&d->opd_pre_lock);
+
                 /* XXX: don't wake up if precreation is in progress */
                 cfs_waitq_signal(&d->opd_pre_waitq);
-                rc = -EAGAIN;
+
+                l_wait_event(d->opd_pre_user_waitq,
+                             (d->opd_pre_last_created > d->opd_pre_next) ||
+                              d->opd_pre_status != 0,
+                              &lwi);
         }
-        cfs_spin_unlock(&d->opd_pre_lock);
 
         RETURN(rc);
 }
@@ -527,6 +548,7 @@ int osp_init_precreate(struct osp_device *d)
 
         cfs_spin_lock_init(&d->opd_pre_lock);
         cfs_waitq_init(&d->opd_pre_waitq);
+        cfs_waitq_init(&d->opd_pre_user_waitq);
         cfs_waitq_init(&d->opd_pre_thread.t_ctl_waitq);
 
         /*
