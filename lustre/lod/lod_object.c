@@ -60,6 +60,8 @@
 
 #include "lod_internal.h"
 
+static const struct dt_body_operations lod_body_lnk_ops;
+
 static int lod_index_lookup(const struct lu_env *env, struct dt_object *dt,
                              struct dt_rec *rec, const struct dt_key *key,
                              struct lustre_capa *capa)
@@ -517,6 +519,8 @@ static int lod_declare_object_create(const struct lu_env *env,
         if (rc)
                 GOTO(out, rc);
 
+        if (dof->dof_type == DFT_SYM)
+                dt->do_body_ops = &lod_body_lnk_ops;
         /*
          * then decide whether this object will be local or striped:
          * 1) directories and special files are local always
@@ -789,6 +793,51 @@ struct dt_object_operations lod_obj_ops = {
         .do_data_get          = lod_data_get,
 };
 
+static ssize_t lod_read(const struct lu_env *env, struct dt_object *dt,
+                        struct lu_buf *buf, loff_t *pos,
+                        struct lustre_capa *capa)
+{
+        struct dt_object   *next = dt_object_child(dt);
+        ssize_t             rc;
+        ENTRY;
+
+        rc = next->do_body_ops->dbo_read(env, next, buf, pos, capa);
+
+        RETURN(rc);
+}
+
+static ssize_t lod_declare_write(const struct lu_env *env, struct dt_object *dt,
+                                 const loff_t size, loff_t pos,
+                                 struct thandle *th)
+{
+        struct dt_object   *next = dt_object_child(dt);
+        ssize_t             rc;
+        ENTRY;
+
+        rc = next->do_body_ops->dbo_declare_write(env, next, size, pos, th);
+
+        RETURN(rc);
+}
+
+static ssize_t lod_write(const struct lu_env *env, struct dt_object *dt,
+                         const struct lu_buf *buf, loff_t *pos,
+                         struct thandle *th, struct lustre_capa *capa, int iq)
+{
+        struct dt_object   *next = dt_object_child(dt);
+        ssize_t             rc;
+        ENTRY;
+
+        rc = next->do_body_ops->dbo_write(env, next, buf, pos, th, capa, iq);
+
+        RETURN(rc);
+}
+
+static const struct dt_body_operations lod_body_lnk_ops = {
+        .dbo_read             = lod_read,
+        .dbo_declare_write    = lod_declare_write,
+        .dbo_write            = lod_write
+};
+
 static int lod_object_init(const struct lu_env *env, struct lu_object *o,
                             const struct lu_object_conf *conf)
 {
@@ -808,6 +857,17 @@ static int lod_object_init(const struct lu_env *env, struct lu_object *o,
         lu_object_add(o, below);
 
         RETURN(0);
+}
+
+/*
+ * ->start is called once all slices are initialized, including header's
+ * cache for mode (object type). using the type we can initialize ops
+ */
+static int lod_object_start(const struct lu_env *env, struct lu_object *o)
+{
+        if (S_ISLNK(o->lo_header->loh_attr & S_IFMT))
+                lu2lod_obj(o)->mbo_obj.do_body_ops = &lod_body_lnk_ops;
+        return 0;
 }
 
 /*
@@ -870,6 +930,7 @@ static int lod_object_invariant(const struct lu_object *o)
 
 struct lu_object_operations lod_lu_obj_ops = {
         .loo_object_init      = lod_object_init,
+        .loo_object_start     = lod_object_start,
         .loo_object_delete    = lod_object_delete,
         .loo_object_free      = lod_object_free,
         .loo_object_release   = lod_object_release,
