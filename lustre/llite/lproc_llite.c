@@ -276,8 +276,6 @@ static int ll_rd_max_readahead_mb(char *page, char **start, off_t off,
         return rc;
 }
 
-static int ll_wr_max_readahead_mb(struct file *file, const char *buffer,
-                                  unsigned long count, void *data)
 static int ll_wr_max_readahead_mb(libcfs_file_t *file, const char *buffer,
                                    unsigned long count, void *data)
 {

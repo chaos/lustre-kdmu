@@ -99,7 +99,7 @@ static int libcfs_param_dump_kernel_write(libcfs_file_t *filp,
                                           const char *buffer,
                                           unsigned long count, void *data)
 {
-        int rc = trace_dump_debug_buffer_usrstr((void *)buffer, count,
+        int rc = cfs_trace_dump_debug_buffer_usrstr((void *)buffer, count,
                                                 ((lparcb_t *)data)->cb_flag);
         return (rc < 0 ? rc : count);
 }
@@ -108,10 +108,10 @@ static int libcfs_param_daemon_file_read(char *page, char **start, off_t off,
                                          int count, int *eof, void *data)
 {
         *eof = 1;
-        if (off >= strlen(tracefile))
+        if (off >= strlen(cfs_tracefile))
                 return 0;
         return libcfs_param_snprintf(page, count, data, LP_STR,
-                                     "%s", tracefile + off);
+                                     "%s", cfs_tracefile + off);
 }
 
 static int libcfs_param_daemon_file_write(libcfs_file_t *filp,
@@ -119,7 +119,7 @@ static int libcfs_param_daemon_file_write(libcfs_file_t *filp,
                                           unsigned long count, void *data)
 {
         struct libcfs_param_cb_data *cb_data = data;
-        int rc = trace_daemon_command_usrstr((void *)buffer, count,
+        int rc = cfs_trace_daemon_command_usrstr((void *)buffer, count,
                                              cb_data->cb_flag);
         return (rc < 0 ? rc : count);
 }
@@ -130,7 +130,7 @@ static int libcfs_param_debug_mb_read(char *page, char **start, off_t off,
         int  temp;
 
         *eof = 1;
-        temp = trace_get_debug_mb();
+        temp = cfs_trace_get_debug_mb();
 
         return libcfs_param_snprintf(page, count, data, LP_D32, NULL, temp);
 }
@@ -139,7 +139,7 @@ static int libcfs_param_debug_mb_write(libcfs_file_t *filp,
                                        const char *buffer,
                                        unsigned long count, void *data)
 {
-        int rc = trace_set_debug_mb_usrstr((void *)buffer, count,
+        int rc = cfs_trace_set_debug_mb_usrstr((void *)buffer, count,
                                            ((lparcb_t *)data)->cb_flag);
         return (rc < 0 ? rc : count);
 }
@@ -312,7 +312,7 @@ static struct libcfs_param_ctl_table libcfs_param_lnet_table[] = {
         },
         {
                 .name   = "debug_path",
-                .data   = debug_file_path_arr,
+                .data   = libcfs_debug_file_path_arr,
                 .mode   = 0644,
                 .read   = libcfs_param_string_read,
                 .write  = libcfs_param_string_write

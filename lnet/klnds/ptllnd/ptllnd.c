@@ -40,6 +40,9 @@
 
 #include "ptllnd.h"
 
+#define cfs_wake_up_all(waitq)          wake_up_all(waitq)
+#define cfs_init_waitqueue_head(waitq)  init_waitqueue_head(waitq)
+
 lnd_t kptllnd_lnd = {
         .lnd_type       = PTLLND,
         .lnd_startup    = kptllnd_startup,
@@ -61,7 +64,7 @@ kptllnd_ptlid2str(ptl_process_id_t id)
 
         unsigned long  flags;
         char          *str;
-        
+
         cfs_spin_lock_irqsave(&kptllnd_data.kptl_ptlid2str_lock, flags);
         str = strs[idx++];
         if (idx >= sizeof(strs)/sizeof(strs[0]))

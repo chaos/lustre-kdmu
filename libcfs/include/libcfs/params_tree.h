@@ -137,7 +137,7 @@ typedef struct libcfs_seq_file {
         size_t count;
         loff_t index;
         loff_t version;
-        struct mutex lock;
+        cfs_mutex_t lock;
         struct libcfs_seq_operations *op;
         void *private;
 }libcfs_seq_file_t;
