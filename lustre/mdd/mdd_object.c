@@ -613,6 +613,7 @@ int mdd_get_default_md(struct mdd_object *mdd_obj, struct lov_mds_md *lmm,
         struct mdd_device *mdd = mdo2mdd(&mdd_obj->mod_obj);
         ENTRY;
 
+        LBUG();
         ldesc = &mdd->mdd_obd_dev->u.mds.mds_lov_desc;
         LASSERT(ldesc != NULL);
 
