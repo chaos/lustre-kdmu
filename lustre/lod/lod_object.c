@@ -624,13 +624,11 @@ static int lod_declare_object_create(const struct lu_env *env,
 
         if (dof->dof_type == DFT_SYM)
                 dt->do_body_ops = &lod_body_lnk_ops;
+
         /*
-         * then decide whether this object will be local or striped:
-         * 1) directories and special files are local always
-         * 2) special (not visible to users) files are local
+         * it's lod_ah_init() who has decided the object will striped
          */
-         
-        if (lod_object_will_be_striped(dof->dof_type == DFT_REGULAR, fid))
+        if (lod_dt_obj(dt)->mbo_stripenr > 0)
                 rc = lod_declare_striped_object(env, dt, attr, hint, dof, th);
 
 out:
