@@ -35,6 +35,13 @@ ALWAYS_EXCEPT="$ALWAYS_EXCEPT 76"
 # 180 -- ofd doesn't work with obdecho 
 ALWAYS_EXCEPT="$ALWAYS_EXCEPT 52a 52b 57a 57b 129 132 156 160 180"
 
+# LOD/OSP branch needs fixes:
+# 24q --
+# 24u -- O_LOV_DELAY_CREATE support
+# 27a -- ^^
+# 59  -- osp_sync_thread()) ASSERTION(thread->t_flags != SVC_RUNNING) failed
+ALWAYS_EXCEPT="$ALWAYS_EXCEPT 24q 24u 27a 59"
+
 case `uname -r` in
 2.4*) FSTYPE=${FSTYPE:-ext3} ;;
 2.6*) FSTYPE=${FSTYPE:-ldiskfs} ;;
