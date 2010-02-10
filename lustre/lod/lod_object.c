@@ -445,6 +445,25 @@ static inline int lod_object_will_be_striped(int is_reg, const struct lu_fid *fi
         return (is_reg && fid_seq(fid) != FID_SEQ_LOCAL_FILE);
 }
 
+/* Find the max stripecount we should use */
+static int lov_get_stripecnt(struct lov_obd *lov, __u32 stripe_count)
+{
+        if (!stripe_count)
+                stripe_count = lov->desc.ld_default_stripe_count;
+        if (stripe_count > lov->desc.ld_active_tgt_count)
+                stripe_count = lov->desc.ld_active_tgt_count;
+        if (!stripe_count)
+                stripe_count = 1;
+        /* for now, we limit the stripe count directly, when bug 4424 is
+         * fixed this needs to be somewhat dynamic based on whether ext3
+         * can handle larger EA sizes. */
+        if (stripe_count > LOV_MAX_STRIPE_COUNT)
+                stripe_count = LOV_MAX_STRIPE_COUNT;
+
+        return stripe_count;
+}
+
+
 /**
  * used to transfer default striping data to the object being created
  */
@@ -514,9 +533,8 @@ static void lod_ah_init(const struct lu_env *env,
                 }
         }
         if (lp->mbo_def_stripe_size) {
-                lc->mbo_stripenr = lp->mbo_def_stripenr;
-                if (lc->mbo_stripenr == (__u32) -1)
-                        lc->mbo_stripenr = d->lod_ostnr;
+                lc->mbo_stripenr = lov_get_stripecnt(&d->lod_obd->u.lov,
+                                                     lp->mbo_def_stripenr);
                 lc->mbo_stripe_size = lp->mbo_def_stripe_size;
                 return;
         }
@@ -525,10 +543,8 @@ static void lod_ah_init(const struct lu_env *env,
          * the parent doesn't provide with specific pattern, grab fs-wide one
          */
         desc = &d->lod_obd->u.lov.desc;
-
-        lc->mbo_stripenr = desc->ld_default_stripe_count;
-        if (lc->mbo_stripenr == (__u32) -1)
-                lc->mbo_stripenr = d->lod_ostnr;
+        lc->mbo_stripenr = lov_get_stripecnt(&d->lod_obd->u.lov,
+                                             desc->ld_default_stripe_count);
         lc->mbo_stripe_size = desc->ld_default_stripe_size;
 
         EXIT;

@@ -28,7 +28,6 @@
 
 * OSP TODO
    - version of llog_cat_process() working in current thread
-   - get a cleaner copy of lov_setup()
    - adaptive precreation (shouldn't block in most cases)
    - support for CMD (group = mds #) (where do we take mds #? encoded in config?)
    - batching in osp_sync.c so that the thread doesn't wake up for a single job
