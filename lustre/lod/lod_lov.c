@@ -460,14 +460,14 @@ int lod_lov_fini(struct lod_device *m)
 {
         struct obd_device   *obd = m->lod_obd;
         struct lov_obd      *lov = &obd->u.lov;
-        struct list_head    *pos, *tmp;
+        cfs_list_t          *pos, *tmp;
         struct pool_desc    *pool;
         struct obd_export   *exp;
         int                  i, rc;
         ENTRY;
 
-        list_for_each_safe(pos, tmp, &lov->lov_pool_list) {
-                pool = list_entry(pos, struct pool_desc, pool_list);
+        cfs_list_for_each_safe(pos, tmp, &lov->lov_pool_list) {
+                pool = cfs_list_entry(pos, struct pool_desc, pool_list);
                 /* free pool structs */
                 CDEBUG(D_INFO, "delete pool %p\n", pool);
                 lov_pool_del(obd, pool->pool_name);
