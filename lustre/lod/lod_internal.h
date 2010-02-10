@@ -173,6 +173,11 @@ int lod_generate_and_set_lovea(const struct lu_env *env,
                                 struct lod_object *mo,
                                 struct thandle *th);
 int lod_load_striping(const struct lu_env *env, struct lod_object *mo);
+void lod_fix_desc(struct lov_desc *desc);
+void lod_fix_desc_qos_maxage(__u32 *val);
+void lod_fix_desc_pattern(__u32 *val);
+void lod_fix_desc_stripe_count(__u32 *val);
+void lod_fix_desc_stripe_size(__u64 *val);
 int lod_lov_init(struct lod_device *m, struct lustre_cfg *cfg);
 int lod_lov_fini(struct lod_device *m);
 
@@ -183,12 +188,18 @@ struct pool_desc *lov_find_pool(struct lov_obd *lov, char *poolname);
 void lov_pool_putref(struct pool_desc *pool);
 int lov_ost_pool_free(struct ost_pool *op);
 int lov_pool_del(struct obd_device *obd, char *poolname);
+int lov_ost_pool_init(struct ost_pool *op, unsigned int count);
+extern cfs_hash_ops_t pool_hash_operations;
 
 /* lod_qos.c */
 int lod_qos_prep_create(const struct lu_env *env, struct lod_object *lo,
                         struct lu_attr *attr, struct thandle *th);
 int qos_add_tgt(struct obd_device *obd, int index);
 int qos_del_tgt(struct obd_device *obd, int index);
+
+/* lproc_lod.c */
+extern struct file_operations lod_proc_target_fops;
+void lprocfs_lod_init_vars(struct lprocfs_static_vars *lvars);
 
 
 #endif

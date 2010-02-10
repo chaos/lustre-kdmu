@@ -115,6 +115,24 @@ static int lod_process_config(const struct lu_env *env,
                         /* XXX: not implemented yet */
                         LBUG();
                         break;
+
+                case LCFG_PARAM: {
+                        struct lprocfs_static_vars  lvars = { 0 };
+                        struct obd_device          *obd = lod->lod_obd;
+                        struct lov_desc            *desc = &(obd->u.lov.desc);
+
+                        if (!desc)
+                                GOTO(out, rc = -EINVAL);
+
+                        lprocfs_lod_init_vars(&lvars);
+
+                        rc = class_process_proc_param(PARAM_LOV, lvars.obd_vars,
+                                                      lcfg, obd);
+                        if (rc > 0)
+                                rc = 0;
+                        GOTO(out, rc);
+                }
+
                 case LCFG_CLEANUP:
                         rc = next->ld_ops->ldo_process_config(env, next, lcfg);
                         if (rc)
@@ -125,14 +143,15 @@ static int lod_process_config(const struct lu_env *env,
                                 next = &lod->lod_ost[i]->dd_lu_dev; 
                                 rc = next->ld_ops->ldo_process_config(env, next, lcfg);
                                 if (rc)
-                                CERROR("can't process %u: %d\n", lcfg->lcfg_command, rc);
+                                        CERROR("can't process %u: %d\n",
+                                               lcfg->lcfg_command, rc);
                         }
                         break;
+
                 default:
                         CERROR("unknown command %u\n", lcfg->lcfg_command);
                         rc = 0;
                         break;
-
         }
 
 out:
@@ -592,7 +611,7 @@ static struct obd_ops lod_obd_device_ops = {
 static int __init lod_mod_init(void)
 {
         struct lprocfs_static_vars lvars;
-        //lprocfs_lod_init_vars(&lvars);
+        lprocfs_lod_init_vars(&lvars);
 
         return class_register_type(&lod_obd_device_ops, NULL, lvars.module_vars,
                                    LUSTRE_LOD_NAME, &lod_device_type);

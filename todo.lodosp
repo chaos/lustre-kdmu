@@ -13,7 +13,6 @@
    - lod_sync() to call all known osp
    - lod to pass initial object size if case of late object creation
    - support for >1K OSTs (dynamic lod_ost in struct lod_device)
-   - lprocfs support
    - support for different LOV EA formats
    - ost removal/deactivation
    - lod_ah_init() to grab default striping from parent or fs
@@ -24,7 +23,6 @@
    - improve locking in lod_qos_statfs_update()
    - lod_qos_statfs_update() to recalculate space with fixed block size
    - qos_add_tgt() to learn configuration (how OSTs map OSSs)
-   - lod_process_config() to support default striping setting
    - pass next device in all the methods (like cursor, lod_trans_stop(), etc)
 
 * OSP TODO

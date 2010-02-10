@@ -84,7 +84,7 @@ static int lov_add_target(struct lov_obd *lov, struct obd_device *tgt_obd,
 
         if ((index < lov->lov_tgt_size) && (lov->lov_tgts[index] != NULL)) {
                 tgt = lov->lov_tgts[index];
-                CERROR("UUID %s already assigned at LOV target index %d\n",
+                CERROR("UUID %s already assigned at LOD target index %d\n",
                        obd_uuid2str(&tgt->ltd_uuid), index);
                 cfs_mutex_up(&lov->lov_lock);
                 RETURN(-EEXIST);
@@ -440,18 +440,143 @@ out:
         RETURN(rc);
 }
 
-extern int lov_setup(struct obd_device *obd, struct lustre_cfg *cfg);
-
-int lod_lov_init(struct lod_device *m, struct lustre_cfg *cfg)
+void lod_fix_desc_stripe_size(__u64 *val)
 {
+        if (*val < PTLRPC_MAX_BRW_SIZE) {
+                LCONSOLE_WARN("Increasing default stripe size to min %u\n",
+                              PTLRPC_MAX_BRW_SIZE);
+                *val = PTLRPC_MAX_BRW_SIZE;
+        } else if (*val & (LOV_MIN_STRIPE_SIZE - 1)) {
+                *val &= ~(LOV_MIN_STRIPE_SIZE - 1);
+                LCONSOLE_WARN("Changing default stripe size to "LPU64" (a "
+                              "multiple of %u)\n",
+                              *val, LOV_MIN_STRIPE_SIZE);
+        }
+}
+
+void lod_fix_desc_stripe_count(__u32 *val)
+{
+        if (*val == 0)
+                *val = 1;
+}
+
+void lod_fix_desc_pattern(__u32 *val)
+{
+        /* from lov_setstripe */
+        if ((*val != 0) && (*val != LOV_PATTERN_RAID0)) {
+                LCONSOLE_WARN("Unknown stripe pattern: %#x\n", *val);
+                *val = 0;
+        }
+}
+
+void lod_fix_desc_qos_maxage(__u32 *val)
+{
+        /* fix qos_maxage */
+        if (*val == 0)
+                *val = QOS_DEFAULT_MAXAGE;
+}
+
+void lod_fix_desc(struct lov_desc *desc)
+{
+        lod_fix_desc_stripe_size(&desc->ld_default_stripe_size);
+        lod_fix_desc_stripe_count(&desc->ld_default_stripe_count);
+        lod_fix_desc_pattern(&desc->ld_pattern);
+        lod_fix_desc_qos_maxage(&desc->ld_qos_maxage);
+}
+
+int lod_lov_init(struct lod_device *m, struct lustre_cfg *lcfg)
+{
+        struct lprocfs_static_vars  lvars = { 0 };
+        struct obd_device          *obd;
+        struct lov_desc            *desc;
+        struct lov_obd             *lov;
         int                         rc;
         ENTRY;
 
-        m->lod_obd = class_name2obd(lustre_cfg_string(cfg, 0));
+        m->lod_obd = class_name2obd(lustre_cfg_string(lcfg, 0));
         LASSERT(m->lod_obd != NULL);
         m->lod_obd->obd_lu_dev = &m->lod_dt_dev.dd_lu_dev;
+        obd = m->lod_obd;
+        lov = &obd->u.lov;
 
-        rc = lov_setup(m->lod_obd, cfg);
+        if (LUSTRE_CFG_BUFLEN(lcfg, 1) < 1) {
+                CERROR("LOD setup requires a descriptor\n");
+                RETURN(-EINVAL);
+        }
+
+        desc = (struct lov_desc *)lustre_cfg_buf(lcfg, 1);
+
+        if (sizeof(*desc) > LUSTRE_CFG_BUFLEN(lcfg, 1)) {
+                CERROR("descriptor size wrong: %d > %d\n",
+                       (int)sizeof(*desc), LUSTRE_CFG_BUFLEN(lcfg, 1));
+                RETURN(-EINVAL);
+        }
+
+        if (desc->ld_magic != LOV_DESC_MAGIC) {
+                if (desc->ld_magic == __swab32(LOV_DESC_MAGIC)) {
+                            CDEBUG(D_OTHER, "%s: Swabbing lov desc %p\n",
+                                   obd->obd_name, desc);
+                            lustre_swab_lov_desc(desc);
+                } else {
+                        CERROR("%s: Bad lov desc magic: %#x\n",
+                               obd->obd_name, desc->ld_magic);
+                        RETURN(-EINVAL);
+                }
+        }
+
+        lod_fix_desc(desc);
+
+        desc->ld_active_tgt_count = 0;
+        lov->desc = *desc;
+        lov->lov_tgt_size = 0;
+
+        cfs_sema_init(&lov->lov_lock, 1);
+        cfs_atomic_set(&lov->lov_refcount, 0);
+        CFS_INIT_LIST_HEAD(&lov->lov_qos.lq_oss_list);
+        cfs_init_rwsem(&lov->lov_qos.lq_rw_sem);
+        lov->lov_sp_me = LUSTRE_SP_CLI;
+        lov->lov_qos.lq_dirty = 1;
+        lov->lov_qos.lq_rr.lqr_dirty = 1;
+        lov->lov_qos.lq_reset = 1;
+        /* Default priority is toward free space balance */
+        lov->lov_qos.lq_prio_free = 232;
+        /* Default threshold for rr (roughly 17%) */
+        lov->lov_qos.lq_threshold_rr = 43;
+        /* Init statfs fields */
+        OBD_ALLOC_PTR(lov->lov_qos.lq_statfs_data);
+        if (NULL == lov->lov_qos.lq_statfs_data)
+                RETURN(-ENOMEM);
+        cfs_waitq_init(&lov->lov_qos.lq_statfs_waitq);
+
+        lov->lov_pools_hash_body = cfs_hash_create("POOLS", HASH_POOLS_CUR_BITS,
+                                                   HASH_POOLS_MAX_BITS,
+                                                   &pool_hash_operations, CFS_HASH_REHASH);
+        CFS_INIT_LIST_HEAD(&lov->lov_pool_list);
+        lov->lov_pool_count = 0;
+        rc = lov_ost_pool_init(&lov->lov_packed, 0);
+        if (rc)
+                RETURN(rc);
+        rc = lov_ost_pool_init(&lov->lov_qos.lq_rr.lqr_pool, 0);
+        if (rc) {
+                lov_ost_pool_free(&lov->lov_packed);
+                RETURN(rc);
+        }
+
+        lprocfs_lod_init_vars(&lvars);
+        lprocfs_obd_setup(obd, lvars.obd_vars);
+#ifdef LPROCFS
+        {
+                int rc;
+
+                rc = lprocfs_seq_create(obd->obd_proc_entry, "target_obd",
+                                        0444, &lod_proc_target_fops, obd);
+                if (rc)
+                        CWARN("Error adding the target_obd file\n");
+        }
+#endif
+        lov->lov_pool_proc_entry = lprocfs_register("pools",
+                                                    obd->obd_proc_entry,
+                                                    NULL, NULL);
 
         RETURN(rc);
 }
