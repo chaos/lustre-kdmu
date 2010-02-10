@@ -242,17 +242,20 @@ static int mdd_lov_set_stripe_md(const struct lu_env *env,
 {
         struct mdd_device       *mdd = mdo2mdd(&obj->mod_obj);
         struct obd_device       *obd = mdd2obd_dev(mdd);
-        struct obd_export       *lov_exp = obd->u.mds.mds_osc_exp;
+        struct obd_export       *lov_exp;
         struct lov_stripe_md    *lsm = NULL;
         int rc;
         ENTRY;
 
-        LASSERT(S_ISDIR(mdd_object_type(obj)) || S_ISREG(mdd_object_type(obj)));
-        rc = obd_iocontrol(OBD_IOC_LOV_SETSTRIPE, lov_exp, 0,
-                           &lsm, buf->lb_buf);
-        if (rc)
-                RETURN(rc);
-        obd_free_memmd(lov_exp, &lsm);
+        if (obd && ((lov_exp = obd->u.mds.mds_osc_exp) != NULL)) {
+                /* XXX: who'll be doing swabbing in the new model? *? */
+                LASSERT(S_ISDIR(mdd_object_type(obj)) || S_ISREG(mdd_object_type(obj)));
+                rc = obd_iocontrol(OBD_IOC_LOV_SETSTRIPE, lov_exp, 0,
+                                &lsm, buf->lb_buf);
+                if (rc)
+                        RETURN(rc);
+                obd_free_memmd(lov_exp, &lsm);
+        }
 
         rc = mdd_xattr_set_txn(env, obj, buf, XATTR_NAME_LOV, 0, handle);
 
@@ -319,11 +322,6 @@ int mdd_lov_set_md(const struct lu_env *env, struct mdd_object *pobj,
         cfs_umode_t mode;
         int rc = 0;
         ENTRY;
-
-        if (mdd2obd_dev(mdd_obj2mdd_dev(child)) == NULL) {
-                /* XXX: temp hack as we don't have mdd obd yet */
-                RETURN(0);
-        }
 
         buf = mdd_buf_get(env, lmmp, lmm_size);
         mode = mdd_object_type(child);
