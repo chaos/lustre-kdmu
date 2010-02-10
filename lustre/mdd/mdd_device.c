@@ -828,6 +828,8 @@ static int obf_attr_get(const struct lu_env *env, struct md_object *obj,
                       S_ISDIR(mdd_object_type(mdd_obj))))
                         return 0;
 
+#if 0
+                /* XXX: mdd can't access striping information directly */
                 if (ma->ma_need & MA_LOV_DEF) {
                         rc = mdd_get_default_md(mdd_obj, ma->ma_lmm,
                                         &ma->ma_lmm_size);
@@ -836,6 +838,7 @@ static int obf_attr_get(const struct lu_env *env, struct md_object *obj,
                                 rc = 0;
                         }
                 }
+#endif
         }
 
         return rc;

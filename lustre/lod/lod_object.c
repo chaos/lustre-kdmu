@@ -323,11 +323,34 @@ static int lod_xattr_get(const struct lu_env *env, struct dt_object *dt,
                          struct lu_buf *buf, const char *name,
                          struct lustre_capa *capa)
 {
-        struct dt_object   *next = dt_object_child(dt);
-        int                 rc;
+        struct dt_object *next = dt_object_child(dt);
+        int               rc, dir;
         ENTRY;
 
         rc = next->do_ops->do_xattr_get(env, next, buf, name, capa);
+
+        /*
+         * if this is a directory with no own default striping,
+         * supply the caller with filesystem-wide default striping
+         */
+        dir = S_ISDIR(dt->do_lu.lo_header->loh_attr & S_IFMT);
+
+        if (rc == -ENODATA && dir && !strcmp(XATTR_NAME_LOV, name)) {
+                struct lov_mds_md *lmm = buf->lb_buf;
+                struct lod_device *d;
+                struct lov_desc   *desc;
+
+                d = lu2lod_dev(dt->do_lu.lo_dev);
+                desc = &d->lod_obd->u.lov.desc; 
+                rc = sizeof(struct lov_mds_md);
+                if (buf->lb_len >= sizeof(struct lov_mds_md)) {
+                        lmm->lmm_magic = LOV_MAGIC_V1;
+                        lmm->lmm_object_gr = LOV_OBJECT_GROUP_DEFAULT;
+                        lmm->lmm_pattern = desc->ld_pattern;
+                        lmm->lmm_stripe_size = desc->ld_default_stripe_size;
+                        lmm->lmm_stripe_count = desc->ld_default_stripe_count;
+                }
+        }
 
         RETURN(rc);
 }
