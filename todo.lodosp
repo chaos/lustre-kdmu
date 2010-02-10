@@ -15,7 +15,6 @@
    - support for >1K OSTs (dynamic lod_ost in struct lod_device)
    - support for different LOV EA formats
    - ost removal/deactivation
-   - lod_ah_init() to grab default striping from parent or fs
    - lod_qos_prep_create() to support non-zero files w/o objects
    - lod_alloc_idx_array() to support object creation on specified OSTs
    - lod_qos_prep_create() to support pools
@@ -24,6 +23,8 @@
    - lod_qos_statfs_update() to recalculate space with fixed block size
    - qos_add_tgt() to learn configuration (how OSTs map OSSs)
    - pass next device in all the methods (like cursor, lod_trans_stop(), etc)
+   - lod_xattr_set() to make sure new striping is sane
+   - mdd_lov_set_stripe_md(): who'll be doing swabbing in the new model: mdt, mdd, lod?
 
 * OSP TODO
    - version of llog_cat_process() working in current thread

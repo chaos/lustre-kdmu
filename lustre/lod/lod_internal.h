@@ -78,10 +78,16 @@ struct lod_object {
         struct dt_object   mbo_obj;
 
         /* if object is striped, then the next fields describe stripes */
-        int                mbo_stripenr;
+        __u32              mbo_stripenr;
+        __u32              mbo_stripe_size;
         struct dt_object **mbo_stripe;
         /* to know how much memory to free, mbo_stripenr can be less */
         int                mbo_stripes_allocated;
+        /* default striping for directory represented by this object
+         * is cached in stripenr/stripe_size */
+        int                mbo_striping_cached;
+        __u32              mbo_def_stripenr;
+        __u32              mbo_def_stripe_size;
 };
 
 struct lod_thread_info {
@@ -173,6 +179,7 @@ int lod_generate_and_set_lovea(const struct lu_env *env,
                                 struct lod_object *mo,
                                 struct thandle *th);
 int lod_load_striping(const struct lu_env *env, struct lod_object *mo);
+int lod_get_lov_ea(const struct lu_env *env, struct lod_object *mo);
 void lod_fix_desc(struct lov_desc *desc);
 void lod_fix_desc_qos_maxage(__u32 *val);
 void lod_fix_desc_pattern(__u32 *val);

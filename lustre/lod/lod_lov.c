@@ -273,7 +273,7 @@ int lod_generate_and_set_lovea(const struct lu_env *env,
         lmm->lmm_pattern = cpu_to_le32(LOV_PATTERN_RAID0);
         lmm->lmm_object_id = cpu_to_le64(fid_flatten(fid)); /* XXX: what? */
         lmm->lmm_object_gr = cpu_to_le64(mdt_to_obd_objgrp(0)); /* XXX: what? */
-        lmm->lmm_stripe_size = cpu_to_le32(1024 * 1024); /* XXX */
+        lmm->lmm_stripe_size = cpu_to_le32(mo->mbo_stripe_size);
         lmm->lmm_stripe_count = cpu_to_le32(mo->mbo_stripenr);
         lmm->lmm_pool_name[0] = '\0';
 
@@ -296,7 +296,7 @@ int lod_generate_and_set_lovea(const struct lu_env *env,
         RETURN(rc);
 }
 
-static int lod_get_lov_ea(const struct lu_env *env, struct lod_object *mo)
+int lod_get_lov_ea(const struct lu_env *env, struct lod_object *mo)
 {
         struct lod_thread_info *info = lod_mti_get(env);
         struct dt_object       *next = dt_object_child(&mo->mbo_obj);
