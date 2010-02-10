@@ -63,7 +63,7 @@ typedef struct seq_operations    libcfs_seq_ops_t;
 typedef struct inode             libcfs_param_inode_t;
 typedef struct file              libcfs_param_file_t;
 typedef struct file_operations   libcfs_file_ops_t;
-typedef struct module           *libcfs_module_t;
+typedef cfs_module_t            *libcfs_module_t;
 typedef struct proc_dir_entry    libcfs_param_dentry_t;
 typedef struct poll_table_struct libcfs_poll_table_t;
 #define LIBCFS_PARAM_MODULE      THIS_MODULE
@@ -92,12 +92,12 @@ typedef struct poll_table_struct libcfs_poll_table_t;
                                                             count, ppos))
 #define LIBCFS_POLL_WAIT(file, waitq, wait)     poll_wait(file, waitq, wait)
 /* in lprocfs_stat.c, to protect the private data for proc entries */
-extern struct rw_semaphore _lprocfs_lock;
+extern cfs_rw_semaphore_t       _lprocfs_lock;
 #define LPROCFS_ENTRY()           do {  \
-        down_read(&_lprocfs_lock);      \
+        cfs_down_read(&_lprocfs_lock);      \
 } while(0)
 #define LPROCFS_EXIT()            do {  \
-        up_read(&_lprocfs_lock);        \
+        cfs_up_read(&_lprocfs_lock);        \
 } while(0)
 
 #ifdef HAVE_PROCFS_DELETED
@@ -121,10 +121,10 @@ int LPROCFS_ENTRY_AND_CHECK(struct proc_dir_entry *dp)
 #endif
 
 #define LPROCFS_WRITE_ENTRY()     do {  \
-        down_write(&_lprocfs_lock);     \
+        cfs_down_write(&_lprocfs_lock);     \
 } while(0)
 #define LPROCFS_WRITE_EXIT()      do {  \
-        up_write(&_lprocfs_lock);       \
+        cfs_up_write(&_lprocfs_lock);       \
 } while(0)
 #else
 struct dummy {;};
@@ -256,9 +256,9 @@ typedef int (libcfs_param_write_t)(libcfs_file_t *filp,
 struct libcfs_param_entry {
         /* hash table members */
         cfs_hash_t                *lpe_hash_t;/* =dir, someone's parent */
-        struct rw_semaphore        lpe_rw_sem;
+        cfs_rw_semaphore_t         lpe_rw_sem;
         /* hash node members */
-        struct hlist_node          lpe_hash_n;/* =leaf_entry, someone's child */
+        cfs_hlist_node_t           lpe_hash_n;/* =leaf_entry, someone's child */
         libcfs_param_read_t       *lpe_cb_read;
         libcfs_param_write_t      *lpe_cb_write;
         libcfs_file_ops_t         *lpe_cb_sfops;/* used only by seq operation */
@@ -268,7 +268,7 @@ struct libcfs_param_entry {
                                                   libcfs_param_cb_data */
         /* common members */
         struct libcfs_param_entry *lpe_parent;
-        atomic_t                   lpe_refcount;/* lpe reference count */
+        cfs_atomic_t               lpe_refcount;/* lpe reference count */
         const char                *lpe_name;
         int                        lpe_name_len;
         mode_t                     lpe_mode;   /* dir, file or symbol_link, and

@@ -810,7 +810,7 @@ int lprocfs_wr_evict_client(libcfs_file_t *file, const char *buffer,
 
         LIBCFS_PARAM_GET_DATA(obd, data, &flag);
         /* as lprocfs_evict_client_open() does */
-        atomic_inc(&obd->obd_evict_inprogress);
+        cfs_atomic_inc(&obd->obd_evict_inprogress);
 
         /* Kludge code(deadlock situation): the lprocfs lock has been held
          * since the client is evicted by writting client's
@@ -835,8 +835,8 @@ int lprocfs_wr_evict_client(libcfs_file_t *file, const char *buffer,
                 LPROCFS_ENTRY();
         class_decref(obd, __FUNCTION__, cfs_current());
         /* as lprocfs_evict_client_release() does */
-        atomic_dec(&obd->obd_evict_inprogress);
-        wake_up(&obd->obd_evict_inprogress_waitq);
+        cfs_atomic_dec(&obd->obd_evict_inprogress);
+        cfs_waitq_signal(&obd->obd_evict_inprogress_waitq);
 
         return count;
 }

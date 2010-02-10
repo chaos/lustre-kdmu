@@ -47,10 +47,10 @@
 
 #ifdef __KERNEL__
 /* for bug 10866, global variable */
-DECLARE_RWSEM(_lprocfs_lock);
+CFS_DECLARE_RWSEM(_lprocfs_lock);
 EXPORT_SYMBOL(_lprocfs_lock);
 
-static struct rw_semaphore libcfs_param_sem;
+static cfs_rw_semaphore_t libcfs_param_sem;
 struct libcfs_param_entry *libcfs_param_lnet_root;
 
 static void free_param(struct libcfs_param_entry *lpe)
@@ -74,9 +74,9 @@ static void free_param(struct libcfs_param_entry *lpe)
 struct libcfs_param_entry *libcfs_param_get(struct libcfs_param_entry *lpe)
 {
         LASSERT(lpe != NULL);
-        LASSERT(atomic_read(&lpe->lpe_refcount) > 0);
+        LASSERT(cfs_atomic_read(&lpe->lpe_refcount) > 0);
 
-        atomic_inc(&lpe->lpe_refcount);
+        cfs_atomic_inc(&lpe->lpe_refcount);
 
         return lpe;
 }
@@ -87,27 +87,27 @@ struct libcfs_param_entry *libcfs_param_get(struct libcfs_param_entry *lpe)
 void libcfs_param_put(struct libcfs_param_entry *lpe)
 {
         LASSERT(lpe != NULL);
-        LASSERTF(atomic_read(&lpe->lpe_refcount) > 0,
+        LASSERTF(cfs_atomic_read(&lpe->lpe_refcount) > 0,
                  "%s has %d ref\n", lpe->lpe_name,
-                 atomic_read(&lpe->lpe_refcount));
-        if (atomic_dec_and_test(&lpe->lpe_refcount))
+                 cfs_atomic_read(&lpe->lpe_refcount));
+        if (cfs_atomic_dec_and_test(&lpe->lpe_refcount))
                 free_param(lpe);
 }
 
-static void *lpe_hash_get(struct hlist_node *hnode)
+static void *lpe_hash_get(cfs_hlist_node_t *hnode)
 {
         struct libcfs_param_entry *lpe;
 
-        lpe = hlist_entry(hnode, struct libcfs_param_entry, lpe_hash_n);
+        lpe = cfs_hlist_entry(hnode, struct libcfs_param_entry, lpe_hash_n);
 
         return libcfs_param_get(lpe);
 }
 
-static void *lpe_hash_put(struct hlist_node *hnode)
+static void *lpe_hash_put(cfs_hlist_node_t *hnode)
 {
         struct libcfs_param_entry *lpe;
 
-        lpe = hlist_entry(hnode, struct libcfs_param_entry, lpe_hash_n);
+        lpe = cfs_hlist_entry(hnode, struct libcfs_param_entry, lpe_hash_n);
         libcfs_param_put(lpe);
 
         return lpe;
@@ -118,23 +118,24 @@ static unsigned lpe_hash(cfs_hash_t *hs, void *key, unsigned mask)
         return cfs_hash_djb2_hash(key, strlen((char *)key), mask);
 }
 
-static int lpe_hash_compare(void *key, struct hlist_node *compared_node)
+static int lpe_hash_compare(void *key, cfs_hlist_node_t *compared_node)
 {
         struct libcfs_param_entry *lpe;
         char                      *lpe_name = key;
         int                        rc;
 
-        lpe = hlist_entry(compared_node, struct libcfs_param_entry, lpe_hash_n);
+        lpe = cfs_hlist_entry(compared_node, struct libcfs_param_entry,
+                              lpe_hash_n);
         rc = strncmp(lpe_name, lpe->lpe_name, lpe->lpe_name_len);
 
         return (!rc);
 }
 
-static void *lpe_hash_key(struct hlist_node *hnode)
+static void *lpe_hash_key(cfs_hlist_node_t *hnode)
 {
         struct libcfs_param_entry *lpe;
 
-        lpe = hlist_entry(hnode, struct libcfs_param_entry, lpe_hash_n);
+        lpe = cfs_hlist_entry(hnode, struct libcfs_param_entry, lpe_hash_n);
 
         return ((void *)lpe->lpe_name);
 }
@@ -168,20 +169,20 @@ void libcfs_param_root_init(void)
                                                        LPE_HASH_MAX_BITS,
                                                        &lpe_hash_ops,
                                                        CFS_HASH_REHASH);
-        init_rwsem(&libcfs_param_sem);
-        init_rwsem(&libcfs_param_root.lpe_rw_sem);
-        atomic_set(&libcfs_param_root.lpe_refcount, 1);
+        cfs_init_rwsem(&libcfs_param_sem);
+        cfs_init_rwsem(&libcfs_param_root.lpe_rw_sem);
+        cfs_atomic_set(&libcfs_param_root.lpe_refcount, 1);
         libcfs_param_lnet_root = NULL;
 }
 
 void libcfs_param_root_fini(void)
 {
-        LASSERTF(atomic_read(&libcfs_param_root.lpe_hash_t->hs_count) == 0,
+        LASSERTF(cfs_atomic_read(&libcfs_param_root.lpe_hash_t->hs_count) == 0,
                  "params_root hash has %d hnodes\n",
-                 atomic_read(&libcfs_param_root.lpe_hash_t->hs_count));
-        LASSERTF(atomic_read(&libcfs_param_root.lpe_refcount) == 1,
+                 cfs_atomic_read(&libcfs_param_root.lpe_hash_t->hs_count));
+        LASSERTF(cfs_atomic_read(&libcfs_param_root.lpe_refcount) == 1,
                  "params_root has %d refs\n",
-                 atomic_read(&libcfs_param_root.lpe_refcount));
+                 cfs_atomic_read(&libcfs_param_root.lpe_refcount));
         if (libcfs_param_root.lpe_hash_t != NULL)
                 cfs_hash_destroy(libcfs_param_root.lpe_hash_t);
 }
@@ -225,9 +226,9 @@ _lookup_param(const char *name, struct libcfs_param_entry *parent)
 
         LASSERT(parent != NULL && name != NULL);
 
-        down_read(&parent->lpe_rw_sem);
+        cfs_down_read(&parent->lpe_rw_sem);
         lpe = cfs_hash_lookup(parent->lpe_hash_t, (void *)name);
-        up_read(&parent->lpe_rw_sem);
+        cfs_up_read(&parent->lpe_rw_sem);
 
         return lpe;
 }
@@ -407,18 +408,18 @@ _add_param(const char *name, mode_t mode, struct libcfs_param_entry *parent)
         }
         lpe->lpe_data = NULL;
         lpe->lpe_cb_sfops = NULL;
-        init_rwsem(&lpe->lpe_rw_sem);
+        cfs_init_rwsem(&lpe->lpe_rw_sem);
         lpe->lpe_mode = mode;
         /* Init ref count to 1 to avoid deletion */
-        atomic_set(&lpe->lpe_refcount, 1);
+        cfs_atomic_set(&lpe->lpe_refcount, 1);
 
-        down_write(&parent->lpe_rw_sem);
+        cfs_down_write(&parent->lpe_rw_sem);
         rc = cfs_hash_add_unique(parent->lpe_hash_t, (char *)name,
                                  &lpe->lpe_hash_n);
         if (!rc)
                 lpe->lpe_parent = parent;
 fail:
-        up_write(&parent->lpe_rw_sem);
+        cfs_up_write(&parent->lpe_rw_sem);
         if (rc) {
                 free_param(lpe);
                 lpe = NULL;
@@ -501,7 +502,7 @@ static void _remove_param(struct libcfs_param_entry *lpe)
 
         LASSERT(lpe != NULL);
 
-        down_write(&libcfs_param_sem);
+        cfs_down_write(&libcfs_param_sem);
         parent = lpe->lpe_parent;
         rm_lpe = libcfs_param_get(lpe);
         while (1) {
@@ -516,18 +517,18 @@ static void _remove_param(struct libcfs_param_entry *lpe)
                         libcfs_param_put(temp);
                 }
                 temp = rm_lpe->lpe_parent;
-                down_write(&temp->lpe_rw_sem);
+                cfs_down_write(&temp->lpe_rw_sem);
                 CDEBUG(D_INFO, "remove %s from %s\n", rm_lpe->lpe_name, temp->lpe_name);
                 rm_lpe = cfs_hash_del_key(temp->lpe_hash_t,
                                           (void *)rm_lpe->lpe_name);
                 libcfs_param_put(rm_lpe);
-                up_write(&temp->lpe_rw_sem);
+                cfs_up_write(&temp->lpe_rw_sem);
 
                 if(temp == parent)
                         break;
                 rm_lpe = libcfs_param_get(temp);
         }
-        up_write(&libcfs_param_sem);
+        cfs_up_write(&libcfs_param_sem);
 }
 
 /**
@@ -626,9 +627,9 @@ int list_param_thread(void *data)
         lpcd.lpcd_lpph = lpph;
         lpcd.lpcd_pos = &pos;
 
-        down_write(&parent->lpe_rw_sem);
+        cfs_down_write(&parent->lpe_rw_sem);
         cfs_hash_for_each(parent->lpe_hash_t, list_param_cb, &lpcd);
-        up_write(&parent->lpe_rw_sem);
+        cfs_up_write(&parent->lpe_rw_sem);
 
         libcfs_param_put(parent);
         libcfs_param_pipe_write(lta->lta_fp, lpph, LPPH_MSG_SHUTDOWN);
@@ -821,7 +822,7 @@ static int libcfs_param_seq_open(struct libcfs_param_entry *lpe,
         seqf = LIBCFS_FILE_PRIVATE(args->lpsa_file);
         LASSERT(seqf != NULL);
         /* This seqf might be init already in linux system */
-        mutex_init(&seqf->lock);
+        cfs_mutex_init(&seqf->lock);
         seqf->buf = args->lpsa_buf;
         if (buf)
                 memcpy(seqf->buf, buf, count);
@@ -967,7 +968,7 @@ static int libcfs_param_seq_read(char *ubuf, loff_t *loff, int count,
         if (bytes > left_bytes)
                 GOTO(out, rc = left_bytes - bytes);
         if (left_bytes >= bytes) {
-                if (copy_to_user(ubuf, output, bytes))
+                if (cfs_copy_to_user(ubuf, output, bytes))
                         GOTO(out, rc = -EFAULT);
                 left_bytes -= bytes;
                 ubuf += bytes;
@@ -994,7 +995,7 @@ static int libcfs_param_seq_read(char *ubuf, loff_t *loff, int count,
                         continue;
                 }
                 if (left_bytes >= bytes) {
-                        if (copy_to_user(ubuf, format_buf, bytes)) {
+                        if (cfs_copy_to_user(ubuf, format_buf, bytes)) {
                                 rc = -EFAULT;
                                 break;
                         }
@@ -1041,7 +1042,7 @@ static int libcfs_param_normal_read(char *buf, loff_t *ppos,
                         rc = bytes;
                         break;
                 }
-                if (copy_to_user(buf, page, bytes)) {
+                if (cfs_copy_to_user(buf, page, bytes)) {
                         rc = -EFAULT;
                         break;
                 }
@@ -1078,12 +1079,12 @@ int libcfs_param_read(const char *path, char *buf, int nbytes, loff_t *ppos,
         *eof = 0;
         count = (CFS_PAGE_SIZE > nbytes) ? nbytes : CFS_PAGE_SIZE;
 
-        down_read(&entry->lpe_rw_sem);
+        cfs_down_read(&entry->lpe_rw_sem);
         if (IS_SEQ_LPE(entry))
                 rc = libcfs_param_seq_read(buf, ppos, count, eof, entry);
         else if (entry->lpe_cb_read != NULL)
                 rc = libcfs_param_normal_read(buf, ppos, count, eof, entry);
-        up_read(&entry->lpe_rw_sem);
+        cfs_up_read(&entry->lpe_rw_sem);
 
         libcfs_param_put(entry);
         return rc;
@@ -1134,14 +1135,14 @@ int libcfs_param_write(const char *path, char *buf, int count)
                 return -EINVAL;
         }
 
-        down_write(&entry->lpe_rw_sem);
+        cfs_down_write(&entry->lpe_rw_sem);
         if (IS_SEQ_LPE(entry))
                 rc = libcfs_seq_file_write(buf, count, entry);
         else if (entry->lpe_cb_write != NULL)
                 rc = entry->lpe_cb_write(NULL, buf, count, entry->lpe_data);
         else
                 GOTO(out, rc = -EIO);
-        up_write(&entry->lpe_rw_sem);
+        cfs_up_write(&entry->lpe_rw_sem);
 out:
         libcfs_param_put(entry);
         return rc;
@@ -1260,7 +1261,7 @@ static void libcfs_param_change_mode(struct libcfs_param_ctl_table *table,
                 if (lpe == NULL)
                         continue;
                 /* for lnet write-once params */
-                down_write(&lpe->lpe_rw_sem);
+                cfs_down_write(&lpe->lpe_rw_sem);
                 if (table->writeable_before_startup == 1 &&
                     lpe->lpe_cb_write != NULL) {
                         if (lpe->lpe_mode & S_IWUSR)
@@ -1268,7 +1269,7 @@ static void libcfs_param_change_mode(struct libcfs_param_ctl_table *table,
                         else
                                 lpe->lpe_mode |= S_IWUSR;
                 }
-                up_write(&lpe->lpe_rw_sem);
+                cfs_up_write(&lpe->lpe_rw_sem);
                 libcfs_param_put(lpe);
         }
 }
@@ -1297,9 +1298,9 @@ void libcfs_param_change_mode(struct libcfs_param_entry *lpe, mode_t mode)
 
         entry = libcfs_param_get(lpe);
 
-        down_write(&entry->lpe_rw_sem);
+        cfs_down_write(&entry->lpe_rw_sem);
         entry->lpe_mode = mode;
-        up_write(&entry->lpe_rw_sem);
+        cfs_up_write(&entry->lpe_rw_sem);
 
         libcfs_param_put(entry);
 }
@@ -1325,12 +1326,12 @@ int libcfs_param_change_mode(const char *name, struct libcfs_param_entry *lpe,
 
         if (entry == NULL)
                 return -EINVAL;
-        down_write(&entry->lpe_rw_sem);
+        cfs_down_write(&entry->lpe_rw_sem);
         if (flag == 1)
                 entry->lpe_mode |= S_IWUSR;
         else (flag == 0)
                 entry->lpe_mode ~= S_IWUSR;
-        up_write(&entry->lpe_rw_sem);
+        cfs_up_write(&entry->lpe_rw_sem);
 
         libcfs_param_put(entry);
 
@@ -1347,7 +1348,7 @@ int libcfs_param_copy(int flag, char *dest, const char *src, int count)
 {
         if (flag & LIBCFS_PARAM_ACCESS)
                 memcpy(dest, src, count);
-        else if (copy_from_user(dest, src, count))
+        else if (cfs_copy_from_user(dest, src, count))
                 return -EFAULT;
         return 0;
 }

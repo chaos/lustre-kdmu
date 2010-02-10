@@ -50,7 +50,7 @@ int libcfs_ioctl_getdata(char **buf, int *len, void *arg)
         ENTRY;
 
         
-        err = copy_from_user(&hdr, (void *)arg, sizeof(hdr));
+        err = cfs_copy_from_user(&hdr, (void *)arg, sizeof(hdr));
 
         if (hdr.ioc_version != LIBCFS_IOCTL_VERSION) {
                 CERROR("PORTALS: version mismatch kernel vs application\n");
@@ -79,7 +79,7 @@ int libcfs_ioctl_getdata(char **buf, int *len, void *arg)
         *len = hdr.ioc_len;
         data = (struct libcfs_ioctl_data *)(*buf);
 
-        err = copy_from_user(*buf, (void *)arg, hdr.ioc_len);
+        err = cfs_copy_from_user(*buf, (void *)arg, hdr.ioc_len);
         if (err)
                 GOTO(cleanup, err);
 
@@ -103,7 +103,7 @@ cleanup:
 
 int libcfs_ioctl_popdata(void *arg, void *data, int size)
 {
-	if (copy_to_user((char *)arg, data, size))
+	if (cfs_copy_to_user((char *)arg, data, size))
 		return -EFAULT;
 	return 0;
 }

@@ -114,7 +114,7 @@ unsigned long long lu_time_stamp_get(void)
          */
 #if defined(CONFIG_X86) && !defined(CONFIG_X86_64)
 	/*
-	 * do_gettimeofday() goes backwards sometimes :(.  Usethe TSC
+	 * cfs_gettimeofday() goes backwards sometimes :(.  Usethe TSC
 	 */
 	unsigned long long ret;
 
@@ -125,7 +125,7 @@ unsigned long long lu_time_stamp_get(void)
 	struct timeval now;
 	unsigned long long ret;
 
-	do_gettimeofday(&now);
+	cfs_gettimeofday(&now);
 	ret = now.tv_sec;
 	ret *= 1000000;
 	ret += now.tv_usec;

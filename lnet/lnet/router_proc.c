@@ -106,10 +106,10 @@ typedef struct {
 int
 lnet_route_seq_seek (lnet_route_seq_iterator_t *lrsi, loff_t off)
 {
-        struct list_head  *n;
-        struct list_head  *r;
-        int                rc;
-        loff_t             here;
+        cfs_list_t  *n;
+        cfs_list_t  *r;
+        int          rc;
+        loff_t       here;
 
         if (off == 0) {
                 lrsi->lrsi_net = NULL;
@@ -144,14 +144,14 @@ lnet_route_seq_seek (lnet_route_seq_iterator_t *lrsi, loff_t off)
 
         while (n != &the_lnet.ln_remote_nets) {
                 lnet_remotenet_t *rnet =
-                        list_entry(n, lnet_remotenet_t, lrn_list);
+                        cfs_list_entry(n, lnet_remotenet_t, lrn_list);
 
                 if (r == NULL)
                         r = rnet->lrn_routes.next;
 
                 while (r != &rnet->lrn_routes) {
                         lnet_route_t *re =
-                                list_entry(r, lnet_route_t,
+                                cfs_list_entry(r, lnet_route_t,
                                            lr_list);
 
                         if (here == off) {
@@ -304,7 +304,7 @@ typedef struct {
 int
 lnet_router_seq_seek (lnet_router_seq_iterator_t *lrtrsi, loff_t off)
 {
-        struct list_head  *r;
+        cfs_list_t        *r;
         lnet_peer_t       *lp;
         int                rc;
         loff_t             here;
@@ -340,7 +340,7 @@ lnet_router_seq_seek (lnet_router_seq_iterator_t *lrtrsi, loff_t off)
         lrtrsi->lrtrsi_off     = off;
 
         while (r != &the_lnet.ln_routers) {
-                lnet_peer_t *rtr = list_entry(r, lnet_peer_t, lp_rtr_list);
+                lnet_peer_t *rtr = cfs_list_entry(r, lnet_peer_t, lp_rtr_list);
 
                 if (here == off) {
                         lrtrsi->lrtrsi_router = rtr;
@@ -510,7 +510,7 @@ int
 lnet_peer_seq_seek (lnet_peer_seq_iterator_t *lpsi, loff_t off)
 {
         int                idx;
-        struct list_head  *p;
+        cfs_list_t        *p;
         loff_t             here;
         int                rc;
 
@@ -551,8 +551,8 @@ lnet_peer_seq_seek (lnet_peer_seq_iterator_t *lpsi, loff_t off)
                         p = the_lnet.ln_peer_hash[idx].next;
 
                 while (p != &the_lnet.ln_peer_hash[idx]) {
-                        lnet_peer_t *lp = list_entry(p, lnet_peer_t,
-                                                     lp_hashlist);
+                        lnet_peer_t *lp = cfs_list_entry(p, lnet_peer_t,
+                                                         lp_hashlist);
 
                         if (here == off) {
                                 lpsi->lpsi_idx = idx;
@@ -880,7 +880,7 @@ typedef struct {
 int
 lnet_ni_seq_seek (lnet_ni_seq_iterator_t *lnsi, loff_t off)
 {
-        struct list_head  *n;
+        cfs_list_t        *n;
         loff_t             here;
         int                rc;
 
@@ -910,7 +910,7 @@ lnet_ni_seq_seek (lnet_ni_seq_iterator_t *lnsi, loff_t off)
 
         while (n != &the_lnet.ln_nis) {
                 if (here == off) {
-                        lnsi->lnsi_ni = list_entry(n, lnet_ni_t, ni_list);
+                        lnsi->lnsi_ni = cfs_list_entry(n, lnet_ni_t, ni_list);
                         rc = 0;
                         goto out;
                 }

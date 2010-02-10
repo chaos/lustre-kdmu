@@ -213,7 +213,7 @@ int lprocfs_filter_rd_fmd_max_age(char *page, char **start, off_t off,
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         *eof = 1;
-        temp = obd->u.filter.fo_fmd_max_age / HZ;
+        temp = obd->u.filter.fo_fmd_max_age / CFS_HZ;
 
         return libcfs_param_snprintf(page, count, data, LP_D32, "%u\n", temp);
 }
@@ -311,9 +311,9 @@ static int lprocfs_filter_wr_cache(libcfs_file_t * file, const char *buffer,
         if (rc)
                 return rc;
 
-        spin_lock_bh(&obd->obd_processing_task_lock);
+        cfs_spin_lock_bh(&obd->obd_processing_task_lock);
         obd->u.filter.fo_read_cache = val;
-        spin_unlock_bh(&obd->obd_processing_task_lock);
+        cfs_spin_unlock_bh(&obd->obd_processing_task_lock);
         return count;
 }
 
@@ -346,9 +346,9 @@ static int lprocfs_filter_wr_wcache(libcfs_file_t * file, const char *buffer,
         if (rc)
                 return rc;
 
-        spin_lock_bh(&obd->obd_processing_task_lock);
+        cfs_spin_lock_bh(&obd->obd_processing_task_lock);
         obd->u.filter.fo_writethrough_cache = val;
-        spin_unlock_bh(&obd->obd_processing_task_lock);
+        cfs_spin_unlock_bh(&obd->obd_processing_task_lock);
         return count;
 }
 

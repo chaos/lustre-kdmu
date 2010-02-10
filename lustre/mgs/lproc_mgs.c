@@ -179,7 +179,7 @@ int lproc_mgs_cleanup(struct obd_device *obd)
         if (mgs->mgs_proc_live) {
                 /* Should be no live entries */
                 cfs_hash_t *hash = mgs->mgs_proc_live->lpe_hash_t;
-                LASSERT(atomic_read(&hash->hs_count) == 0);
+                LASSERT(cfs_atomic_read(&hash->hs_count) == 0);
                 lprocfs_remove(&mgs->mgs_proc_live);
                 mgs->mgs_proc_live = NULL;
         }

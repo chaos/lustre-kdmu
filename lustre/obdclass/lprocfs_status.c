@@ -531,7 +531,7 @@ int lprocfs_rd_atomic(char *page, char **start, off_t off,
         *eof = 1;
 
         return libcfs_param_snprintf(page, count, data, LP_D32, "%d\n",
-                                     atomic_read(atom));
+                                     cfs_atomic_read(atom));
 }
 
 int lprocfs_wr_atomic(libcfs_file_t *file, const char *buffer,
@@ -1213,7 +1213,7 @@ int lprocfs_obd_cleanup(struct obd_device *obd)
         if (obd->obd_proc_exports_entry) {
                 /* Should be no exports left */
                 cfs_hash_t *hash = obd->obd_proc_exports_entry->lpe_hash_t;
-                LASSERT(atomic_read(&hash->hs_count) == 0);
+                LASSERT(cfs_atomic_read(&hash->hs_count) == 0);
                 lprocfs_remove(&obd->obd_proc_exports_entry);
                 obd->obd_proc_exports_entry = NULL;
         }

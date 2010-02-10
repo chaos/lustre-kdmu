@@ -311,15 +311,16 @@ static void *lu_ref_seq_start(libcfs_seq_file_t *seq, loff_t *pos)
         struct lu_ref *ref = LIBCFS_SEQ_PRIVATE(seq);
 
         if (*pos != 0) {
-                if (list_empty(&ref->lf_linkage))
+                if (cfs_list_empty(&ref->lf_linkage))
                         ref = NULL;
         } else {
-                spin_lock(&lu_ref_refs_guard);
-                if (!list_empty(&ref->lf_linkage) || list_empty(&lu_ref_refs))
+                cfs_spin_lock(&lu_ref_refs_guard);
+                if (!cfs_list_empty(&ref->lf_linkage) ||
+                    cfs_list_empty(&lu_ref_refs))
                         ref = NULL;
                 else
-                        list_add(&ref->lf_linkage, &lu_ref_refs);
-                spin_unlock(&lu_ref_refs_guard);
+                        cfs_list_add(&ref->lf_linkage, &lu_ref_refs);
+                cfs_spin_unlock(&lu_ref_refs_guard);
         }
         return ref;
 }

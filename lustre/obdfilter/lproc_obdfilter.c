@@ -427,9 +427,9 @@ int lprocfs_filter_wr_degraded(libcfs_file_t *file, const char *buffer,
         if (rc)
                 return rc;
 
-        spin_lock(&obd->obd_osfs_lock);
+        cfs_spin_lock(&obd->obd_osfs_lock);
         obd->u.filter.fo_raid_degraded = !!val;
-        spin_unlock(&obd->obd_osfs_lock);
+        cfs_spin_unlock(&obd->obd_osfs_lock);
         return count;
 }
 
