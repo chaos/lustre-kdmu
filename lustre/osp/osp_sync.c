@@ -134,14 +134,14 @@ static inline int osp_sync_has_new_job(struct osp_device *d)
 
 static inline int osp_sync_low_in_progress(struct osp_device *d)
 {
-        return d->opd_syn_rpc_in_progress < OSP_MAX_IN_PROGRESS;
+        return d->opd_syn_rpc_in_progress < d->opd_syn_max_rpc_in_progress;
 }
 
 static inline int osp_sync_has_work(struct osp_device *d)
 {
         /* has locally committed and low in-flight? */
         if (!cfs_list_empty(&d->opd_syn_committed_here)
-                        && d->opd_syn_rpc_in_flight < OSP_MAX_IN_FLIGHT)
+                        && d->opd_syn_rpc_in_flight < d->opd_syn_max_rpc_in_flight)
                 return 1;
 
         /* has new/old changes and low in-progress? */
@@ -603,10 +603,10 @@ static void osp_sync_send_new_rpcs(struct osp_device *d)
         if (cfs_list_empty(&d->opd_syn_committed_here))
                 return;
 
-        if (d->opd_syn_rpc_in_flight >= OSP_MAX_IN_FLIGHT)
+        if (d->opd_syn_rpc_in_flight >= d->opd_syn_max_rpc_in_flight)
                 return;
 
-        while (d->opd_syn_rpc_in_flight < OSP_MAX_IN_FLIGHT) {
+        while (d->opd_syn_rpc_in_flight < d->opd_syn_max_rpc_in_flight) {
                 cfs_spin_lock(&d->opd_syn_lock);
                 if (!cfs_list_empty(&d->opd_syn_committed_here)) {
                         j = cfs_list_entry(d->opd_syn_committed_here.next,
@@ -859,6 +859,8 @@ int osp_sync_init(struct osp_device *d)
         /*
          * Start synchronization thread
          */
+        d->opd_syn_max_rpc_in_flight = OSP_MAX_IN_FLIGHT;
+        d->opd_syn_max_rpc_in_progress = OSP_MAX_IN_PROGRESS;
         cfs_spin_lock_init(&d->opd_syn_lock);
         cfs_waitq_init(&d->opd_syn_waitq);
         cfs_waitq_init(&d->opd_syn_thread.t_ctl_waitq);

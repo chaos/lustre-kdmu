@@ -286,9 +286,10 @@ out:
 static int osp_init0(const struct lu_env *env, struct osp_device *m,
                       struct lu_device_type *ldt, struct lustre_cfg *cfg)
 {
-        struct obd_import *imp;
-        class_uuid_t       uuid;
-        int                rc;
+        struct lprocfs_static_vars  lvars = { 0 };
+        struct obd_import          *imp;
+        class_uuid_t                uuid;
+        int                         rc;
         ENTRY;
 
         dt_device_init(&m->opd_dt_dev, ldt);
@@ -297,7 +298,6 @@ static int osp_init0(const struct lu_env *env, struct osp_device *m,
                 CERROR("can't find index in configuration\n");
                 RETURN(-EINVAL);
         }
-
 
         rc = osp_connect_to_osd(env, m, lustre_cfg_string(cfg, 3));
         if (rc)
@@ -319,7 +319,11 @@ static int osp_init0(const struct lu_env *env, struct osp_device *m,
 
         /* XXX: how do we do this well? */
         m->opd_obd->obd_set_up = 1;
-       
+
+        lprocfs_osp_init_vars(&lvars);
+        if (lprocfs_obd_setup(m->opd_obd, lvars.obd_vars) == 0)
+                ptlrpc_lprocfs_register_obd(m->opd_obd);
+
         /*
          * Initialize last id from the storage - will be used in orphan cleanup
          */
@@ -418,6 +422,9 @@ static struct lu_device *osp_device_fini(const struct lu_env *env,
         client_destroy_import(imp);
 
         LASSERT(m->opd_obd);
+        ptlrpc_lprocfs_unregister_obd(m->opd_obd);
+        lprocfs_obd_cleanup(m->opd_obd);
+
         rc = client_obd_cleanup(m->opd_obd);
         LASSERTF(rc == 0, "error %d\n", rc);
 
@@ -527,6 +534,72 @@ static int osp_obd_disconnect(struct obd_export *exp)
         RETURN(rc);
 }
 
+/*
+ * lprocfs helpers still use OBD API, let's keep obd_statfs() support for a while
+ */
+static int osp_obd_statfs(struct obd_device *obd, struct obd_statfs *osfs,
+                          __u64 max_age, __u32 flags)
+{
+        struct obd_statfs     *msfs;
+        struct ptlrpc_request *req;
+        struct obd_import     *imp = NULL;
+        int rc;
+        ENTRY;
+
+        /*Since the request might also come from lprocfs, so we need
+         *sync this with client_disconnect_export Bug15684*/
+        cfs_down_read(&obd->u.cli.cl_sem);
+        if (obd->u.cli.cl_import)
+                imp = class_import_get(obd->u.cli.cl_import);
+        cfs_up_read(&obd->u.cli.cl_sem);
+        if (!imp)
+                RETURN(-ENODEV);
+
+        /* We could possibly pass max_age in the request (as an absolute
+         * timestamp or a "seconds.usec ago") so the target can avoid doing
+         * extra calls into the filesystem if that isn't necessary (e.g.
+         * during mount that would help a bit).  Having relative timestamps
+         * is not so great if request processing is slow, while absolute
+         * timestamps are not ideal because they need time synchronization. */
+        req = ptlrpc_request_alloc(imp, &RQF_OST_STATFS);
+
+        class_import_put(imp);
+
+        if (req == NULL)
+                RETURN(-ENOMEM);
+
+        rc = ptlrpc_request_pack(req, LUSTRE_OST_VERSION, OST_STATFS);
+        if (rc) {
+                ptlrpc_request_free(req);
+                RETURN(rc);
+        }
+        ptlrpc_request_set_replen(req);
+        req->rq_request_portal = OST_CREATE_PORTAL;
+        ptlrpc_at_set_req_timeout(req);
+
+        if (flags & OBD_STATFS_NODELAY) {
+                /* procfs requests not want stat in wait for avoid deadlock */
+                req->rq_no_resend = 1;
+                req->rq_no_delay = 1;
+        }
+
+        rc = ptlrpc_queue_wait(req);
+        if (rc)
+                GOTO(out, rc);
+
+        msfs = req_capsule_server_get(&req->rq_pill, &RMF_OBD_STATFS);
+        if (msfs == NULL) {
+                GOTO(out, rc = -EPROTO);
+        }
+
+        *osfs = *msfs;
+
+        EXIT;
+ out:
+        ptlrpc_req_finished(req);
+        return rc;
+}
+
 static int osp_import_event(struct obd_device *obd,
                             struct obd_import *imp,
                             enum obd_import_event event)
@@ -600,13 +673,14 @@ static struct obd_ops osp_obd_device_ops = {
         .o_connect              = osp_obd_connect,
         .o_disconnect           = osp_obd_disconnect,
         .o_import_event         = osp_import_event,
+        .o_statfs               = osp_obd_statfs,
 };
 
 
 static int __init osp_mod_init(void)
 {
         struct lprocfs_static_vars lvars;
-        //lprocfs_osp_init_vars(&lvars);
+        lprocfs_osp_init_vars(&lvars);
 
         return class_register_type(&osp_obd_device_ops, NULL, lvars.module_vars,
                                    LUSTRE_OSP_NAME, &osp_device_type);

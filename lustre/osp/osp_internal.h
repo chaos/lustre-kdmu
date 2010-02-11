@@ -117,8 +117,10 @@ struct osp_device {
         int                             opd_syn_sync_in_progress;
         /* number of RPCs in flight - flow control */
         int                             opd_syn_rpc_in_flight;
+        int                             opd_syn_max_rpc_in_flight;
         /* number of RPC in processing (including non-committed by OST) */
         int                             opd_syn_rpc_in_progress;
+        int                             opd_syn_max_rpc_in_progress;
         /* osd api's commit cb control structure */
         struct dt_txn_callback          opd_syn_txn_cb;
 
@@ -209,6 +211,9 @@ int osp_sync_declare_add(const struct lu_env *env, struct osp_object *o,
 int osp_sync_add(const struct lu_env *env, struct osp_object *d,
                  llog_op_type type, struct thandle *th);
 int osp_sync_fini(struct osp_device *d);
+
+/* lproc_osp.c */
+void lprocfs_osp_init_vars(struct lprocfs_static_vars *lvars);
 
 #endif
 

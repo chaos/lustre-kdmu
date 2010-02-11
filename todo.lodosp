@@ -28,7 +28,7 @@
 
 * OSP TODO
    - version of llog_cat_process() working in current thread
-   - adaptive precreation (shouldn't block in most cases)
+   - adaptive precreation (shouldn't block in most cases), tunables in procfs
    - support for CMD (group = mds #) (where do we take mds #? encoded in config?)
    - batching in osp_sync.c so that the thread doesn't wake up for a single job
    - at umount be able to about in-flight PRCs
@@ -40,10 +40,12 @@
    - osp_sync() to flush changes to OST
    - osp_create() to support with initial non-zero size (RPC to OST?) 
    - high 32bit in uid/gid (osp_sync_new_setattr())
-   - lprocfs support
    - small optimizations here and there
    - batch support
 
+* tests
+   - s/lov/lod/
+   - s/osc/osp/
 
 
 * testing scenarios
@@ -59,6 +61,8 @@ Questions:
    - how to test QoS/RR
    - how do we block in creation till at least one OST is connected?
    - what ->statfs() returns when connection is down?
+   - clear method to specify to lod whether striping is needed
+     
 
 
 
