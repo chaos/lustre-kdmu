@@ -4,13 +4,16 @@
    - error handling
    - a way to find lu_site
 
+* MDT
+   - call mdd_sync(), not osd_sync()
+
 * MDD, OSD
    - ->do_create() to set initial attributes
    - mdd never manipulate striping
+   - add ->mdo_sync() and mdd_sync()
 
 * LOD TODO
    - call osp with ->ldo_recovery_complete() to initiate orphan cleanup
-   - lod_sync() to call all known osp
    - lod to pass initial object size if case of late object creation
    - support for >1K OSTs (dynamic lod_ost in struct lod_device)
    - support for different LOV EA formats

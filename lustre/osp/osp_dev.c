@@ -183,14 +183,16 @@ static int osp_statfs(const struct lu_env *env,
 static int osp_sync(const struct lu_env *env, struct dt_device *dev)
 {
         struct osp_device *d = dt2osp_dev(dev);
-        struct dt_device   *next = d->opd_storage;
+        struct dt_device  *next = d->opd_storage;
         int                 rc;
         ENTRY;
 
-        LBUG();
-        rc = next->dd_ops->dt_sync(env, next);
+        CERROR("not implemented yet\n");
+        /*
+         * XXX: wake up sync thread, command it to start flushing asap?
+         */
 
-        RETURN(rc);
+        RETURN(0);
 }
 
 static const struct dt_device_operations osp_dt_ops = {
