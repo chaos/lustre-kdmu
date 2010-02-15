@@ -2209,7 +2209,7 @@ static int osd_xattr_get(const struct lu_env *env,
 
 
 static int osd_declare_xattr_set(const struct lu_env *env, struct dt_object *dt,
-                                 const int buflen, const char *name, int fl,
+                                 const struct lu_buf *buf, const char *name, int fl,
                                  struct thandle *handle)
 {
         struct osd_thandle *oh;

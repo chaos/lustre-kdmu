@@ -219,6 +219,7 @@ struct dt_object_format {
         enum dt_format_type dof_type;
         union {
                 struct dof_regular {
+                        int striped;
                 } dof_reg;
                 struct dof_dir {
                 } dof_dir;
@@ -311,7 +312,8 @@ struct dt_object_operations {
          */
         int   (*do_declare_xattr_set)(const struct lu_env *env,
                                       struct dt_object *dt,
-                                      const int buflen, const char *name, int fl,
+                                      const struct lu_buf *buf,
+                                      const char *name, int fl,
                                       struct thandle *handle);
         int   (*do_xattr_set)(const struct lu_env *env,
                               struct dt_object *dt, const struct lu_buf *buf,
@@ -988,10 +990,11 @@ static inline int dt_insert(const struct lu_env *env,
 
 static inline int dt_declare_xattr_set(const struct lu_env *env,
                                       struct dt_object *dt,
-                                      const int buflen, const char *name, int fl,
+                                      const struct lu_buf *buf,
+                                      const char *name, int fl,
                                       struct thandle *th)
 {
-        return dt->do_ops->do_declare_xattr_set(env, dt, buflen, name, fl, th);
+        return dt->do_ops->do_declare_xattr_set(env, dt, buf, name, fl, th);
 }
 
 static inline int dt_xattr_set(const struct lu_env *env,

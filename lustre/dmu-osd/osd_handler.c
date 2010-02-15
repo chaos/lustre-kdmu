@@ -1866,7 +1866,7 @@ int osd_xattr_get(const struct lu_env *env, struct dt_object *dt,
 }
 
 int osd_declare_xattr_set(const struct lu_env *env, struct dt_object *dt,
-                          const int buflen, const char *name, int fl,
+                          const struct lu_buf *buf, const char *name, int fl,
                           struct thandle *handle)
 {
         struct osd_object  *obj = osd_dt_obj(dt);
@@ -1878,7 +1878,7 @@ int osd_declare_xattr_set(const struct lu_env *env, struct dt_object *dt,
         oh = container_of0(handle, struct osd_thandle, ot_super);
 
         cfs_mutex_down(&obj->oo_guard);
-        udmu_xattr_declare_set(&osd->od_objset, obj->oo_db, buflen,
+        udmu_xattr_declare_set(&osd->od_objset, obj->oo_db, buf->lb_len,
                                name, oh->ot_tx);
         cfs_mutex_up(&obj->oo_guard);
 
