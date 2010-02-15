@@ -59,6 +59,15 @@
 #include "lod_internal.h"
 
 static const struct dt_body_operations lod_body_lnk_ops;
+static int lod_declare_striped_object(const struct lu_env *env,
+                                      struct dt_object *dt,
+                                      struct lu_attr *attr,
+                                      struct thandle *th);
+static int lod_striping_create(const struct lu_env *env,
+                               struct dt_object *dt,
+                               struct lu_attr *attr,
+                               struct dt_object_format *dof,
+                               struct thandle *th);
 
 static int lod_index_lookup(const struct lu_env *env, struct dt_object *dt,
                             struct dt_rec *rec, const struct dt_key *key,
@@ -355,16 +364,39 @@ static int lod_xattr_get(const struct lu_env *env, struct dt_object *dt,
         RETURN(rc);
 }
 
+/*
+ * LOV xattr is a storage for striping, and LOD owns this xattr.
+ * but LOD allows others to control striping to some extent
+ * - to reset strping
+ * - to set new defined striping
+ * - to set new semi-defined striping
+ *   - number of stripes is defined
+ *   - number of stripes + osts are defined
+ *   - ??
+ */
 static int lod_declare_xattr_set(const struct lu_env *env,
                                  struct dt_object *dt,
-                                 const int buflen, const char *name, int fl,
+                                 const struct lu_buf *buf,
+                                 const char *name, int fl,
                                  struct thandle *th)
 {
         struct dt_object   *next = dt_object_child(dt);
+        struct lu_attr      attr;
+        __u32               mode;
         int                 rc;
         ENTRY;
 
-        rc = next->do_ops->do_declare_xattr_set(env, next, buflen, name, fl, th);
+        mode = dt->do_lu.lo_header->loh_attr & S_IFMT;
+        if (S_ISREG(mode) && !strcmp(name, XATTR_NAME_LOV)) {
+                LASSERT(dt_object_exists(next));
+                rc = dt_attr_get(env, next, &attr, BYPASS_CAPA);
+                if (rc)
+                        RETURN(rc);
+                rc = lod_declare_striped_object(env, dt, &attr, th);
+                RETURN(rc);
+        }
+
+        rc = next->do_ops->do_declare_xattr_set(env, next, buf, name, fl, th);
 
         RETURN(rc);
 }
@@ -376,14 +408,16 @@ static int lod_xattr_set(const struct lu_env *env,
 {
         struct dt_object   *next = dt_object_child(dt);
         struct lod_object  *l = lod_dt_obj(dt);
+        __u32               attr;
         int                 rc;
         ENTRY;
 
+        attr = dt->do_lu.lo_header->loh_attr & S_IFMT;
         /*
          * XXX: if default per-directory striping is setting,
          * shouldn't we make sure it's sane?
          */
-        if (S_ISDIR(dt->do_lu.lo_header->loh_attr & S_IFMT)) {
+        if (S_ISDIR(attr)) {
                 /*
                  * some xattr is changing. that might be lovea storing
                  * default striping for files in this directory
@@ -392,8 +426,16 @@ static int lod_xattr_set(const struct lu_env *env,
                 l->mbo_striping_cached = 0;
                 l->mbo_def_stripe_size = 0;
                 l->mbo_def_stripenr = 0;
+
+        } else if (S_ISREG(attr) && !strcmp(name, XATTR_NAME_LOV)) {
+                rc = lod_striping_create(env, dt, NULL, NULL, th);
+                LASSERT(rc == 0);
+                RETURN(rc);
         }
 
+        /*
+         * behave transparantly for all other EAs
+         */
         rc = next->do_ops->do_xattr_set(env, next, buf, name, fl, th, capa);
 
         RETURN(rc);
@@ -550,25 +592,72 @@ static void lod_ah_init(const struct lu_env *env,
         EXIT;
 }
 
+#define ll_do_div64(aaa,bbb)    do_div((aaa), (bbb))
+/*
+ * this function handles a special case when truncate was done
+ * on a stripeless object and now striping is being created
+ * we can't lose that size, so we have to propagate it to newly
+ * created object
+ */
+static int lod_declare_init_size(const struct lu_env *env,
+                                 struct dt_object *dt,
+                                 struct thandle *th)
+{
+        struct dt_object   *next = dt_object_child(dt);
+        struct lod_object  *mo = lod_dt_obj(dt);
+        struct lu_attr      attr;
+        uint64_t            size, offs;
+        int                 rc, stripe;
+        ENTRY;
+
+        /* the case is possible only when local object was created previously */
+        if (!dt_object_exists(next))
+                RETURN(0);
+
+        /* XXX: we support the simplest (RAID0) striping so far */
+        LASSERT(mo->mbo_stripe || mo->mbo_stripenr == 0);
+        LASSERT(mo->mbo_stripe_size > 0);
+
+        rc = dt_attr_get(env, next, &attr, BYPASS_CAPA);
+        LASSERT(attr.la_valid & LA_SIZE);
+        if (rc)
+                RETURN(rc);
+
+        size = attr.la_size;
+        if (size == 0)
+                RETURN(0);
+
+        /* ll_do_div64(a, b) returns a % b, and a = a / b */
+        ll_do_div64(size, (__u64) mo->mbo_stripe_size);
+        stripe = ll_do_div64(size, (__u64) mo->mbo_stripenr);
+
+        size = size * mo->mbo_stripe_size;
+        offs = attr.la_size;
+        size += ll_do_div64(offs, mo->mbo_stripe_size);
+
+        attr.la_valid = LA_SIZE;
+        attr.la_size = size;
+
+        rc = dt_declare_attr_set(env, mo->mbo_stripe[stripe], &attr, th);
+
+        RETURN(rc);
+}
+
 /**
  * Create declaration of striped object
  */
 static int lod_declare_striped_object(const struct lu_env *env,
                                       struct dt_object *dt,
                                       struct lu_attr *attr,
-                                      struct dt_allocation_hint *hint,
-                                      struct dt_object_format *dof,
                                       struct thandle *th)
 {
         struct dt_object   *next = dt_object_child(dt);
         struct lod_object  *mo = lod_dt_obj(dt);
         struct lod_device  *md = lu2lod_dev(mo->mbo_obj.do_lu.lo_dev);
-        int                 lmm_size;
+        struct lu_buf       buf;
         int                 rc, i;
         ENTRY;
 
-        LASSERT(dof->dof_type == DFT_REGULAR);
-        LASSERT(!dt_object_exists(&mo->mbo_obj));
         LASSERT(mo->mbo_stripenr > 0);
         LASSERT(mo->mbo_stripenr <= md->lod_ostnr);
 
@@ -592,8 +681,14 @@ static int lod_declare_striped_object(const struct lu_env *env,
         /*
          * declare storage for striping data
          */
-        lmm_size = lov_mds_md_size(mo->mbo_stripenr, LOV_MAGIC_V3);
-        rc = dt_declare_xattr_set(env, next, lmm_size, XATTR_NAME_LOV, 0, th);
+        buf.lb_len = lov_mds_md_size(mo->mbo_stripenr, LOV_MAGIC_V3);
+        rc = dt_declare_xattr_set(env, next, &buf, XATTR_NAME_LOV, 0, th);
+
+        /*
+         * if striping is created with local object's size > 0,
+         * we have to propagate this size to specific object
+         */
+        rc = lod_declare_init_size(env, dt, th);
 
 out:
         RETURN(rc);
@@ -606,14 +701,15 @@ static int lod_declare_object_create(const struct lu_env *env,
                                      struct dt_object_format *dof,
                                      struct thandle *th)
 {
-        struct dt_object    *next = dt_object_child(dt);
-        const struct lu_fid *fid = lu_object_fid(&dt->do_lu);
-        int                  rc;
+        struct dt_object   *next = dt_object_child(dt);
+        struct lod_object  *mo = lod_dt_obj(dt);
+        int                 rc;
         ENTRY;
 
         LASSERT(dof);
         LASSERT(attr);
         LASSERT(th);
+        LASSERT(!dt_object_exists(next));
 
         /*
          * first of all, we declare creation of local object
@@ -628,10 +724,45 @@ static int lod_declare_object_create(const struct lu_env *env,
         /*
          * it's lod_ah_init() who has decided the object will striped
          */
-        if (lod_dt_obj(dt)->mbo_stripenr > 0)
-                rc = lod_declare_striped_object(env, dt, attr, hint, dof, th);
+        if (dof->dof_type == DFT_REGULAR) {
+                /* callers don't want stripes */
+                /* XXX: all tricky interactions with ->ah_make_hint() decided
+                 * to use strping, then ->declare_create() behaving differently
+                 * should be cleaned */
+                if (dof->u.dof_reg.striped == 0)
+                        mo->mbo_stripenr = 0;
+                if (lod_dt_obj(dt)->mbo_stripenr > 0)
+                        rc = lod_declare_striped_object(env, dt, attr, th);
+        }
 
 out:
+        RETURN(rc);
+}
+
+static int lod_striping_create(const struct lu_env *env,
+                               struct dt_object *dt,
+                               struct lu_attr *attr,
+                               struct dt_object_format *dof,
+                               struct thandle *th)
+{
+        struct lod_object  *mo = lod_dt_obj(dt);
+        int                 rc, i;
+        ENTRY;
+
+        LASSERT(mo->mbo_stripe);
+        LASSERT(mo->mbo_stripe > 0);
+        LASSERT(mo->mbo_striping_cached == 0);
+
+        /* create all underlying objects */
+        for (i = 0; i < mo->mbo_stripenr; i++) {
+                LASSERT(mo->mbo_stripe[i]);
+                rc = dt_create(env, mo->mbo_stripe[i], attr, NULL, dof, th);
+
+                /* XXX: can't proceed with this OST? */
+                LASSERTF(rc == 0, "can't declare creation: %d\n", rc);
+        }
+        rc = lod_generate_and_set_lovea(env, mo, th);
+
         RETURN(rc);
 }
 
@@ -644,26 +775,14 @@ static int lod_object_create(const struct lu_env *env,
 {
         struct dt_object   *next = dt_object_child(dt);
         struct lod_object  *mo = lod_dt_obj(dt);
-        int                 rc, i;
+        int                 rc;
         ENTRY;
 
         /* create local object */
         rc = dt_create(env, next, attr, hint, dof, th);
 
-        if (mo->mbo_stripe) {
-                LASSERT(mo->mbo_stripe > 0);
-                LASSERT(mo->mbo_striping_cached == 0);
-
-                /* create all underlying objects */
-                for (i = 0; i < mo->mbo_stripenr; i++) {
-                        LASSERT(mo->mbo_stripe[i]);
-                        rc = dt_create(env, mo->mbo_stripe[i], attr, NULL, dof, th);
-
-                        /* XXX: can't proceed with this OST? */
-                        LASSERTF(rc == 0, "can't declare creation: %d\n", rc);
-                }
-                rc = lod_generate_and_set_lovea(env, mo, th);
-        }
+        if (mo->mbo_stripe)
+                rc = lod_striping_create(env, dt, attr, dof, th);
 
         RETURN(rc);
 }
