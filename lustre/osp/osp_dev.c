@@ -182,9 +182,6 @@ static int osp_statfs(const struct lu_env *env,
 
 static int osp_sync(const struct lu_env *env, struct dt_device *dev)
 {
-        struct osp_device *d = dt2osp_dev(dev);
-        struct dt_device  *next = d->opd_storage;
-        int                 rc;
         ENTRY;
 
         CERROR("not implemented yet\n");
@@ -643,7 +640,7 @@ static int osp_import_event(struct obd_device *obd,
 LU_KEY_INIT_FINI(osp, struct osp_thread_info);
 
 /* context key: osp_thread_key */
-LU_CONTEXT_KEY_DEFINE(osp, LCT_DT_THREAD);
+LU_CONTEXT_KEY_DEFINE(osp, LCT_DT_THREAD | LCT_MD_THREAD);
 
 LU_TYPE_INIT_FINI(osp, &osp_thread_key);
 
