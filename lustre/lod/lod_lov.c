@@ -272,7 +272,7 @@ int lod_generate_and_set_lovea(const struct lu_env *env,
         lmm->lmm_magic = cpu_to_le32(LOV_MAGIC_V3);
         lmm->lmm_pattern = cpu_to_le32(LOV_PATTERN_RAID0);
         lmm->lmm_object_id = cpu_to_le64(fid_flatten(fid)); /* XXX: what? */
-        lmm->lmm_object_gr = cpu_to_le64(mdt_to_obd_objgrp(0)); /* XXX: what? */
+        lmm->lmm_object_gr = 0; /* XXX: what? */
         lmm->lmm_stripe_size = cpu_to_le32(mo->mbo_stripe_size);
         lmm->lmm_stripe_count = cpu_to_le32(mo->mbo_stripenr);
         lmm->lmm_pool_name[0] = '\0';
