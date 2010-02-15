@@ -535,6 +535,85 @@ int osp_precreate_reserve(struct osp_device *d)
         RETURN(rc);
 }
 
+/*
+ * this function relies on reservation made before
+ */
+__u64 osp_precreate_get_id(struct osp_device *d)
+{
+        obd_id  objid;
+
+        /* grab next id from the pool */
+        cfs_spin_lock(&d->opd_pre_lock);
+        LASSERT(d->opd_pre_next <= d->opd_pre_last_created);
+        objid = d->opd_pre_next++;
+        d->opd_pre_reserved--;
+        cfs_spin_unlock(&d->opd_pre_lock);
+
+        return objid;
+}
+
+/*
+ *
+ */
+int osp_object_truncate(const struct lu_env *env, struct dt_object *dt, __u64 size)
+{
+        struct osp_thread_info *info = osp_env_info(env);
+        struct osp_device      *d = lu2osp_dev(dt->do_lu.lo_dev);
+        const struct lu_fid    *fid = lu_object_fid(&dt->do_lu);
+        struct ptlrpc_request  *req = NULL;
+        struct obd_import      *imp;
+        struct ost_body        *body;
+        int                     rc;
+        ENTRY;
+
+        imp = d->opd_obd->u.cli.cl_import;
+        LASSERT(imp);
+
+        req = ptlrpc_request_alloc(imp, &RQF_OST_PUNCH);
+        if (req == NULL)
+                RETURN(rc = -ENOMEM);
+
+        /* XXX: capa support? */
+        /* osc_set_capa_size(req, &RMF_CAPA1, capa); */
+        rc = ptlrpc_request_pack(req, LUSTRE_OST_VERSION, OST_PUNCH);
+        if (rc)
+                GOTO(out, rc);
+
+        /*
+         * XXX: decide how do we do here with resend
+         * if we don't resend, then client may see wrong file size
+         * if we do resend, then MDS thread can get stuck for quite long
+         */
+        req->rq_no_resend = req->rq_no_delay = 1;
+
+        req->rq_request_portal = OST_IO_PORTAL; /* bug 7198 */
+        ptlrpc_at_set_req_timeout(req);
+
+        body = req_capsule_client_get(&req->rq_pill, &RMF_OST_BODY);
+        LASSERT(body);
+
+        info->oti_ost_body.oa.o_id = lu_idif_id(fid);
+        info->oti_ost_body.oa.o_gr = 0; /* XXX: support for CMD? */
+        info->oti_ost_body.oa.o_size = size;
+        info->oti_ost_body.oa.o_blocks = OBD_OBJECT_EOF;
+        info->oti_ost_body.oa.o_valid = OBD_MD_FLSIZE | OBD_MD_FLBLOCKS |
+                                        OBD_MD_FLID | OBD_MD_FLGROUP;
+        lustre_set_wire_obdo(&body->oa, &info->oti_ost_body.oa);
+
+        /* XXX: capa support? */
+        /* osc_pack_capa(req, body, capa); */
+
+        ptlrpc_request_set_replen(req);
+
+        rc = ptlrpc_queue_wait(req);
+        if (rc)
+                CERROR("can't punch object: %d\n", rc);
+
+out:
+        ptlrpc_req_finished(req);
+
+        RETURN(rc);
+}
 
 int osp_init_precreate(struct osp_device *d)
 {

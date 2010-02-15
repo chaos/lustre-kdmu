@@ -61,14 +61,63 @@
 
 #include "osp_internal.h"
 
+static __u64 osp_object_assign_id(const struct lu_env *env,
+                                  struct osp_device *d, struct osp_object *o)
+{
+        struct lu_fid   fid;
+        __u64           objid;
+
+        LASSERT(lu_idif_id(lu_object_fid(&o->opo_obj.do_lu)) == 0);
+
+        LASSERT(o->opo_reserved);
+        o->opo_reserved = 0;
+
+        objid = osp_precreate_get_id(d);
+
+        /* assign fid to anonymous object */
+        /* XXX: mds number to support CMD? */
+        lu_idif_build(&fid, objid, d->opd_index);
+        lu_object_assign_fid(env, &o->opo_obj.do_lu, &fid);
+
+        return objid;
+}
+
+
 static int osp_declare_attr_set(const struct lu_env *env,
                                  struct dt_object *dt,
                                  const struct lu_attr *attr,
                                  struct thandle *th)
 {
+        struct osp_device  *d = lu2osp_dev(dt->do_lu.lo_dev);
         struct osp_object  *o = dt2osp_obj(dt);
         int                 rc = 0;
         ENTRY;
+
+        /*
+         * Usually we don't allow server stack to manipulate size
+         * but there is a special case when striping is created
+         * late, after stripless file got truncated to non-zero.
+         *
+         * In this case we do the following:
+         *
+         * 1) grab id in declare - this can lead to leaked OST objects
+         *    but we don't currently have proper mechanism and the only
+         *    options we have are to do truncate RPC holding transaction
+         *    open (very bad) or to grab id in declare at cost of leaked
+         *    OST object in same very rare unfortunate case (just bad)
+         *    notice 1.6-2.0 do assignment outside of running transaction
+         *    all the time, meaning many more chances for leaked objects.
+         * 
+         * 2) send synchronous truncate RPC with just assigned id
+         */
+
+        if (attr && (attr->la_valid & LA_SIZE) && attr->la_size) {
+                LASSERT(!dt_object_exists(dt));
+                osp_object_assign_id(env, d, o);
+                rc = osp_object_truncate(env, dt, attr->la_size);
+                if (rc)
+                        RETURN(rc);
+        }
 
         if (attr && !(attr->la_valid & (LA_UID | LA_GID)))
                 RETURN(0);
@@ -165,7 +214,6 @@ static int osp_object_create(const struct lu_env *env,
         struct osp_device   *d = lu2osp_dev(dt->do_lu.lo_dev);
         struct osp_object   *o = dt2osp_obj(dt);
         struct lu_buf        lb;
-        struct lu_fid        fid;
         obd_id               objid;
         loff_t               offset;
         int                  rc = 0;
@@ -174,14 +222,16 @@ static int osp_object_create(const struct lu_env *env,
 
         /* XXX: to support CMD we need group here, to be put into config? */
 
-        LASSERT(o->opo_reserved != 0);
-        o->opo_reserved = 0;
+        if (o->opo_reserved) {
+                /* regular case, id is assigned holding trunsaction open */
+                objid = osp_object_assign_id(env, d, o);
+        } else {
+                /* special case, id was assigned outside of transaction
+                 * see comments in osp_declare_attr_set */
+                objid = lu_idif_id(lu_object_fid(&dt->do_lu));
+        }
 
-        /* grab next id from the pool */
-        cfs_spin_lock(&d->opd_pre_lock);
-        LASSERT(d->opd_pre_next <= d->opd_pre_last_created);
-        objid = d->opd_pre_next++;
-        d->opd_pre_reserved--;
+        LASSERT(objid);
 
         /*
          * update last_used object id for our OST
@@ -189,14 +239,13 @@ static int osp_object_create(const struct lu_env *env,
          * which is going to be each creation * <# stripes>
          */
         if (objid > d->opd_last_used_id) {
-                d->opd_last_used_id = objid;
-                update = 1;
+                cfs_spin_lock(&d->opd_pre_lock);
+                if (objid > d->opd_last_used_id) {
+                        d->opd_last_used_id = objid;
+                        update = 1;
+                }
+                cfs_spin_unlock(&d->opd_pre_lock);
         }
-        cfs_spin_unlock(&d->opd_pre_lock);
-
-        /* assign fid to anonymous object */
-        lu_idif_build(&fid, objid, d->opd_index);
-        lu_object_assign_fid(env, &dt->do_lu, &fid);
 
         if (update) {
                 /* we updated last_used in-core, so we update on a disk */

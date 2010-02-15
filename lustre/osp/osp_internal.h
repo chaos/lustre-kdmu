@@ -143,8 +143,20 @@ struct osp_object {
 struct osp_thread_info {
         /* XXX: go through all the functions, replace big local variables
          *      and allocations with this TLS where possible */
+        struct ost_body         oti_ost_body;
         int a;
 };
+
+extern struct lu_context_key osp_thread_key;
+
+static inline struct osp_thread_info *osp_env_info(const struct lu_env *env)
+{
+        struct osp_thread_info *info;
+
+        info = lu_context_key_get(&env->le_ctx, &osp_thread_key);
+        LASSERT(info != NULL);
+        return info;
+}
 
 extern const struct lu_device_operations osp_lu_ops;
 
@@ -202,7 +214,9 @@ static inline struct dt_object* osp_object_child(struct osp_object *o)
 /* osp_precreate.c */
 int osp_init_precreate(struct osp_device *d);
 int osp_precreate_reserve(struct osp_device *d);
+__u64 osp_precreate_get_id(struct osp_device *d);
 void osp_precreate_fini(struct osp_device *d);
+int osp_object_truncate(const struct lu_env *env, struct dt_object *dt, __u64);
 
 /* osp_sync.c */
 int osp_sync_init(struct osp_device *d);
