@@ -1022,7 +1022,7 @@ static int filter_create(struct obd_export *exp,
                 /* TODO: check we have free space. Need DMU support */
                 CDEBUG(D_HA,
                        "%s: reserve %d objects in group "LPU64" at "LPU64"\n",
-                       filter_obd(ofd)->obd_name, diff, group, next_id - diff);
+                       filter_obd(ofd)->obd_name, diff, group, next_id);
                 for (i = 0; i < diff; i++) {
                         rc = filter_precreate_object(&env, ofd, next_id + i, group);
                         if (rc)
