@@ -1546,30 +1546,6 @@ static int mdd_cd_sanity_check(const struct lu_env *env,
 
 }
 
-static struct thandle *
-mdd_declare_and_start_create_data(const struct lu_env *env,
-                                  struct md_object *cobj, int lmm_size)
-{
-        struct mdd_device *mdd = mdo2mdd(cobj);
-        struct mdd_object *son = md2mdd_obj(cobj);
-        struct thandle *handle;
-        int rc;
-
-        handle = mdd_trans_create(env, mdd);
-        if (IS_ERR(handle))
-                RETURN(handle);
-        rc = mdo_declare_xattr_set(env, son, lmm_size,
-                                   XATTR_NAME_LOV, 0, handle);
-        if (rc == 0)
-                rc = mdd_trans_start(env, mdd, handle);
-
-        if (rc) {
-                mdd_trans_stop(env, mdd, rc, handle);
-                handle = ERR_PTR(rc);
-        }
-        RETURN(handle);
-}
-
 static int mdd_create_data(const struct lu_env *env, struct md_object *pobj,
                            struct md_object *cobj, const struct md_op_spec *spec,
                            struct md_attr *ma)
@@ -1577,15 +1553,10 @@ static int mdd_create_data(const struct lu_env *env, struct md_object *pobj,
         struct mdd_device *mdd = mdo2mdd(cobj);
         struct mdd_object *mdd_pobj = md2mdd_obj(pobj);
         struct mdd_object *son = md2mdd_obj(cobj);
-        struct lu_attr    *attr = &ma->ma_attr;
-        struct lov_mds_md *lmm = NULL;
-        int                lmm_size = 0;
+        struct lu_buf      buf = { 0 };
         struct thandle    *handle;
         int                rc;
         ENTRY;
-
-        /* XXX: shouldn't get here. at least as long as object creation isn't lazy */
-        LBUG();
 
         rc = mdd_cd_sanity_check(env, son);
         if (rc)
@@ -1593,40 +1564,48 @@ static int mdd_create_data(const struct lu_env *env, struct md_object *pobj,
 
         if (!md_should_create(spec->sp_cr_flags))
                 RETURN(0);
-        lmm_size = ma->ma_lmm_size;
-        rc = mdd_lov_create(env, mdd, mdd_pobj, son, &lmm, &lmm_size,
-                            spec, attr);
+
+        /*
+         * there are following use cases for this function:
+         * 1) late striping - file was created with MDS_OPEN_DELAY_CREATE
+         *    striping can be specified or not
+         * 2) CMD?
+         */
+
+        /* XXX: no CMD support yet */
+        LASSERT(spec->no_create == 0);
+
+        rc = mdd_iattr_get(env, son, ma);
         if (rc)
                 RETURN(rc);
 
-        handle = mdd_declare_and_start_create_data(env, cobj, lmm_size);
+        /* calling ->ah_make_hint() is used to transfer information from parent */
+        mdd_object_make_hint(env, mdd_pobj, son, &ma->ma_attr);
+
+        handle = mdd_trans_create(env, mdd);
         if (IS_ERR(handle))
-                GOTO(out_free, rc = PTR_ERR(handle));
+                RETURN(PTR_ERR(handle));
 
-        /*
-         * XXX: Setting the lov ea is not locked but setting the attr is locked?
-         * Should this be fixed?
-         */
+        buf.lb_buf = ma->ma_lmm;
+        buf.lb_len = ma->ma_lmm_size;
+        rc = mdo_declare_xattr_set(env, son, &buf, XATTR_NAME_LOV, 0, handle);
+        if (rc)
+              RETURN(rc);
 
-        /* Replay creates has objects already */
-#if 0
-        if (spec->no_create) {
-                CDEBUG(D_INFO, "we already have lov ea\n");
-                rc = mdd_lov_set_md(env, mdd_pobj, son,
-                                    (struct lov_mds_md *)spec->u.sp_ea.eadata,
-                                    spec->u.sp_ea.eadatalen, handle, 0);
-        } else
-#endif  
-                LBUG();
-                /* No need mdd_lsm_sanity_check here */
-                /*rc = mdd_lov_set_md(env, mdd_pobj, son, lmm,
-                                    lmm_size, handle, 0);*/
+        rc = mdd_trans_start(env, mdd, handle);
+        if (rc)
+                GOTO(out_stop, rc);
+
+        mdd_write_lock(env, son, MOR_TGT_CHILD);
+        rc = mdo_xattr_set(env, son, &buf, XATTR_NAME_LOV, 0, handle, BYPASS_CAPA);
+        mdd_write_unlock(env, son);
 
         if (rc == 0)
                rc = mdd_attr_get_internal_locked(env, son, ma);
 
+out_stop:
         mdd_trans_stop(env, mdd, rc, handle);
-out_free:
+
         RETURN(rc);
 }
 
@@ -1699,6 +1678,19 @@ int mdd_object_initialize(const struct lu_env *env, const struct lu_fid *pfid,
         rc = mdd_attr_set_internal(env, child, &ma->ma_attr, handle, 0);
         if (rc != 0)
                 RETURN(rc);
+
+        /*
+         * in case of replay we just set LOVEA provided by the client
+         */
+        if (spec->no_create) {
+                struct lu_buf buf;
+                buf.lb_buf = (void *) spec->u.sp_ea.eadata;
+                buf.lb_len = spec->u.sp_ea.eadatalen;
+                rc = mdo_xattr_set(env, child, &buf, XATTR_NAME_LOV,
+                                   0, handle, BYPASS_CAPA);
+                if (rc != 0)
+                        RETURN(rc);
+        }
 
         if (S_ISDIR(ma->ma_attr.la_mode)) {
                 /* Add "." and ".." for newly created dir */
@@ -1807,14 +1799,16 @@ mdd_start_and_declare_create(const struct lu_env *env,
                              struct md_object *pobj,
                              struct mdd_object *son,
                              const char *name,
-                             struct lu_attr *attr,
+                             struct md_attr *ma,
                              struct md_op_spec *spec)
 {
         struct dt_object_format *dof = &mdd_env_info(env)->mti_dof;
         const struct dt_index_features *feat = spec->sp_feat;
         struct mdd_object *mdd_pobj = md2mdd_obj(pobj);
         struct mdd_device *mdd = mdo2mdd(pobj);
+        struct lu_attr    *attr = &ma->ma_attr;
         struct thandle    *handle;
+        struct lu_buf      buf = { 0 };
         int                rc;
 
         handle = mdd_trans_create(env, mdd);
@@ -1823,8 +1817,11 @@ mdd_start_and_declare_create(const struct lu_env *env,
 
         if (feat != &dt_directory_features && feat != NULL)
                 dof->dof_type = DFT_INDEX;
-        else
+        else {
                 dof->dof_type = dt_mode_to_dft(attr->la_mode);
+                if (dof->dof_type == DFT_REGULAR)
+                        dof->u.dof_reg.striped = md_should_create(spec->sp_cr_flags);
+        }
         rc = mdo_declare_create_obj(env, son, attr, NULL, dof, handle);
         if (rc)
                 GOTO(cleanup, rc);
@@ -1837,6 +1834,15 @@ mdd_start_and_declare_create(const struct lu_env *env,
                 GOTO(cleanup, rc);
         rc = __mdd_declare_index_insert(env, mdd_pobj, mdo2fid(son),
                                         name, S_ISDIR(attr->la_mode), handle);
+        if (rc)
+                GOTO(cleanup, rc);
+        if (dof->dof_type == DFT_REGULAR && spec->no_create) {
+                buf.lb_buf = (void *) spec->u.sp_ea.eadata;
+                buf.lb_len = spec->u.sp_ea.eadatalen;
+                rc = mdo_declare_xattr_set(env, son, &buf, XATTR_NAME_LOV,0,handle);
+        }
+        if (rc)
+                GOTO(cleanup, rc);
         rc = mdo_declare_xattr_set(env, son, 0, XATTR_NAME_LINK, 0, handle);
         if (rc)
                 GOTO(cleanup, rc);
@@ -2004,7 +2010,7 @@ static int mdd_create(const struct lu_env *env,
         mdd_object_make_hint(env, mdd_pobj, son, attr);
 
         handle = mdd_start_and_declare_create(env, pobj, son, name,
-                                              attr, spec);
+                                              ma, spec);
         if (IS_ERR(handle))
                 GOTO(out_free, rc = PTR_ERR(handle));
 

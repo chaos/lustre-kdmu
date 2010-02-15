@@ -848,12 +848,15 @@ int mdd_object_create_internal(const struct lu_env *env, struct mdd_object *p,
 
         if (!mdd_object_exists(c)) {
 
-                if (feat != &dt_directory_features && feat != NULL)
+                if (feat != &dt_directory_features && feat != NULL) {
                         dof->dof_type = DFT_INDEX;
-                else
+                        dof->u.dof_idx.di_feat = feat;
+                } else {
                         dof->dof_type = dt_mode_to_dft(attr->la_mode);
-
-                dof->u.dof_idx.di_feat = feat;
+                        if (dof->dof_type == DFT_REGULAR)
+                                dof->u.dof_reg.striped = 
+                                        md_should_create(spec->sp_cr_flags);
+                }
 
                 rc = mdo_create_obj(env, c, attr, hint, dof, handle);
                 LASSERT(ergo(rc == 0, mdd_object_exists(c)));
@@ -1251,6 +1254,7 @@ mdd_declare_and_start_attr_set(const struct lu_env *env, struct md_object *obj,
         struct mdd_object *mdd_obj = md2mdd_obj(obj);
         struct mdd_device *mdd = mdo2mdd(obj);
         struct thandle *handle;
+        struct lu_buf   buf = {0};
         int rc;
 
         handle = mdd_trans_create(env, mdd);
@@ -1261,7 +1265,8 @@ mdd_declare_and_start_attr_set(const struct lu_env *env, struct md_object *obj,
         if (rc)
                 GOTO(out, rc);
         if (ma->ma_valid & MA_LOV) {
-                rc = mdo_declare_xattr_set(env, mdd_obj, ma->ma_lmm_size,
+                buf.lb_len = ma->ma_lmm_size;
+                rc = mdo_declare_xattr_set(env, mdd_obj, &buf,
                                            XATTR_NAME_LOV, 0, handle);
                 if (rc)
                         GOTO(out, rc);
@@ -1542,7 +1547,7 @@ static int mdd_xattr_set(const struct lu_env *env, struct md_object *obj,
             mdd->mdd_sync_permission == 1)
                 handle->th_sync = 1;
 
-        rc = mdo_declare_xattr_set(env, mdd_obj, buf->lb_len, name, fl, handle);
+        rc = mdo_declare_xattr_set(env, mdd_obj, buf, name, fl, handle);
         if (rc)
                 GOTO(cleanup, rc);
         rc = mdd_trans_start(env, mdd, handle);

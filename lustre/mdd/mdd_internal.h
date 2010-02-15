@@ -716,12 +716,12 @@ static inline int mdo_xattr_get(const struct lu_env *env,struct mdd_object *obj,
 
 static inline int mdo_declare_xattr_set(const struct lu_env *env,
                                         struct mdd_object *obj,
-                                        const int buflen, const char *name,
-                                        int fl, struct thandle *handle)
+                                        const struct lu_buf *buf, 
+                                        const char *name,
+                                        int fl, struct thandle *th)
 {
         struct dt_object *next = mdd_object_child(obj);
-        return next->do_ops->do_declare_xattr_set(env, next, buflen, name, fl,
-                                                  handle);
+        return next->do_ops->do_declare_xattr_set(env, next, buf, name, fl, th);
 }
 
 static inline int mdo_xattr_set(const struct lu_env *env,struct mdd_object *obj,
