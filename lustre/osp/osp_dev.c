@@ -640,7 +640,7 @@ static int osp_import_event(struct obd_device *obd,
 LU_KEY_INIT_FINI(osp, struct osp_thread_info);
 
 /* context key: osp_thread_key */
-LU_CONTEXT_KEY_DEFINE(osp, LCT_DT_THREAD | LCT_MD_THREAD);
+LU_CONTEXT_KEY_DEFINE(osp, LCT_MD_THREAD);
 
 LU_TYPE_INIT_FINI(osp, &osp_thread_key);
 
@@ -661,7 +661,7 @@ static struct lu_device_type osp_device_type = {
         .ldt_tags     = LU_DEVICE_DT,
         .ldt_name     = LUSTRE_OSP_NAME,
         .ldt_ops      = &osp_device_type_ops,
-        .ldt_ctx_tags = LCT_DT_THREAD | LCT_MD_THREAD
+        .ldt_ctx_tags = LCT_MD_THREAD
 };
 
 static struct obd_ops osp_obd_device_ops = {
