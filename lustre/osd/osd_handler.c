@@ -646,6 +646,13 @@ static int osd_trans_stop(const struct lu_env *env, struct thandle *th)
                 if (result != 0)
                         CERROR("Failure to stop transaction: %d\n", result);
         } else {
+                struct lu_device *lud;
+
+                LASSERT(th->th_dev);
+                lud = &th->th_dev->dd_lu_dev;
+                lu_ref_del_at(&lud->ld_reference, oh->ot_dev_link, "osd-tx", th);
+                lu_device_put(lud);
+
                 OBD_FREE_PTR(oh);
         }
 
