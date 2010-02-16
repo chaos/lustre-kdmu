@@ -1591,7 +1591,7 @@ static int mdd_create_data(const struct lu_env *env, struct md_object *pobj,
         buf.lb_len = ma->ma_lmm_size;
         rc = mdo_declare_xattr_set(env, son, &buf, XATTR_NAME_LOV, 0, handle);
         if (rc)
-              RETURN(rc);
+                GOTO(out_stop, rc);
 
         rc = mdd_trans_start(env, mdd, handle);
         if (rc)
