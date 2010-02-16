@@ -145,6 +145,7 @@ static int lov_add_target(struct lov_obd *lov, struct obd_device *tgt_obd,
         /* XXX: how do we control active? */
         tgt->ltd_active = active;
         tgt->ltd_activate = active;
+        lov->desc.ld_active_tgt_count++;
         lov->lov_tgts[index] = tgt;
         if (index >= lov->desc.ld_tgt_count)
                 lov->desc.ld_tgt_count = index + 1;
