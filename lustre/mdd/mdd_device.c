@@ -131,6 +131,8 @@ out:
         RETURN(rc);
 }
 
+static int mdd_changelog_init(const struct lu_env *env, struct mdd_device *mdd);
+
 static int mdd_init0(const struct lu_env *env, struct mdd_device *mdd,
                      struct lu_device_type *t, struct lustre_cfg *lcfg)
 {
@@ -171,6 +173,8 @@ static int mdd_init0(const struct lu_env *env, struct mdd_device *mdd,
         rc = mdd_procfs_init(mdd, name);
 
         mdd->mdd_child->dd_ops->dt_conf_get(env, mdd->mdd_child, &mdd->mdd_dt_conf);
+        if (rc == 0)
+                mdd_changelog_init(env, mdd);
 
 //out:
         if (rc) {
@@ -271,6 +275,9 @@ static int mdd_changelog_llog_init(struct mdd_device *mdd)
         struct obd_device *obd = mdd2obd_dev(mdd);
         struct llog_ctxt *ctxt;
         int rc;
+
+        if (obd == NULL)
+                RETURN(-ENODEV);
 
         /* Find last changelog entry number */
         ctxt = llog_get_context(obd, LLOG_CHANGELOG_ORIG_CTXT);
