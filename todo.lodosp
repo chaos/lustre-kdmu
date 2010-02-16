@@ -11,14 +11,15 @@
    - ->do_create() to set initial attributes
    - mdd never manipulate striping
    - add ->mdo_sync() and mdd_sync()
+   - sanity check/counter for thandle started and not stopped in *osd
+   - changelog support
 
 * LOD TODO
    - call osp with ->ldo_recovery_complete() to initiate orphan cleanup
    - support for >1K OSTs (dynamic lod_ost in struct lod_device)
    - support for different LOV EA formats
    - ost removal/deactivation
-   - lod_qos_prep_create() to support non-zero files w/o objects
-   - lod_alloc_idx_array() to support object creation on specified OSTs
+   - lod_qos_prep_create() to extend striping if file size is too big
    - lod_qos_prep_create() to support pools
    - improve locking in lod_qos_statfs_update()
    - lod_qos_statfs_update() to recalculate space with fixed block size
@@ -26,6 +27,7 @@
    - pass next device in all the methods (like cursor, lod_trans_stop(), etc)
    - lod_xattr_set() to make sure new striping is sane
    - mdd_lov_set_stripe_md(): who'll be doing swabbing in the new model: mdt, mdd, lod?
+   - who'll be dealing with lov_user_md_* structures on the server
 
 * OSP TODO
    - version of llog_cat_process() working in current thread
@@ -43,6 +45,7 @@
    - small optimizations here and there
    - batch support
    - resend in osp_object_truncate()
+   - don't start with sending new request till security is configured (how?)
 
 * tests
    - s/lov/lod/
@@ -66,5 +69,22 @@ Questions:
      
 
 
-
+Lustre: DEBUG MARKER: sanity test_27j: @@@@@@ FAIL: lstripe failed
+Lustre: DEBUG MARKER: sanity test_27o: @@@@@@ FAIL: able to create /mnt/lustre/d0.sanity/d27/f27o
+Lustre: DEBUG MARKER: sanity test_27q: @@@@@@ FAIL: append succeeded
+Lustre: DEBUG MARKER: sanity test_27q: @@@@@@ FAIL: checkstat 2 failed
+Lustre: DEBUG MARKER: sanity test_27w: @@@@@@ FAIL: stripe offset 1 != 0
+Lustre: DEBUG MARKER: sanity test_27x: @@@@@@ FAIL: OST0 was degraded but new created file still use it
+Lustre: DEBUG MARKER: sanity test_27x: @@@@@@ FAIL: OST0 was degraded but new created file still use it
+Lustre: DEBUG MARKER: sanity test_27x: @@@@@@ FAIL: test_27x failed with 3
+Lustre: DEBUG MARKER: sanity test_56a: @@@@@@ FAIL: lfs getstripe --obd wrong: found 6, expected 3
+Lustre: DEBUG MARKER: sanity test_66: @@@@@@ FAIL: /mnt/lustre/f66 blocks < 8
+Lustre: DEBUG MARKER: sanity test_77a: @@@@@@ FAIL: dd error
+Lustre: DEBUG MARKER: sanity test_77b: @@@@@@ FAIL: dd error: 1
+Lustre: DEBUG MARKER: sanity test_77d: @@@@@@ FAIL: direct write: rc=1
+Lustre: DEBUG MARKER: sanity test_152: @@@@@@ FAIL: dd failed
+Lustre: DEBUG MARKER: sanity test_152: @@@@@@ FAIL: cmp failed
+Lustre: DEBUG MARKER: sanity test_155a: @@@@@@ FAIL: dd of=/tmp/f155a bs=0 count=1k failed
+Lustre: DEBUG MARKER: sanity test_155b: @@@@@@ FAIL: dd of=/tmp/f155b bs=0 count=1k failed
+Lustre: DEBUG MARKER: sanity test_155c: @@@@@@ FAIL: dd of=/tmp/f155c bs=0 count=1k failed
 
