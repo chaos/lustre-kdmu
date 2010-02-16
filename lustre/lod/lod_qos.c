@@ -999,15 +999,97 @@ out_nolock:
         RETURN(rc);
 }
 
-int lod_qos_prep_create(const struct lu_env *env, struct lod_object *lo,
-                        struct lu_attr *attr, struct thandle *th)
+/* Find the max stripecount we should use */
+static int lov_get_stripecnt(struct lov_obd *lov, __u32 stripe_count)
 {
+        if (!stripe_count)
+                stripe_count = lov->desc.ld_default_stripe_count;
+        if (stripe_count > lov->desc.ld_active_tgt_count)
+                stripe_count = lov->desc.ld_active_tgt_count;
+        if (!stripe_count)
+                stripe_count = 1;
+        /* for now, we limit the stripe count directly, when bug 4424 is
+         * fixed this needs to be somewhat dynamic based on whether ext3
+         * can handle larger EA sizes. */
+        if (stripe_count > LOV_MAX_STRIPE_COUNT)
+                stripe_count = LOV_MAX_STRIPE_COUNT;
+
+        return stripe_count;
+}
+
+
+
+/*
+ * buf should be NULL or contain striping settings
+ */
+int lod_qos_prep_create(const struct lu_env *env, struct lod_object *lo,
+                        struct lu_attr *attr, const struct lu_buf *buf,
+                        struct thandle *th)
+{
+        struct lod_device  *d = lu2lod_dev(lod2lu_obj(lo)->lo_dev);
         int flag = LOV_USES_ASSIGNED_STRIPE;
         char *poolname = "";
-        int rc = 0;
+        int i, rc = 0;
         ENTRY;
 
         LASSERT(lo);
+
+        /* no OST available */
+        /* XXX: should we be waiting a bit to prevent failures during
+         * cluster initialization? */
+        if (d->lod_ostnr == 0)
+                GOTO(out, rc = -EIO);
+
+
+        /* XXX: who'll be doing swabbing for lovea? */
+
+        /* XXX: support for different patterns? */
+
+        /*
+         * by this time, the object's mbo_stripenr and mbo_stripe_size
+         * contain default value for striping: taken from the parent
+         * or from filesystem defaults
+         *
+         * in case the caller is passing lovea with new striping config,
+         * we may need to parse lovea and apply new configuration
+         */
+        if (buf && buf->lb_buf) {
+                struct lov_user_md_v1 *v1 = buf->lb_buf;
+                struct lov_user_md_v3 *v3 = buf->lb_buf;
+
+                if (v1->lmm_magic == LOV_MAGIC_V1) {
+                        if (buf->lb_len < sizeof(*v1))
+                                GOTO(out, rc = -EINVAL);
+                        poolname = "";
+                        if (v1->lmm_stripe_size)
+                                lo->mbo_stripe_size = v1->lmm_stripe_size;
+                        if (v1->lmm_stripe_count)
+                                lo->mbo_stripenr = v1->lmm_stripe_count;
+
+                } else if (v3->lmm_magic == LOV_MAGIC_V3) {
+                        if (buf->lb_len < sizeof(*v3))
+                                GOTO(out, rc = -EINVAL);
+                        poolname = v3->lmm_pool_name;
+                        if (v3->lmm_stripe_size)
+                                lo->mbo_stripe_size = v3->lmm_stripe_size;
+                        if (v3->lmm_stripe_count)
+                                lo->mbo_stripenr = v3->lmm_stripe_count;
+
+                } else {
+                        CERROR("unknown magic %x\n", (unsigned) v1->lmm_magic);
+                        GOTO(out, rc = -EINVAL);
+                }
+        }
+
+        lo->mbo_stripenr = lov_get_stripecnt(&d->lod_obd->u.lov, lo->mbo_stripenr);
+        LASSERT(lo->mbo_stripenr <= d->lod_ostnr);
+
+        i = sizeof(struct dt_object *) * lo->mbo_stripenr;
+        OBD_ALLOC(lo->mbo_stripe, i);
+        if (lo->mbo_stripe == NULL)
+                GOTO(out, rc = -ENOMEM);
+        lo->mbo_stripes_allocated = lo->mbo_stripenr;
+
 
         /* XXX: support for non-0 files w/o objects */
         /* XXX: support for pools */
@@ -1021,7 +1103,7 @@ int lod_qos_prep_create(const struct lu_env *env, struct lod_object *lo,
                 rc = -EIO;
         }*/
 
-        EXIT;
-        return rc;
+out:
+        RETURN(rc);
 }
 

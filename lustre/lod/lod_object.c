@@ -49,9 +49,7 @@
 #include <obd_support.h>
 #include <lprocfs_status.h>
 
-#include <lustre_disk.h>
 #include <lustre_fid.h>
-#include <lustre/lustre_idl.h>
 #include <lustre_param.h>
 #include <lustre_fid.h>
 #include <obd_lov.h>
@@ -59,15 +57,6 @@
 #include "lod_internal.h"
 
 static const struct dt_body_operations lod_body_lnk_ops;
-static int lod_declare_striped_object(const struct lu_env *env,
-                                      struct dt_object *dt,
-                                      struct lu_attr *attr,
-                                      struct thandle *th);
-static int lod_striping_create(const struct lu_env *env,
-                               struct dt_object *dt,
-                               struct lu_attr *attr,
-                               struct dt_object_format *dof,
-                               struct thandle *th);
 
 static int lod_index_lookup(const struct lu_env *env, struct dt_object *dt,
                             struct dt_rec *rec, const struct dt_key *key,
@@ -388,11 +377,14 @@ static int lod_declare_xattr_set(const struct lu_env *env,
 
         mode = dt->do_lu.lo_header->loh_attr & S_IFMT;
         if (S_ISREG(mode) && !strcmp(name, XATTR_NAME_LOV)) {
+                /*
+                 * this is a request to manipulate object's striping
+                 */
                 LASSERT(dt_object_exists(next));
                 rc = dt_attr_get(env, next, &attr, BYPASS_CAPA);
                 if (rc)
                         RETURN(rc);
-                rc = lod_declare_striped_object(env, dt, &attr, th);
+                rc = lod_declare_striped_object(env, dt, &attr, buf, th);
                 RETURN(rc);
         }
 
@@ -413,12 +405,11 @@ static int lod_xattr_set(const struct lu_env *env,
         ENTRY;
 
         attr = dt->do_lu.lo_header->loh_attr & S_IFMT;
-        /*
-         * XXX: if default per-directory striping is setting,
-         * shouldn't we make sure it's sane?
-         */
         if (S_ISDIR(attr)) {
                 /*
+                 * XXX: if default per-directory striping is setting,
+                 * shouldn't we make sure it's sane?
+                 *
                  * some xattr is changing. that might be lovea storing
                  * default striping for files in this directory
                  */
@@ -428,8 +419,10 @@ static int lod_xattr_set(const struct lu_env *env,
                 l->mbo_def_stripenr = 0;
 
         } else if (S_ISREG(attr) && !strcmp(name, XATTR_NAME_LOV)) {
+                /*
+                 * this is a request to manipulate object's striping
+                 */
                 rc = lod_striping_create(env, dt, NULL, NULL, th);
-                LASSERT(rc == 0);
                 RETURN(rc);
         }
 
@@ -487,25 +480,6 @@ static inline int lod_object_will_be_striped(int is_reg, const struct lu_fid *fi
         return (is_reg && fid_seq(fid) != FID_SEQ_LOCAL_FILE);
 }
 
-/* Find the max stripecount we should use */
-static int lov_get_stripecnt(struct lov_obd *lov, __u32 stripe_count)
-{
-        if (!stripe_count)
-                stripe_count = lov->desc.ld_default_stripe_count;
-        if (stripe_count > lov->desc.ld_active_tgt_count)
-                stripe_count = lov->desc.ld_active_tgt_count;
-        if (!stripe_count)
-                stripe_count = 1;
-        /* for now, we limit the stripe count directly, when bug 4424 is
-         * fixed this needs to be somewhat dynamic based on whether ext3
-         * can handle larger EA sizes. */
-        if (stripe_count > LOV_MAX_STRIPE_COUNT)
-                stripe_count = LOV_MAX_STRIPE_COUNT;
-
-        return stripe_count;
-}
-
-
 /**
  * used to transfer default striping data to the object being created
  */
@@ -536,11 +510,15 @@ static void lod_ah_init(const struct lu_env *env,
         d = lu2lod_dev(parent->do_lu.lo_dev);
 
         LASSERT(lc->mbo_stripenr == 0);
+        LASSERT(lc->mbo_stripe == NULL);
 
         /*
          * local object may want some hints
+         * in case of late striping creation, ->ah_init()
+         * can be called with local object existing
          */
-        nextp->do_ops->do_ah_init(env, ah, nextp, nextc, child_mode);
+        if (!dt_object_exists(nextc))
+                nextp->do_ops->do_ah_init(env, ah, nextp, nextc, child_mode);
 
         /*
          * if object is going to be striped over OSTs, transfer default
@@ -574,9 +552,9 @@ static void lod_ah_init(const struct lu_env *env,
                         lp->mbo_def_stripenr = 0;
                 }
         }
+
         if (lp->mbo_def_stripe_size) {
-                lc->mbo_stripenr = lov_get_stripecnt(&d->lod_obd->u.lov,
-                                                     lp->mbo_def_stripenr);
+                lc->mbo_stripenr = lp->mbo_def_stripenr;
                 lc->mbo_stripe_size = lp->mbo_def_stripe_size;
                 return;
         }
@@ -585,8 +563,7 @@ static void lod_ah_init(const struct lu_env *env,
          * the parent doesn't provide with specific pattern, grab fs-wide one
          */
         desc = &d->lod_obd->u.lov.desc;
-        lc->mbo_stripenr = lov_get_stripecnt(&d->lod_obd->u.lov,
-                                             desc->ld_default_stripe_count);
+        lc->mbo_stripenr = desc->ld_default_stripe_count;
         lc->mbo_stripe_size = desc->ld_default_stripe_size;
 
         EXIT;
@@ -609,10 +586,6 @@ static int lod_declare_init_size(const struct lu_env *env,
         uint64_t            size, offs;
         int                 rc, stripe;
         ENTRY;
-
-        /* the case is possible only when local object was created previously */
-        if (!dt_object_exists(next))
-                RETURN(0);
 
         /* XXX: we support the simplest (RAID0) striping so far */
         LASSERT(mo->mbo_stripe || mo->mbo_stripenr == 0);
@@ -646,49 +619,46 @@ static int lod_declare_init_size(const struct lu_env *env,
 /**
  * Create declaration of striped object
  */
-static int lod_declare_striped_object(const struct lu_env *env,
-                                      struct dt_object *dt,
-                                      struct lu_attr *attr,
-                                      struct thandle *th)
+int lod_declare_striped_object(const struct lu_env *env,
+                               struct dt_object    *dt,
+                               struct lu_attr      *attr,
+                               const struct lu_buf *lovea,
+                               struct thandle      *th)
 {
         struct dt_object   *next = dt_object_child(dt);
         struct lod_object  *mo = lod_dt_obj(dt);
-        struct lod_device  *md = lu2lod_dev(mo->mbo_obj.do_lu.lo_dev);
         struct lu_buf       buf;
-        int                 rc, i;
+        int                 rc;
         ENTRY;
 
         LASSERT(mo->mbo_stripenr > 0);
-        LASSERT(mo->mbo_stripenr <= md->lod_ostnr);
-
-        /* no OST available */
-        /* XXX: should we be waiting a bit to prevent failures during
-         * cluster initialization? */
-        if (md->lod_ostnr == 0)
-                GOTO(out, rc = -EIO);
-
-        i = sizeof(struct dt_object *) * mo->mbo_stripenr;
-        OBD_ALLOC(mo->mbo_stripe, i);
-        if (mo->mbo_stripe == NULL)
-                GOTO(out, rc = -ENOMEM);
-        mo->mbo_stripes_allocated = mo->mbo_stripenr;
 
         /* choose OST and generate appropriate objects */
-        rc = lod_qos_prep_create(env, mo, attr, th);
-        if (rc)
+        rc = lod_qos_prep_create(env, mo, attr, lovea, th);
+        if (rc) {
+                /* failed to create striping, let's reset
+                 * config so that others don't get confused */
+                mo->mbo_stripe_size = 0;
+                mo->mbo_stripenr = 0;
                 GOTO(out, rc);
+        }
 
         /*
          * declare storage for striping data
          */
+        /* XXX: real size depends on type/magic */
         buf.lb_len = lov_mds_md_size(mo->mbo_stripenr, LOV_MAGIC_V3);
         rc = dt_declare_xattr_set(env, next, &buf, XATTR_NAME_LOV, 0, th);
+        if (rc)
+                GOTO(out, rc);
 
         /*
          * if striping is created with local object's size > 0,
          * we have to propagate this size to specific object
+         * the case is possible only when local object was created previously
          */
-        rc = lod_declare_init_size(env, dt, th);
+        if (dt_object_exists(next))
+                rc = lod_declare_init_size(env, dt, th);
 
 out:
         RETURN(rc);
@@ -732,18 +702,18 @@ static int lod_declare_object_create(const struct lu_env *env,
                 if (dof->u.dof_reg.striped == 0)
                         mo->mbo_stripenr = 0;
                 if (lod_dt_obj(dt)->mbo_stripenr > 0)
-                        rc = lod_declare_striped_object(env, dt, attr, th);
+                        rc = lod_declare_striped_object(env, dt, attr, NULL, th);
         }
 
 out:
         RETURN(rc);
 }
 
-static int lod_striping_create(const struct lu_env *env,
-                               struct dt_object *dt,
-                               struct lu_attr *attr,
-                               struct dt_object_format *dof,
-                               struct thandle *th)
+int lod_striping_create(const struct lu_env *env,
+                        struct dt_object *dt,
+                        struct lu_attr *attr,
+                        struct dt_object_format *dof,
+                        struct thandle *th)
 {
         struct lod_object  *mo = lod_dt_obj(dt);
         int                 rc, i;

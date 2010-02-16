@@ -200,7 +200,8 @@ extern cfs_hash_ops_t pool_hash_operations;
 
 /* lod_qos.c */
 int lod_qos_prep_create(const struct lu_env *env, struct lod_object *lo,
-                        struct lu_attr *attr, struct thandle *th);
+                        struct lu_attr *attr, const struct lu_buf *,
+                        struct thandle *th);
 int qos_add_tgt(struct obd_device *obd, int index);
 int qos_del_tgt(struct obd_device *obd, int index);
 
@@ -208,6 +209,13 @@ int qos_del_tgt(struct obd_device *obd, int index);
 extern struct file_operations lod_proc_target_fops;
 void lprocfs_lod_init_vars(struct lprocfs_static_vars *lvars);
 
+/* lod_object.c */
+int lod_declare_striped_object(const struct lu_env *env, struct dt_object *dt,
+                               struct lu_attr *attr, const struct lu_buf *buf,
+                               struct thandle *th);
+int lod_striping_create(const struct lu_env *env, struct dt_object *dt,
+                        struct lu_attr *attr, struct dt_object_format *dof,
+                        struct thandle *th);
 
 #endif
 
