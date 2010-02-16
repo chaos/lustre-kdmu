@@ -557,12 +557,12 @@ __u64 osp_precreate_get_id(struct osp_device *d)
  */
 int osp_object_truncate(const struct lu_env *env, struct dt_object *dt, __u64 size)
 {
-        struct osp_thread_info *info = osp_env_info(env);
         struct osp_device      *d = lu2osp_dev(dt->do_lu.lo_dev);
         const struct lu_fid    *fid = lu_object_fid(&dt->do_lu);
         struct ptlrpc_request  *req = NULL;
         struct obd_import      *imp;
         struct ost_body        *body;
+        struct obdo            *oa = NULL;
         int                     rc;
         ENTRY;
 
@@ -589,16 +589,20 @@ int osp_object_truncate(const struct lu_env *env, struct dt_object *dt, __u64 si
         req->rq_request_portal = OST_IO_PORTAL; /* bug 7198 */
         ptlrpc_at_set_req_timeout(req);
 
+        OBD_ALLOC_PTR(oa);
+        if (oa == NULL)
+                GOTO(out, rc = -ENOMEM);
+
+        oa->o_id = lu_idif_id(fid);
+        oa->o_gr = 0; /* XXX: support for CMD? */
+        oa->o_size = size;
+        oa->o_blocks = OBD_OBJECT_EOF;
+        oa->o_valid = OBD_MD_FLSIZE | OBD_MD_FLBLOCKS |
+                      OBD_MD_FLID | OBD_MD_FLGROUP;
+
         body = req_capsule_client_get(&req->rq_pill, &RMF_OST_BODY);
         LASSERT(body);
-
-        info->oti_ost_body.oa.o_id = lu_idif_id(fid);
-        info->oti_ost_body.oa.o_gr = 0; /* XXX: support for CMD? */
-        info->oti_ost_body.oa.o_size = size;
-        info->oti_ost_body.oa.o_blocks = OBD_OBJECT_EOF;
-        info->oti_ost_body.oa.o_valid = OBD_MD_FLSIZE | OBD_MD_FLBLOCKS |
-                                        OBD_MD_FLID | OBD_MD_FLGROUP;
-        lustre_set_wire_obdo(&body->oa, &info->oti_ost_body.oa);
+        lustre_set_wire_obdo(&body->oa, oa);
 
         /* XXX: capa support? */
         /* osc_pack_capa(req, body, capa); */
@@ -611,6 +615,8 @@ int osp_object_truncate(const struct lu_env *env, struct dt_object *dt, __u64 si
 
 out:
         ptlrpc_req_finished(req);
+        if (oa)
+                OBD_FREE_PTR(oa);
 
         RETURN(rc);
 }

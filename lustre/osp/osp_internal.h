@@ -143,7 +143,6 @@ struct osp_object {
 struct osp_thread_info {
         /* XXX: go through all the functions, replace big local variables
          *      and allocations with this TLS where possible */
-        struct ost_body         oti_ost_body;
         int a;
 };
 
