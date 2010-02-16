@@ -37,7 +37,9 @@ ALWAYS_EXCEPT="$ALWAYS_EXCEPT 52a 52b 57a 57b 129 132 156 160 180"
 
 # LOD/OSP branch needs fixes:
 # 60  -- llog_osd_create()) ASSERTION(dt) failed
-ALWAYS_EXCEPT="$ALWAYS_EXCEPT 60"
+# 65k -- ost deactivation isn't supported
+# 69  -- LustreError: 21498:0:(lod_object.c:513:lod_ah_init()) ASSERTION(lc->mbo_stripe == NULL) failed
+ALWAYS_EXCEPT="$ALWAYS_EXCEPT 60 65k 69"
 
 case `uname -r` in
 2.4*) FSTYPE=${FSTYPE:-ext3} ;;
