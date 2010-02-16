@@ -981,6 +981,9 @@ static int mdt_txn_commit_cb(const struct lu_env *env,
         struct mdt_txn_info *txi;
         int i;
 
+        LASSERT(txn);
+        LASSERT(mdt);
+
         txi = lu_context_key_get(&txn->th_ctx, &mdt_txn_key);
 
         /* iterate through all additional callbacks */
