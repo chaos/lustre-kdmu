@@ -850,6 +850,7 @@ int mdd_finish_unlink(const struct lu_env *env,
 
         LASSERT(mdd_write_locked(env, obj) != 0);
 
+        ma->ma_valid &= ~MA_INODE;
         rc = mdd_iattr_get(env, obj, ma);
         if (rc == 0 && ma->ma_attr.la_nlink == 0) {
                 obj->mod_flags |= DEAD_OBJ;
