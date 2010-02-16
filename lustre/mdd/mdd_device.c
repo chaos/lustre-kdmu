@@ -1115,39 +1115,8 @@ static int mdd_recovery_complete(const struct lu_env *env,
 {
         struct mdd_device *mdd = lu2mdd_dev(d);
         struct lu_device *next = &mdd->mdd_child->dd_lu_dev;
-        struct obd_device *obd = mdd2obd_dev(mdd);
         int rc;
         ENTRY;
-
-        LASSERT(mdd != NULL);
-        if (obd != NULL) {
-#if 0
-        /* XXX: Do we need this in new stack? */
-        rc = mdd_lov_set_nextid(env, mdd);
-        if (rc) {
-                CERROR("mdd_lov_set_nextid() failed %d\n",
-                       rc);
-                RETURN(rc);
-        }
-
-        /* XXX: cleanup unlink. */
-        rc = mdd_cleanup_unlink_llog(env, mdd);
-        if (rc) {
-                CERROR("mdd_cleanup_unlink_llog() failed %d\n",
-                       rc);
-                RETURN(rc);
-        }
-#endif
-        /* Call that with obd_recovering = 1 just to update objids */
-        obd_notify(obd->u.mds.mds_osc_obd, NULL, (obd->obd_async_recov ?
-                    OBD_NOTIFY_SYNC_NONBLOCK : OBD_NOTIFY_SYNC), NULL);
-
-        /* Drop obd_recovering to 0 and call o_postrecov to recover mds_lov */
-        obd->obd_recovering = 0;
-        obd->obd_type->typ_dt_ops->o_postrecov(obd);
-        } else {
-                CERROR("mdd has no OBD yet\n");
-        }
 
         /* XXX: orphans handling. */
         __mdd_orphan_cleanup(env, mdd);
@@ -1155,8 +1124,6 @@ static int mdd_recovery_complete(const struct lu_env *env,
 
         RETURN(rc);
 }
-
-int mds_lov_init(struct obd_device *obd);
 
 static int mdd_prepare(const struct lu_env *env,
                        struct lu_device *pdev,
@@ -1192,7 +1159,6 @@ static int mdd_prepare(const struct lu_env *env,
                 GOTO(out, rc);
         }
 
-        rc = mds_lov_init(mdd2obd_dev(mdd));
 out:
         RETURN(rc);
 }
