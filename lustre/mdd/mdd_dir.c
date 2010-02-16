@@ -2279,6 +2279,9 @@ mdd_declare_and_start_rename(const struct lu_env *env, struct md_object *src_pob
                 rc = mdo_declare_ref_del(env, mdd_tobj, handle);
                 if (rc)
                         GOTO(out, rc);
+                rc = mdo_declare_destroy_obj(env, mdd_tobj, handle);
+                if (rc)
+                        GOTO(out, rc);
                 if (is_dir)
                         mdo_declare_ref_del(env, mdd_tobj, handle);
                 rc = mdo_declare_attr_set(env, mdd_tobj, NULL, handle);
