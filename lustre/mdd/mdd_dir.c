@@ -1587,8 +1587,8 @@ static int mdd_create_data(const struct lu_env *env, struct md_object *pobj,
         if (IS_ERR(handle))
                 RETURN(PTR_ERR(handle));
 
-        buf.lb_buf = ma->ma_lmm;
-        buf.lb_len = ma->ma_lmm_size;
+        buf.lb_buf = spec->u.sp_ea.eadata;
+        buf.lb_len = spec->u.sp_ea.eadatalen;
         rc = mdo_declare_xattr_set(env, son, &buf, XATTR_NAME_LOV, 0, handle);
         if (rc)
                 GOTO(out_stop, rc);
