@@ -221,7 +221,7 @@ int osp_sync_add(const struct lu_env *env, struct osp_object *o,
                         u.unlink.lur_hdr.lrh_len = sizeof(u.unlink);
                         u.unlink.lur_hdr.lrh_type = MDS_UNLINK_REC;
                         u.unlink.lur_oid = lu_idif_id(fid);
-                        u.unlink.lur_ogr = lu_idif_gr(fid);
+                        u.unlink.lur_ogr = 0; /* XXX: support for CMD? */
                         u.unlink.lur_count = 1;
                         break;
 
@@ -229,7 +229,7 @@ int osp_sync_add(const struct lu_env *env, struct osp_object *o,
                         u.setattr.lsr_hdr.lrh_len = sizeof(u.setattr);
                         u.setattr.lsr_hdr.lrh_type = MDS_SETATTR64_REC;
                         u.setattr.lsr_oid = lu_idif_id(fid);
-                        u.setattr.lsr_ogr = lu_idif_gr(fid);
+                        u.setattr.lsr_ogr = 0; /* XXX: support for CMD? */
                         break;
 
                 default:
@@ -663,11 +663,15 @@ static int osp_sync_process_queues(struct llog_handle *llh,
                 if (osp_sync_can_process_new(d)) {
                         if (llh == NULL) {
                                 /* ask llog for another record */
+                                CDEBUG(D_HA, "%lu changes, %u in progress, %u in flight\n",
+                                       d->opd_syn_changes,
+                                       d->opd_syn_rpc_in_progress,
+                                       d->opd_syn_rpc_in_flight);
                                 return 0;
                         }
                         rc = osp_sync_process_record(d, llh, rec);
                         /* XXX: error handling here */
-                        LASSERT(rc == 0);
+                        LASSERTF(rc == 0, "rc = %d\n", rc);
                         llh = NULL;
                         rec = NULL;
                 }
@@ -676,8 +680,10 @@ static int osp_sync_process_queues(struct llog_handle *llh,
                                 !osp_sync_running(d) || osp_sync_has_work(d),
                                 &lwi);
 
-                if (!osp_sync_running(d))
+                if (!osp_sync_running(d)) {
+                        CDEBUG(D_HA, "stop llog processing\n");
                         return LLOG_PROC_BREAK;
+                }
                 
         } while (1);
 }
@@ -730,7 +736,10 @@ static int osp_sync_thread(void *_arg)
         }
 
         rc = llog_cat_process(llh, osp_sync_process_queues, d, 0, 0);
-        LASSERT(rc == 0 || rc == LLOG_PROC_BREAK);
+        LASSERTF(rc == 0 || rc == LLOG_PROC_BREAK,
+                 "%lu changes, %u in progress, %u in flight\n",
+                 d->opd_syn_changes, d->opd_syn_rpc_in_progress,
+                 d->opd_syn_rpc_in_flight);
 
         /* we don't expect llog_process_thread() to exit till umount */
         LASSERT(thread->t_flags != SVC_RUNNING);
@@ -820,10 +829,9 @@ static int osp_sync_llog_init(struct osp_device *d)
         ctxt = llog_get_context(obd, LLOG_MDS_OST_ORIG_CTXT);
         LASSERT(ctxt);
         rc = llog_add(ctxt, &genrecord.lgr_hdr, NULL, &cookie, 1);
-        llog_ctxt_put(ctxt);
-
         if (rc == 1)
                 rc = 0;
+        llog_ctxt_put(ctxt);
 
 out:
         RETURN(rc);
