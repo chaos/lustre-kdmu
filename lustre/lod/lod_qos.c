@@ -593,7 +593,7 @@ static int lod_alloc_rr(const struct lu_env *env, struct lod_object *lo,
         struct pool_desc *pool;
         struct ost_pool *osts;
         struct lov_qos_rr *lqr;
-        struct kstatfs sfs;
+        cfs_kstatfs_t sfs;
         ENTRY;
 
         pool = lov_find_pool(lov, poolname);
@@ -708,22 +708,23 @@ out:
         RETURN(rc);
 }
 
-#if 0
-/*
- * XXX: not implemented yet!
- */
 /* alloc objects on osts with specific stripe offset */
-static int lod_alloc_specific(const struct lu_env *env, struct lov_obd *lov,
-                               struct lov_stripe_md *lsm, int *idx_arr)
+static int lod_alloc_specific(const struct lu_env *env, struct lod_object *lo,
+                              struct lu_attr *attr, char *poolname, int flags,
+                              int offset, struct thandle *th)
 {
+        struct lod_device *m = lu2lod_dev(lo->mbo_obj.do_lu.lo_dev);
+        struct dt_object  *o;
+        struct lov_obd *lov = &m->lod_obd->u.lov;
         unsigned ost_idx, array_idx, ost_count;
-        int i, rc, *idx_pos;
+        int i, rc, stripe_num = 0;
         int speed = 0;
         struct pool_desc *pool;
         struct ost_pool *osts;
+        cfs_kstatfs_t sfs;
         ENTRY;
 
-        pool = lov_find_pool(lov, lsm->lsm_pool_name);
+        pool = lov_find_pool(lov, poolname);
         if (pool == NULL) {
                 osts = &(lov->lov_packed);
         } else {
@@ -737,18 +738,17 @@ repeat_find:
         /* search loi_ost_idx in ost array */
         array_idx = 0;
         for (i = 0; i < ost_count; i++) {
-                if (osts->op_array[i] == lsm->lsm_oinfo[0]->loi_ost_idx) {
+                if (osts->op_array[i] == offset) {
                         array_idx = i;
                         break;
                 }
         }
         if (i == ost_count) {
                 CERROR("Start index %d not found in pool '%s'\n",
-                       lsm->lsm_oinfo[0]->loi_ost_idx, lsm->lsm_pool_name);
+                       offset, poolname);
                 GOTO(out, rc = -EINVAL);
         }
 
-        idx_pos = idx_arr;
         for (i = 0; i < ost_count;
              i++, array_idx = (array_idx + 1) % ost_count) {
                 ost_idx = osts->op_array[array_idx];
@@ -768,14 +768,36 @@ repeat_find:
                  * This means "if OSC is slow and it is not the requested
                  * start OST, then it can be skipped, otherwise skip it only
                  * if it is inactive/recovering/out-of-space." */
-                if ((obd_precreate(lov->lov_tgts[ost_idx]->ltd_exp) > speed) &&
-                    (i != 0 || speed >= 2))
+
+                rc = dt_statfs(env, m->lod_ost[ost_idx], &sfs);
+                if (rc) {
+                        /* this OSP doesn't feel well */
+                        CERROR("can't statfs #%u: %d\n", ost_idx, rc);
+                        continue;
+                }
+
+                /*
+                 * We expect number of precreated objects in f_ffree at
+                 * the first iteration, skip OSPs with no objects ready
+                 */
+                if (sfs.f_ffree == 0 && speed == 0)
                         continue;
 
-                *idx_pos = ost_idx;
-                idx_pos++;
+                o = lod_qos_declare_object_on(env, m, ost_idx, th);
+                if (IS_ERR(o)) {
+                        CERROR("can't declare new object on #%u: %d\n",
+                               ost_idx, (int) PTR_ERR(o));
+                        continue;
+                }
+
+                /*
+                 * We've successfuly declared (reserved) an object
+                 */
+                lo->mbo_stripe[stripe_num] = o;
+                stripe_num++;
+
                 /* We have enough stripes */
-                if (idx_pos - idx_arr == lsm->lsm_stripe_count)
+                if (stripe_num == lo->mbo_stripenr)
                         GOTO(out, rc = 0);
         }
         if (speed < 2) {
@@ -790,9 +812,9 @@ repeat_find:
          *
          * We can only get here if lsm_stripe_count was originally > 1.
          */
-        CERROR("can't lstripe objid "LPX64": have %d want %u\n",
-               lsm->lsm_object_id, (int)(idx_pos - idx_arr),
-               lsm->lsm_stripe_count);
+        CERROR("can't lstripe objid "DFID": have %d want %u\n",
+               PFID(lu_object_fid(lod2lu_obj(lo))), stripe_num,
+               lo->mbo_stripenr);
         rc = -EFBIG;
 out:
         if (pool != NULL) {
@@ -803,7 +825,6 @@ out:
 
         RETURN(rc);
 }
-#endif
 
 static int inline lod_qos_is_usable(struct lod_device *m)
 {
@@ -1027,7 +1048,9 @@ int lod_qos_prep_create(const struct lu_env *env, struct lod_object *lo,
                         struct thandle *th)
 {
         struct lod_device  *d = lu2lod_dev(lod2lu_obj(lo)->lo_dev);
+        struct lov_obd     *lov = &d->lod_obd->u.lov;
         int flag = LOV_USES_ASSIGNED_STRIPE;
+        int off = -1;
         char *poolname = "";
         int i, rc = 0;
         ENTRY;
@@ -1065,15 +1088,21 @@ int lod_qos_prep_create(const struct lu_env *env, struct lod_object *lo,
                                 lo->mbo_stripe_size = v1->lmm_stripe_size;
                         if (v1->lmm_stripe_count)
                                 lo->mbo_stripenr = v1->lmm_stripe_count;
+                        if (v1->lmm_stripe_offset)
+                                off = v1->lmm_stripe_offset;
 
                 } else if (v3->lmm_magic == LOV_MAGIC_V3) {
-                        if (buf->lb_len < sizeof(*v3))
+                        if (buf->lb_len < sizeof(*v3)) {
+                                CERROR("len %d, %d\n", buf->lb_len, sizeof(*v3));
                                 GOTO(out, rc = -EINVAL);
+                        }
                         poolname = v3->lmm_pool_name;
                         if (v3->lmm_stripe_size)
                                 lo->mbo_stripe_size = v3->lmm_stripe_size;
                         if (v3->lmm_stripe_count)
                                 lo->mbo_stripenr = v3->lmm_stripe_count;
+                        if (v1->lmm_stripe_offset)
+                                off = v1->lmm_stripe_offset;
 
                 } else {
                         CERROR("unknown magic %x\n", (unsigned) v1->lmm_magic);
@@ -1081,7 +1110,7 @@ int lod_qos_prep_create(const struct lu_env *env, struct lod_object *lo,
                 }
         }
 
-        lo->mbo_stripenr = lov_get_stripecnt(&d->lod_obd->u.lov, lo->mbo_stripenr);
+        lo->mbo_stripenr = lov_get_stripecnt(lov, lo->mbo_stripenr);
         LASSERT(lo->mbo_stripenr <= d->lod_ostnr);
 
         i = sizeof(struct dt_object *) * lo->mbo_stripenr;
@@ -1093,9 +1122,10 @@ int lod_qos_prep_create(const struct lu_env *env, struct lod_object *lo,
 
         /* XXX: support for non-0 files w/o objects */
         /* XXX: support for pools */
-        /* XXX: support for allocation on specified OSTs
-         *      rc = alloc_specific(lov, lsm, tmp_arr); */
-        rc = lod_alloc_qos(env, lo, attr, poolname, flag, th);
+        if (off >= lov->desc.ld_tgt_count)
+                rc = lod_alloc_qos(env, lo, attr, poolname, flag, th);
+        else
+                rc = lod_alloc_specific(env, lo, attr, poolname, flag, off, th);
 
         /* XXX ? */
         /*if (OBD_FAIL_CHECK(OBD_FAIL_MDS_LOV_PREP_CREATE)) {
