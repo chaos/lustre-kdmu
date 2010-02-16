@@ -36,12 +36,8 @@ ALWAYS_EXCEPT="$ALWAYS_EXCEPT 76"
 ALWAYS_EXCEPT="$ALWAYS_EXCEPT 52a 52b 57a 57b 129 132 156 160 180"
 
 # LOD/OSP branch needs fixes:
-# 24q --
-# 24u -- O_LOV_DELAY_CREATE support
-# 27a -- ^^
-# 59  -- osp_sync_thread()) ASSERTION(thread->t_flags != SVC_RUNNING) failed
 # 60  -- llog_osd_create()) ASSERTION(dt) failed
-ALWAYS_EXCEPT="$ALWAYS_EXCEPT 24q 24u 59 60"
+ALWAYS_EXCEPT="$ALWAYS_EXCEPT 60"
 
 case `uname -r` in
 2.4*) FSTYPE=${FSTYPE:-ext3} ;;
