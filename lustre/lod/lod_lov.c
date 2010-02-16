@@ -255,7 +255,7 @@ int lod_generate_and_set_lovea(const struct lu_env *env,
 {
         struct dt_object     *next = dt_object_child(&mo->mbo_obj);
         const struct lu_fid  *fid  = lu_object_fid(&mo->mbo_obj.do_lu);
-        struct lov_mds_md_v3 *lmm;
+        struct lov_mds_md_v1 *lmm;
         struct lu_buf         buf;
         int                   i, rc;
         ENTRY;
@@ -270,13 +270,13 @@ int lod_generate_and_set_lovea(const struct lu_env *env,
                 RETURN(-ENOMEM);
         buf.lb_buf = lmm;
 
-        lmm->lmm_magic = cpu_to_le32(LOV_MAGIC_V3);
+        lmm->lmm_magic = cpu_to_le32(LOV_MAGIC_V1);
         lmm->lmm_pattern = cpu_to_le32(LOV_PATTERN_RAID0);
         lmm->lmm_object_id = cpu_to_le64(fid_flatten(fid)); /* XXX: what? */
         lmm->lmm_object_gr = 0; /* XXX: what? */
         lmm->lmm_stripe_size = cpu_to_le32(mo->mbo_stripe_size);
         lmm->lmm_stripe_count = cpu_to_le32(mo->mbo_stripenr);
-        lmm->lmm_pool_name[0] = '\0';
+        //lmm->lmm_pool_name[0] = '\0';
 
         for (i = 0; i < mo->mbo_stripenr; i++) {
                 const struct lu_fid *fid;
@@ -362,11 +362,11 @@ static int lod_parse_striping(const struct lu_env *env, struct lod_object *mo)
         lmm = (struct lov_mds_md_v3 *) info->lti_ea_store;
 
         /* XXX: support for different LOV EA formats */
-        LASSERT(le32_to_cpu(lmm->lmm_magic) == LOV_MAGIC_V3);
+        LASSERT(le32_to_cpu(lmm->lmm_magic) == LOV_MAGIC_V1);
         LASSERT(le32_to_cpu(lmm->lmm_pattern) == LOV_PATTERN_RAID0);
 
         mo->mbo_stripenr = le32_to_cpu(lmm->lmm_stripe_count);
-        LASSERT(info->lti_ea_store_size>=lov_mds_md_size(mo->mbo_stripenr,LOV_MAGIC_V3));
+        LASSERT(info->lti_ea_store_size>=lov_mds_md_size(mo->mbo_stripenr,LOV_MAGIC_V1));
 
         i = sizeof(struct dt_object *) * mo->mbo_stripenr;
         OBD_ALLOC(mo->mbo_stripe, i);
