@@ -494,7 +494,7 @@ static void lod_ah_init(const struct lu_env *env,
         struct dt_object  *nextc = dt_object_child(parent);
         struct lod_object *lp = lod_dt_obj(parent);
         struct lod_object *lc = lod_dt_obj(child);
-        struct lov_mds_md *lmm;
+        struct lov_user_md *lmm;
         struct lov_desc   *desc;
         int                rc;
         ENTRY;
@@ -536,8 +536,8 @@ static void lod_ah_init(const struct lu_env *env,
                 /* we haven't tried to get default striping for
                  * the directory yet, let's cache it in the object */
                 rc = lod_get_lov_ea(env, lod_dt_obj(parent));
-                lmm = (struct lov_mds_md *) lod_mti_get(env)->lti_ea_store;
-                if (rc >= sizeof(struct lov_mds_md)) {
+                lmm = (struct lov_user_md *) lod_mti_get(env)->lti_ea_store;
+                if (rc >= sizeof(struct lov_user_md)) {
                         LASSERT(le32_to_cpu(lmm->lmm_magic) == LOV_MAGIC_V3 ||
                                 le32_to_cpu(lmm->lmm_magic) == LOV_MAGIC_V1);
                         LASSERT(le32_to_cpu(lmm->lmm_pattern) == LOV_PATTERN_RAID0
