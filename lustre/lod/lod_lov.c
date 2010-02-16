@@ -405,7 +405,6 @@ out:
 int lod_load_striping(const struct lu_env *env, struct lod_object *mo)
 {
         struct dt_object  *next = dt_object_child(&mo->mbo_obj);
-        struct lu_attr     attr;
         int                rc;
         ENTRY;
 
@@ -416,13 +415,8 @@ int lod_load_striping(const struct lu_env *env, struct lod_object *mo)
         if (!dt_object_exists(next))
                 RETURN(0);
 
-        /* XXX: can we used cached mode from lu_object_header? */
-        rc = dt_attr_get(env, next, &attr, BYPASS_CAPA);
-        if (rc)
-                GOTO(out, rc);
-
         /* only regular files can be striped */
-        if (!(attr.la_mode & S_IFREG))
+        if (!((lod2lu_obj(mo)->lo_header->loh_attr & S_IFMT) & S_IFREG))
                 GOTO(out, rc = 0);
 
         LASSERT(mo->mbo_stripenr == 0);
