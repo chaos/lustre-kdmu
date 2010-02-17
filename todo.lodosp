@@ -20,14 +20,11 @@
    - support for different LOV EA formats
    - ost removal/deactivation
    - lod_qos_prep_create() to extend striping if file size is too big
-   - lod_qos_prep_create() to support pools
    - improve locking in lod_qos_statfs_update()
    - lod_qos_statfs_update() to recalculate space with fixed block size
    - qos_add_tgt() to learn configuration (how OSTs map OSSs)
    - pass next device in all the methods (like cursor, lod_trans_stop(), etc)
    - lod_xattr_set() to make sure new striping is sane
-   - mdd_lov_set_stripe_md(): who'll be doing swabbing in the new model: mdt, mdd, lod?
-   - who'll be dealing with lov_user_md_* structures on the server
 
 * OSP TODO
    - version of llog_cat_process() working in current thread
@@ -55,6 +52,7 @@
 * testing scenarios
    - OSP's window of ids is empty
    - umount with RPC (precreation, statfs, destroy, setattr) in flight
+   - server and client with different byte order
 
 Questions:
    - how do we do if none of OSP can provide with an object ?
@@ -69,7 +67,14 @@ Questions:
      
 
 
-Lustre: DEBUG MARKER: sanity test_27j: @@@@@@ FAIL: lstripe failed
+
+Lustre: DEBUG MARKER: == test 65d: directory setstripe 1048576 -1 stripe_count ============== == 11:22:51
+LustreError: 7911:0:(lod_object.c:634:lod_declare_striped_object()) ASSERTION(mo->mbo_stripenr > 0) failed
+
+Lustre: DEBUG MARKER: == test 161: link ea sanity == 13:06:56
+LustreError: 21642:0:(mdd_dir.c:2776:mdd_links_add()) link_ea add failed -28 [0x200000430:0x13:0x0]
+
+
 Lustre: DEBUG MARKER: sanity test_27o: @@@@@@ FAIL: able to create /mnt/lustre/d0.sanity/d27/f27o
 Lustre: DEBUG MARKER: sanity test_27q: @@@@@@ FAIL: append succeeded
 Lustre: DEBUG MARKER: sanity test_27q: @@@@@@ FAIL: checkstat 2 failed
@@ -82,9 +87,8 @@ Lustre: DEBUG MARKER: sanity test_66: @@@@@@ FAIL: /mnt/lustre/f66 blocks < 8
 Lustre: DEBUG MARKER: sanity test_77a: @@@@@@ FAIL: dd error
 Lustre: DEBUG MARKER: sanity test_77b: @@@@@@ FAIL: dd error: 1
 Lustre: DEBUG MARKER: sanity test_77d: @@@@@@ FAIL: direct write: rc=1
-Lustre: DEBUG MARKER: sanity test_152: @@@@@@ FAIL: dd failed
-Lustre: DEBUG MARKER: sanity test_152: @@@@@@ FAIL: cmp failed
 Lustre: DEBUG MARKER: sanity test_155a: @@@@@@ FAIL: dd of=/tmp/f155a bs=0 count=1k failed
 Lustre: DEBUG MARKER: sanity test_155b: @@@@@@ FAIL: dd of=/tmp/f155b bs=0 count=1k failed
 Lustre: DEBUG MARKER: sanity test_155c: @@@@@@ FAIL: dd of=/tmp/f155c bs=0 count=1k failed
+Lustre: DEBUG MARKER: sanity test_155d: @@@@@@ FAIL: dd of=/tmp/f155d bs=0 count=1k failed
 
