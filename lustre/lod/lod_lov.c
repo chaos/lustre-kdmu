@@ -302,15 +302,23 @@ int lod_get_lov_ea(const struct lu_env *env, struct lod_object *mo)
         struct lod_thread_info *info = lod_mti_get(env);
         struct dt_object       *next = dt_object_child(&mo->mbo_obj);
         struct lu_buf           lb;
-        int                     rc, count = 0;
+        int                     rc;
         ENTRY;
 
         /* we really don't support that large striping yet? */
         LASSERT(info);
         LASSERT(info->lti_ea_store_size < 1024*1024);
 
+        if (unlikely(info->lti_ea_store == NULL)) {
+                /* XXX: set initial allocation to fit default fs striping */
+                LASSERT(info->lti_ea_store_size == 0);
+                OBD_ALLOC(info->lti_ea_store, 512);
+                if (info->lti_ea_store == NULL)
+                        RETURN(-ENOMEM);
+                info->lti_ea_store_size = 512;
+        }
+
 repeat:
-        count++;
         lb.lb_buf = info->lti_ea_store;
         lb.lb_len = info->lti_ea_store_size;
         dt_read_lock(env, next, 0);
@@ -320,12 +328,11 @@ repeat:
         /* if object is not striped or inaccessible */
         if (rc == -ENODATA)
                 RETURN(0);
-        if (rc <= 0)
-                RETURN(rc);
 
-        if (rc > info->lti_ea_store_size) {
+        if (rc == -ERANGE) {
                 /* EA doesn't fit, reallocate new buffer */
-                LASSERT(count == 1);
+                /* XXX: what's real limit? */
+                LASSERT(lb.lb_len <= 16 * 1024);
                 if (info->lti_ea_store) {
                         LASSERT(info->lti_ea_store_size);
                         OBD_FREE(info->lti_ea_store, info->lti_ea_store_size);
@@ -333,10 +340,10 @@ repeat:
                         info->lti_ea_store_size = 0;
                 }
 
-                OBD_ALLOC(info->lti_ea_store, rc);
+                OBD_ALLOC(info->lti_ea_store, lb.lb_len * 2);
                 if (info->lti_ea_store == NULL)
                         RETURN(-ENOMEM);
-                info->lti_ea_store_size = rc;
+                info->lti_ea_store_size = lb.lb_len * 2;
 
                 GOTO(repeat, rc);
         }
