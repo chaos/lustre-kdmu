@@ -74,12 +74,17 @@ struct lod_device {
         cfs_semaphore_t                  lod_mutex;
 };
 
+/*
+ * XXX: shrink this structure, currently it's 72bytes on 32bit arch,
+ *      so, slab will be allocating 128bytes
+ */
 struct lod_object {
         struct dt_object   mbo_obj;
 
         /* if object is striped, then the next fields describe stripes */
         __u32              mbo_stripenr;
         __u32              mbo_stripe_size;
+        char              *mbo_pool;
         struct dt_object **mbo_stripe;
         /* to know how much memory to free, mbo_stripenr can be less */
         int                mbo_stripes_allocated;
@@ -197,6 +202,10 @@ int lov_ost_pool_free(struct ost_pool *op);
 int lov_pool_del(struct obd_device *obd, char *poolname);
 int lov_ost_pool_init(struct ost_pool *op, unsigned int count);
 extern cfs_hash_ops_t pool_hash_operations;
+int lov_check_index_in_pool(__u32 idx, struct pool_desc *pool);
+int lov_pool_new(struct obd_device *obd, char *poolname);
+int lov_pool_add(struct obd_device *obd, char *poolname, char *ostname);
+int lov_pool_remove(struct obd_device *obd, char *poolname, char *ostname);
 
 /* lod_qos.c */
 int lod_qos_prep_create(const struct lu_env *env, struct lod_object *lo,
@@ -210,6 +219,7 @@ extern struct file_operations lod_proc_target_fops;
 void lprocfs_lod_init_vars(struct lprocfs_static_vars *lvars);
 
 /* lod_object.c */
+int lod_object_set_pool(struct lod_object *o, char *pool);
 int lod_declare_striped_object(const struct lu_env *env, struct dt_object *dt,
                                struct lu_attr *attr, const struct lu_buf *buf,
                                struct thandle *th);

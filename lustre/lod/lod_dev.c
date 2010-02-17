@@ -616,7 +616,11 @@ static struct lu_device_type lod_device_type = {
 static struct obd_ops lod_obd_device_ops = {
         .o_owner       = THIS_MODULE,
         .o_connect     = lod_obd_connect,
-        .o_disconnect  = lod_obd_disconnect
+        .o_disconnect  = lod_obd_disconnect,
+        .o_pool_new    = lov_pool_new,
+        .o_pool_rem    = lov_pool_remove,
+        .o_pool_add    = lov_pool_add,
+        .o_pool_del    = lov_pool_del,
 };
 
 

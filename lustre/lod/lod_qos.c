@@ -576,8 +576,7 @@ static int min_stripe_count(int stripe_cnt, int flags)
 
 /* Allocate objects on osts with round-robin algorithm */
 static int lod_alloc_rr(const struct lu_env *env, struct lod_object *lo,
-                        struct lu_attr *attr, char *poolname, int flags,
-                        struct thandle *th)
+                        struct lu_attr *attr, int flags, struct thandle *th)
 {
         struct lod_device *m = lu2lod_dev(lo->mbo_obj.do_lu.lo_dev);
         struct lov_obd    *lov = &m->lod_obd->u.lov;
@@ -596,14 +595,13 @@ static int lod_alloc_rr(const struct lu_env *env, struct lod_object *lo,
         cfs_kstatfs_t sfs;
         ENTRY;
 
-        pool = lov_find_pool(lov, poolname);
-        if (pool == NULL) {
-                osts = &(lov->lov_packed);
-                lqr = &(lov->lov_qos.lq_rr);
-        } else {
+        if (lo->mbo_pool && (pool = lov_find_pool(lov, lo->mbo_pool))) {
                 cfs_down_read(&pool_tgt_rw_sem(pool));
                 osts = &(pool->pool_obds);
                 lqr = &(pool->pool_rr);
+        } else {
+                osts = &(lov->lov_packed);
+                lqr = &(lov->lov_qos.lq_rr);
         }
 
         rc = lod_qos_calc_rr(lov, osts, lqr);
@@ -631,7 +629,7 @@ repeat_find:
         array_idx = (lqr->lqr_start_idx + lqr->lqr_offset_idx) % osts->op_count;
 
         QOS_DEBUG("pool '%s' want %d startidx %d startcnt %d offset %d "
-               "active %d count %d arrayidx %d\n", poolname,
+               "active %d count %d arrayidx %d\n", lo->mbo_pool ? lo->mbo_pool : "",
                stripe_cnt, lqr->lqr_start_idx, lqr->lqr_start_count,
                lqr->lqr_offset_idx, osts->op_count, osts->op_count, array_idx);
 
@@ -710,7 +708,7 @@ out:
 
 /* alloc objects on osts with specific stripe offset */
 static int lod_alloc_specific(const struct lu_env *env, struct lod_object *lo,
-                              struct lu_attr *attr, char *poolname, int flags,
+                              struct lu_attr *attr, int flags,
                               int offset, struct thandle *th)
 {
         struct lod_device *m = lu2lod_dev(lo->mbo_obj.do_lu.lo_dev);
@@ -724,12 +722,11 @@ static int lod_alloc_specific(const struct lu_env *env, struct lod_object *lo,
         cfs_kstatfs_t sfs;
         ENTRY;
 
-        pool = lov_find_pool(lov, poolname);
-        if (pool == NULL) {
-                osts = &(lov->lov_packed);
-        } else {
+        if (lo->mbo_pool && (pool = lov_find_pool(lov, lo->mbo_pool))) {
                 cfs_down_read(&pool_tgt_rw_sem(pool));
                 osts = &(pool->pool_obds);
+        } else {
+                osts = &(lov->lov_packed);
         }
 
         ost_count = osts->op_count;
@@ -745,7 +742,7 @@ repeat_find:
         }
         if (i == ost_count) {
                 CERROR("Start index %d not found in pool '%s'\n",
-                       offset, poolname);
+                       offset, lo->mbo_pool ? lo->mbo_pool : "");
                 GOTO(out, rc = -EINVAL);
         }
 
@@ -850,8 +847,7 @@ static int inline lod_qos_is_usable(struct lod_device *m)
    - network resources (shared OSS's)
 */
 static int lod_alloc_qos(const struct lu_env *env, struct lod_object *lo,
-                         struct lu_attr *attr, char *poolname, int flags,
-                         struct thandle *th)
+                         struct lu_attr *attr, int flags, struct thandle *th)
 {
         struct lod_device *m = lu2lod_dev(lo->mbo_obj.do_lu.lo_dev);
         struct dt_object  *o;
@@ -868,14 +864,13 @@ static int lod_alloc_qos(const struct lu_env *env, struct lod_object *lo,
         if (stripe_cnt_min < 1)
                 RETURN(-EINVAL);
 
-        pool = lov_find_pool(lov, poolname);
-        if (pool == NULL) {
-                osts = &(lov->lov_packed);
-                lqr = &(lov->lov_qos.lq_rr);
-        } else {
+        if (lo->mbo_pool && (pool = lov_find_pool(lov, lo->mbo_pool))) {
                 cfs_down_read(&pool_tgt_rw_sem(pool));
                 osts = &(pool->pool_obds);
                 lqr = &(pool->pool_rr);
+        } else {
+                osts = &(lov->lov_packed);
+                lqr = &(lov->lov_qos.lq_rr);
         }
 
         /* XXXX: obd_getref(exp->exp_obd);*/
@@ -1014,7 +1009,7 @@ out_nolock:
         }
 
         if (rc == -EAGAIN)
-                rc = lod_alloc_rr(env, lo, attr, poolname, flags, th);
+                rc = lod_alloc_rr(env, lo, attr, flags, th);
 
         /* XXX: obd_putref(exp->exp_obd); */
         RETURN(rc);
@@ -1039,8 +1034,7 @@ static int lov_get_stripecnt(struct lov_obd *lov, __u32 stripe_count)
 }
 
 static int lod_qos_parse_config(const struct lu_env *env, struct lod_object *lo,
-                                const struct lu_buf *buf, int *off,
-                                char **poolname)
+                                const struct lu_buf *buf, int *off)
 {
         struct lod_device     *d = lu2lod_dev(lod2lu_obj(lo)->lo_dev);
         struct lov_obd        *lov = &d->lod_obd->u.lov;
@@ -1051,7 +1045,6 @@ static int lod_qos_parse_config(const struct lu_env *env, struct lod_object *lo,
         ENTRY;
 
         LASSERT(off);
-        LASSERT(poolname);
 
         if (buf == NULL || buf->lb_buf == NULL)
                 RETURN(0);
@@ -1072,7 +1065,6 @@ static int lod_qos_parse_config(const struct lu_env *env, struct lod_object *lo,
         if (v1->lmm_pattern != 0 && v1->lmm_pattern != LOV_PATTERN_RAID0)
                 RETURN(-EINVAL);
 
-        *poolname = "";
         if (v1->lmm_stripe_size)
                 lo->mbo_stripe_size = v1->lmm_stripe_size;
         if (lo->mbo_stripe_size & (LOV_MIN_STRIPE_SIZE - 1))
@@ -1085,7 +1077,8 @@ static int lod_qos_parse_config(const struct lu_env *env, struct lod_object *lo,
             (v1->lmm_stripe_offset != (typeof(v1->lmm_stripe_offset))(-1)))
                 RETURN(-EINVAL);
         *off = -1;
-        if (v1->lmm_stripe_offset)
+        if (v1->lmm_stripe_offset &&
+                        v1->lmm_stripe_offset != (typeof(v1->lmm_stripe_offset))(-1))
                 *off = v1->lmm_stripe_offset;
 
         if (v1->lmm_magic == LOV_MAGIC_V3) {
@@ -1093,9 +1086,9 @@ static int lod_qos_parse_config(const struct lu_env *env, struct lod_object *lo,
                         RETURN(-EINVAL);
 
                 v3 = buf->lb_buf;
-                *poolname = v3->lmm_pool_name;
+                lod_object_set_pool(lo, v3->lmm_pool_name);
 
-                pool = lov_find_pool(lov, *poolname);
+                pool = lov_find_pool(lov, v3->lmm_pool_name);
                 if (pool != NULL) {
                         if (*off != -1) {
                                 rc = lov_check_index_in_pool(*off, pool);
@@ -1128,7 +1121,6 @@ int lod_qos_prep_create(const struct lu_env *env, struct lod_object *lo,
         struct lov_obd     *lov = &d->lod_obd->u.lov;
         int flag = LOV_USES_ASSIGNED_STRIPE;
         int off = -1;
-        char *poolname = "";
         int i, rc = 0;
         ENTRY;
 
@@ -1148,7 +1140,7 @@ int lod_qos_prep_create(const struct lu_env *env, struct lod_object *lo,
          * in case the caller is passing lovea with new striping config,
          * we may need to parse lovea and apply new configuration
          */
-        rc = lod_qos_parse_config(env, lo, buf, &off, &poolname);
+        rc = lod_qos_parse_config(env, lo, buf, &off);
         if (rc)
                 GOTO(out, rc);
 
@@ -1165,9 +1157,9 @@ int lod_qos_prep_create(const struct lu_env *env, struct lod_object *lo,
         /* XXX: support for non-0 files w/o objects */
         /* XXX: support for pools */
         if (off >= lov->desc.ld_tgt_count)
-                rc = lod_alloc_qos(env, lo, attr, poolname, flag, th);
+                rc = lod_alloc_qos(env, lo, attr, flag, th);
         else
-                rc = lod_alloc_specific(env, lo, attr, poolname, flag, off, th);
+                rc = lod_alloc_specific(env, lo, attr, flag, off, th);
 
         /* XXX ? */
         /*if (OBD_FAIL_CHECK(OBD_FAIL_MDS_LOV_PREP_CREATE)) {
