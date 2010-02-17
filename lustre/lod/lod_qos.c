@@ -1038,6 +1038,83 @@ static int lov_get_stripecnt(struct lov_obd *lov, __u32 stripe_count)
         return stripe_count;
 }
 
+static int lod_qos_parse_config(const struct lu_env *env, struct lod_object *lo,
+                                const struct lu_buf *buf, int *off,
+                                char **poolname)
+{
+        struct lod_device     *d = lu2lod_dev(lod2lu_obj(lo)->lo_dev);
+        struct lov_obd        *lov = &d->lod_obd->u.lov;
+        struct lov_user_md_v1 *v1;
+        struct lov_user_md_v3 *v3;
+        struct pool_desc      *pool;
+        int                    rc;
+        ENTRY;
+
+        LASSERT(off);
+        LASSERT(poolname);
+
+        if (buf == NULL || buf->lb_buf == NULL)
+                RETURN(0);
+
+        v1 = buf->lb_buf;
+
+        if (v1->lmm_magic == __swab32(LOV_USER_MAGIC_V1))
+                lustre_swab_lov_user_md_v1(v1);
+        else if (v1->lmm_magic == __swab32(LOV_USER_MAGIC_V3))
+                lustre_swab_lov_user_md_v3(v3);
+
+        if (unlikely(v1->lmm_magic != LOV_MAGIC_V1 && v1->lmm_magic != LOV_MAGIC_V3))
+                RETURN(-EINVAL);
+
+        if (unlikely(buf->lb_len < sizeof(*v1)))
+                RETURN(-EINVAL);
+
+        if (v1->lmm_pattern != 0 && v1->lmm_pattern != LOV_PATTERN_RAID0)
+                RETURN(-EINVAL);
+
+        *poolname = "";
+        if (v1->lmm_stripe_size)
+                lo->mbo_stripe_size = v1->lmm_stripe_size;
+        if (lo->mbo_stripe_size & (LOV_MIN_STRIPE_SIZE - 1))
+                lo->mbo_stripe_size = LOV_MIN_STRIPE_SIZE;
+
+        if (v1->lmm_stripe_count)
+                lo->mbo_stripenr = v1->lmm_stripe_count;
+
+        if ((v1->lmm_stripe_offset >= lov->desc.ld_tgt_count) &&
+            (v1->lmm_stripe_offset != (typeof(v1->lmm_stripe_offset))(-1)))
+                RETURN(-EINVAL);
+        *off = -1;
+        if (v1->lmm_stripe_offset)
+                *off = v1->lmm_stripe_offset;
+
+        if (v1->lmm_magic == LOV_MAGIC_V3) {
+                if (buf->lb_len < sizeof(*v3))
+                        RETURN(-EINVAL);
+
+                v3 = buf->lb_buf;
+                *poolname = v3->lmm_pool_name;
+
+                pool = lov_find_pool(lov, *poolname);
+                if (pool != NULL) {
+                        if (*off != -1) {
+                                rc = lov_check_index_in_pool(*off, pool);
+                                if (rc < 0) {
+                                        lov_pool_putref(pool);
+                                        RETURN(-EINVAL);
+                                }
+                        }
+
+                        if (lo->mbo_stripenr > pool_tgt_count(pool))
+                                lo->mbo_stripenr= pool_tgt_count(pool);
+
+                        lov_pool_putref(pool);
+                }
+        }
+
+        RETURN(0);
+
+}
 
 
 /*
@@ -1063,11 +1140,6 @@ int lod_qos_prep_create(const struct lu_env *env, struct lod_object *lo,
         if (d->lod_ostnr == 0)
                 GOTO(out, rc = -EIO);
 
-
-        /* XXX: who'll be doing swabbing for lovea? */
-
-        /* XXX: support for different patterns? */
-
         /*
          * by this time, the object's mbo_stripenr and mbo_stripe_size
          * contain default value for striping: taken from the parent
@@ -1076,39 +1148,9 @@ int lod_qos_prep_create(const struct lu_env *env, struct lod_object *lo,
          * in case the caller is passing lovea with new striping config,
          * we may need to parse lovea and apply new configuration
          */
-        if (buf && buf->lb_buf) {
-                struct lov_user_md_v1 *v1 = buf->lb_buf;
-                struct lov_user_md_v3 *v3 = buf->lb_buf;
-
-                if (v1->lmm_magic == LOV_MAGIC_V1) {
-                        if (buf->lb_len < sizeof(*v1))
-                                GOTO(out, rc = -EINVAL);
-                        poolname = "";
-                        if (v1->lmm_stripe_size)
-                                lo->mbo_stripe_size = v1->lmm_stripe_size;
-                        if (v1->lmm_stripe_count)
-                                lo->mbo_stripenr = v1->lmm_stripe_count;
-                        if (v1->lmm_stripe_offset)
-                                off = v1->lmm_stripe_offset;
-
-                } else if (v3->lmm_magic == LOV_MAGIC_V3) {
-                        if (buf->lb_len < sizeof(*v3)) {
-                                CERROR("len %d, %d\n", buf->lb_len, sizeof(*v3));
-                                GOTO(out, rc = -EINVAL);
-                        }
-                        poolname = v3->lmm_pool_name;
-                        if (v3->lmm_stripe_size)
-                                lo->mbo_stripe_size = v3->lmm_stripe_size;
-                        if (v3->lmm_stripe_count)
-                                lo->mbo_stripenr = v3->lmm_stripe_count;
-                        if (v1->lmm_stripe_offset)
-                                off = v1->lmm_stripe_offset;
-
-                } else {
-                        CERROR("unknown magic %x\n", (unsigned) v1->lmm_magic);
-                        GOTO(out, rc = -EINVAL);
-                }
-        }
+        rc = lod_qos_parse_config(env, lo, buf, &off, &poolname);
+        if (rc)
+                GOTO(out, rc);
 
         lo->mbo_stripenr = lov_get_stripecnt(lov, lo->mbo_stripenr);
         LASSERT(lo->mbo_stripenr <= d->lod_ostnr);
