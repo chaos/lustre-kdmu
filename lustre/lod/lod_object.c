@@ -698,7 +698,8 @@ int lod_declare_striped_object(const struct lu_env *env,
          * declare storage for striping data
          */
         /* XXX: real size depends on type/magic */
-        buf.lb_len = lov_mds_md_size(mo->mbo_stripenr, LOV_MAGIC_V1);
+        buf.lb_len = lov_mds_md_size(mo->mbo_stripenr,
+                                     mo->mbo_pool ? LOV_MAGIC_V3 : LOV_MAGIC_V1);
         rc = dt_declare_xattr_set(env, next, &buf, XATTR_NAME_LOV, 0, th);
         if (rc)
                 GOTO(out, rc);
