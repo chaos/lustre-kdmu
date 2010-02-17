@@ -295,7 +295,7 @@ repeat:
 
                         if (rec->lrh_index == 0) {
                                 /* probably another rec just got added? */
-                                if (ext2_test_bit(index, llh->llh_bitmap))
+                                if (index < loghandle->lgh_last_idx)
                                         GOTO(repeat, rc = 0);
                                 GOTO(out, 0); /* no more records */
                         }
