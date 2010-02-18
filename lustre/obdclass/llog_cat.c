@@ -543,18 +543,18 @@ int llog_cat_process_cb(struct llog_handle *cat_llh, struct llog_rec_hdr *rec,
 
                 cd.lpcd_first_idx = d->lpd_startidx;
                 cd.lpcd_last_idx = 0;
-                rc = llog_process(llh, d->lpd_cb, d->lpd_data, &cd);
+                rc = __llog_process(llh, d->lpd_cb, d->lpd_data, &cd, 0);
                 /* Continue processing the next log from idx 0 */
                 d->lpd_startidx = 0;
         } else {
-                rc = llog_process(llh, d->lpd_cb, d->lpd_data, NULL);
+                rc = __llog_process(llh, d->lpd_cb, d->lpd_data, NULL, 0);
         }
 
         RETURN(rc);
 }
 
-int llog_cat_process(struct llog_handle *cat_llh, llog_cb_t cb, void *data,
-                     int startcat, int startidx)
+int __llog_cat_process(struct llog_handle *cat_llh, llog_cb_t cb, void *data,
+                     int startcat, int startidx, int fork)
 {
         struct llog_process_data d;
         struct llog_log_hdr *llh = cat_llh->lgh_hdr;
@@ -581,14 +581,14 @@ int llog_cat_process(struct llog_handle *cat_llh, llog_cb_t cb, void *data,
 
                 cd.lpcd_first_idx = 0;
                 cd.lpcd_last_idx = cat_llh->lgh_last_idx;
-                rc = llog_process(cat_llh, llog_cat_process_cb, &d, &cd);
+                rc = __llog_process(cat_llh, llog_cat_process_cb, &d, &cd, fork);
         } else {
-                rc = llog_process(cat_llh, llog_cat_process_cb, &d, NULL);
+                rc = __llog_process(cat_llh, llog_cat_process_cb, &d, NULL, fork);
         }
 
         RETURN(rc);
 }
-EXPORT_SYMBOL(llog_cat_process);
+EXPORT_SYMBOL(__llog_cat_process);
 
 #ifdef __KERNEL__
 int llog_cat_process_thread(void *data)

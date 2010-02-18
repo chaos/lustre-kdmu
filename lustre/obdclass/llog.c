@@ -219,7 +219,7 @@ int llog_close(struct llog_handle *loghandle)
 }
 EXPORT_SYMBOL(llog_close);
 
-static int llog_process_thread(void *arg)
+static int __llog_process_thread(void *arg)
 {
         struct llog_process_info     *lpi = (struct llog_process_info *)arg;
         struct llog_handle           *loghandle = lpi->lpi_loghandle;
@@ -236,13 +236,8 @@ static int llog_process_thread(void *arg)
         OBD_ALLOC(buf, LLOG_CHUNK_SIZE);
         if (!buf) {
                 lpi->lpi_rc = -ENOMEM;
-#ifdef __KERNEL__
-                cfs_complete(&lpi->lpi_completion);
-#endif
                 return 0;
         }
-
-        cfs_daemonize_ctxt("llog_process_thread");
 
         if (cd != NULL) {
                 last_called_index = cd->lpcd_first_idx;
@@ -353,14 +348,26 @@ repeat:
         if (buf)
                 OBD_FREE(buf, LLOG_CHUNK_SIZE);
         lpi->lpi_rc = rc;
-#ifdef __KERNEL__
-        cfs_complete(&lpi->lpi_completion);
-#endif
         return 0;
 }
 
-int llog_process(struct llog_handle *loghandle, llog_cb_t cb,
-                 void *data, void *catdata)
+static int llog_process_thread(void *arg)
+{
+        struct llog_process_info *lpi = (struct llog_process_info *)arg;
+        int                       rc;
+
+        cfs_daemonize_ctxt("llog_process_thread");
+
+        rc = __llog_process_thread(arg);
+
+#ifdef __KERNEL__
+        cfs_complete(&lpi->lpi_completion);
+#endif
+        return rc;
+}
+
+int __llog_process(struct llog_handle *loghandle, llog_cb_t cb,
+                   void *data, void *catdata, int fork)
 {
         struct llog_process_info *lpi;
         int                      rc;
@@ -377,22 +384,26 @@ int llog_process(struct llog_handle *loghandle, llog_cb_t cb,
         lpi->lpi_catdata   = catdata;
 
 #ifdef __KERNEL__
-        cfs_init_completion(&lpi->lpi_completion);
-        rc = cfs_kernel_thread(llog_process_thread, lpi, CLONE_VM | CLONE_FILES);
-        if (rc < 0) {
-                CERROR("cannot start thread: %d\n", rc);
-                OBD_FREE_PTR(lpi);
-                RETURN(rc);
-        }
-        cfs_wait_for_completion(&lpi->lpi_completion);
+        if (fork) {
+                cfs_init_completion(&lpi->lpi_completion);
+                rc = cfs_kernel_thread(llog_process_thread, lpi,
+                                       CLONE_VM | CLONE_FILES);
+                if (rc < 0) {
+                        CERROR("cannot start thread: %d\n", rc);
+                        OBD_FREE_PTR(lpi);
+                        RETURN(rc);
+                }
+                cfs_wait_for_completion(&lpi->lpi_completion);
+        } else
+                __llog_process_thread(lpi);
 #else
-        llog_process_thread(lpi);
+        __llog_process_thread(lpi);
 #endif
         rc = lpi->lpi_rc;
         OBD_FREE_PTR(lpi);
         RETURN(rc);
 }
-EXPORT_SYMBOL(llog_process);
+EXPORT_SYMBOL(__llog_process);
 
 inline int llog_get_size(struct llog_handle *loghandle)
 {
