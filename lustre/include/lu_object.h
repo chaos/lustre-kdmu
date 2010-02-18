@@ -48,8 +48,10 @@
 
 #include <lu_ref.h>
 
+#ifdef LPROCFS
 struct seq_file;
 struct proc_dir_entry;
+#endif
 struct lustre_cfg;
 struct lprocfs_stats;
 

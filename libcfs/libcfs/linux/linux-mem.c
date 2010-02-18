@@ -76,6 +76,9 @@ cfs_alloc(size_t nr_bytes, u_int32_t flags)
 {
 	void *ptr = NULL;
 
+        LASSERT(!cfs_in_interrupt() ||
+                (size <= LIBCFS_VMALLOC_SIZE && flags == CFS_ALLOC_ATOMIC));
+
 	ptr = kmalloc(nr_bytes, cfs_alloc_flags_to_gfp(flags));
 	if (ptr != NULL && (flags & CFS_ALLOC_ZERO))
 		memset(ptr, 0, nr_bytes);
@@ -91,6 +94,8 @@ cfs_free(void *addr)
 void *
 cfs_alloc_large(size_t nr_bytes)
 {
+        LASSERT(!cfs_in_interrupt());
+
 	return vmalloc(nr_bytes);
 }
 
@@ -100,18 +105,18 @@ cfs_free_large(void *addr)
 	vfree(addr);
 }
 
-cfs_page_t *cfs_alloc_pages(unsigned int flags, unsigned int order)
+cfs_page_t *cfs_alloc_page(unsigned int flags)
 {
         /*
          * XXX nikita: do NOT call portals_debug_msg() (CDEBUG/ENTRY/EXIT)
          * from here: this will lead to infinite recursion.
          */
-        return alloc_pages(cfs_alloc_flags_to_gfp(flags), order);
+        return alloc_page(cfs_alloc_flags_to_gfp(flags));
 }
 
-void __cfs_free_pages(cfs_page_t *page, unsigned int order)
+void cfs_free_page(cfs_page_t *page)
 {
-        __free_pages(page, order);
+        __free_page(page);
 }
 
 cfs_mem_cache_t *
@@ -178,8 +183,8 @@ EXPORT_SYMBOL(cfs_alloc);
 EXPORT_SYMBOL(cfs_free);
 EXPORT_SYMBOL(cfs_alloc_large);
 EXPORT_SYMBOL(cfs_free_large);
-EXPORT_SYMBOL(cfs_alloc_pages);
-EXPORT_SYMBOL(__cfs_free_pages);
+EXPORT_SYMBOL(cfs_alloc_page);
+EXPORT_SYMBOL(cfs_free_page);
 EXPORT_SYMBOL(cfs_mem_cache_create);
 EXPORT_SYMBOL(cfs_mem_cache_destroy);
 EXPORT_SYMBOL(cfs_mem_cache_alloc);

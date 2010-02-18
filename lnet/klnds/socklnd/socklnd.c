@@ -2381,7 +2381,11 @@ ksocknal_base_startup (void)
         ksocknal_data.ksnd_init = SOCKNAL_INIT_DATA;
         PORTAL_MODULE_USE;
 
-        ksocknal_data.ksnd_nschedulers = ksocknal_nsched();
+        /* ksocknal_arch_init() MUST set ksocknal_data.ksnd_nschedulers
+         * properly on all platforms, but can also perform some other
+         * initialization tasks that won't need roll-back (fini) */
+        ksocknal_arch_init();
+
         LIBCFS_ALLOC(ksocknal_data.ksnd_schedulers,
                      sizeof(ksock_sched_t) * ksocknal_data.ksnd_nschedulers);
         if (ksocknal_data.ksnd_schedulers == NULL)
@@ -2561,7 +2565,8 @@ ksocknal_enumerate_interfaces(ksock_net_t *net)
                 __u32      ip;
                 __u32      mask;
 
-                if (!strcmp(names[i], "lo")) /* skip the loopback IF */
+                if (!strcmp(names[i], "lo") || /* skip the loopback IF */
+                    !strcmp(names[i], "lo0"))
                         continue;
 
                 rc = libcfs_ipif_query(names[i], &up, &ip, &mask);

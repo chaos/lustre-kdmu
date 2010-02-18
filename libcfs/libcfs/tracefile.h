@@ -43,6 +43,8 @@
 #include "linux/linux-tracefile.h"
 #elif defined(__WINNT__)
 #include "winnt/winnt-tracefile.h"
+#elif defined(__sun__)
+#include "solaris/solaris-tracefile.h"
 #else
 #error Unsupported operating system.
 #endif
@@ -209,7 +211,7 @@ struct page_collection {
 	 * call-back functions. XXX nikita: Which is horrible: all processors
 	 * receive NMI at the same time only to be serialized by this
 	 * lock. Probably ->pc_pages should be replaced with an array of
-	 * NR_CPUS elements accessed locklessly.
+	 * CFS_NR_CPUS elements accessed locklessly.
 	 */
 	cfs_spinlock_t          pc_lock;
 	/*
@@ -270,9 +272,9 @@ extern int cfs_trace_lock_tcd(struct cfs_trace_cpu_data *tcd);
 extern void cfs_trace_unlock_tcd(struct cfs_trace_cpu_data *tcd);
 
 /**
- * trace_buf_type_t, trace_buf_idx_get() and trace_console_buffers[][]
- * are not public libcfs API; they should be defined in
- * platform-specific tracefile include files
+  * cfs_trace_buf_type_t, cfs_trace_buf_idx_get() and
+  * cfs_trace_console_buffers[][]  are not public libcfs API; they
+  * should be defined in platform-specific tracefile include files
  * (see, for example, linux-tracefile.h).
  */
 

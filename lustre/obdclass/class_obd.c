@@ -60,7 +60,7 @@ cfs_atomic_t libcfs_kmemory = {0};
 
 struct obd_device *obd_devs[MAX_OBD_DEVICES];
 cfs_list_t obd_types;
-cfs_spinlock_t obd_dev_lock = CFS_SPIN_LOCK_UNLOCKED;
+cfs_spinlock_t obd_dev_lock;
 
 #ifndef __KERNEL__
 __u64 obd_max_pages = 0;
@@ -675,6 +675,12 @@ out:
 extern cfs_spinlock_t obd_types_lock;
 
 #ifdef __KERNEL__
+extern cfs_semaphore_t lustre_mount_info_lock;
+extern cfs_semaphore_t mgc_start_lock;
+extern cfs_semaphore_t server_start_lock;
+#endif
+
+#ifdef __KERNEL__
 static int __init init_obdclass(void)
 #else
 int init_obdclass(void)
@@ -684,6 +690,7 @@ int init_obdclass(void)
 #ifdef __KERNEL__
         int lustre_register_fs(void);
 
+        cfs_spin_lock_init(&capa_lock);
         for (i = CAPA_SITE_CLIENT; i < CAPA_SITE_MAX; i++)
                 CFS_INIT_LIST_HEAD(&capa_list[i]);
 #endif
@@ -691,6 +698,12 @@ int init_obdclass(void)
         LCONSOLE_INFO("OBD class driver, http://www.lustre.org/\n");
         LCONSOLE_INFO("        Lustre Version: "LUSTRE_VERSION_STRING"\n");
         LCONSOLE_INFO("        Build Version: "BUILD_VERSION"\n");
+
+#ifdef __KERNEL__
+        cfs_sema_init(&lustre_mount_info_lock, 1);
+        cfs_sema_init(&mgc_start_lock, 1);
+        cfs_sema_init(&server_start_lock, 1);
+#endif
 
         cfs_spin_lock_init(&obd_types_lock);
         cfs_waitq_init(&obd_race_waitq);
@@ -808,6 +821,13 @@ static void cleanup_obdclass(void)
                "obd_memory_pages max: "LPU64", leaked: "LPU64"\n",
                pages_max, pages_leaked);
 
+        cfs_spin_lock_done(&obd_dev_lock);
+#ifdef __KERNEL__
+        cfs_sema_fini(&lustre_mount_info_lock);
+        cfs_sema_fini(&mgc_start_lock);
+        cfs_sema_fini(&server_start_lock);
+        cfs_spin_lock_done(&capa_lock);
+#endif
         EXIT;
 }
 

@@ -63,7 +63,7 @@ static CFS_LIST_HEAD(ldlm_flock_waitq);
 /**
  * Lock protecting access to ldlm_flock_waitq.
  */
-cfs_spinlock_t ldlm_flock_waitq_lock = CFS_SPIN_LOCK_UNLOCKED;
+cfs_spinlock_t ldlm_flock_waitq_lock;
 
 int ldlm_flock_blocking_ast(struct ldlm_lock *lock, struct ldlm_lock_desc *desc,
                             void *data, int flag);

@@ -38,6 +38,8 @@
 #include "socklnd_lib-darwin.h"
 #elif defined(__WINNT__)
 #include "socklnd_lib-winnt.h"
+#elif defined(__sun__)
+#include "socklnd_lib-solaris.h"
 #else
 #error Unsupported Operating System
 #endif
@@ -83,9 +85,9 @@ typedef struct                                  /* per scheduler state */
 
 typedef struct
 {
-        unsigned int      ksni_valid:1;         /* been set yet? */
-        unsigned int      ksni_bound:1;         /* bound to a cpu yet? */
-        unsigned int      ksni_sched:6;         /* which scheduler (assumes < 64) */
+        unsigned char     ksni_valid;           /* been set yet? */
+        unsigned char     ksni_bound;           /* bound to a cpu yet? */
+        unsigned short    ksni_sched;           /* which scheduler (assumes < 64) */
 } ksock_irqinfo_t;
 
 typedef struct                                  /* in-use interface */
@@ -597,3 +599,5 @@ extern void ksocknal_lib_csum_tx(ksock_tx_t *tx);
 
 extern int ksocknal_lib_memory_pressure(ksock_conn_t *conn);
 extern int ksocknal_lib_bind_thread_to_cpu(int id);
+
+extern void ksocknal_arch_init(void);

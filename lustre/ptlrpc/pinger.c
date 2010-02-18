@@ -579,7 +579,7 @@ static int               pet_refcount = 0;
 static int               pet_state;
 static cfs_waitq_t       pet_waitq;
 CFS_LIST_HEAD(pet_list);
-static cfs_spinlock_t    pet_lock = CFS_SPIN_LOCK_UNLOCKED;
+static cfs_spinlock_t    pet_lock;
 
 int ping_evictor_wake(struct obd_export *exp)
 {
@@ -681,6 +681,8 @@ static int ping_evictor_main(void *arg)
         }
         CDEBUG(D_HA, "Exiting Ping Evictor\n");
 
+        cfs_spin_lock_done(&pet_lock);
+
         RETURN(0);
 }
 
@@ -691,11 +693,13 @@ void ping_evictor_start(void)
         if (++pet_refcount > 1)
                 return;
 
+        cfs_spin_lock_init(&pet_lock);
         cfs_waitq_init(&pet_waitq);
 
         rc = cfs_kernel_thread(ping_evictor_main, NULL, CLONE_VM | CLONE_FILES);
         if (rc < 0) {
                 pet_refcount--;
+                cfs_spin_lock_done(&pet_lock);
                 CERROR("Cannot start ping evictor thread: %d\n", rc);
         }
 }

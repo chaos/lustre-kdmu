@@ -158,12 +158,12 @@ do {                                            \
 # define libcfs_kmem_dec(ptr, size) do {} while (0)
 #endif /* LIBCFS_DEBUG */
 
+#ifndef LIBCFS_VMALLOC_SIZE
 #define LIBCFS_VMALLOC_SIZE        16384
+#endif
 
 #define LIBCFS_ALLOC_GFP(ptr, size, mask)                                 \
 do {                                                                      \
-        LASSERT(!cfs_in_interrupt() ||                                    \
-               (size <= LIBCFS_VMALLOC_SIZE && mask == CFS_ALLOC_ATOMIC));\
         if (unlikely((size) > LIBCFS_VMALLOC_SIZE))                       \
                 (ptr) = cfs_alloc_large(size);                            \
         else                                                              \

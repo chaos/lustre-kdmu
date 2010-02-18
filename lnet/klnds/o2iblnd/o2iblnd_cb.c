@@ -840,7 +840,7 @@ kiblnd_post_tx_locked (kib_conn_t *conn, kib_tx_t *tx, int credit)
         else
                 rc = ib_post_send(conn->ibc_cmid->qp,
                                   tx->tx_wrq, &bad_wrq);
-        conn->ibc_last_send = jiffies;
+        conn->ibc_last_send = cfs_time_current();
 
         if (rc == 0)
                 return 0;
@@ -1125,7 +1125,7 @@ kiblnd_queue_tx_locked (kib_tx_t *tx, kib_conn_t *conn)
         LASSERT (conn->ibc_state >= IBLND_CONN_ESTABLISHED);
 
         tx->tx_queued = 1;
-        tx->tx_deadline = jiffies + (*kiblnd_tunables.kib_timeout * CFS_HZ);
+        tx->tx_deadline = cfs_time_shift(*kiblnd_tunables.kib_timeout);
 
         if (tx->tx_conn == NULL) {
                 kiblnd_conn_addref(conn);
@@ -1994,7 +1994,7 @@ kiblnd_connreq_done(kib_conn_t *conn, int status)
         /* connection established */
         cfs_write_lock_irqsave(&kiblnd_data.kib_global_lock, flags);
 
-        conn->ibc_last_send = jiffies;
+        conn->ibc_last_send = cfs_time_current();
         kiblnd_set_conn_state(conn, IBLND_CONN_ESTABLISHED);
         kiblnd_peer_alive(peer);
 
@@ -2882,11 +2882,12 @@ kiblnd_check_txs (kib_conn_t *conn, cfs_list_t *txs)
                         LASSERT (tx->tx_waiting || tx->tx_sending != 0);
                 }
 
-                if (cfs_time_aftereq (jiffies, tx->tx_deadline)) {
+                if (cfs_time_after_eq (cfs_time_current(), tx->tx_deadline)) {
                         timed_out = 1;
                         CERROR("Timed out tx: %s, %lu seconds\n",
                                kiblnd_queue2str(conn, txs),
-                               cfs_duration_sec(jiffies - tx->tx_deadline));
+                               cfs_duration_sec(cfs_time_sub(cfs_time_current(),
+                                                             tx->tx_deadline)));
                         break;
                 }
         }
@@ -2984,7 +2985,7 @@ kiblnd_connd (void *arg)
         int                i;
         int                dropped_lock;
         int                peer_index = 0;
-        unsigned long      deadline = jiffies;
+        cfs_time_t         deadline = cfs_time_current();
 
         cfs_daemonize ("kiblnd_connd");
         cfs_block_allsigs ();
@@ -3031,7 +3032,7 @@ kiblnd_connd (void *arg)
                 }
 
                 /* careful with the jiffy wrap... */
-                timeout = (int)(deadline - jiffies);
+                timeout = (int)cfs_time_sub(deadline, cfs_time_current());
                 if (timeout <= 0) {
                         const int n = 4;
                         const int p = 1;
@@ -3060,7 +3061,7 @@ kiblnd_connd (void *arg)
                                              kiblnd_data.kib_peer_hash_size;
                         }
 
-                        deadline += p * CFS_HZ;
+                        deadline = cfs_time_add(deadline, cfs_time_seconds(p));
                         cfs_spin_lock_irqsave(&kiblnd_data.kib_connd_lock,
                                               flags);
                 }

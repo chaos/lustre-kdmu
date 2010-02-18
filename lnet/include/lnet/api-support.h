@@ -43,6 +43,8 @@
 #include <lnet/darwin/api-support.h>
 #elif defined(__WINNT__)
 #include <lnet/winnt/api-support.h>
+#elif defined(__sun__)
+#include <lnet/solaris/api-support.h>
 #else
 #error Unsupported Operating System
 #endif

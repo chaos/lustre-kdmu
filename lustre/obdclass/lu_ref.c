@@ -104,7 +104,6 @@ static struct lu_kmem_descr lu_ref_caches[] = {
 static CFS_LIST_HEAD(lu_ref_refs);
 static cfs_spinlock_t lu_ref_refs_guard;
 static struct lu_ref lu_ref_marker = {
-        .lf_guard   = CFS_SPIN_LOCK_UNLOCKED,
         .lf_list    = CFS_LIST_HEAD_INIT(lu_ref_marker.lf_list),
         .lf_linkage = CFS_LIST_HEAD_INIT(lu_ref_marker.lf_linkage)
 };
@@ -438,6 +437,7 @@ int lu_ref_global_init(void)
                "lu_ref tracking is enabled. Performance isn't.\n");
 
 
+        cfs_spin_lock_init(&lu_ref_marker.lf_guard);
         cfs_spin_lock_init(&lu_ref_refs_guard);
         result = lu_kmem_init(lu_ref_caches);
 
@@ -459,6 +459,7 @@ void lu_ref_global_fini(void)
         lprocfs_remove_proc_entry("lu_refs", proc_lustre_root);
 #endif
         lu_kmem_fini(lu_ref_caches);
+        cfs_spin_lock_done(&lu_ref_marker.lf_guard);
 }
 
 #endif /* USE_LU_REF */

@@ -85,49 +85,23 @@ static unsigned long lcw_flags = 0;
  * When it hits 0, we stop the distpatcher.
  */
 static __u32         lcw_refcount = 0;
-static CFS_DECLARE_MUTEX(lcw_refcount_sem);
+static cfs_semaphore_t lcw_refcount_sem;
 
 /*
  * List of timers that have fired that need their callbacks run by the
  * dispatcher.
  */
 /* BH lock! */
-static cfs_spinlock_t lcw_pending_timers_lock = CFS_SPIN_LOCK_UNLOCKED;
+static cfs_spinlock_t lcw_pending_timers_lock; /* BH lock! */
 static cfs_list_t lcw_pending_timers = \
         CFS_LIST_HEAD_INIT(lcw_pending_timers);
 
 /* Last time a watchdog expired */
 static cfs_time_t lcw_last_watchdog_time;
 static int lcw_recent_watchdog_count;
-static cfs_spinlock_t lcw_last_watchdog_lock = CFS_SPIN_LOCK_UNLOCKED;
+static cfs_spinlock_t lcw_last_watchdog_lock;
 
-static void
-lcw_dump(struct lc_watchdog *lcw)
-{
-        ENTRY;
-#if defined(HAVE_TASKLIST_LOCK)
-        cfs_read_lock(&tasklist_lock);
-#elif defined(HAVE_TASK_RCU)
-        rcu_read_lock();
-#else
-        CERROR("unable to dump stack because of missing export\n"); 
-        RETURN_EXIT;
-#endif
-       if (lcw->lcw_task == NULL) { 
-                LCONSOLE_WARN("Process " LPPID " was not found in the task "
-                              "list; watchdog callback may be incomplete\n",
-                              (int)lcw->lcw_pid);
-        } else {
-                libcfs_debug_dumpstack(lcw->lcw_task);
-        }
-
-#if defined(HAVE_TASKLIST_LOCK)
-        cfs_read_unlock(&tasklist_lock);
-#elif defined(HAVE_TASK_RCU)
-        rcu_read_unlock();
-#endif
-        EXIT;
-}
+extern void lcw_dump(struct lc_watchdog *lcw);
 
 static void lcw_cb(ulong_ptr_t data)
 {
@@ -224,11 +198,6 @@ static int lcw_dispatch_main(void *data)
         ENTRY;
 
         cfs_daemonize("lc_watchdogd");
-
-        SIGNAL_MASK_LOCK(current, flags);
-        sigfillset(&current->blocked);
-        RECALC_SIGPENDING;
-        SIGNAL_MASK_UNLOCK(current, flags);
 
         cfs_complete(&lcw_start_completion);
 
@@ -445,6 +414,20 @@ void lc_watchdog_dumplog(pid_t pid, void *data)
 }
 EXPORT_SYMBOL(lc_watchdog_dumplog);
 
+void lc_watchdog_init(void)
+{
+        cfs_sema_init(&lcw_refcount_sem, 1);
+        cfs_spin_lock_init(&lcw_pending_timers_lock);
+        cfs_spin_lock_init(&lcw_last_watchdog_lock);
+}
+
+void lc_watchdog_fini(void)
+{
+        cfs_sema_fini(&lcw_refcount_sem);
+        cfs_spin_lock_done(&lcw_pending_timers_lock);
+        cfs_spin_lock_done(&lcw_last_watchdog_lock);
+}
+
 #else   /* !defined(WITH_WATCHDOG) */
 
 struct lc_watchdog *lc_watchdog_add(int timeout,
@@ -471,4 +454,11 @@ void lc_watchdog_delete(struct lc_watchdog *lcw)
 }
 EXPORT_SYMBOL(lc_watchdog_delete);
 
+void lc_watchdog_init(void)
+{
+}
+
+void lc_watchdog_fini(void)
+{
+}
 #endif

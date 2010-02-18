@@ -86,4 +86,12 @@ void cfs_timer_arm(cfs_timer_t *t, cfs_time_t deadline);
 void cfs_timer_disarm(cfs_timer_t *t);
 int  cfs_timer_is_armed(cfs_timer_t *t);
 cfs_time_t cfs_timer_deadline(cfs_timer_t *t);
+
+/*
+ * Randomize
+ */
+unsigned int ll_rand(void);
+void ll_srand(unsigned int seed1, unsigned int seed2);
+void ll_get_random_bytes(void *buf, int size);
+
 #endif

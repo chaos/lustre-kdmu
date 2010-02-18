@@ -191,6 +191,8 @@ static int libcfs_psdev_release(unsigned long flags, void *args)
 static cfs_rw_semaphore_t ioctl_list_sem;
 static cfs_list_t ioctl_list;
 
+#pragma weak kping_client
+
 int libcfs_register_ioctl(struct libcfs_ioctl_handler *hand)
 {
         int rc = 0;
@@ -400,6 +402,7 @@ MODULE_LICENSE("GPL");
 extern cfs_psdev_t libcfs_dev;
 extern cfs_rw_semaphore_t cfs_tracefile_sem;
 extern cfs_semaphore_t cfs_trace_thread_sem;
+extern struct cfs_rw_semaphore _lprocfs_lock;
 
 extern void libcfs_init_nidstrings(void);
 extern int libcfs_arch_init(void);
@@ -409,11 +412,14 @@ static int init_libcfs_module(void)
 {
         int rc;
 
+        cfs_errno_tables_init();
         libcfs_arch_init();
+        lc_watchdog_init();
         libcfs_init_nidstrings();
         cfs_init_rwsem(&cfs_tracefile_sem);
         cfs_init_mutex(&cfs_trace_thread_sem);
         cfs_init_rwsem(&ioctl_list_sem);
+        cfs_init_rwsem(&_lprocfs_lock);
         CFS_INIT_LIST_HEAD(&ioctl_list);
         libcfs_param_root_init();
 
@@ -495,7 +501,9 @@ static void exit_libcfs_module(void)
 
         cfs_fini_rwsem(&ioctl_list_sem);
         cfs_fini_rwsem(&cfs_tracefile_sem);
+        cfs_fini_rwsem(&_lprocfs_lock);
 
+        lc_watchdog_fini();
         libcfs_arch_cleanup();
 }
 

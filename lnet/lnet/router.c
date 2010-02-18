@@ -1283,7 +1283,7 @@ lnet_new_rtrbuf(lnet_rtrbufpool_t *rbp)
 {
         int            npages = rbp->rbp_npages;
         int            sz = offsetof(lnet_rtrbuf_t, rb_kiov[npages]);
-        struct page   *page;
+        cfs_page_t    *page;
         lnet_rtrbuf_t *rb;
         int            i;
 

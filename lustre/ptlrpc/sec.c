@@ -66,6 +66,10 @@
  * policy registers                            *
  ***********************************************/
 
+#ifdef __KERNEL__
+extern cfs_semaphore_t sptlrpc_sem_add_pages;
+#endif
+static cfs_semaphore_t load_mutex;
 static cfs_rwlock_t policy_lock;
 static struct ptlrpc_sec_policy *policies[SPTLRPC_POLICY_MAX] = {
         NULL,
@@ -120,7 +124,6 @@ EXPORT_SYMBOL(sptlrpc_unregister_policy);
 static
 struct ptlrpc_sec_policy * sptlrpc_wireflavor2policy(__u32 flavor)
 {
-        static CFS_DECLARE_MUTEX(load_mutex);
         static cfs_atomic_t       loaded = CFS_ATOMIC_INIT(0);
         struct ptlrpc_sec_policy *policy;
         __u16                     number = SPTLRPC_FLVR_POLICY(flavor);
@@ -2391,6 +2394,10 @@ int __init sptlrpc_init(void)
         int rc;
 
         cfs_rwlock_init(&policy_lock);
+        cfs_sema_init(&load_mutex, 1);
+#ifdef __KERNEL__
+        cfs_sema_init(&sptlrpc_sem_add_pages, 1);
+#endif
 
         rc = sptlrpc_gc_init();
         if (rc)
@@ -2440,4 +2447,10 @@ void __exit sptlrpc_fini(void)
         sptlrpc_enc_pool_fini();
         sptlrpc_conf_fini();
         sptlrpc_gc_fini();
+
+        cfs_rwlock_fini(&policy_lock);
+        cfs_sema_fini(&load_mutex);
+#ifdef __KERNEL__
+        cfs_sema_fini(&sptlrpc_sem_add_pages);
+#endif        
 }

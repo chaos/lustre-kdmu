@@ -114,6 +114,11 @@ typedef struct {
 /* limit on the number of entries in discontiguous MDs */
 #define LNET_MAX_IOV    256
 
+/* Can we use CFS_PAGE_SIZE for checking LNET_MAX_PAYLOAD below? */
+#if defined(__KERNEL__) && defined(__linux__) && (CFS_PAGE_SIZE != PAGE_SIZE)
+# error "CFS_PAGE_SIZE != PAGE_SIZE: LNET_MAX_PAYLOAD checks can be incorrect"
+#endif
+
 /* Max payload size */
 #ifndef LNET_MAX_PAYLOAD
 # error "LNET_MAX_PAYLOAD must be defined in config.h"
@@ -121,8 +126,8 @@ typedef struct {
 # if (LNET_MAX_PAYLOAD < LNET_MTU)
 #  error "LNET_MAX_PAYLOAD too small - error in configure --with-max-payload-mb"
 # elif defined(__KERNEL__)
-#  if (LNET_MAX_PAYLOAD > (PAGE_SIZE * LNET_MAX_IOV))
-/*  PAGE_SIZE is a constant: check with cpp! */
+#  if (LNET_MAX_PAYLOAD > (CFS_PAGE_SIZE * LNET_MAX_IOV))
+/*  CFS_PAGE_SIZE is a constant: check with cpp! */
 #   error "LNET_MAX_PAYLOAD too large - error in configure --with-max-payload-mb"
 #  endif
 # endif

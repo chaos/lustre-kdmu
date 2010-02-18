@@ -85,7 +85,7 @@ static int mconf_set_label(struct dt_device *dt, char *label);
 
 /*********** mount lookup *********/
 
-CFS_DECLARE_MUTEX(lustre_mount_info_lock);
+cfs_semaphore_t lustre_mount_info_lock;
 static CFS_LIST_HEAD(server_mount_info_list);
 
 static struct lustre_mount_info *server_find_mount(const char *name)
@@ -514,7 +514,7 @@ static int server_stop_mgs(struct super_block *sb)
         RETURN(rc);
 }
 
-CFS_DECLARE_MUTEX(mgc_start_lock);
+cfs_semaphore_t mgc_start_lock;
 
 /** Set up a mgc obd to process startup logs
  *
@@ -855,7 +855,7 @@ static int server_mgc_clear_fs(struct obd_device *mgc)
         RETURN(rc);
 }
 
-CFS_DECLARE_MUTEX(server_start_lock);
+cfs_semaphore_t server_start_lock;
 
 /* Stop MDS/OSS if nobody is using them */
 static int server_stop_servers(int lddflags, int lsiflags)

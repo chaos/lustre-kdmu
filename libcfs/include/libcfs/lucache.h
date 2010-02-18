@@ -123,8 +123,8 @@ struct upcall_cache {
 
         char                    uc_name[40];            /* for upcall */
         char                    uc_upcall[UC_CACHE_UPCALL_MAXPATH];
-        cfs_time_t              uc_acquire_expire;      /* jiffies */
-        cfs_time_t              uc_entry_expire;        /* jiffies */
+        int                     uc_acquire_expire;      /* seconds */
+        int                     uc_entry_expire;        /* seconds */
         struct upcall_cache_ops *uc_ops;
 };
 

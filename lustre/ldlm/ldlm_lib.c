@@ -1707,7 +1707,8 @@ static int target_recovery_thread(void *arg)
         struct obd_device *obd = lut->lut_obd;
         struct ptlrpc_request *req;
         struct target_recovery_data *trd = &obd->obd_recovery_data;
-        unsigned long delta;
+        cfs_time_t    start_time;
+        time_t        delta;
         unsigned long flags;
         struct lu_env env;
         struct ptlrpc_thread fake_svc_thread, *thread = &fake_svc_thread;
@@ -1743,7 +1744,7 @@ static int target_recovery_thread(void *arg)
         }
 
         /* next stage: replay requests */
-        delta = jiffies;
+        start_time = cfs_time_current();
         obd->obd_req_replaying = 1;
         CDEBUG(D_INFO, "1: request replay stage - %d clients from t"LPU64"\n",
                cfs_atomic_read(&obd->obd_req_replay_clients),
@@ -1804,7 +1805,7 @@ static int target_recovery_thread(void *arg)
                 target_request_copy_put(req);
         }
 
-        delta = (jiffies - delta) / CFS_HZ;
+        delta = cfs_duration_sec(cfs_time_sub(cfs_time_current(), start_time));
         CDEBUG(D_INFO,"4: recovery completed in %lus - %d/%d reqs/locks\n",
               delta, obd->obd_replayed_requests, obd->obd_replayed_locks);
         if (delta > obd_timeout * OBD_RECOVERY_FACTOR) {

@@ -1293,3 +1293,9 @@ ksocknal_lib_bind_thread_to_cpu(int id)
         return 0;
 #endif
 }
+
+void
+ksocknal_arch_init ()
+{
+        ksocknal_data.ksnd_nschedulers = ksocknal_nsched();        
+}

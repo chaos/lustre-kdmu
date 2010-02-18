@@ -57,8 +57,10 @@
 
 #include <libcfs/libcfs.h>
 
+#ifdef LPROCFS
 struct seq_file;
 struct proc_dir_entry;
+#endif
 struct lustre_cfg;
 
 struct thandle;

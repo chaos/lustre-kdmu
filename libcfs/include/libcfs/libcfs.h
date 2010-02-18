@@ -49,6 +49,8 @@
 #include <libcfs/darwin/libcfs.h>
 #elif defined(__WINNT__)
 #include <libcfs/winnt/libcfs.h>
+#elif defined(__sun__)
+#include <libcfs/solaris/libcfs.h>
 #else
 #error Unsupported operating system.
 #endif
@@ -292,6 +294,7 @@ int cfs_univ2oflags(int flags);
 #include <libcfs/libcfs_string.h>
 #include <libcfs/libcfs_kernelcomm.h>
 #include <libcfs/libcfs_hash.h>
+#include <libcfs/libcfs_errno.h>
 
 /* container_of depends on "likely" which is defined in libcfs_private.h */
 static inline void *__container_of(void *ptr, unsigned long shift)

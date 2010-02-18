@@ -49,6 +49,10 @@
 
 #include <libcfs/libcfs.h>
 
+# ifndef HAVE_RCU
+typedef struct cfs_rcu_head { int foo; } cfs_rcu_head_t;
+# endif
+
 typedef void (*portals_handle_addref_cb)(void *object);
 
 /* These handles are most easily used by having them appear at the very top of

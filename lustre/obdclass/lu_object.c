@@ -646,7 +646,7 @@ EXPORT_SYMBOL(lu_types_stop);
  * Global list of all sites on this node
  */
 static CFS_LIST_HEAD(lu_sites);
-static CFS_DECLARE_MUTEX(lu_sites_guard);
+static cfs_semaphore_t lu_sites_guard;
 
 /**
  * Global environment used by site shrinker.
@@ -1020,7 +1020,7 @@ enum {
 
 static struct lu_context_key *lu_keys[LU_CONTEXT_KEY_NR] = { NULL, };
 
-static cfs_spinlock_t lu_keys_guard = CFS_SPIN_LOCK_UNLOCKED;
+static cfs_spinlock_t lu_keys_guard;
 
 /**
  * Global counter incremented whenever key is registered, unregistered,
@@ -1542,6 +1542,9 @@ int lu_global_init(void)
 
         CDEBUG(D_CONSOLE, "Lustre LU module (%p).\n", &lu_keys);
 
+        cfs_spin_lock_init(&lu_keys_guard);
+        cfs_sema_init(&lu_sites_guard, 1);
+
         result = lu_ref_global_init();
         if (result != 0)
                 return result;
@@ -1616,6 +1619,9 @@ void lu_global_fini(void)
         cfs_up(&lu_sites_guard);
 
         lu_ref_global_fini();
+
+        cfs_spin_lock_done(&lu_keys_guard);
+        cfs_sema_fini(&lu_sites_guard);
 }
 
 struct lu_buf LU_BUF_NULL = {

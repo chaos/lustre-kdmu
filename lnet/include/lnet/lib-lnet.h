@@ -47,6 +47,8 @@
 #include <lnet/darwin/lib-lnet.h>
 #elif defined(__WINNT__)
 #include <lnet/winnt/lib-lnet.h>
+#elif defined(__sun__)
+#include <lnet/solaris/lib-lnet.h>
 #else
 #error Unsupported Operating System
 #endif

@@ -501,7 +501,7 @@ typedef struct kib_tx                           /* transmit message */
         short                     tx_queued;    /* queued for sending */
         short                     tx_waiting;   /* waiting for peer */
         int                       tx_status;    /* LNET completion status */
-        unsigned long             tx_deadline;  /* completion deadline */
+        cfs_time_t                tx_deadline;  /* completion deadline */
         __u64                     tx_cookie;    /* completion cookie */
         lnet_msg_t               *tx_lntmsg[2]; /* lnet msgs to finalize on completion */
         kib_msg_t                *tx_msg;       /* message buffer (host vaddr) */
@@ -545,7 +545,7 @@ typedef struct kib_conn
         int                  ibc_nrx:16;        /* receive buffers owned */
         int                  ibc_scheduled:1;   /* scheduled for attention */
         int                  ibc_ready:1;       /* CQ callback fired */
-        unsigned long        ibc_last_send;     /* time of last send */
+        cfs_time_t           ibc_last_send;     /* time of last send */
         cfs_list_t           ibc_early_rxs;     /* rxs completed before ESTABLISHED */
         cfs_list_t           ibc_tx_queue;       /* sends that need a credit */
         cfs_list_t           ibc_tx_queue_nocred;/* sends that don't need a credit */
@@ -658,7 +658,7 @@ static inline int
 kiblnd_send_keepalive(kib_conn_t *conn)
 {
         return (*kiblnd_tunables.kib_keepalive > 0) &&
-                cfs_time_after(jiffies, conn->ibc_last_send +
+                cfs_time_after(cfs_time_current(), conn->ibc_last_send +
                                *kiblnd_tunables.kib_keepalive*CFS_HZ);
 }
 

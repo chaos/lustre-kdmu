@@ -49,7 +49,7 @@
 
 static inline void set_capa_key_expiry(struct mdt_device *mdt)
 {
-        mdt->mdt_ck_expiry = jiffies + mdt->mdt_ck_timeout * CFS_HZ;
+        mdt->mdt_ck_expiry = cfs_time_shift(mdt->mdt_ck_timeout);
 }
 
 static void make_capa_key(struct lustre_capa_key *key,
@@ -274,7 +274,7 @@ static int mdt_ck_thread_main(void *args)
                 if (rc) {
                         DEBUG_CAPA_KEY(D_ERROR, rkey, "update failed for");
                         /* next retry is in 300 sec */
-                        mdt->mdt_ck_expiry = jiffies + 300 * CFS_HZ;
+                        mdt->mdt_ck_expiry = cfs_time_shift(300);
                 }
 
                 cfs_timer_arm(&mdt->mdt_ck_timer, mdt->mdt_ck_expiry);

@@ -39,9 +39,6 @@
  */
 #define DEBUG_SUBSYSTEM S_SEC
 
-#include <asm/system.h>
-#include <asm/uaccess.h>
-#include <asm/uaccess.h>
 #include <libcfs/lucache.h>
 
 static struct upcall_cache_entry *alloc_entry(struct upcall_cache *cache,
@@ -120,11 +117,12 @@ static int check_unlink_entry(struct upcall_cache *cache,
                               struct upcall_cache_entry *entry)
 {
         if (UC_CACHE_IS_VALID(entry) &&
-            cfs_time_before(jiffies, entry->ue_expire))
+            cfs_time_before(cfs_time_current(), entry->ue_expire))
                 return 0;
 
         if (UC_CACHE_IS_ACQUIRING(entry)) {
-                if (cfs_time_before(jiffies, entry->ue_acquire_expire))
+                if (cfs_time_before(cfs_time_current(),
+                                    entry->ue_acquire_expire))
                         return 0;
 
                 UC_CACHE_SET_EXPIRED(entry);
@@ -197,7 +195,8 @@ find_again:
         if (UC_CACHE_IS_NEW(entry)) {
                 UC_CACHE_SET_ACQUIRING(entry);
                 UC_CACHE_CLEAR_NEW(entry);
-                entry->ue_acquire_expire = jiffies + cache->uc_acquire_expire;
+                entry->ue_acquire_expire =
+                        cfs_time_shift(cache->uc_acquire_expire);
                 cfs_spin_unlock(&cache->uc_lock);
                 rc = refresh_entry(cache, entry);
                 cfs_spin_lock(&cache->uc_lock);
@@ -215,7 +214,7 @@ find_again:
          * this item, just wait it complete
          */
         if (UC_CACHE_IS_ACQUIRING(entry)) {
-                unsigned long expiry = jiffies + cache->uc_acquire_expire;
+                cfs_time_t expiry = cfs_time_shift(cache->uc_acquire_expire);
 
                 cfs_waitlink_init(&wait);
                 cfs_waitq_add(&entry->ue_waitq, &wait);
@@ -223,13 +222,13 @@ find_again:
                 cfs_spin_unlock(&cache->uc_lock);
 
                 cfs_waitq_timedwait(&wait, CFS_TASK_INTERRUPTIBLE, 
-                                    cache->uc_acquire_expire);
+                                    cfs_time_seconds(cache->uc_acquire_expire));
 
                 cfs_spin_lock(&cache->uc_lock);
                 cfs_waitq_del(&entry->ue_waitq, &wait);
                 if (UC_CACHE_IS_ACQUIRING(entry)) {
                         /* we're interrupted or upcall failed in the middle */
-                        rc = cfs_time_before(jiffies, expiry) ? \
+                        rc = cfs_time_before(cfs_time_current(), expiry) ?
                                 -EINTR : -ETIMEDOUT;
                         put_entry(cache, entry);
                         CERROR("acquire timeout exceeded for key "LPU64
@@ -342,7 +341,7 @@ int upcall_cache_downcall(struct upcall_cache *cache, __u32 err, __u64 key,
         if (rc)
                 GOTO(out, rc);
 
-        entry->ue_expire = jiffies + cache->uc_entry_expire;
+        entry->ue_expire = cfs_time_shift(cache->uc_entry_expire);
         UC_CACHE_SET_VALID(entry);
         CDEBUG(D_OTHER, "%s: created upcall cache entry %p for key "LPU64"\n",
                cache->uc_name, entry, entry->ue_key);
@@ -416,7 +415,7 @@ void upcall_cache_flush_one(struct upcall_cache *cache, __u64 key, void *args)
                       "cur %lu, ex %ld/%ld\n",
                       cache->uc_name, entry, entry->ue_key,
                       cfs_atomic_read(&entry->ue_refcount), entry->ue_flags,
-                      get_seconds(), entry->ue_acquire_expire,
+                      cfs_time_current_sec(), entry->ue_acquire_expire,
                       entry->ue_expire);
                 UC_CACHE_SET_EXPIRED(entry);
                 if (!cfs_atomic_read(&entry->ue_refcount))
@@ -444,8 +443,8 @@ struct upcall_cache *upcall_cache_init(const char *name, const char *upcall,
         strncpy(cache->uc_name, name, sizeof(cache->uc_name) - 1);
         /* upcall pathname proc tunable */
         strncpy(cache->uc_upcall, upcall, sizeof(cache->uc_upcall) - 1);
-        cache->uc_entry_expire = 10 * 60 * CFS_HZ;
-        cache->uc_acquire_expire = 15 * CFS_HZ;
+        cache->uc_entry_expire = 10 * 60;
+        cache->uc_acquire_expire = 15;
         cache->uc_ops = ops;
 
         RETURN(cache);

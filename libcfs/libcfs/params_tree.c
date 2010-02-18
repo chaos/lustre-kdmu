@@ -47,7 +47,7 @@
 
 #ifdef __KERNEL__
 /* for bug 10866, global variable */
-CFS_DECLARE_RWSEM(_lprocfs_lock);
+cfs_rw_semaphore_t _lprocfs_lock;
 EXPORT_SYMBOL(_lprocfs_lock);
 
 static cfs_rw_semaphore_t libcfs_param_sem;

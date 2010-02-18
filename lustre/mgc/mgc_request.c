@@ -107,7 +107,7 @@ int mgc_logname2resid(char *logname, struct ldlm_res_id *res_id)
 
 /********************** config llog list **********************/
 static CFS_LIST_HEAD(config_llog_list);
-static cfs_spinlock_t       config_list_lock = CFS_SPIN_LOCK_UNLOCKED;
+static cfs_spinlock_t config_list_lock;
 
 /* Take a reference to a config log */
 static int config_log_get(struct config_llog_data *cld)
@@ -311,7 +311,7 @@ static int config_log_add(struct obd_device *obd, char *logname,
         RETURN(0);
 }
 
-CFS_DECLARE_MUTEX(llog_process_lock);
+cfs_semaphore_t llog_process_lock;
 
 /* Stop watching for updates on this log. */
 static int config_log_end(char *logname, struct config_llog_instance *cfg)
@@ -1534,6 +1534,9 @@ struct obd_ops mgc_obd_ops = {
 
 int __init mgc_init(void)
 {
+        cfs_sema_init(&llog_process_lock, 1);
+        cfs_spin_lock_init(&config_list_lock);
+
         return class_register_type(&mgc_obd_ops, NULL, NULL,
                                    LUSTRE_MGC_NAME, NULL);
 }
@@ -1542,6 +1545,9 @@ int __init mgc_init(void)
 static void /*__exit*/ mgc_exit(void)
 {
         class_unregister_type(LUSTRE_MGC_NAME);
+
+        cfs_sema_fini(&llog_process_lock);
+        cfs_spin_lock_done(&config_list_lock);
 }
 
 MODULE_AUTHOR("Sun Microsystems, Inc. <http://www.lustre.org/>");

@@ -61,6 +61,7 @@ CFS_MODULE_PARM(ldlm_num_threads, "i", int, 0444,
                 "number of DLM service threads to start");
 #endif
 
+extern cfs_spinlock_t   ldlm_flock_waitq_lock;
 extern cfs_mem_cache_t *ldlm_resource_slab;
 extern cfs_mem_cache_t *ldlm_lock_slab;
 static cfs_semaphore_t  ldlm_ref_sem;
@@ -2478,6 +2479,7 @@ int __init ldlm_init(void)
         cfs_init_mutex(&ldlm_ref_sem);
         cfs_init_mutex(ldlm_namespace_lock(LDLM_NAMESPACE_SERVER));
         cfs_init_mutex(ldlm_namespace_lock(LDLM_NAMESPACE_CLIENT));
+        cfs_spin_lock_init(&ldlm_flock_waitq_lock);
         ldlm_resource_slab = cfs_mem_cache_create("ldlm_resources",
                                                sizeof(struct ldlm_resource), 0,
                                                CFS_SLAB_HWCACHE_ALIGN);
@@ -2523,6 +2525,8 @@ void __exit ldlm_exit(void)
         LASSERTF(rc == 0, "couldn't free ldlm lock slab\n");
         rc = cfs_mem_cache_destroy(ldlm_interval_slab);
         LASSERTF(rc == 0, "couldn't free interval node slab\n");
+
+        cfs_spin_lock_done(&ldlm_flock_waitq_lock);
 }
 
 /* ldlm_extent.c */

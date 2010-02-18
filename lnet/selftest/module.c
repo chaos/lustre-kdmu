@@ -125,7 +125,7 @@ error:
 MODULE_DESCRIPTION("LNet Selftest");
 MODULE_LICENSE("GPL");
 
-cfs_module(lnet, "0.9.0", lnet_selftest_init, lnet_selftest_fini);
+cfs_module(lnet_selftest, "0.9.0", lnet_selftest_init, lnet_selftest_fini);
 
 #else
 

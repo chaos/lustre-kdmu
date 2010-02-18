@@ -76,6 +76,8 @@
 
 #define CACHE_QUIESCENT_PERIOD  (20)
 
+cfs_semaphore_t sptlrpc_sem_add_pages;
+
 static struct ptlrpc_enc_page_pool {
         /*
          * constants
@@ -393,7 +395,6 @@ static void enc_pools_insert(cfs_page_t ***pools, int npools, int npages)
 
 static int enc_pools_add_pages(int npages)
 {
-        static CFS_DECLARE_MUTEX(sem_add_pages);
         cfs_page_t   ***pools;
         int             npools, alloced = 0;
         int             i, j, rc = -ENOMEM;
@@ -401,7 +402,7 @@ static int enc_pools_add_pages(int npages)
         if (npages < PTLRPC_MAX_BRW_PAGES)
                 npages = PTLRPC_MAX_BRW_PAGES;
 
-        cfs_down(&sem_add_pages);
+        cfs_down(&sptlrpc_sem_add_pages);
 
         if (npages + page_pools.epp_total_pages > page_pools.epp_max_pages)
                 npages = page_pools.epp_max_pages - page_pools.epp_total_pages;
@@ -443,7 +444,7 @@ out:
                 CERROR("Failed to allocate %d enc pages\n", npages);
         }
 
-        cfs_up(&sem_add_pages);
+        cfs_up(&sptlrpc_sem_add_pages);
         return rc;
 }
 
