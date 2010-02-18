@@ -141,11 +141,13 @@ static inline int osp_sync_has_work(struct osp_device *d)
 {
         /* has locally committed and low in-flight? */
         if (!cfs_list_empty(&d->opd_syn_committed_here)
-                        && d->opd_syn_rpc_in_flight < d->opd_syn_max_rpc_in_flight)
+                        && d->opd_syn_rpc_in_flight < d->opd_syn_max_rpc_in_flight
+                        && d->opd_imp_connected)
                 return 1;
 
         /* has new/old changes and low in-progress? */
-        if (osp_sync_has_new_job(d) && osp_sync_low_in_progress(d))
+        if (osp_sync_has_new_job(d) && osp_sync_low_in_progress(d)
+                        && d->opd_imp_connected)
                 return 1;
 
         /* has remotely committed? */
@@ -157,7 +159,15 @@ static inline int osp_sync_has_work(struct osp_device *d)
 
 static inline int osp_sync_can_process_new(struct osp_device *d)
 {
-        return (osp_sync_low_in_progress(d) && osp_sync_has_new_job(d));
+        return (osp_sync_low_in_progress(d)
+                        && osp_sync_has_new_job(d)
+                        && d->opd_imp_connected);
+}
+
+void osp_sync_check_for_work(struct osp_device *d)
+{
+        if (osp_sync_has_work(d))
+                cfs_waitq_signal(&d->opd_syn_waitq);
 }
 
 int osp_sync_declare_add(const struct lu_env *env, struct osp_object *o,
@@ -256,8 +266,7 @@ int osp_sync_add(const struct lu_env *env, struct osp_object *o,
                 d->opd_syn_changes++;
                 cfs_spin_unlock(&d->opd_syn_lock);
 
-                if (osp_sync_has_work(d))
-                        cfs_waitq_signal(&d->opd_syn_waitq);
+                osp_sync_check_for_work(d);
         }
 
         RETURN(rc);
@@ -304,8 +313,7 @@ static int osp_sync_txn_commit_cb(const struct lu_env *env,
         CFS_INIT_LIST_HEAD(&d->opd_syn_waiting_for_commit);
         cfs_spin_unlock(&d->opd_syn_lock);
 
-        if (osp_sync_has_work(d))
-                cfs_waitq_signal(&d->opd_syn_waitq);
+        osp_sync_check_for_work(d);
 
         return 0;
 }
@@ -349,8 +357,7 @@ static int osp_sync_interpret(const struct lu_env *env,
         d->opd_syn_rpc_in_flight--;
         cfs_spin_unlock(&d->opd_syn_lock);
        
-        if (osp_sync_has_work(d))
-                cfs_waitq_signal(&d->opd_syn_waitq);
+        osp_sync_check_for_work(d);
 
         return 0; 
 }
@@ -584,8 +591,7 @@ static void osp_sync_process_committed(struct osp_device *d)
         d->opd_syn_rpc_in_progress -= done;
         cfs_spin_unlock(&d->opd_syn_lock);
 
-        if (osp_sync_has_work(d))
-                cfs_waitq_signal(&d->opd_syn_waitq);
+        osp_sync_check_for_work(d);
 
         EXIT;
 }
@@ -669,9 +675,27 @@ static int osp_sync_process_queues(struct llog_handle *llh,
                                        d->opd_syn_rpc_in_flight);
                                 return 0;
                         }
-                        rc = osp_sync_process_record(d, llh, rec);
-                        /* XXX: error handling here */
-                        LASSERTF(rc == 0, "rc = %d\n", rc);
+
+                        /*
+                         * try to send, in case of disconnection, suspend
+                         * processing till we can send this request
+                         */
+                        {
+                                rc = osp_sync_process_record(d, llh, rec);
+                                /*
+                                 * XXX: probably different handling is needed
+                                 * for some bugs, like immediate exit or if
+                                 * OSP gets inactive
+                                 */
+                                if (rc) {
+                                        CERROR("can't send: %d\n", rc);
+                                        l_wait_event(d->opd_syn_waitq,
+                                                     !osp_sync_running(d) ||
+                                                        osp_sync_has_work(d),
+                                                      &lwi);
+                                }
+                        } while (rc && osp_sync_running(d));
+
                         llh = NULL;
                         rec = NULL;
                 }
@@ -684,7 +708,7 @@ static int osp_sync_process_queues(struct llog_handle *llh,
                         CDEBUG(D_HA, "stop llog processing\n");
                         return LLOG_PROC_BREAK;
                 }
-                
+
         } while (1);
 }
 

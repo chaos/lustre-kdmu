@@ -99,7 +99,7 @@ static int osp_statfs_interpret(const struct lu_env *env,
         if (msfs == NULL) {
                 GOTO(out, rc = -EPROTO);
         }
-        
+
         statfs_unpack(&d->opd_statfs, msfs);
 
 out:

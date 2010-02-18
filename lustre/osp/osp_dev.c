@@ -610,6 +610,7 @@ static int osp_import_event(struct obd_device *obd,
                 case IMP_EVENT_INACTIVE:
                         /* XXX: disallow OSP to create objects */
                         d->opd_got_disconnected = 1;
+                        d->opd_imp_connected = 0;
                         cfs_waitq_signal(&d->opd_pre_waitq);
                         CDEBUG(D_HA, "got disconnected\n");
                         break;
@@ -620,7 +621,9 @@ static int osp_import_event(struct obd_device *obd,
 
                 case IMP_EVENT_ACTIVE:
                         d->opd_new_connection = 1;
+                        d->opd_imp_connected = 1;
                         cfs_waitq_signal(&d->opd_pre_waitq);
+                        osp_sync_check_for_work(d);
                         CDEBUG(D_HA, "got connected\n");
                         break;
 

@@ -73,7 +73,7 @@ struct osp_device {
         /* connection status. XXX: locking? */
         int                             opd_new_connection;
         int                             opd_got_disconnected;
-        int                             opd_connected;
+        int                             opd_imp_connected;
 
         /* 
          * Precreation pool
@@ -224,6 +224,7 @@ int osp_sync_declare_add(const struct lu_env *env, struct osp_object *o,
 int osp_sync_add(const struct lu_env *env, struct osp_object *d,
                  llog_op_type type, struct thandle *th);
 int osp_sync_fini(struct osp_device *d);
+void osp_sync_check_for_work(struct osp_device *d);
 
 /* lproc_osp.c */
 void lprocfs_osp_init_vars(struct lprocfs_static_vars *lvars);
