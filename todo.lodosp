@@ -17,7 +17,6 @@
 * LOD TODO
 !  - call osp with ->ldo_recovery_complete() to initiate orphan cleanup
    - support for >1K OSTs (dynamic lod_ost in struct lod_device)
-!  - support for different LOV EA formats
 !  - ost removal/deactivation
    - lod_qos_prep_create() to extend striping if file size is too big
    - improve locking in lod_qos_statfs_update()
@@ -28,7 +27,6 @@
    - lod_*_xattr_set() to handle replay case
 
 * OSP TODO
-!  - version of llog_cat_process() working in current thread
 !  - adaptive precreation (shouldn't block in most cases), tunables in procfs
    - support for CMD (group = mds #) (where do we take mds #? encoded in config?)
    - batching in osp_sync.c so that the thread doesn't wake up for a single job
@@ -43,9 +41,10 @@
    - small optimizations here and there
    - batch support
    - resend in osp_object_truncate()
-!  - don't start with sending new request till security is configured (how?)
+
 
 * tests
+!  - exhaust_precreations() to work with osp
    - s/lov/lod/
    - s/osc/osp/
 
@@ -65,6 +64,7 @@ Questions:
    - how do we block in creation till at least one OST is connected?
    - what ->statfs() returns when connection is down?
    - clear method to specify to lod whether striping is needed
+   - how to do with destroy/setattr if ost is inactive
      
 
 
