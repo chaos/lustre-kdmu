@@ -759,7 +759,7 @@ static int osp_sync_thread(void *_arg)
                 GOTO(out, rc = -EINVAL);
         }
 
-        rc = llog_cat_process(llh, osp_sync_process_queues, d, 0, 0);
+        rc = __llog_cat_process(llh, osp_sync_process_queues, d, 0, 0, 0);
         LASSERTF(rc == 0 || rc == LLOG_PROC_BREAK,
                  "%lu changes, %u in progress, %u in flight\n",
                  d->opd_syn_changes, d->opd_syn_rpc_in_progress,
