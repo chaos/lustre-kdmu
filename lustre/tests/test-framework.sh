@@ -2754,6 +2754,16 @@ osc_to_ost()
     echo $ost
 }
 
+osp_to_ost()
+{
+    osp=$1
+    ost=`echo $1 | awk -F_ '{print $3}'`
+    if [ -z $ost ]; then
+        ost=`echo $1 | sed 's/-osp.*//'`
+    fi
+    echo $ost
+}
+
 remote_node () {
     local node=$1
     [ "$node" != "$(hostname)" ]
