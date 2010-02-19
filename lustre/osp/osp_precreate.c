@@ -61,6 +61,17 @@
 
 #include "osp_internal.h"
 
+
+/*
+ * there are two specific states to take care about:
+ *
+ * = import is disconnected =
+ *
+ * = import is inactive =
+ *   in this case osp_declare_object_create() returns an error
+ *
+ */
+
 /*
  * statfs
  */
@@ -252,7 +263,9 @@ static int osp_precreate_send(struct osp_device *d)
         d->opd_pre_last_created = body->oa.o_id;
         cfs_spin_unlock(&d->opd_pre_lock);
 
-        /* probably somebody has been waiting for new id? */
+        /* now we can wakeup all users awaiting for objects */
+        /* XXX: how do we do if rc != 0 ? */
+        d->opd_pre_status = rc;
         cfs_waitq_signal(&d->opd_pre_user_waitq);
 
 out_req:
@@ -365,9 +378,16 @@ static int osp_precreate_clean_orphans(struct osp_device *d)
         d->opd_pre_last_created = d->opd_pre_next; 
         cfs_spin_unlock(&d->opd_pre_lock);
 
+        /* now we can wakeup all users awaiting for objects */
+        d->opd_pre_status = rc;
+        cfs_waitq_signal(&d->opd_pre_user_waitq);
+
 out_req:
         ptlrpc_req_finished(req);
 
+        /*
+         * XXX: how do we do if orphan cleanup failed? deactivate import?
+         */
         RETURN(rc);
 }
 
@@ -394,6 +414,15 @@ static int osp_precreate_new_connection(struct osp_device *d)
         rc = osp_precreate_clean_orphans(d);
 
         RETURN(rc);
+}
+
+/*
+ *
+ */
+void osp_pre_disable_precreation(struct osp_device *d)
+{
+        d->opd_pre_status = -ENODEV;
+        cfs_waitq_signal(&d->opd_pre_user_waitq);
 }
 
 static int osp_precreate_thread(void *_arg)
@@ -435,6 +464,7 @@ static int osp_precreate_thread(void *_arg)
 
                         /* got connected, let's initialize connection */
                         d->opd_new_connection = 0;
+                        d->opd_got_disconnected = 0;
                         rc = osp_precreate_new_connection(d);
 
                         /* if initialization went well, move on */
@@ -460,10 +490,8 @@ static int osp_precreate_thread(void *_arg)
 
                         /* something happened to the connection
                          * have to start from the beginning */
-                        if (d->opd_got_disconnected) {
-                                d->opd_got_disconnected = 0;
+                        if (d->opd_got_disconnected)
                                 break;
-                        }
 
                         if (osp_statfs_need_update(d))
                                 osp_statfs_update(d);
@@ -627,9 +655,12 @@ int osp_init_precreate(struct osp_device *d)
         int                rc;
         ENTRY;
 
+        /* initially precreation isn't ready */
+        d->opd_pre_status = -EAGAIN;
         d->opd_pre_next = 1;
         d->opd_pre_last_created = 1;
         d->opd_pre_reserved = 0;
+        d->opd_got_disconnected = 1;
 
         cfs_spin_lock_init(&d->opd_pre_lock);
         cfs_waitq_init(&d->opd_pre_waitq);

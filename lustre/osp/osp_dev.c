@@ -157,13 +157,17 @@ static int osp_statfs(const struct lu_env *env,
         struct osp_device *d = dt2osp_dev(dev);
         ENTRY;
 
-        /*
-         * XXX: shouldn't we wait till first OST_STATFS is done?
-         * XXX: how to proceed when import is disconnected?
-         */
-        if (d->opd_statfs.f_type == 0) {
-                /* statfs data isn't ready yet */
-                RETURN(-EAGAIN);
+        if (unlikely(d->opd_imp_active == 0)) {
+                /*
+                 * in case of inactive OST we return nulls
+                 * so that caller can understand this device
+                 * is unusable for new objects
+                 *
+                 * XXX: shouldn't we take normal statfs and fill
+                 * just few specific fields with zeroes? 
+                 */
+                memset(sfs, 0, sizeof(*sfs));
+                RETURN(0);
         }
 
         /* return recently updated data */
@@ -607,12 +611,18 @@ static int osp_import_event(struct obd_device *obd,
 
         switch (event) {
                 case IMP_EVENT_DISCON:
-                case IMP_EVENT_INACTIVE:
-                        /* XXX: disallow OSP to create objects */
                         d->opd_got_disconnected = 1;
                         d->opd_imp_connected = 0;
+                        osp_pre_disable_precreation(d);
                         cfs_waitq_signal(&d->opd_pre_waitq);
                         CDEBUG(D_HA, "got disconnected\n");
+                        break;
+
+                case IMP_EVENT_INACTIVE:
+                        d->opd_imp_active = 0;
+                        osp_pre_disable_precreation(d);
+                        cfs_waitq_signal(&d->opd_pre_waitq);
+                        CDEBUG(D_HA, "got inactive\n");
                         break;
 
                 case IMP_EVENT_INVALIDATE:
@@ -620,7 +630,9 @@ static int osp_import_event(struct obd_device *obd,
                         break;
 
                 case IMP_EVENT_ACTIVE:
-                        d->opd_new_connection = 1;
+                        d->opd_imp_active = 1;
+                        if (d->opd_got_disconnected)
+                                d->opd_new_connection = 1;
                         d->opd_imp_connected = 1;
                         cfs_waitq_signal(&d->opd_pre_waitq);
                         osp_sync_check_for_work(d);
@@ -635,6 +647,54 @@ static int osp_import_event(struct obd_device *obd,
                         LBUG();
         }
         return 0;
+}
+
+static int osp_iocontrol(unsigned int cmd, struct obd_export *exp, int len,
+                         void *karg, void *uarg)
+{
+        struct obd_device *obd = exp->exp_obd;
+        struct osp_device *d;
+        struct obd_ioctl_data *data = karg;
+        int err = 0;
+        ENTRY;
+
+        LASSERT(obd->obd_lu_dev);
+        d = lu2osp_dev(obd->obd_lu_dev);
+        LASSERT(d->opd_dt_dev.dd_ops == &osp_dt_ops);
+
+        if (!cfs_try_module_get(THIS_MODULE)) {
+                CERROR("Can't get module. Is it alive?");
+                return -EINVAL;
+        }
+        switch (cmd) {
+        case OBD_IOC_LOV_GET_CONFIG:
+        case LL_IOC_LOV_SETSTRIPE:
+        case LL_IOC_LOV_GETSTRIPE:
+        case OBD_IOC_CLIENT_RECOVER:
+                CERROR("unsupported function: %d\n", cmd);
+                GOTO(out, err);
+
+        case OBD_IOC_POLL_QUOTACHECK:
+                CERROR("unsupported function: %d\n", cmd);
+                GOTO(out, err);
+
+        case IOC_OSC_SET_ACTIVE:
+                err = ptlrpc_set_import_active(obd->u.cli.cl_import,
+                                               data->ioc_offset);
+                GOTO(out, err);
+
+        case OBD_IOC_PING_TARGET:
+                err = ptlrpc_obd_ping(obd);
+                GOTO(out, err);
+
+        default:
+                CDEBUG(D_INODE, "unrecognized ioctl %#x by %s\n",
+                       cmd, cfs_curproc_comm());
+                GOTO(out, err = -ENOTTY);
+        }
+out:
+        cfs_module_put(THIS_MODULE);
+        return err;
 }
 
 
@@ -675,6 +735,7 @@ static struct obd_ops osp_obd_device_ops = {
         .o_connect              = osp_obd_connect,
         .o_disconnect           = osp_obd_disconnect,
         .o_import_event         = osp_import_event,
+        .o_iocontrol            = osp_iocontrol,
         .o_statfs               = osp_obd_statfs,
 };
 
