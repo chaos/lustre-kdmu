@@ -247,6 +247,12 @@ static int osp_object_create(const struct lu_env *env,
                 cfs_spin_unlock(&d->opd_pre_lock);
         }
 
+        /*
+         * it's OK if the import is inactive by this moment - id was created
+         * by OST earlier, we just need to maintain it consistently on the disk
+         * once import is reconnected, OSP will claim this and other objects
+         * used and OST either keep them, if they exist or recreate
+         */
         if (update) {
                 /* we updated last_used in-core, so we update on a disk */
                 objid = cpu_to_le64(objid);
