@@ -661,6 +661,12 @@ repeat_find:
                 }
 
                 /*
+                 * skip empty devices - usually it means inactive device 
+                 */
+                if (sfs.f_blocks == 0)
+                        continue;
+
+                /*
                  * We expect number of precreated objects in f_ffree at
                  * the first iteration, skip OSPs with no objects ready
                  */
@@ -772,6 +778,12 @@ repeat_find:
                         CERROR("can't statfs #%u: %d\n", ost_idx, rc);
                         continue;
                 }
+
+                /*
+                 * skip empty devices - usually it means inactive device 
+                 */
+                if (sfs.f_blocks == 0)
+                        continue;
 
                 /*
                  * We expect number of precreated objects in f_ffree at
@@ -1155,7 +1167,6 @@ int lod_qos_prep_create(const struct lu_env *env, struct lod_object *lo,
 
 
         /* XXX: support for non-0 files w/o objects */
-        /* XXX: support for pools */
         if (off >= lov->desc.ld_tgt_count)
                 rc = lod_alloc_qos(env, lo, attr, flag, th);
         else
