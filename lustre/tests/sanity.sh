@@ -36,10 +36,14 @@ ALWAYS_EXCEPT="$ALWAYS_EXCEPT 76"
 ALWAYS_EXCEPT="$ALWAYS_EXCEPT 52a 52b 57a 57b 129 132 156 160 180"
 
 # LOD/OSP branch needs fixes:
+# 27o -- qos to be fixed
+# 27q -- qos to be fixed
+# 27x -- qos to be fixed
 # 60  -- llog_osd_create()) ASSERTION(dt) failed
 # 65k -- ost deactivation isn't supported
 # 69  -- LustreError: 21498:0:(lod_object.c:513:lod_ah_init()) ASSERTION(lc->mbo_stripe == NULL) failed
-ALWAYS_EXCEPT="$ALWAYS_EXCEPT 60 65k 69"
+#ALWAYS_EXCEPT="$ALWAYS_EXCEPT 27o 27q 27x 60"
+ALWAYS_EXCEPT="$ALWAYS_EXCEPT 27o 27q 27x 60"
 
 case `uname -r` in
 2.4*) FSTYPE=${FSTYPE:-ext3} ;;
@@ -3216,7 +3220,7 @@ test_65k() { # bug11679
         remote_mds_nodsh && skip "remote MDS with nodsh" && return
 
         echo "Check OST status: "
-        MDS_OSCS=`do_facet $SINGLEMDS lctl dl | awk '/[oO][sS][cC].*md[ts]/ { print $4 }'`
+        MDS_OSCS=`do_facet $SINGLEMDS lctl dl | awk '/[oO][sS][pP].*[mM][dD][Tts]/ { print $4 }'`
         for OSC in $MDS_OSCS; do
                 echo $OSC "is activate"
                 do_facet $SINGLEMDS lctl --device %$OSC activate
@@ -3226,9 +3230,10 @@ test_65k() { # bug11679
                 echo $INACTIVE_OSC "is Deactivate:"
                 do_facet $SINGLEMDS lctl --device  %$INACTIVE_OSC deactivate
                 for STRIPE_OSC in $MDS_OSCS; do
-                        STRIPE_OST=`osc_to_ost $STRIPE_OSC`
-                        STRIPE_INDEX=`do_facet $SINGLEMDS lctl get_param -n lov.*md*.target_obd |
+                        STRIPE_OST=`osp_to_ost $STRIPE_OSC`
+                        STRIPE_INDEX=`do_facet $SINGLEMDS lctl get_param -n lod.*[mM][dD]*.target_obd |
                                       grep $STRIPE_OST | awk -F: '{print $1}' | head -n 1`
+                        do_facet $SINGLEMDS lctl get_param -n lod.*[mM][dD]*.target_obd
 
 			[ -f $DIR/$tdir/${STRIPE_INDEX} ] && continue
                         echo "$SETSTRIPE $DIR/$tdir/${STRIPE_INDEX} -i ${STRIPE_INDEX} -c 1"
@@ -6179,6 +6184,10 @@ test_155_load() {
     local list=$(comma_list $(osts_nodes))
     local big=$(do_nodes $list grep "cache" /proc/cpuinfo | \
         awk '{sum+=$4} END{print sum}')
+
+	if let "big == 0"; then
+		big=256
+	fi
 
     log big is $big K
 
