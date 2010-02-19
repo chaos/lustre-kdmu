@@ -443,8 +443,8 @@ static int osp_sync_new_setattr_job(struct osp_device *d,
         LASSERT(body);
         body->oa.o_id  = rec->lsr_oid;
         body->oa.o_gr  = rec->lsr_ogr;
-        body->oa.o_uid = rec->lsr_uid; /* XXX: what about hi 32bit? */
-        body->oa.o_gid = rec->lsr_gid; /* XXX: what about hi 32bit? */
+        body->oa.o_uid = rec->lsr_uid;
+        body->oa.o_gid = rec->lsr_gid;
         body->oa.o_valid = OBD_MD_FLGROUP | OBD_MD_FLID |
                            OBD_MD_FLUID | OBD_MD_FLGID;
 
