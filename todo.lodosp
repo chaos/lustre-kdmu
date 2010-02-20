@@ -25,6 +25,7 @@
    - pass next device in all the methods (like cursor, lod_trans_stop(), etc)
    - lod_xattr_set() to make sure new striping is sane
    - lod_*_xattr_set() to handle replay case
+   - check all users of ld_active_tgt_count/ltd_active, remove using of that
 
 * OSP TODO
 !  - adaptive precreation (shouldn't block in most cases), tunables in procfs
@@ -37,9 +38,7 @@
    - probably a mechanism to learn committness ASAP?
 !  - start orphan cleanup from osp_recovery_complete()
    - osp_sync() to flush changes to OST
-   - high 32bit in uid/gid (osp_sync_new_setattr())
-   - small optimizations here and there
-   - batch support
+!  - batch support
    - resend in osp_object_truncate()
 
 
@@ -56,6 +55,7 @@
    - server and client with different byte order
    - lov ea refers removed/inactive ost: unlink, chown
    - qos/rr can't allocate stripe on some device
+   - ost failover: how osp handles this
 
 Questions:
    - how do we do if none of OSP can provide with an object ?
@@ -74,9 +74,6 @@ Questions:
 Lustre: DEBUG MARKER: == test 65d: directory setstripe 1048576 -1 stripe_count ============== == 11:22:51
 LustreError: 7911:0:(lod_object.c:634:lod_declare_striped_object()) ASSERTION(mo->mbo_stripenr > 0) failed
 
-Lustre: DEBUG MARKER: == test 161: link ea sanity == 13:06:56
-LustreError: 21642:0:(mdd_dir.c:2776:mdd_links_add()) link_ea add failed -28 [0x200000430:0x13:0x0]
-
 
 Lustre: DEBUG MARKER: sanity test_27o: @@@@@@ FAIL: able to create /mnt/lustre/d0.sanity/d27/f27o
 Lustre: DEBUG MARKER: sanity test_27q: @@@@@@ FAIL: append succeeded
@@ -87,4 +84,5 @@ Lustre: DEBUG MARKER: sanity test_27x: @@@@@@ FAIL: OST0 was degraded but new cr
 Lustre: DEBUG MARKER: sanity test_27x: @@@@@@ FAIL: test_27x failed with 3
 Lustre: DEBUG MARKER: sanity test_56a: @@@@@@ FAIL: lfs getstripe --obd wrong: found 6, expected 3
 Lustre: DEBUG MARKER: sanity test_66: @@@@@@ FAIL: /mnt/lustre/f66 blocks < 8
+
 
