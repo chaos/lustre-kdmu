@@ -93,7 +93,7 @@ static int filter_preprw_write(const struct lu_env *env, struct obd_export *exp,
                                struct niobuf_remote *nb, int *nr_local,
                                struct niobuf_local *res)
 {
-        unsigned long used = 0, ungranted = 0;
+        unsigned long used = 0;
         obd_size left;
         struct filter_object *fo;
         int i, j, k, rc = 0;
@@ -130,12 +130,9 @@ static int filter_preprw_write(const struct lu_env *env, struct obd_export *exp,
         filter_grant_incoming(env, exp, oa);
         left = filter_grant_space_left(env, exp);
 
-        rc = filter_grant_check(env, exp, oa, res, *nr_local,
-                                &left, &used, &ungranted);
+        rc = filter_grant_check(env, exp, oa, res, *nr_local, &left, &used);
 
         /* XXX: how do we calculate used ? */
-
-        rc = filter_grant_client_calc(exp, &left, &used, &ungranted);
 
         /* do not zero out oa->o_valid as it is used in
          * * filter_commitrw_write() for setting UID/GID and
@@ -144,10 +141,12 @@ static int filter_preprw_write(const struct lu_env *env, struct obd_export *exp,
                 oa->o_grant = filter_grant(env, exp, oa->o_grant,
                                            oa->o_undirty, left);
         cfs_mutex_up(&ofd->ofd_grant_sem);
-
-        rc = dt_write_prep(env, filter_object_child(fo), res, *nr_local, &used);
+        if (rc == 0)
+                rc = dt_write_prep(env, filter_object_child(fo), res, *nr_local, &used);
 
 out:
+        if (rc)
+                dt_bufs_put(env, filter_object_child(fo), res, *nr_local);
         filter_object_put(env, fo);
         RETURN(rc);
 }
