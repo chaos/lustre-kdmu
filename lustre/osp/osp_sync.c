@@ -74,7 +74,7 @@
  * the second queue (opd_syn_waiting_for_commit) holds changes awaiting local
  * commit. once change is committed locally it migrates onto 3rd queue.
  * 
- * the third queue (opd_syn_committed_there) holds changes committed locally,
+ * the third queue (opd_syn_committed_here) holds changes committed locally,
  * but not sent to OST (as the pipe can be full). once pipe becomes non-full
  * we take a change from the queue and fire corresponded RPC.
  * 
