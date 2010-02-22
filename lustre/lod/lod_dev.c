@@ -162,10 +162,24 @@ static int lod_recovery_complete(const struct lu_env *env,
                                      struct lu_device *dev)
 {
         struct lod_device *lod = lu2lod_dev(dev);
-        struct lu_device   *next = &lod->lod_child->dd_lu_dev;
-        int rc;
+        struct lu_device  *next = &lod->lod_child->dd_lu_dev;
+        int                i, rc;
         ENTRY;
+
+        LASSERT(lod->lod_recovery_completed == 0);
+        lod->lod_recovery_completed = 1;
+
         rc = next->ld_ops->ldo_recovery_complete(env, next);
+
+        for (i = 0; i < LOD_MAX_OSTNR; i++) {
+                if (lod->lod_ost[i] == NULL)
+                        continue;
+                next = &lod->lod_ost[i]->dd_lu_dev;
+                rc = next->ld_ops->ldo_recovery_complete(env, next);
+                if (rc)
+                        CERROR("can't complete recovery on #%d: %d\n", i, rc);
+        }
+
         RETURN(rc);
 }
 

@@ -61,6 +61,7 @@ struct lod_device {
         cfs_proc_dir_entry_t            *lod_proc_entry;
         struct lprocfs_stats            *lod_stats;
         int                              lod_connects;
+        int                              lod_recovery_completed;
 
         /* list of known OSTs */
         struct dt_device                *lod_ost[LOD_MAX_OSTNR];

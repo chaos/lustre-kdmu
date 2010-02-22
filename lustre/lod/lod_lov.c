@@ -164,6 +164,7 @@ int lod_lov_add_device(const struct lu_env *env, struct lod_device *m,
         struct obd_connect_data *data = NULL;
         struct obd_export       *exp = NULL;
         struct obd_device       *obd;
+        struct lu_device        *ldev;
         struct dt_device        *d;
         int                     rc;
         ENTRY;
@@ -203,7 +204,8 @@ int lod_lov_add_device(const struct lu_env *env, struct lod_device *m,
         LASSERT(obd->obd_lu_dev);
         LASSERT(obd->obd_lu_dev->ld_site = m->lod_dt_dev.dd_lu_dev.ld_site);
 
-        d = lu2dt_dev(obd->obd_lu_dev);
+        ldev = obd->obd_lu_dev;
+        d = lu2dt_dev(ldev);
 
         cfs_mutex_down(&m->lod_mutex);
 
@@ -225,6 +227,8 @@ int lod_lov_add_device(const struct lu_env *env, struct lod_device *m,
                 m->lod_ostnr++;
                 set_bit(index, m->lod_ost_bitmap);
                 rc = 0;
+                if (m->lod_recovery_completed)
+                        ldev->ld_ops->ldo_recovery_complete(env, ldev); 
         } else {
                 CERROR("device %d is registered already\n", index);
                 GOTO(out, rc = -EINVAL);
