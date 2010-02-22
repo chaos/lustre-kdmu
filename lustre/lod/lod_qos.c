@@ -677,6 +677,7 @@ repeat_find:
                 if (IS_ERR(o)) {
                         CERROR("can't declare new object on #%u: %d\n",
                                ost_idx, (int) PTR_ERR(o));
+                        rc = PTR_ERR(o);
                         continue;
                 }
 
@@ -699,8 +700,11 @@ repeat_find:
 
         cfs_up_read(&lov->lov_qos.lq_rw_sem);
 
-        if (stripe_idx)
+        if (stripe_idx) {
                 lo->mbo_stripenr = stripe_idx;
+                /* at least one stripe is allocated */
+                rc = 0;
+        }
 
 out:
         if (pool != NULL) {
