@@ -15,7 +15,6 @@
    - changelog support
 
 * LOD TODO
-!  - call osp with ->ldo_recovery_complete() to initiate orphan cleanup
    - support for >1K OSTs (dynamic lod_ost in struct lod_device)
 !  - ost removal
    - lod_qos_prep_create() to extend striping if file size is too big
@@ -54,7 +53,6 @@
    - umount with RPC (precreation, statfs, destroy, setattr) in flight
    - server and client with different byte order
    - lov ea refers removed/inactive ost: unlink, chown
-   - qos/rr can't allocate stripe on some device
    - ost failover: how osp handles this
 
 Questions:
@@ -71,10 +69,6 @@ Questions:
 
 
 
-Lustre: DEBUG MARKER: == test 65d: directory setstripe 1048576 -1 stripe_count ============== == 11:22:51
-LustreError: 7911:0:(lod_object.c:634:lod_declare_striped_object()) ASSERTION(mo->mbo_stripenr > 0) failed
-
-
 Lustre: DEBUG MARKER: sanity test_27o: @@@@@@ FAIL: able to create /mnt/lustre/d0.sanity/d27/f27o
 Lustre: DEBUG MARKER: sanity test_27q: @@@@@@ FAIL: append succeeded
 Lustre: DEBUG MARKER: sanity test_27q: @@@@@@ FAIL: checkstat 2 failed
@@ -84,5 +78,4 @@ Lustre: DEBUG MARKER: sanity test_27x: @@@@@@ FAIL: OST0 was degraded but new cr
 Lustre: DEBUG MARKER: sanity test_27x: @@@@@@ FAIL: test_27x failed with 3
 Lustre: DEBUG MARKER: sanity test_56a: @@@@@@ FAIL: lfs getstripe --obd wrong: found 6, expected 3
 Lustre: DEBUG MARKER: sanity test_66: @@@@@@ FAIL: /mnt/lustre/f66 blocks < 8
-
 
