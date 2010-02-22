@@ -875,6 +875,7 @@ static int lod_alloc_qos(const struct lu_env *env, struct lod_object *lo,
         struct pool_desc *pool;
         struct ost_pool *osts;
         struct lov_qos_rr *lqr;
+        cfs_kstatfs_t sfs;
         ENTRY;
 
         if (stripe_cnt_min < 1)
@@ -916,6 +917,19 @@ static int lod_alloc_qos(const struct lu_env *env, struct lod_object *lo,
         for (i = 0; i < osts->op_count; i++) {
                 if (!lov->lov_tgts[osts->op_array[i]] ||
                     !lov->lov_tgts[osts->op_array[i]]->ltd_active)
+                        continue;
+
+                rc = dt_statfs(env, m->lod_ost[i], &sfs);
+                if (rc) {
+                        /* this OSP doesn't feel well */
+                        CERROR("can't statfs #%u: %d\n", i, rc);
+                        continue;
+                }
+
+                /*
+                 * skip empty devices - usually it means inactive device 
+                 */
+                if (sfs.f_blocks == 0)
                         continue;
 
                 /* Fail Check before osc_precreate() is called
@@ -1096,6 +1110,9 @@ static int lod_qos_parse_config(const struct lu_env *env, struct lod_object *lo,
         if (v1->lmm_stripe_offset &&
                         v1->lmm_stripe_offset != (typeof(v1->lmm_stripe_offset))(-1))
                 *off = v1->lmm_stripe_offset;
+
+        CDEBUG(D_OTHER, "lsm: %u size, %u stripes, %u offset\n",
+               v1->lmm_stripe_size, v1->lmm_stripe_count, v1->lmm_stripe_offset);
 
         if (v1->lmm_magic == LOV_MAGIC_V3) {
                 if (buf->lb_len < sizeof(*v3))
