@@ -1111,8 +1111,9 @@ void lod_object_free_striping(struct lod_object *o)
                 i = sizeof(struct dt_object *) * o->mbo_stripes_allocated;
                 OBD_FREE(o->mbo_stripe, i);
                 o->mbo_stripe = NULL;
-                o->mbo_stripenr = 0;
+                o->mbo_stripes_allocated = 0;
         }
+        o->mbo_stripenr = 0;
 }
 
 /*
