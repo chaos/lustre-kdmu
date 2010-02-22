@@ -175,7 +175,7 @@ static int osp_declare_object_create(const struct lu_env *env,
                                       struct thandle *th)
 {
         struct osp_device  *d = lu2osp_dev(dt->do_lu.lo_dev);
-        struct osp_object   *o = dt2osp_obj(dt);
+        struct osp_object  *o = dt2osp_obj(dt);
         int                 rc = 0;
         ENTRY;
 
@@ -199,6 +199,9 @@ static int osp_declare_object_create(const struct lu_env *env,
 
                 /* XXX: for compatibility use common for all OSPs file */
                 rc = dt_declare_record_write(env, d->opd_last_used_file, 8, 0, th);
+        } else {
+                /* not needed in the cache anymore */
+                set_bit(LU_OBJECT_HEARD_BANSHEE, &dt->do_lu.lo_header->loh_flags);
         }
 
         RETURN(rc);
@@ -354,6 +357,24 @@ static void osp_object_release(const struct lu_env *env, struct lu_object *o)
 
                 /* not needed in cache any more */
                 set_bit(LU_OBJECT_HEARD_BANSHEE, &o->lo_header->loh_flags);
+        } else {
+                /*
+                 * XXX: this is a small dirty hack to deal with objects
+                 * allocated with lu_object_anon() and not put into lu_site
+                 * we want to release such objects with lu_object_put():
+                 * we manipulate site's internals to keep is consistent
+                 * ls_guard is already taken by lu_object_put()
+                 */
+                if (fid_seq(lu_object_fid(o)) == 0
+                                && fid_oid(lu_object_fid(o)) == 0
+                                && fid_ver(lu_object_fid(o)) == 0) {
+                        struct lu_site *s = o->lo_dev->ld_site;
+                        LASSERT(s);
+                        CFS_INIT_HLIST_NODE(&o->lo_header->loh_hash);
+                        CFS_INIT_LIST_HEAD(&o->lo_header->loh_lru);
+                        s->ls_busy++;
+                        s->ls_total++;
+                }
         }
 }
 
