@@ -689,8 +689,7 @@ int lod_declare_striped_object(const struct lu_env *env,
         if (rc) {
                 /* failed to create striping, let's reset
                  * config so that others don't get confused */
-                mo->mbo_stripe_size = 0;
-                mo->mbo_stripenr = 0;
+                lod_object_free_striping(mo);
                 GOTO(out, rc);
         }
 
@@ -1103,6 +1102,19 @@ static int lod_object_init(const struct lu_env *env, struct lu_object *o,
         RETURN(0);
 }
 
+void lod_object_free_striping(struct lod_object *o)
+{
+        int i;
+
+        if (o->mbo_stripe) {
+                LASSERT(o->mbo_stripes_allocated > 0);
+                i = sizeof(struct dt_object *) * o->mbo_stripes_allocated;
+                OBD_FREE(o->mbo_stripe, i);
+                o->mbo_stripe = NULL;
+                o->mbo_stripenr = 0;
+        }
+}
+
 /*
  * ->start is called once all slices are initialized, including header's
  * cache for mode (object type). using the type we can initialize ops
@@ -1129,13 +1141,7 @@ static void lod_object_free(const struct lu_env *env, struct lu_object *o)
                         lu_object_put(env, &mo->mbo_stripe[i]->do_lu);
         }
 
-        if (mo->mbo_stripe) {
-                LASSERT(mo->mbo_stripes_allocated > 0);
-                i = sizeof(struct dt_object *) * mo->mbo_stripes_allocated;
-                OBD_FREE(mo->mbo_stripe, i);
-                mo->mbo_stripe = NULL;
-                mo->mbo_stripenr = 0;
-        }
+        lod_object_free_striping(mo);
 
         lod_object_set_pool(mo, NULL);
 
