@@ -118,7 +118,7 @@ static int osp_statfs_interpret(const struct lu_env *env,
 out:
         if (rc == 0) {
                 /* schedule next update */
-                d->opd_statfs_fresh_till = cfs_time_shift(HZ *  d->opd_statfs_maxage);
+                d->opd_statfs_fresh_till = cfs_time_shift(d->opd_statfs_maxage);
                 cfs_timer_arm(&d->opd_statfs_timer, d->opd_statfs_fresh_till);
                 CDEBUG(D_CACHE, "updated statfs %p\n", d);
         } else {
@@ -202,7 +202,8 @@ static inline int osp_precreate_near_empty_nolock(struct osp_device *d)
         if (window - d->opd_pre_reserved < 10)
                 rc = 1;
 
-        return rc;
+        /* don't consider new precreation till OST is healty and has free space */
+        return (rc && (d->opd_pre_status == 0));
 }
 
 static inline int osp_precreate_near_empty(struct osp_device *d)
@@ -224,7 +225,14 @@ static int osp_precreate_send(struct osp_device *d)
         struct ost_body        *body;
         int                     rc;
         ENTRY;
-       
+
+        /* don't precreate new objects till OST healthy and has free space */
+        if (unlikely(d->opd_pre_status)) {
+                CERROR("%s: don't send new precreate: %d\n",
+                       d->opd_obd->obd_name, d->opd_pre_status);
+                RETURN(0);
+        }
+
         /*
          * if not connection/initialization is compeleted, ignore 
          */
@@ -429,6 +437,7 @@ static int osp_precreate_new_connection(struct osp_device *d)
 void osp_pre_update_status(struct osp_device *d, int rc)
 {
         cfs_kstatfs_t *msfs = &d->opd_statfs;
+        int            old = d->opd_pre_status;
         __u64          used;
 
         d->opd_pre_status = rc;
@@ -439,18 +448,23 @@ void osp_pre_update_status(struct osp_device *d, int rc)
                 used = min_t(__u64,(msfs->f_blocks - msfs->f_bfree) >> 10, 1 << 30);
                 if ((msfs->f_ffree < 32) || (msfs->f_bavail < used)) {
                         d->opd_pre_status = -ENOSPC;
-                        CERROR("%s: rc %d, type %x, %lu blocks, %lu free, %lu used, "
+                        if (old != -ENOSPC)
+                        CERROR("%s: rc %d, %lu blocks, %lu free, %lu used, "
                                "%lu avail -> %d\n", d->opd_obd->obd_name, rc,
-                               msfs->f_type, (unsigned long) msfs->f_blocks,
-                               (unsigned long) msfs->f_bfree, (unsigned long) used,
-                               (unsigned long) msfs->f_bavail, d->opd_pre_status);
-                } else if (d->opd_pre_status == -ENOSPC) {
+                               (unsigned long) msfs->f_blocks,
+                               (unsigned long) msfs->f_bfree,
+                               (unsigned long) used,
+                               (unsigned long) msfs->f_bavail,
+                               d->opd_pre_status);
+                } else if (old == -ENOSPC) {
                         d->opd_pre_status = 0;
-                        CERROR("%s: rc %d, type %x, %lu blocks, %lu free, %lu used, "
+                        CERROR("%s: rc %d, %lu blocks, %lu free, %lu used, "
                                "%lu avail -> %d\n", d->opd_obd->obd_name, rc,
-                               msfs->f_type, (unsigned long) msfs->f_blocks,
-                               (unsigned long) msfs->f_bfree, (unsigned long) used,
-                               (unsigned long) msfs->f_bavail, d->opd_pre_status);
+                               (unsigned long) msfs->f_blocks,
+                               (unsigned long) msfs->f_bfree,
+                               (unsigned long) used,
+                               (unsigned long) msfs->f_bavail,
+                               d->opd_pre_status);
                 }
         }
 
@@ -565,7 +579,7 @@ int osp_precreate_reserve(struct osp_device *d)
 
         LASSERT(d->opd_pre_last_created >= d->opd_pre_next);
 
-        while ((rc = d->opd_pre_status) == 0) {
+        while ((rc = d->opd_pre_status) == 0 || rc == -ENOSPC) {
 
                 /*
                  * we never use the last object in the window
@@ -575,6 +589,7 @@ int osp_precreate_reserve(struct osp_device *d)
                 if (precreated > d->opd_pre_reserved) {
                         d->opd_pre_reserved++;
                         cfs_spin_unlock(&d->opd_pre_lock);
+                        rc = 0;
 
                         /* XXX: don't wake up if precreation is in progress */
                         if (osp_precreate_near_empty_nolock(d))
@@ -583,6 +598,13 @@ int osp_precreate_reserve(struct osp_device *d)
                         break;
                 }
                 cfs_spin_unlock(&d->opd_pre_lock);
+
+                /*
+                 * all precreated objects have been used and no-space
+                 * status leave us no chance to succeed very soon
+                 */
+                if (unlikely(rc == -ENOSPC))
+                        break;
 
                 /* XXX: don't wake up if precreation is in progress */
                 cfs_waitq_signal(&d->opd_pre_waitq);
