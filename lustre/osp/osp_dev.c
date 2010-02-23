@@ -169,7 +169,7 @@ static int osp_statfs(const struct lu_env *env,
         struct osp_device *d = dt2osp_dev(dev);
         ENTRY;
 
-        if (unlikely(d->opd_imp_active == 0 || d->opd_pre_status)) {
+        if (unlikely(d->opd_imp_active == 0)) {
                 /*
                  * in case of inactive OST we return nulls
                  * so that caller can understand this device
