@@ -201,6 +201,42 @@ static int osp_rd_prealloc_last_id(char *page, char **start, off_t off,
         return snprintf(page, count, LPU64"\n", osp->opd_pre_last_created);
 }
 
+static int osp_rd_maxage(char *page, char **start, off_t off,
+                                     int count, int *eof, void *data)
+{
+        struct obd_device *dev = data;
+        struct osp_device *osp = lu2osp_dev(dev->obd_lu_dev);
+        int rc;
+
+        if (osp == NULL)
+                return -EINVAL;
+
+        rc = snprintf(page, count, "%u\n", osp->opd_statfs_maxage);
+        return rc;
+}
+
+static int osp_wr_maxage(struct file *file, const char *buffer,
+                                     unsigned long count, void *data)
+{
+        struct obd_device *dev = data;
+        struct osp_device *osp = lu2osp_dev(dev->obd_lu_dev);
+        int val, rc;
+
+        if (osp == NULL)
+                return -EINVAL;
+
+        rc = lprocfs_write_helper(buffer, count, &val);
+        if (rc)
+                return rc;
+
+        if (val < 1)
+                return -ERANGE;
+
+        osp->opd_statfs_maxage = val;
+
+        return count;
+}
+
 static struct lprocfs_vars lprocfs_osp_obd_vars[] = {
         { "uuid",                 lprocfs_rd_uuid,          0, 0 },
         { "ping",                 0, lprocfs_wr_ping,       0, 0, 0222 },
@@ -226,6 +262,7 @@ static struct lprocfs_vars lprocfs_osp_obd_vars[] = {
         { "timeouts",             lprocfs_rd_timeouts,      0, 0 },
         { "import",               lprocfs_rd_import,        0, 0 },
         { "state",                lprocfs_rd_state,         0, 0 },
+        { "maxage",               osp_rd_maxage, osp_wr_maxage,0 },
         { 0 }
 };
 

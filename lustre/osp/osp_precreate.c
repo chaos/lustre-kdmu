@@ -118,7 +118,7 @@ static int osp_statfs_interpret(const struct lu_env *env,
 out:
         if (rc == 0) {
                 /* schedule next update */
-                d->opd_statfs_fresh_till = cfs_time_shift(obd_timeout / 3);
+                d->opd_statfs_fresh_till = cfs_time_shift(HZ *  d->opd_statfs_maxage);
                 cfs_timer_arm(&d->opd_statfs_timer, d->opd_statfs_fresh_till);
                 CDEBUG(D_CACHE, "updated statfs %p\n", d);
         } else {
@@ -703,6 +703,7 @@ int osp_init_precreate(struct osp_device *d)
         /*
          * Initialize statfs-related things
          */
+        d->opd_statfs_maxage = 5; /* default update interval */
         d->opd_statfs_fresh_till = cfs_time_shift(-1000);
         CDEBUG(D_OTHER, "current %Lu, fresh till %Lu\n",
                (unsigned long long) cfs_time_current(),

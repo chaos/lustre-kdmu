@@ -131,6 +131,8 @@ struct osp_device {
         cfs_kstatfs_t                   opd_statfs;
         cfs_time_t                      opd_statfs_fresh_till;
         cfs_timer_t                     opd_statfs_timer;
+        /* how often to update statfs data */
+        int                             opd_statfs_maxage;
 };
 
 /* this is a top object */

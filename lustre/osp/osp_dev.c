@@ -120,6 +120,20 @@ static int osp_process_config(const struct lu_env *env,
                 case LCFG_CLEANUP:
                         rc = osp_shutdown(env, d);
                         break;
+
+                case LCFG_PARAM: {
+                        struct lprocfs_static_vars lvars = { 0 };
+
+                        lprocfs_osp_init_vars(&lvars);
+
+                        LASSERT(d->opd_obd);
+                        rc = class_process_proc_param(PARAM_OSP, lvars.obd_vars,
+                                                      lcfg, d->opd_obd);
+                        if (rc > 0)
+                                rc = 0;
+                        break;
+                }
+
                 default:
                         CERROR("unknown command %u\n", lcfg->lcfg_command);
                         rc = 0;
