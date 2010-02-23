@@ -42,7 +42,6 @@
 
 
 * tests
-!  - exhaust_precreations() to work with osp
    - s/lov/lod/
    - s/osc/osp/
    - replay-* tests
@@ -69,13 +68,14 @@ Questions:
 
 
 
-Lustre: DEBUG MARKER: sanity test_27o: @@@@@@ FAIL: able to create /mnt/lustre/d0.sanity/d27/f27o
-Lustre: DEBUG MARKER: sanity test_27q: @@@@@@ FAIL: append succeeded
-Lustre: DEBUG MARKER: sanity test_27q: @@@@@@ FAIL: checkstat 2 failed
-Lustre: DEBUG MARKER: sanity test_27w: @@@@@@ FAIL: stripe offset 1 != 0
-Lustre: DEBUG MARKER: sanity test_27x: @@@@@@ FAIL: OST0 was degraded but new created file still use it
+Lustre: DEBUG MARKER: sanity test_27p: @@@@@@ FAIL: append failed
+Lustre: DEBUG MARKER: sanity test_27p: @@@@@@ FAIL: checkstat failed
 Lustre: DEBUG MARKER: sanity test_27x: @@@@@@ FAIL: OST0 was degraded but new created file still use it
 Lustre: DEBUG MARKER: sanity test_27x: @@@@@@ FAIL: test_27x failed with 3
 Lustre: DEBUG MARKER: sanity test_56a: @@@@@@ FAIL: lfs getstripe --obd wrong: found 6, expected 3
-Lustre: DEBUG MARKER: sanity test_66: @@@@@@ FAIL: /mnt/lustre/f66 blocks < 8
+
+
+Lustre: DEBUG MARKER: sanity test_127: @@@@@@ FAIL: Missing read_bytes stats
+Lustre: DEBUG MARKER: sanity test_127: @@@@@@ FAIL: Missing write_bytes stats
+
 
