@@ -675,7 +675,7 @@ repeat_find:
 
                 o = lod_qos_declare_object_on(env, m, ost_idx, th);
                 if (IS_ERR(o)) {
-                        CERROR("can't declare new object on #%u: %d\n",
+                        CDEBUG(D_OTHER, "can't declare new object on #%u: %d\n",
                                ost_idx, (int) PTR_ERR(o));
                         rc = PTR_ERR(o);
                         continue;
