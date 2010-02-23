@@ -36,14 +36,8 @@ ALWAYS_EXCEPT="$ALWAYS_EXCEPT 76"
 ALWAYS_EXCEPT="$ALWAYS_EXCEPT 52a 52b 57a 57b 129 132 156 160 180"
 
 # LOD/OSP branch needs fixes:
-# 27o -- qos to be fixed
-# 27q -- qos to be fixed
-# 27x -- qos to be fixed
 # 60  -- llog_osd_create()) ASSERTION(dt) failed
-# 65k -- ost deactivation isn't supported
-# 69  -- LustreError: 21498:0:(lod_object.c:513:lod_ah_init()) ASSERTION(lc->mbo_stripe == NULL) failed
-#ALWAYS_EXCEPT="$ALWAYS_EXCEPT 27o 27q 27x 60"
-ALWAYS_EXCEPT="$ALWAYS_EXCEPT 27o 27q 27x 60"
+ALWAYS_EXCEPT="$ALWAYS_EXCEPT 60"
 
 case `uname -r` in
 2.4*) FSTYPE=${FSTYPE:-ext3} ;;
@@ -1038,21 +1032,21 @@ exhaust_precreations() {
 			  sed -e 's/_UUID$//;s/^.*-//')
 
 	# on the mdt's osc
-	local last_id=$(do_facet mds${MDSIDX} lctl get_param -n osc.*${OST}-osc-${MDT_INDEX}.prealloc_last_id)
-	local next_id=$(do_facet mds${MDSIDX} lctl get_param -n osc.*${OST}-osc-${MDT_INDEX}.prealloc_next_id)
+	local last_id=$(do_facet mds${MDSIDX} lctl get_param -n osp.*${OST}-osp-${MDT_INDEX}.prealloc_last_id)
+	local next_id=$(do_facet mds${MDSIDX} lctl get_param -n osp.*${OST}-osp-${MDT_INDEX}.prealloc_next_id)
 
-	do_facet mds${MDSIDX} lctl get_param osc.*OST*-osc-${MDT_INDEX}.prealloc*
+	do_facet mds${MDSIDX} lctl get_param osp.*OST*-osp-${MDT_INDEX}.prealloc*
 
-	mkdir -p $DIR/d27/${OST}
+	mkdir -p $DIR/$tdir/${OST}
 	$SETSTRIPE $DIR/$tdir/${OST} -i $OSTIDX -c 1
 #define OBD_FAIL_OST_ENOSPC              0x215
 	do_facet ost$((OSTIDX + 1)) lctl set_param fail_val=$FAILIDX
 	do_facet ost$((OSTIDX + 1)) lctl set_param fail_loc=0x215
+	sleep_maxage
 	echo "Creating to objid $last_id on ost $OST..."
 	createmany -o $DIR/$tdir/${OST}/f $next_id $((last_id - next_id + 2))
-	do_facet mds${MDSIDX} lctl get_param osc.*OST*-osc-${MDT_INDEX}.prealloc*
+	do_facet mds${MDSIDX} lctl get_param osp.*OST*-osp-${MDT_INDEX}.prealloc*
 	do_facet ost$((OSTIDX + 1)) lctl set_param fail_loc=$FAILLOC
-	sleep_maxage
 }
 
 exhaust_all_precreations() {
