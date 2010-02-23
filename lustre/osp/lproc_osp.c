@@ -201,6 +201,18 @@ static int osp_rd_prealloc_last_id(char *page, char **start, off_t off,
         return snprintf(page, count, LPU64"\n", osp->opd_pre_last_created);
 }
 
+static int osp_rd_prealloc_reserved(char *page, char **start, off_t off,
+                                   int count, int *eof, void *data)
+{
+        struct obd_device *obd = data;
+        struct osp_device *osp = lu2osp_dev(obd->obd_lu_dev);
+
+        if (osp == NULL)
+                return 0;
+
+        return snprintf(page, count, LPU64"\n", osp->opd_pre_reserved);
+}
+
 static int osp_rd_maxage(char *page, char **start, off_t off,
                                      int count, int *eof, void *data)
 {
@@ -237,6 +249,20 @@ static int osp_wr_maxage(struct file *file, const char *buffer,
         return count;
 }
 
+static int osp_rd_pre_status(char *page, char **start, off_t off,
+                                     int count, int *eof, void *data)
+{
+        struct obd_device *dev = data;
+        struct osp_device *osp = lu2osp_dev(dev->obd_lu_dev);
+        int rc;
+
+        if (osp == NULL)
+                return -EINVAL;
+
+        rc = snprintf(page, count, "%d\n", osp->opd_pre_status);
+        return rc;
+}
+
 static struct lprocfs_vars lprocfs_osp_obd_vars[] = {
         { "uuid",                 lprocfs_rd_uuid,          0, 0 },
         { "ping",                 0, lprocfs_wr_ping,       0, 0, 0222 },
@@ -259,10 +285,12 @@ static struct lprocfs_vars lprocfs_osp_obd_vars[] = {
                                   osp_wr_max_rpcs_in_prog,     0 },
         { "prealloc_next_id",     osp_rd_prealloc_next_id,  0, 0 },
         { "prealloc_last_id",     osp_rd_prealloc_last_id,  0, 0 },
+        { "prealloc_reserved",    osp_rd_prealloc_reserved, 0, 0 },
         { "timeouts",             lprocfs_rd_timeouts,      0, 0 },
         { "import",               lprocfs_rd_import,        0, 0 },
         { "state",                lprocfs_rd_state,         0, 0 },
         { "maxage",               osp_rd_maxage, osp_wr_maxage,0 },
+        { "precreate_status",     osp_rd_pre_status,        0, 0 },
         { 0 }
 };
 
