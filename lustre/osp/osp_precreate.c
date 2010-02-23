@@ -113,6 +113,8 @@ static int osp_statfs_interpret(const struct lu_env *env,
 
         statfs_unpack(&d->opd_statfs, msfs);
 
+        osp_pre_update_status(d, rc);
+
 out:
         if (rc == 0) {
                 /* schedule next update */
@@ -265,7 +267,7 @@ static int osp_precreate_send(struct osp_device *d)
 
         /* now we can wakeup all users awaiting for objects */
         /* XXX: how do we do if rc != 0 ? */
-        d->opd_pre_status = rc;
+        osp_pre_update_status(d, rc);
         cfs_waitq_signal(&d->opd_pre_user_waitq);
 
 out_req:
@@ -379,7 +381,7 @@ static int osp_precreate_clean_orphans(struct osp_device *d)
         cfs_spin_unlock(&d->opd_pre_lock);
 
         /* now we can wakeup all users awaiting for objects */
-        d->opd_pre_status = rc;
+        osp_pre_update_status(d, rc);
         cfs_waitq_signal(&d->opd_pre_user_waitq);
 
 out_req:
@@ -417,11 +419,42 @@ static int osp_precreate_new_connection(struct osp_device *d)
 }
 
 /*
+ * the function updates current precreation status used: functional or not
  *
+ * rc is a last code from the transport, rc == 0 meaning transport works
+ * well and users of lod can use objects from this OSP
+ *
+ * the status depends on current usage of OST 
  */
-void osp_pre_disable_precreation(struct osp_device *d)
+void osp_pre_update_status(struct osp_device *d, int rc)
 {
-        d->opd_pre_status = -ENODEV;
+        cfs_kstatfs_t *msfs = &d->opd_statfs;
+        __u64          used;
+
+        d->opd_pre_status = rc;
+        if (rc)
+                goto out;
+
+        if (likely(msfs->f_type)) {
+                used = min_t(__u64,(msfs->f_blocks - msfs->f_bfree) >> 10, 1 << 30);
+                if ((msfs->f_ffree < 32) || (msfs->f_bavail < used)) {
+                        d->opd_pre_status = -ENOSPC;
+                        CERROR("%s: rc %d, type %x, %lu blocks, %lu free, %lu used, "
+                               "%lu avail -> %d\n", d->opd_obd->obd_name, rc,
+                               msfs->f_type, (unsigned long) msfs->f_blocks,
+                               (unsigned long) msfs->f_bfree, (unsigned long) used,
+                               (unsigned long) msfs->f_bavail, d->opd_pre_status);
+                } else if (d->opd_pre_status == -ENOSPC) {
+                        d->opd_pre_status = 0;
+                        CERROR("%s: rc %d, type %x, %lu blocks, %lu free, %lu used, "
+                               "%lu avail -> %d\n", d->opd_obd->obd_name, rc,
+                               msfs->f_type, (unsigned long) msfs->f_blocks,
+                               (unsigned long) msfs->f_bfree, (unsigned long) used,
+                               (unsigned long) msfs->f_bavail, d->opd_pre_status);
+                }
+        }
+
+out:
         cfs_waitq_signal(&d->opd_pre_user_waitq);
 }
 

@@ -217,7 +217,7 @@ int osp_precreate_reserve(struct osp_device *d);
 __u64 osp_precreate_get_id(struct osp_device *d);
 void osp_precreate_fini(struct osp_device *d);
 int osp_object_truncate(const struct lu_env *env, struct dt_object *dt, __u64);
-void osp_pre_disable_precreation(struct osp_device *d);
+void osp_pre_update_status(struct osp_device *d, int rc);
 
 /* osp_sync.c */
 int osp_sync_init(struct osp_device *d);

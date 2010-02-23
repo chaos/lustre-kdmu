@@ -133,11 +133,9 @@ static int osp_recovery_complete(const struct lu_env *env,
                                      struct lu_device *dev)
 {
         struct osp_device *osp = lu2osp_dev(dev);
-        struct lu_device  *next = &osp->opd_storage->dd_lu_dev;
-        int rc;
+        int                rc = 0;
         ENTRY;
-        LBUG();
-        rc = next->ld_ops->ldo_recovery_complete(env, next);
+        CERROR("recovery is over\n");
         RETURN(rc);
 }
 
@@ -157,7 +155,7 @@ static int osp_statfs(const struct lu_env *env,
         struct osp_device *d = dt2osp_dev(dev);
         ENTRY;
 
-        if (unlikely(d->opd_imp_active == 0)) {
+        if (unlikely(d->opd_imp_active == 0 || d->opd_pre_status)) {
                 /*
                  * in case of inactive OST we return nulls
                  * so that caller can understand this device
@@ -613,14 +611,14 @@ static int osp_import_event(struct obd_device *obd,
                 case IMP_EVENT_DISCON:
                         d->opd_got_disconnected = 1;
                         d->opd_imp_connected = 0;
-                        osp_pre_disable_precreation(d);
+                        osp_pre_update_status(d, -ENODEV);
                         cfs_waitq_signal(&d->opd_pre_waitq);
                         CDEBUG(D_HA, "got disconnected\n");
                         break;
 
                 case IMP_EVENT_INACTIVE:
                         d->opd_imp_active = 0;
-                        osp_pre_disable_precreation(d);
+                        osp_pre_update_status(d, -ENODEV);
                         cfs_waitq_signal(&d->opd_pre_waitq);
                         CDEBUG(D_HA, "got inactive\n");
                         break;
