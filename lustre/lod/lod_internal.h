@@ -94,6 +94,7 @@ struct lod_object {
         int                mbo_striping_cached;
         __u32              mbo_def_stripenr;
         __u32              mbo_def_stripe_size;
+        __u16              mbo_def_stripe_offset;
 };
 
 struct lod_thread_info {

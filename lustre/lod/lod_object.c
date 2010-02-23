@@ -505,17 +505,18 @@ static int lod_cache_parent_striping(const struct lu_env *env,
         struct lov_user_md_v1 *v1;
         struct lov_user_md_v3 *v3;
         int                    rc;
+        ENTRY;
 
         rc = lod_get_lov_ea(env, lp);
         if (rc < 0)
-                return rc;
+                RETURN(rc);
 
         if (rc < sizeof(struct lov_user_md)) {
                 /* don't lookup for non-existing or invalid striping */
                 lp->mbo_striping_cached = 1;
                 lp->mbo_def_stripe_size = 0;
                 lp->mbo_def_stripenr = 0;
-                return 0;
+                RETURN(0);
         }
 
         v1 = (struct lov_user_md_v1 *) lod_mti_get(env)->lti_ea_store;
@@ -525,13 +526,14 @@ static int lod_cache_parent_striping(const struct lu_env *env,
                 lustre_swab_lov_user_md_v3(v3);
 
         if (v1->lmm_magic != LOV_MAGIC_V3 && v1->lmm_magic != LOV_MAGIC_V1)
-                return 0;
+                RETURN(0);
 
         if (v1->lmm_pattern != LOV_PATTERN_RAID0 && v1->lmm_pattern != 0)
-                return 0;
+                RETURN(0);
 
         lp->mbo_def_stripenr = v1->lmm_stripe_count;
         lp->mbo_def_stripe_size = v1->lmm_stripe_size;
+        lp->mbo_def_stripe_offset = v1->lmm_stripe_offset;
         lp->mbo_striping_cached = 1;
 
         if (v1->lmm_magic == LOV_USER_MAGIC_V3) {
@@ -541,7 +543,9 @@ static int lod_cache_parent_striping(const struct lu_env *env,
                         lod_object_set_pool(lp, v3->lmm_pool_name);
         }
 
-        return 0;
+        CDEBUG(D_OTHER, "cache def. striping: %d stripes, %d stripe size, %d offset\n",
+               lp->mbo_def_stripenr, lp->mbo_def_stripe_size, lp->mbo_def_stripe_offset);
+        RETURN(0);
 }
 
 /**
@@ -600,12 +604,16 @@ static void lod_ah_init(const struct lu_env *env,
                 lod_cache_parent_striping(env, lp);
         }
 
+        lc->mbo_def_stripe_offset = (__u16) -1;
 
         if (lp->mbo_def_stripenr || lp->mbo_pool) {
                 if (lp->mbo_pool)
                         lod_object_set_pool(lc, lp->mbo_pool);
                 lc->mbo_stripenr = lp->mbo_def_stripenr;
                 lc->mbo_stripe_size = lp->mbo_def_stripe_size;
+                lc->mbo_def_stripe_offset = lp->mbo_def_stripe_offset;
+                CDEBUG(D_OTHER, "grab striping from parent: %d stripes, %d stripe size\n",
+                       lc->mbo_stripenr, lc->mbo_stripe_size);
         }
 
         /*
@@ -616,6 +624,8 @@ static void lod_ah_init(const struct lu_env *env,
                 lc->mbo_stripenr = desc->ld_default_stripe_count;
         if (lc->mbo_stripe_size == 0)
                 lc->mbo_stripe_size = desc->ld_default_stripe_size;
+        CDEBUG(D_OTHER, "final striping: %d stripes, %d stripe size\n",
+                        lc->mbo_stripenr, lc->mbo_stripe_size);
 
         EXIT;
 }

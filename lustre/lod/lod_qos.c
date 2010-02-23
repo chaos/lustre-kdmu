@@ -556,7 +556,7 @@ static struct dt_object *lod_qos_declare_object_on(const struct lu_env *env,
 
         rc = dt_declare_create(env, dt, NULL, NULL, NULL, th);
         if (rc) {
-                CERROR("can't declare creation on #%u: %d\n", ost_idx, rc);
+                CDEBUG(D_OTHER, "can't declare creation on #%u: %d\n", ost_idx, rc);
                 lu_object_put(env, o);
                 dt = ERR_PTR(rc);
         }
@@ -704,6 +704,9 @@ repeat_find:
                 lo->mbo_stripenr = stripe_idx;
                 /* at least one stripe is allocated */
                 rc = 0;
+        } else {
+                /* nobody provided us with a single object */
+                rc = -ENOSPC;
         }
 
 out:
@@ -718,8 +721,7 @@ out:
 
 /* alloc objects on osts with specific stripe offset */
 static int lod_alloc_specific(const struct lu_env *env, struct lod_object *lo,
-                              struct lu_attr *attr, int flags,
-                              int offset, struct thandle *th)
+                              struct lu_attr *attr, int flags, struct thandle *th)
 {
         struct lod_device *m = lu2lod_dev(lo->mbo_obj.do_lu.lo_dev);
         struct dt_object  *o;
@@ -745,14 +747,14 @@ repeat_find:
         /* search loi_ost_idx in ost array */
         array_idx = 0;
         for (i = 0; i < ost_count; i++) {
-                if (osts->op_array[i] == offset) {
+                if (osts->op_array[i] == lo->mbo_def_stripe_offset) {
                         array_idx = i;
                         break;
                 }
         }
         if (i == ost_count) {
                 CERROR("Start index %d not found in pool '%s'\n",
-                       offset, lo->mbo_pool ? lo->mbo_pool : "");
+                       lo->mbo_def_stripe_offset, lo->mbo_pool ? lo->mbo_pool : "");
                 GOTO(out, rc = -EINVAL);
         }
 
@@ -798,7 +800,7 @@ repeat_find:
 
                 o = lod_qos_declare_object_on(env, m, ost_idx, th);
                 if (IS_ERR(o)) {
-                        CERROR("can't declare new object on #%u: %d\n",
+                        CDEBUG(D_OTHER, "can't declare new object on #%u: %d\n",
                                ost_idx, (int) PTR_ERR(o));
                         continue;
                 }
@@ -959,7 +961,7 @@ static int lod_alloc_qos(const struct lu_env *env, struct lod_object *lo,
                 __u64 rand, cur_weight;
 
                 cur_weight = 0;
-                rc = -ENODEV;
+                rc = -ENOSPC;
 
                 if (total_weight) {
 #if BITS_PER_LONG == 32
@@ -1064,7 +1066,7 @@ static int lov_get_stripecnt(struct lov_obd *lov, __u32 stripe_count)
 }
 
 static int lod_qos_parse_config(const struct lu_env *env, struct lod_object *lo,
-                                const struct lu_buf *buf, int *off)
+                                const struct lu_buf *buf)
 {
         struct lod_device     *d = lu2lod_dev(lod2lu_obj(lo)->lo_dev);
         struct lov_obd        *lov = &d->lod_obd->u.lov;
@@ -1073,8 +1075,6 @@ static int lod_qos_parse_config(const struct lu_env *env, struct lod_object *lo,
         struct pool_desc      *pool;
         int                    rc;
         ENTRY;
-
-        LASSERT(off);
 
         if (buf == NULL || buf->lb_buf == NULL)
                 RETURN(0);
@@ -1106,10 +1106,7 @@ static int lod_qos_parse_config(const struct lu_env *env, struct lod_object *lo,
         if ((v1->lmm_stripe_offset >= lov->desc.ld_tgt_count) &&
             (v1->lmm_stripe_offset != (typeof(v1->lmm_stripe_offset))(-1)))
                 RETURN(-EINVAL);
-        *off = -1;
-        if (v1->lmm_stripe_offset &&
-                        v1->lmm_stripe_offset != (typeof(v1->lmm_stripe_offset))(-1))
-                *off = v1->lmm_stripe_offset;
+        lo->mbo_def_stripe_offset = v1->lmm_stripe_offset;
 
         CDEBUG(D_OTHER, "lsm: %u size, %u stripes, %u offset\n",
                v1->lmm_stripe_size, v1->lmm_stripe_count, v1->lmm_stripe_offset);
@@ -1123,8 +1120,10 @@ static int lod_qos_parse_config(const struct lu_env *env, struct lod_object *lo,
 
                 pool = lov_find_pool(lov, v3->lmm_pool_name);
                 if (pool != NULL) {
-                        if (*off != -1) {
-                                rc = lov_check_index_in_pool(*off, pool);
+                        if (lo->mbo_def_stripe_offset !=
+                                        (typeof(v1->lmm_stripe_offset))(-1)) {
+                                rc = lov_check_index_in_pool(lo->mbo_def_stripe_offset,
+                                                             pool);
                                 if (rc < 0) {
                                         lov_pool_putref(pool);
                                         RETURN(-EINVAL);
@@ -1153,7 +1152,6 @@ int lod_qos_prep_create(const struct lu_env *env, struct lod_object *lo,
         struct lod_device  *d = lu2lod_dev(lod2lu_obj(lo)->lo_dev);
         struct lov_obd     *lov = &d->lod_obd->u.lov;
         int flag = LOV_USES_ASSIGNED_STRIPE;
-        int off = -1;
         int i, rc = 0;
         ENTRY;
 
@@ -1173,7 +1171,7 @@ int lod_qos_prep_create(const struct lu_env *env, struct lod_object *lo,
          * in case the caller is passing lovea with new striping config,
          * we may need to parse lovea and apply new configuration
          */
-        rc = lod_qos_parse_config(env, lo, buf, &off);
+        rc = lod_qos_parse_config(env, lo, buf);
         if (rc)
                 GOTO(out, rc);
 
@@ -1188,10 +1186,10 @@ int lod_qos_prep_create(const struct lu_env *env, struct lod_object *lo,
 
 
         /* XXX: support for non-0 files w/o objects */
-        if (off >= lov->desc.ld_tgt_count)
+        if (lo->mbo_def_stripe_offset >= lov->desc.ld_tgt_count)
                 rc = lod_alloc_qos(env, lo, attr, flag, th);
         else
-                rc = lod_alloc_specific(env, lo, attr, flag, off, th);
+                rc = lod_alloc_specific(env, lo, attr, flag, th);
 
         /* XXX ? */
         /*if (OBD_FAIL_CHECK(OBD_FAIL_MDS_LOV_PREP_CREATE)) {
