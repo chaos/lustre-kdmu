@@ -176,6 +176,8 @@ struct filter_device {
         unsigned int             ofd_fl_oss_capa;
         cfs_list_t               ofd_capa_keys;
         cfs_hlist_head_t        *ofd_capa_hash;
+
+        int                      ofd_raid_degraded;
 };
 
 #define ofd_last_rcvd ofd_lut.lut_last_rcvd

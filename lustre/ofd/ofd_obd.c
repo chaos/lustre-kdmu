@@ -626,6 +626,8 @@ static int filter_statfs(struct obd_device *obd,
                         obd_fail_loc &= ~OBD_FAILED; /* reset flag */
         }
 
+        if (ofd->ofd_raid_degraded)
+                osfs->os_state |= OS_STATE_DEGRADED;
 #if 0
         /* set EROFS to state field if FS is mounted as RDONLY. The goal is to
          * stop creating files on MDS if OST is not good shape to create
