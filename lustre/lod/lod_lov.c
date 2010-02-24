@@ -194,6 +194,8 @@ int lod_lov_add_device(const struct lu_env *env, struct lod_device *m,
                 RETURN(-ENOMEM);
         /* XXX: which flags we need on MDS? */
         data->ocd_version = LUSTRE_VERSION_CODE;
+        data->ocd_connect_flags |= OBD_CONNECT_INDEX;
+        data->ocd_index = index;
 
         rc = obd_connect(NULL, &exp, obd, &obd->obd_uuid, data, NULL);
         if (rc) {
