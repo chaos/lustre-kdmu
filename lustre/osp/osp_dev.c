@@ -508,6 +508,10 @@ static int osp_obd_connect(const struct lu_env *env, struct obd_export **exp,
                                  | OBD_CONNECT_AT
                                  | OBD_CONNECT_MDS
                                  | OBD_CONNECT_SKIP_ORPHAN;
+        if (data->ocd_connect_flags & OBD_CONNECT_INDEX) {
+                ocd->ocd_connect_flags |= OBD_CONNECT_INDEX;
+                ocd->ocd_index = data->ocd_index;
+        }
         imp->imp_connect_flags_orig = ocd->ocd_connect_flags;
 
         rc = ptlrpc_connect_import(imp, NULL);
