@@ -290,7 +290,7 @@ static struct lprocfs_vars lprocfs_osp_obd_vars[] = {
         { "import",               lprocfs_rd_import,        0, 0 },
         { "state",                lprocfs_rd_state,         0, 0 },
         { "maxage",               osp_rd_maxage, osp_wr_maxage,0 },
-        { "precreate_status",     osp_rd_pre_status,        0, 0 },
+        { "prealloc_status",      osp_rd_pre_status,        0, 0 },
         { 0 }
 };
 
