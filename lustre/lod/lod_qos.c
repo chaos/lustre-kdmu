@@ -571,6 +571,18 @@ static int min_stripe_count(int stripe_cnt, int flags)
                 stripe_cnt - (stripe_cnt / 4) : stripe_cnt);
 }
 
+static int inline lod_qos_dev_is_full(cfs_kstatfs_t *msfs)
+{
+        __u64          used;
+
+        LASSERT(msfs->f_type);
+
+        used = min_t(__u64,(msfs->f_blocks - msfs->f_bfree) >> 10, 1 << 30);
+        if ((msfs->f_ffree < 32) || (msfs->f_bavail < used))
+                return 1;
+        return 0;
+}
+
 #define LOV_CREATE_RESEED_MULT 4
 #define LOV_CREATE_RESEED_MIN  1000
 
@@ -665,6 +677,14 @@ repeat_find:
                  */
                 if (sfs.f_blocks == 0)
                         continue;
+
+                /*
+                 * skip full devices
+                 */
+                if (lod_qos_dev_is_full(&sfs)) {
+                        QOS_DEBUG("#%d is full\n", ost_idx);
+                        continue;
+                }
 
                 /*
                  * We expect number of precreated objects in f_ffree at
@@ -794,8 +814,9 @@ repeat_find:
                 /*
                  * We expect number of precreated objects in f_ffree at
                  * the first iteration, skip OSPs with no objects ready
+                 * don't apply this logic to OST specified with stripe_offset
                  */
-                if (sfs.f_ffree == 0 && speed == 0)
+                if (i != 0 && sfs.f_ffree == 0 && speed == 0)
                         continue;
 
                 o = lod_qos_declare_object_on(env, m, ost_idx, th);
@@ -932,6 +953,12 @@ static int lod_alloc_qos(const struct lu_env *env, struct lod_object *lo,
                  * skip empty devices - usually it means inactive device 
                  */
                 if (sfs.f_blocks == 0)
+                        continue;
+
+                /*
+                 * skip full devices
+                 */
+                if (lod_qos_dev_is_full(&sfs))
                         continue;
 
                 /* Fail Check before osc_precreate() is called
