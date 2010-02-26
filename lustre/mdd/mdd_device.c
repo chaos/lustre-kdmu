@@ -1209,6 +1209,21 @@ static int mdd_statfs(const struct lu_env *env, struct md_device *m,
 /*
  * No permission check is needed.
  */
+static int mdd_sync(const struct lu_env *env, struct md_device *m)
+{
+        struct mdd_device *mdd = lu2mdd_dev(&m->md_lu_dev);
+        int rc;
+
+        ENTRY;
+
+        rc = mdd_child_ops(mdd)->dt_sync(env, mdd->mdd_child);
+
+        RETURN(rc);
+}
+
+/*
+ * No permission check is needed.
+ */
 static int mdd_maxsize_get(const struct lu_env *env, struct md_device *m,
                            int *md_size, int *cookie_size)
 {
@@ -1645,6 +1660,7 @@ LU_TYPE_INIT_FINI(mdd, &mdd_thread_key, &mdd_ucred_key, &mdd_capainfo_key,
 
 const struct md_device_operations mdd_ops = {
         .mdo_statfs         = mdd_statfs,
+        .mdo_sync           = mdd_sync,
         .mdo_root_get       = mdd_root_get,
         .mdo_maxsize_get    = mdd_maxsize_get,
         .mdo_init_capa_ctxt = mdd_init_capa_ctxt,

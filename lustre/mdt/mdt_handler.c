@@ -1627,11 +1627,12 @@ static int mdt_reint(struct mdt_thread_info *info)
 /* this should sync the whole device */
 static int mdt_device_sync(const struct lu_env *env, struct mdt_device *mdt)
 {
-        struct dt_device *dt = mdt->mdt_bottom;
-        int rc;
+        struct md_device *next = mdt->mdt_child;
+        int rc = 0;
         ENTRY;
 
-        rc = dt->dd_ops->dt_sync(env, dt);
+        if (next->md_ops->mdo_statfs)
+                rc = next->md_ops->mdo_sync(env, next);
         RETURN(rc);
 }
 

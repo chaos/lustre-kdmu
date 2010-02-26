@@ -283,22 +283,23 @@ static void lod_conf_get(const struct lu_env *env,
 static int lod_sync(const struct lu_env *env, struct dt_device *dev)
 {
         struct lod_device *d = dt2lod_dev(dev);
-        struct dt_device  *next = d->lod_child;
-        int                rc, rc2, i;
+        struct dt_device  *next;
+        int                rc, i;
         ENTRY;
 
-        rc = next->dd_ops->dt_sync(env, next);
-        if (rc == 0) {
-                for (i = 0; i < LOD_MAX_OSTNR; i++) {
-                        if (d->lod_ost[i] == NULL)
-                                continue;
-                        next = d->lod_ost[i];
-                        rc2 = next->dd_ops->dt_sync(env, next);
-                        if (rc2) {
-                                rc = rc2;
-                                CERROR("can't sync %u: %d\n", i, rc2);
-                        }
+        for (i = 0; i < LOD_MAX_OSTNR; i++) {
+                if (d->lod_ost[i] == NULL)
+                        continue;
+                next = d->lod_ost[i];
+                rc = next->dd_ops->dt_sync(env, next);
+                if (rc) {
+                        CERROR("can't sync %u: %d\n", i, rc);
+                        break;
                 }
+        }
+        if (rc == 0) {
+                next = d->lod_child;
+                rc = next->dd_ops->dt_sync(env, next);
         }
 
         RETURN(rc);

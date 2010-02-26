@@ -346,6 +346,8 @@ struct md_device_operations {
         int (*mdo_statfs)(const struct lu_env *env, struct md_device *m,
                           cfs_kstatfs_t *sfs);
 
+        int (*mdo_sync)(const struct lu_env *env, struct md_device *m);
+
         int (*mdo_init_capa_ctxt)(const struct lu_env *env, struct md_device *m,
                                   int mode, unsigned long timeout, __u32 alg,
                                   struct lustre_capa_key *keys);
