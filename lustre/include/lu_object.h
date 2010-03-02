@@ -1036,6 +1036,11 @@ enum lu_context_tag {
         LCT_SESSION   = 1 << 4,
 
         /**
+         * This is per-request 
+         */
+        LCT_OSP_THREAD = 1 << 5,
+
+        /**
          * Set when at least one of keys, having values in this context has
          * non-NULL lu_context_key::lct_exit() method. This is used to
          * optimize lu_context_exit() call.
