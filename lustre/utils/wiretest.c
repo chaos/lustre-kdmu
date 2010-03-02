@@ -1963,10 +1963,10 @@ void lustre_assert_wire_constants(void)
                  (long long)(int)offsetof(struct llog_rec_hdr, lrh_type));
         LASSERTF((int)sizeof(((struct llog_rec_hdr *)0)->lrh_type) == 4, " found %lld\n",
                  (long long)(int)sizeof(((struct llog_rec_hdr *)0)->lrh_type));
-        LASSERTF((int)offsetof(struct llog_rec_hdr, padding) == 12, " found %lld\n",
-                 (long long)(int)offsetof(struct llog_rec_hdr, padding));
-        LASSERTF((int)sizeof(((struct llog_rec_hdr *)0)->padding) == 4, " found %lld\n",
-                 (long long)(int)sizeof(((struct llog_rec_hdr *)0)->padding));
+        LASSERTF((int)offsetof(struct llog_rec_hdr, lrh_id) == 12, " found %lld\n",
+                 (long long)(int)offsetof(struct llog_rec_hdr, lrh_id));
+        LASSERTF((int)sizeof(((struct llog_rec_hdr *)0)->lrh_id) == 4, " found %lld\n",
+                 (long long)(int)sizeof(((struct llog_rec_hdr *)0)->lrh_id));
 
         /* Checks for struct llog_rec_tail */
         LASSERTF((int)sizeof(struct llog_rec_tail) == 8, " found %lld\n",

@@ -2162,7 +2162,7 @@ struct llog_rec_hdr {
         __u32                   lrh_len;
         __u32                   lrh_index;
         __u32                   lrh_type;
-        __u32                   padding;
+        __u32                   lrh_id;
 };
 
 struct llog_rec_tail {
