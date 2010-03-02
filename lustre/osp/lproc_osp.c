@@ -77,7 +77,7 @@ static int osp_wr_active(struct file *file, const char *buffer,
         return count;
 }
 
-static int osp_rd_rpcs_in_flight(char *page, char **start, off_t off,
+static int osp_rd_syn_in_flight(char *page, char **start, off_t off,
                                      int count, int *eof, void *data)
 {
         struct obd_device *dev = data;
@@ -91,7 +91,7 @@ static int osp_rd_rpcs_in_flight(char *page, char **start, off_t off,
         return rc;
 }
 
-static int osp_rd_rpcs_in_prog(char *page, char **start, off_t off,
+static int osp_rd_syn_in_prog(char *page, char **start, off_t off,
                                      int count, int *eof, void *data)
 {
         struct obd_device *dev = data;
@@ -102,6 +102,20 @@ static int osp_rd_rpcs_in_prog(char *page, char **start, off_t off,
                 return -EINVAL;
 
         rc = snprintf(page, count, "%u\n", osp->opd_syn_rpc_in_progress);
+        return rc;
+}
+
+static int osp_rd_syn_changes(char *page, char **start, off_t off,
+                                     int count, int *eof, void *data)
+{
+        struct obd_device *dev = data;
+        struct osp_device *osp = lu2osp_dev(dev->obd_lu_dev);
+        int rc;
+
+        if (osp == NULL)
+                return -EINVAL;
+
+        rc = snprintf(page, count, "%u\n", osp->opd_syn_changes);
         return rc;
 }
 
@@ -277,8 +291,6 @@ static struct lprocfs_vars lprocfs_osp_obd_vars[] = {
         { "ost_conn_uuid",        lprocfs_rd_conn_uuid,     0, 0 },
         { "active",               osp_rd_active,
                                   osp_wr_active,               0 },
-        { "rpcs_in_flight",       osp_rd_rpcs_in_flight,    0, 0 },
-        { "rpcs_in_progress",     osp_rd_rpcs_in_prog,      0, 0 },
         { "max_rpcs_in_flight",   osp_rd_max_rpcs_in_flight,
                                   osp_wr_max_rpcs_in_flight,   0 },
         { "max_rpcs_in_progress", osp_rd_max_rpcs_in_prog,
@@ -291,6 +303,9 @@ static struct lprocfs_vars lprocfs_osp_obd_vars[] = {
         { "state",                lprocfs_rd_state,         0, 0 },
         { "maxage",               osp_rd_maxage, osp_wr_maxage,0 },
         { "prealloc_status",      osp_rd_pre_status,        0, 0 },
+        { "sync_changes",         osp_rd_syn_changes,       0, 0 },
+        { "sync_in_flight",       osp_rd_syn_in_flight,    0, 0 },
+        { "sync_in_progress",     osp_rd_syn_in_prog,      0, 0 },
         { 0 }
 };
 
