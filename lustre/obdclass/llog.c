@@ -290,7 +290,7 @@ repeat:
 
                         if (rec->lrh_index == 0) {
                                 /* probably another rec just got added? */
-                                if (index < loghandle->lgh_last_idx)
+                                if (index <= loghandle->lgh_last_idx)
                                         GOTO(repeat, rc = 0);
                                 GOTO(out, 0); /* no more records */
                         }
