@@ -78,6 +78,7 @@ void statfs_unpack(cfs_kstatfs_t *sfs, struct obd_statfs *osfs)
         sfs->f_ffree = osfs->os_ffree;
         sfs->f_bsize = osfs->os_bsize;
         sfs->f_namelen = osfs->os_namelen;
+        sfs->f_spare[0] = osfs->os_state;
 }
 
 EXPORT_SYMBOL(statfs_pack);
