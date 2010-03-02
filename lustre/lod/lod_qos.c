@@ -578,7 +578,7 @@ static int inline lod_qos_dev_is_full(cfs_kstatfs_t *msfs)
         LASSERT(msfs->f_type);
 
         used = min_t(__u64,(msfs->f_blocks - msfs->f_bfree) >> 10, 1 << 30);
-        if ((msfs->f_ffree < 32) || (msfs->f_bavail < used))
+        if ((msfs->f_bfree < 32) || (msfs->f_bavail < used))
                 return 1;
         return 0;
 }
