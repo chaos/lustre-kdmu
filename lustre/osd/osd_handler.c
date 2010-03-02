@@ -578,7 +578,7 @@ int osd_trans_start(const struct lu_env *env,
 
         jh = ldiskfs_journal_start_sb(osd_sb(dev), oh->ot_credits >> 1);
         if (!IS_ERR(jh)) {
-                lu_context_init(&th->th_ctx, LCT_TX_HANDLE);
+                lu_context_init(&th->th_ctx, th->th_tags | LCT_TX_HANDLE);
                 lu_context_enter(&th->th_ctx);
                 oh->ot_handle = jh;
                 LASSERT(oti->oti_txns == 0);

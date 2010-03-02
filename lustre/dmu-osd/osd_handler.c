@@ -640,15 +640,7 @@ static struct thandle *osd_trans_create(const struct lu_env *env,
 
         oh->ot_tx = tx;
         th = &oh->ot_super;
-        th->th_dev = dt;
         th->th_result = 0;
-        lu_device_get(&dt->dd_lu_dev);
-        lu_context_init(&th->th_ctx, LCT_TX_HANDLE);
-        lu_context_enter(&th->th_ctx);
-
-        hook_res = dt_txn_hook_start(env, dt, th);
-        if (hook_res != 0)
-                RETURN(ERR_PTR(hook_res));
 
         RETURN(th);
 }
@@ -676,6 +668,15 @@ static int osd_trans_start(const struct lu_env *env, struct dt_device *d,
                 /* add commit callback */
                 udmu_tx_cb_register(oh->ot_tx, osd_trans_commit_cb, (void *)oh);
                 oh->ot_assigned = 1;
+
+                th->th_dev = dt
+                lu_device_get(&d->dd_lu_dev);
+                lu_context_init(&th->th_ctx, th->th_tags | LCT_TX_HANDLE);
+                lu_context_enter(&th->th_ctx);
+
+                hook_res = dt_txn_hook_start(env, d, th);
+                if (hook_res != 0)
+                        RETURN(ERR_PTR(hook_res));
         }
 
         RETURN(-rc);
@@ -695,10 +696,12 @@ static int osd_trans_stop(const struct lu_env *env, struct thandle *th)
         oh = container_of0(th, struct osd_thandle, ot_super);
 
         if (oh->ot_assigned == 0) {
-                lu_device_put(&th->th_dev->dd_lu_dev);
-                th->th_dev = NULL;
-                lu_context_exit(&th->th_ctx);
-                lu_context_fini(&th->th_ctx);
+                if (th->th_dev) {
+                        lu_device_put(&th->th_dev->dd_lu_dev);
+                        th->th_dev = NULL;
+                        lu_context_exit(&th->th_ctx);
+                        lu_context_fini(&th->th_ctx);
+                }
                 OBD_FREE_PTR(oh);
 
                 RETURN(0);

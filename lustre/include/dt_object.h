@@ -630,6 +630,9 @@ struct thandle {
         /** the dt device on which the transactions are executed */
         struct dt_device *th_dev;
 
+        /** additional tags (layers can add in declare) */
+        __u32             th_tags;
+
         /** context for this transaction, tag is LCT_TX_HANDLE */
         struct lu_context th_ctx;
 
