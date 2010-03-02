@@ -12,6 +12,14 @@ tbd  Sun Microsystems, Inc.
        * Recommended e2fsprogs version: 1.41.6.sun1
        * Note that reiserfs quotas are disabled on SLES 10 in this kernel.
 
+Severity   : enhancement
+Bugzilla   : 19422
+Description: Build spl, zfs and lustre with lbuild
+Details    : Allow lbuild to build the spl, zfs and lustre packages with
+	     kDMU enabled.  This includes some fixes to "make dist" for
+	     spl and zfs as well as enhancing both the spl and zfs location
+	     detection as as the --with-spl and --with-zfs configure options.
+
 
 Severity   : normal
 Bugzilla   : 21259
