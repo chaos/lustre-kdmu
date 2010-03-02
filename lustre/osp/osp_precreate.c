@@ -458,6 +458,7 @@ void osp_pre_update_status(struct osp_device *d, int rc)
                                d->opd_pre_status);
                 } else if (old == -ENOSPC) {
                         d->opd_pre_status = 0;
+                        cfs_waitq_signal(&d->opd_pre_waitq);
                         CERROR("%s: rc %d, %lu blocks, %lu free, %lu used, "
                                "%lu avail -> %d\n", d->opd_obd->obd_name, rc,
                                (unsigned long) msfs->f_blocks,
