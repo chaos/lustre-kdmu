@@ -3,14 +3,11 @@
    - negotiate proper connect data
    - error handling
    - a way to find lu_site
-
-* MDT
-   - call mdd_sync(), not osd_sync()
+!  - save on tx allocations
 
 * MDD, OSD
    - ->do_create() to set initial attributes
    - mdd never manipulate striping
-   - add ->mdo_sync() and mdd_sync()
    - sanity check/counter for thandle started and not stopped in *osd
    - changelog support
 
@@ -34,11 +31,10 @@
 !  - in RPC interpret/commit callbacks handle errors
    - don't wake up the thread if precreation RPC is in-flight
 !  - send uid/gid changes immediately?
-   - probably a mechanism to learn committness ASAP?
 !  - start orphan cleanup from osp_recovery_complete()
-   - osp_sync() to flush changes to OST
-!  - batch support
+   - batch support
    - resend in osp_object_truncate()
+   - decide on max-in-progress and max-in-flight
 
 
 * tests
@@ -64,18 +60,18 @@ Questions:
    - what ->statfs() returns when connection is down?
    - clear method to specify to lod whether striping is needed
    - how to do with destroy/setattr if ost is inactive
+   - should we avoid few stripes on same OST?
      
 
 
 
-Lustre: DEBUG MARKER: sanity test_27p: @@@@@@ FAIL: append failed
-Lustre: DEBUG MARKER: sanity test_27p: @@@@@@ FAIL: checkstat failed
-Lustre: DEBUG MARKER: sanity test_27x: @@@@@@ FAIL: OST0 was degraded but new created file still use it
-Lustre: DEBUG MARKER: sanity test_27x: @@@@@@ FAIL: test_27x failed with 3
-Lustre: DEBUG MARKER: sanity test_56a: @@@@@@ FAIL: lfs getstripe --obd wrong: found 6, expected 3
-
+Lustre: DEBUG MARKER: sanity test_124a: @@@@@@ FAIL: No locks dropped in 50s. LRU size: 2002
 
 Lustre: DEBUG MARKER: sanity test_127: @@@@@@ FAIL: Missing read_bytes stats
 Lustre: DEBUG MARKER: sanity test_127: @@@@@@ FAIL: Missing write_bytes stats
+
+Lustre: DEBUG MARKER: sanityn test_15: @@@@@@ FAIL: LustreError: 9389:0:(ofd_grant.c:316:filter_grant_space_left()) lustre-OST0000: cli 6a5ee160-b3a8-9dae-a51e-11c6edb424dd/d11568ec grant 24138227 > available 24137728 and pending 0 LustreError: 9389:0:(ofd_grant.c:316:filter_g
+Lustre: DEBUG MARKER: sanityn test_32b: @@@@@@ FAIL: lockless i/o was not triggered
+Lustre: DEBUG MARKER: sanityn test_34: @@@@@@ FAIL: no lock timeout happened
 
 
