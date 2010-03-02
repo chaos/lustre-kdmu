@@ -693,6 +693,12 @@ repeat_find:
                 if (sfs.f_ffree == 0 && speed == 0)
                         continue;
 
+                /*
+                 * try to use another OSP if this one is degraded
+                 */
+                if (sfs.f_spare[0] == OS_STATE_DEGRADED  && speed == 0)
+                        continue;
+
                 o = lod_qos_declare_object_on(env, m, ost_idx, th);
                 if (IS_ERR(o)) {
                         CDEBUG(D_OTHER, "can't declare new object on #%u: %d\n",
