@@ -47,6 +47,8 @@
 #include <dt_object.h>
 #include <lustre/lustre_idl.h>
 
+struct osp_id_tracker;
+
 struct osp_device {
         struct dt_device                 opd_dt_dev;
 
@@ -108,10 +110,6 @@ struct osp_device {
         /* found records */
         struct ptlrpc_thread            opd_syn_thread;
         cfs_waitq_t                     opd_syn_waitq;
-        /* list where rpcs are awaiting for local commit */
-        cfs_list_t                      opd_syn_waiting_for_commit;
-        /* list of locally committed rpc */
-        cfs_list_t                      opd_syn_committed_here;
         /* list of remotely committed rpc */
         cfs_list_t                      opd_syn_committed_there;
         /* number of changes being under sync */
@@ -124,6 +122,14 @@ struct osp_device {
         int                             opd_syn_max_rpc_in_progress;
         /* osd api's commit cb control structure */
         struct dt_txn_callback          opd_syn_txn_cb;
+        /* last used change number -- semantically similar to transno */
+        unsigned long                   opd_syn_last_used_id;
+        /* last committed change number -- semantically similar to last_committed */
+        unsigned long                   opd_syn_last_committed_id;
+        /* last processed (taken from llog) id */
+        unsigned long                   opd_syn_last_processed_id;
+        struct osp_id_tracker          *opd_syn_tracker;
+        cfs_list_t                      opd_syn_ontrack;
 
         /*
          * statfs related fields: OSP maintains it on its own
@@ -157,6 +163,20 @@ static inline struct osp_thread_info *osp_env_info(const struct lu_env *env)
 
         info = lu_context_key_get(&env->le_ctx, &osp_thread_key);
         LASSERT(info != NULL);
+        return info;
+}
+
+struct osp_txn_info {
+        __u32   oti_current_id;
+};
+
+extern struct lu_context_key osp_txn_key;
+
+static inline struct osp_txn_info *osp_txn_info(struct lu_context *ctx)
+{
+        struct osp_txn_info *info;
+
+        info = lu_context_key_get(ctx, &osp_txn_key);
         return info;
 }
 
@@ -228,7 +248,8 @@ int osp_sync_declare_add(const struct lu_env *env, struct osp_object *o,
 int osp_sync_add(const struct lu_env *env, struct osp_object *d,
                  llog_op_type type, struct thandle *th);
 int osp_sync_fini(struct osp_device *d);
-void osp_sync_check_for_work(struct osp_device *d);
+void __osp_sync_check_for_work(struct osp_device *d);
+
 
 /* lproc_osp.c */
 void lprocfs_osp_init_vars(struct lprocfs_static_vars *lvars);

@@ -149,7 +149,7 @@ static int osp_recovery_complete(const struct lu_env *env,
         struct osp_device *osp = lu2osp_dev(dev);
         int                rc = 0;
         ENTRY;
-        CERROR("recovery is over\n");
+        CERROR("%s: recovery is over\n", osp->opd_obd->obd_name);
         RETURN(rc);
 }
 
@@ -193,6 +193,11 @@ static int osp_statfs(const struct lu_env *env,
         sfs->f_ffree = d->opd_pre_last_created - d->opd_pre_next;
         cfs_spin_unlock(&d->opd_pre_lock);
 
+        CDEBUG(D_OTHER, "%s: %lu blocks, %lu free, %lu avail, "
+               "%lu files, %lu free files\n", d->opd_obd->obd_name,
+               (unsigned long) sfs->f_blocks, (unsigned long) sfs->f_bfree,
+               (unsigned long) sfs->f_bavail, (unsigned long) sfs->f_files,
+               (unsigned long) sfs->f_ffree);
         RETURN(0);
 }
 
@@ -651,7 +656,7 @@ static int osp_import_event(struct obd_device *obd,
                                 d->opd_new_connection = 1;
                         d->opd_imp_connected = 1;
                         cfs_waitq_signal(&d->opd_pre_waitq);
-                        osp_sync_check_for_work(d);
+                        __osp_sync_check_for_work(d);
                         CDEBUG(D_HA, "got connected\n");
                         break;
 
@@ -721,7 +726,16 @@ LU_KEY_INIT_FINI(osp, struct osp_thread_info);
 /* context key: osp_thread_key */
 LU_CONTEXT_KEY_DEFINE(osp, LCT_MD_THREAD);
 
-LU_TYPE_INIT_FINI(osp, &osp_thread_key);
+/* context key constructor/destructor: mdt_txn_key_init, mdt_txn_key_fini */
+LU_KEY_INIT_FINI(osp_txn, struct osp_txn_info);
+
+struct lu_context_key osp_txn_key = {
+        .lct_tags = LCT_TX_HANDLE,
+        .lct_init = osp_txn_key_init,
+        .lct_fini = osp_txn_key_fini
+};
+
+LU_TYPE_INIT_FINI(osp, &osp_thread_key, &osp_txn_key);
 
 static struct lu_device_type_operations osp_device_type_ops = {
         .ldto_init           = osp_type_init,
