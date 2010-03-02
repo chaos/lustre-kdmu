@@ -972,6 +972,11 @@ test_27l() {
 }
 run_test 27l "check setstripe permissions (should return error)"
 
+sleep_maxage() {
+        local DELAY=$(do_facet mds lctl get_param -n lov.*.qos_maxage | head -n 1 | awk '{print $1 * 2}')
+        sleep $DELAY
+}
+
 test_27m() {
 	[ "$OSTCOUNT" -lt "2" ] && skip_env "$OSTCOUNT < 2 OSTs -- skipping" && return
 	if [ $ORIGFREE -gt $MAXFREE ]; then
@@ -988,6 +993,7 @@ test_27m() {
 		[ $i -gt 256 ] && break
 	done
 	i=`expr $i + 1`
+	sleep_maxage
 	touch $DIR/d27/f27m_$i
 	[ `$GETSTRIPE $DIR/d27/f27m_$i | grep -A 10 obdidx | awk '{print $1}'| grep -w "0"` ] && \
 		error "OST0 was full but new created file still use it"
@@ -1000,11 +1006,6 @@ test_27m() {
 }
 run_test 27m "create file while OST0 was full =================="
 
-sleep_maxage() {
-        local DELAY=$(do_facet mds lctl get_param -n lov.*.qos_maxage | head -n 1 | awk '{print $1 * 2}')
-        sleep $DELAY
-}
-
 # OSCs keep a NOSPC flag that will be reset after ~5s (qos_maxage)
 # if the OST isn't full anymore.
 reset_enospc() {
@@ -1014,6 +1015,7 @@ reset_enospc() {
 	[ "$OSTIDX" ] && list=$(facet_host ost$((OSTIDX + 1)))
 
 	do_nodes $list lctl set_param fail_loc=0
+	sync	# initiate all OST_DESTROYs from MDS to OST
 	sleep_maxage
 }
 
@@ -1255,18 +1257,18 @@ test_27y() {
         [ "$OSTCOUNT" -lt "2" ] && skip_env "$OSTCOUNT < 2 OSTs -- skipping" && return
         remote_mds_nodsh && skip "remote MDS with nodsh" && return
 
-        local last_id=$(do_facet $SINGLEMDS lctl get_param -n osc.*0000-osc-MDT0000.prealloc_last_id)
-        local next_id=$(do_facet $SINGLEMDS lctl get_param -n osc.*0000-osc-MDT0000.prealloc_next_id)
+        local last_id=$(do_facet $SINGLEMDS lctl get_param -n osp.*0000-osp-MDT0000.prealloc_last_id)
+        local next_id=$(do_facet $SINGLEMDS lctl get_param -n osp.*0000-osp-MDT0000.prealloc_next_id)
         local fcount=$((last_id - next_id))
         [ $fcount -eq 0 ] && skip "not enough space on OST0" && return
         [ $fcount -gt $OSTCOUNT ] && fcount=$OSTCOUNT
 
-        MDS_OSCS=`do_facet mds lctl dl | awk '/[oO][sS][cC].*md[ts]/ { print $4 }'`
+        MDS_OSCS=`do_facet mds lctl dl | awk '/[oO][sS][pP].*[mM][dD][Tts]/ { print $4 }'`
         OFFSET=$(($OSTCOUNT-1))
         OST=-1
         for OSC in $MDS_OSCS; do
                 if [ $OST == -1 ]; then {
-                        OST=`osc_to_ost $OSC`
+                        OST=`osp_to_ost $OSC`
                 } else {
                         echo $OSC "is Deactivate:"
                         do_facet mds lctl --device  %$OSC deactivate
