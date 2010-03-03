@@ -10,7 +10,7 @@ set -e
 
 ONLY=${ONLY:-"$*"}
 # bug number for skipped test: 13297 2108 9789 3637 9789 3561 12622 12653 12653 5188 16260 19742 
-ALWAYS_EXCEPT="                27u   42a  42b  42c  42d  45   51d   65a   65e   68b  119d $SANITY_EXCEPT"
+ALWAYS_EXCEPT="                27u   42a  42b  42c  42d  45   51d   65a   65e   68b  $SANITY_EXCEPT"
 # bug number for skipped test: 2108 9789 3637 9789 3561 5188/5749 1443
 #ALWAYS_EXCEPT=${ALWAYS_EXCEPT:-"27m 42a 42b 42c 42d 45 68 76"}
 # UPDATE THE COMMENT ABOVE WITH BUG NUMBERS WHEN CHANGING ALWAYS_EXCEPT!
@@ -1803,6 +1803,23 @@ test_34f() { # bug 6242, 6243
 	rm $TMP/f34f $TMP/f34fzero $DIR/f34f
 }
 run_test 34f "read from a file with no objects until EOF ======="
+
+test_34g() {
+	dd if=/dev/zero of=$DIR/$tfile bs=1 count=100 seek=$TEST_34_SIZE || error
+	$TRUNCATE $DIR/$tfile $((TEST_34_SIZE / 2))|| error
+	$CHECKSTAT -s $((TEST_34_SIZE / 2)) $DIR/$tfile || error "truncate failed"
+	cancel_lru_locks osc
+	$CHECKSTAT -s $((TEST_34_SIZE / 2)) $DIR/$tfile || \
+		error "wrong size after lock cancel"
+
+	$TRUNCATE $DIR/$tfile $TEST_34_SIZE || error
+	$CHECKSTAT -s $TEST_34_SIZE $DIR/$tfile || \
+		error "expanding truncate failed"
+	cancel_lru_locks osc
+	$CHECKSTAT -s $TEST_34_SIZE $DIR/$tfile || \
+		error "wrong expanded size after lock cancel"
+}
+run_test 34g "truncate long file ==============================="
 
 test_35a() {
 	cp /bin/sh $DIR/f35a

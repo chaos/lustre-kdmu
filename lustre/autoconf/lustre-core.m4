@@ -2552,11 +2552,6 @@ lustre/tests/Makefile
 lustre/tests/mpi/Makefile
 lustre/utils/Makefile
 lustre/utils/gss/Makefile
+lustre/obdclass/darwin/Makefile
 ])
-case $lb_target_os in
-        darwin)
-                AC_CONFIG_FILES([ lustre/obdclass/darwin/Makefile ])
-                ;;
-esac
-
 ])

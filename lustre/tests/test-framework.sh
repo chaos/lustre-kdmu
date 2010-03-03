@@ -1619,9 +1619,9 @@ do_nodes() {
 
     if single_local_node $rnodes; then
         if $verbose; then
-           do_node --verbose $rnodes $@
+           do_node --verbose $rnodes "$@"
         else
-           do_node $rnodes $@
+           do_node $rnodes "$@"
         fi
         return $?
     fi
@@ -1720,6 +1720,10 @@ stopall() {
         rm -f $TMP/ost${num}active
     done
 
+    if ! combined_mgs_mds ; then
+        stop mgs
+    fi
+
     return 0
 }
 
@@ -1735,6 +1739,10 @@ mdsmkfsopts()
 {
     local nr=$1
     test $nr = 1 && echo -n $MDS_MKFS_OPTS || echo -n $MDSn_MKFS_OPTS
+}
+
+combined_mgs_mds () {
+    [[ $MDSDEV1 = $MGSDEV ]] && [[ $mds1_HOST = $mgs_HOST ]]
 }
 
 formatall() {
@@ -1764,8 +1772,8 @@ formatall() {
     [ "$MDSFSTYPE" ] && MDSFSTYPE_OPT="--backfstype $MDSFSTYPE"
     [ "$OSTFSTYPE" ] && OSTFSTYPE_OPT="--backfstype $OSTFSTYPE"
 
-    if [[ $MDSDEV1 != $MGSDEV ]] || [[ $mds1_HOST != $mgs_HOST ]]; then
-        add mgs $mgs_MKFS_OPTS $MGSFSTYPE_OPT --reformat $MGSDEV || exit 10
+    if ! combined_mgs_mds ; then
+        add mgs $mgs_MKFS_OPTS $FSTYPE_OPT --reformat $MGSDEV || exit 10
     fi
 
     for num in `seq $MDSCOUNT`; do
@@ -1863,7 +1871,7 @@ setupall() {
         echo Setup mgs, mdt, osts
         echo $WRITECONF | grep -q "writeconf" && \
             writeconf_all
-        if [[ $mds1_HOST != $mgs_HOST ]] || [[ $MDSDEV1 != $MGSDEV ]]; then
+        if ! combined_mgs_mds ; then
             start mgs $MGSDEV $mgs_MOUNT_OPTS
         fi
 
@@ -2430,10 +2438,6 @@ pgcache_empty() {
             return 1
         fi
     done
-    if [[ $MDSDEV1 != $MGSDEV ]]; then
-        stop mgs 
-    fi
-
     return 0
 }
 
@@ -2560,6 +2564,14 @@ basetest() {
 
 # print a newline if the last test was skipped
 export LAST_SKIPPED=
+#
+# Main entry into test-framework. This is called with the name and
+# description of a test. The name is used to find the function to run
+# the test using "test_$name".
+#
+# This supports a variety of methods of specifying specific test to
+# run or not run.  These need to be documented...
+#
 run_test() {
     assert_DIR
 
@@ -2668,17 +2680,41 @@ reset_fail_loc () {
     echo done.
 }
 
+
+#
+# Log a message (on all nodes) padded with "=" before and after. 
+# Also appends a timestamp and prepends the testsuite name.
+# 
+banner() {
+    msg="== ${TESTSUITE} $*"
+    # pad the message out to 70 with "="
+    last=${msg: -1:1}
+    [[ $last != "=" && $last != " " ]] && msg+=" "
+    for i in $(seq $((68 - ${#msg})) ); do
+	msg+="="
+    done
+    # always include at least == after the message
+    msg+="=="
+
+    log "$msg $(date +"%H:%M:%S (%s)")"
+}
+
+#
+# Run a single test function and cleanup after it.  
+#
+# This function should be run in a subshell so the test func can
+# exit() without stopping the whole script.
+#
 run_one() {
     local testnum=$1
     local message=$2
-    local start_tm=$3
     tfile=f${testnum}
     export tdir=d0.${TESTSUITE}/d${base}
     export TESTNAME=test_$testnum
     local SAVE_UMASK=`umask`
     umask 0022
 
-    log "== test $testnum: $message == `date +%H:%M:%S` ($start_tm)"
+    banner "test $testnum: $message"
     test_${testnum} || error "test_$testnum failed with $?"
     cd $SAVE_PWD
     reset_fail_loc
@@ -2691,6 +2727,12 @@ run_one() {
     return 0
 }
 
+#
+# Wrapper around run_one to ensure:
+#  - test runs in subshell
+#  - output of test is saved to separate log file for error reporting
+#  - test result is saved to data file
+#
 run_one_logged() {
     local BEFORE=`date +%s`
     local TEST_ERROR
@@ -2699,7 +2741,7 @@ run_one_logged() {
     rm -rf $LOGDIR/err
 
     echo
-    run_one $1 "$2" $BEFORE 2>&1 | tee $test_log
+    run_one $1 "$2" 2>&1 | tee $test_log
     local RC=${PIPESTATUS[0]}
 
     [ $RC -ne 0 ] && [ ! -f $LOGDIR/err ] && \
@@ -2977,6 +3019,17 @@ get_stripe () {
     rm -f $file
 }
 
+setstripe_nfsserver () {
+    local dir=$1
+
+    local nfsserver=$(awk '"'$dir'" ~ $2 && $3 ~ "nfs" && $2 != "/" \
+                { print $1 }' /proc/mounts | cut -f 1 -d : | head -1)
+
+    [ -z $nfsserver ] && echo "$dir is not nfs mounted" && return 1
+
+    do_node --verbose $nfsserver lfs setstripe "$@"
+}
+
 check_runas_id_ret() {
     local myRC=0
     local myRUNAS_UID=$1
@@ -3083,6 +3136,10 @@ do_and_time () {
 inodes_available () {
     local IFree=$($LFS df -i $MOUNT | grep ^$FSNAME | awk '{print $4}' | sort -un | head -1) || return 1
     echo $IFree
+}
+
+mdsrate_inodes_available () {
+    echo $(($(inodes_available) - 1))
 }
 
 # reset llite stat counters
