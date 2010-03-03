@@ -410,7 +410,6 @@ int lut_init2(const struct lu_env *env, struct lu_target *lut,
 
         cfs_spin_lock_init(&lut->lut_translock);
         cfs_spin_lock_init(&lut->lut_client_bitmap_lock);
-        cfs_spin_lock_init(&lut->lut_trans_table_lock);
 
         /** obdfilter has no lu_device stack yet */
         if (dt == NULL)

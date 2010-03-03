@@ -634,7 +634,6 @@ static int filter_init0(const struct lu_env *env, struct filter_device *m,
         cfs_rwlock_init(&filter->fo_sptlrpc_lock);
         sptlrpc_rule_set_init(&filter->fo_sptlrpc_rset);
 #endif
-        cfs_spin_lock_init(&filter->fo_obt.obt_translock);
 
         m->ofd_fl_oss_capa = 0;
         CFS_INIT_LIST_HEAD(&m->ofd_capa_keys);

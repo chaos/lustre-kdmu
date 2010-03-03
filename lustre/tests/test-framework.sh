@@ -344,7 +344,7 @@ load_modules_local() {
         load_module mdt/mdt
         load_module lvfs/fsfilt_$FSTYPE
         load_module cmm/cmm
-        load_module osd/osd-ldiskfs
+        load_module osd/osd_ldiskfs
         load_module ost/ost
         load_module ofd/ofd
     fi
@@ -2691,10 +2691,10 @@ banner() {
     last=${msg: -1:1}
     [[ $last != "=" && $last != " " ]] && msg+=" "
     for i in $(seq $((68 - ${#msg})) ); do
-	msg+="="
+	  msg="$msg="
     done
     # always include at least == after the message
-    msg+="=="
+    msg="$msg=="
 
     log "$msg $(date +"%H:%M:%S (%s)")"
 }

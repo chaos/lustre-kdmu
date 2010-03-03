@@ -26,6 +26,7 @@ ALWAYS_EXCEPT="$ALWAYS_EXCEPT 76"
 # kDMU still need fixes
 # 52  -- immutable/append flags aren't implemented
 # 57  -- inode counting is different in zfs
+# 60  -- llog is broken
 # 129 -- broken /proc/fs/lustre/osd-* naming
 # 132 -- inode counting is different in zfs
 # 155 -- we don't control cache via OSD yet
@@ -33,14 +34,7 @@ ALWAYS_EXCEPT="$ALWAYS_EXCEPT 76"
 # 160 -- changelogs don't work yet
 # 162 -- DMU's osd_object_create() doesn't set XATTR_NAME_LMA
 # 180 -- ofd doesn't work with obdecho 
-ALWAYS_EXCEPT="$ALWAYS_EXCEPT 52a 52b 57a 57b 129 132 156 160 180"
-
-# LOD/OSP branch needs fixes:
-# 24q --
-# 24u -- O_LOV_DELAY_CREATE support
-# 27a -- ^^
-# 59  -- osp_sync_thread()) ASSERTION(thread->t_flags != SVC_RUNNING) failed
-ALWAYS_EXCEPT="$ALWAYS_EXCEPT 24q 24u 27a 59"
+ALWAYS_EXCEPT="$ALWAYS_EXCEPT 52a 52b 57a 57b 60 129 132 156 160 180"
 
 case `uname -r` in
 2.4*) FSTYPE=${FSTYPE:-ext3} ;;
