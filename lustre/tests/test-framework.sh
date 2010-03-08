@@ -2979,9 +2979,10 @@ mixed_mdt_devs () {
 generate_machine_file() {
     local nodes=${1//,/ }
     local machinefile=$2
-    rm -f $machinefile || error "can't rm $machinefile"
+    rm -f $machinefile
     for node in $nodes; do
-        echo $node >>$machinefile
+        echo $node >>$machinefile || \
+            { echo "can not generate machinefile $machinefile" && return 1; }
     done
 }
 
@@ -3914,3 +3915,17 @@ log_sub_test() {
     yml_log_sub_test $@ >> $YAML_LOG
 }
 
+run_llverdev()
+{
+        local dev=$1
+        local devname=$(basename $1)
+        local size=$(grep "$devname"$ /proc/partitions | awk '{print $3}')
+        size=$(($size / 1024 / 1024)) # Gb
+
+        local partial_arg=""
+        # Run in partial (fast) mode if the size
+        # of a partition > 10 GB
+        [ $size -gt 10 ] && partial_arg="-p"
+
+        llverdev --force $partial_arg $dev
+}
