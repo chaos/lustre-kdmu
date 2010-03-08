@@ -1949,9 +1949,7 @@ init_param_vars () {
             setup_quota $MOUNT || return 2
         else
             echo "disable quota as required"
-            set +e
             $LFS quotaoff -ug $MOUNT > /dev/null 2>&1
-            set -e
         fi
     fi
 
@@ -2664,12 +2662,12 @@ banner() {
     msg="== ${TESTSUITE} $*"
     # pad the message out to 70 with "="
     last=${msg: -1:1}
-    [[ $last != "=" && $last != " " ]] && msg="$msg "
+    [[ $last != "=" && $last != " " ]] && msg+=" "
     for i in $(seq $((68 - ${#msg})) ); do
-	msg="$msg="
+	msg+="="
     done
     # always include at least == after the message
-    msg="$msg=="
+    msg+="=="
 
     log "$msg $(date +"%H:%M:%S (%s)")"
 }
