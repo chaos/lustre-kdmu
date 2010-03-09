@@ -615,6 +615,17 @@ static int filter_statfs(struct obd_device *obd,
                         ((ofd->ofd_tot_dirty + ofd->ofd_tot_pending +
                           osfs->os_bsize - 1) >> blockbits));
 
+        if (OBD_FAIL_CHECK(OBD_FAIL_OST_ENOSPC)) {
+                struct lr_server_data *lsd = &ofd->ofd_fsd;
+                int index = lsd->lsd_ost_index;
+
+                if (obd_fail_val == -1 ||
+                    index == obd_fail_val)
+                        osfs->os_bfree = osfs->os_bavail = 2;
+                else if (obd_fail_loc & OBD_FAIL_ONCE)
+                        obd_fail_loc &= ~OBD_FAILED; /* reset flag */
+        }
+
         if (ofd->ofd_raid_degraded)
                 osfs->os_state |= OS_STATE_DEGRADED;
 #if 0
