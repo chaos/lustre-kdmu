@@ -1858,6 +1858,7 @@ mdd_start_and_declare_create(const struct lu_env *env,
         const struct dt_index_features *feat = spec->sp_feat;
         struct mdd_object *mdd_pobj = md2mdd_obj(pobj);
         struct mdd_device *mdd = mdo2mdd(pobj);
+        struct md_attr    *ma_acl = &mdd_env_info(env)->mti_ma;
         struct thandle    *handle;
         int                rc;
 
@@ -1895,7 +1896,13 @@ mdd_start_and_declare_create(const struct lu_env *env,
                 rc = dt->do_body_ops->dbo_declare_write(env, dt,
                                                         strlen(spec->u.sp_symname),
                                                         0, handle);
+        } else if (ma_acl->ma_valid & MA_ACL_DEF) {
+                rc = mdo_declare_xattr_set(env, son, ma_acl->ma_acl_size,
+                                           XATTR_NAME_ACL_DEFAULT, 0, handle );
+                rc = mdo_declare_xattr_set(env, son, ma_acl->ma_acl_size,
+                                           XATTR_NAME_ACL_ACCESS, 0, handle );
         }
+
         if (rc)
                 GOTO(cleanup, rc);
         rc = mdo_declare_attr_set(env, mdd_pobj, NULL, handle);
