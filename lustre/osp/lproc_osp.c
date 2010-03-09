@@ -115,7 +115,7 @@ static int osp_rd_syn_changes(char *page, char **start, off_t off,
         if (osp == NULL)
                 return -EINVAL;
 
-        rc = snprintf(page, count, "%u\n", osp->opd_syn_changes);
+        rc = snprintf(page, count, "%lu\n", osp->opd_syn_changes);
         return rc;
 }
 
