@@ -76,14 +76,20 @@ static int filter_lvbo_init(struct ldlm_resource *res)
         OBD_ALLOC_PTR(lvb);
         if (lvb == NULL)
                 GOTO(out, rc = -ENOMEM);
+        res->lr_lvb_data = lvb;
+        res->lr_lvb_len = sizeof(*lvb);
+
 
         info = filter_info_init(&env, NULL);
         lu_idif_from_resid(&info->fti_fid, &res->lr_name);
 
         fo = filter_object_find(&env, ofd, &info->fti_fid);
-        if (IS_ERR(fo)) {
-                OBD_FREE_PTR(lvb);
+        if (IS_ERR(fo))
                 GOTO(out, rc = PTR_ERR(fo));
+
+        if (!filter_object_exists(fo)) {
+                filter_object_put(&env, fo);
+                GOTO(out, rc);
         }
 
         rc = filter_attr_get(&env, fo, &info->fti_attr);
@@ -95,12 +101,8 @@ static int filter_lvbo_init(struct ldlm_resource *res)
                 lvb->lvb_atime = info->fti_attr.la_atime;
                 lvb->lvb_ctime = info->fti_attr.la_ctime;
         } else {
-                OBD_FREE_PTR(lvb);
                 GOTO(out, rc);
         }
-
-        res->lr_lvb_data = lvb;
-        res->lr_lvb_len = sizeof(*lvb);
 
         CDEBUG(D_DLMTRACE, "res: "LPX64" initial lvb size: "LPX64", "
                "mtime: "LPX64", blocks: "LPX64"\n",
@@ -112,7 +114,7 @@ static int filter_lvbo_init(struct ldlm_resource *res)
 out:
         lu_env_fini(&env);
 
-        if (rc)
+        if (rc && lvb)
                 OST_LVB_SET_ERR(lvb->lvb_blocks, rc);
         /* Don't free lvb data on lookup error */
         return rc;
