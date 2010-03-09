@@ -610,6 +610,7 @@ int list_param_thread(void *data)
         struct libcfs_param_pipe_hdr *lpph;
         struct list_param_cb_data lpcd;
         loff_t pos = 0;
+        int rc = 0;
         int len;
 
         if (parent == NULL)
@@ -618,7 +619,7 @@ int list_param_thread(void *data)
         LIBCFS_ALLOC(lpph, len);
         if (lpph == NULL) {
                 CERROR("No memory for lhl header.\n");
-                return -ENOMEM;
+                GOTO(out, rc = -ENOMEM);
         }
         /* build pipe msg header */
         lpph->lpph_magic = LPPH_MAGIC;
@@ -631,13 +632,14 @@ int list_param_thread(void *data)
         cfs_hash_for_each(parent->lpe_hash_t, list_param_cb, &lpcd);
         cfs_up_write(&parent->lpe_rw_sem);
 
-        libcfs_param_put(parent);
         libcfs_param_pipe_write(lta->lta_fp, lpph, LPPH_MSG_SHUTDOWN);
-        cfs_put_file(lta->lta_fp);
         LIBCFS_FREE(lpph, len);
+out:
+        libcfs_param_put(parent);
+        cfs_put_file(lta->lta_fp);
         LIBCFS_FREE(lta, sizeof(*lta));
 
-        return 0;
+        return rc;
 }
 
 /**
@@ -649,6 +651,7 @@ int libcfs_param_list(const char *parent_path, int fd)
          * In user space, match these entries pathname with the pattern */
         struct libcfs_param_entry *parent;
         struct list_thread_args *lta = NULL;
+        cfs_file_t *fp = NULL;
         int rc;
 
         if (parent_path == NULL) {
@@ -656,27 +659,39 @@ int libcfs_param_list(const char *parent_path, int fd)
                 return -EINVAL;
         }
 
+        fp = cfs_get_fd(fd);
+        if (fp == NULL) {
+                CERROR("The fd is invalid.\n");
+                return -EINVAL;
+        }
+
         parent = lookup_param_by_path(parent_path, NULL);
         if (parent == NULL) {
                 CERROR("The parent entry %s doesn't exist.\n",
                        parent_path);
-                return -EEXIST;
+                GOTO(fp_out, rc = -EEXIST);
         }
 
         /* list the entries */
         LIBCFS_ALLOC(lta, sizeof(*lta));
+        if (lta == NULL)
+                GOTO(lta_out, rc = -ENOMEM);
         lta->lta_parent = parent;
-        lta->lta_fp = cfs_get_fd(fd);
+        lta->lta_fp = fp;
 
         /* Use kernel thread to list params */
         rc = cfs_kernel_thread(list_param_thread, lta, CLONE_VM | CLONE_FILES);
         if (rc >= 0) {
                 CDEBUG(D_INFO, "start list_param_thread: %d\n", rc);
-        } else {
-                CERROR("Failed to start list_param_thread: %d\n", rc);
-                LIBCFS_FREE(lta, sizeof(*lta));
-                libcfs_param_put(parent);
+                return rc;
         }
+
+        CERROR("Failed to start list_param_thread: %d\n", rc);
+        LIBCFS_FREE(lta, sizeof(*lta));
+lta_out:
+        libcfs_param_put(parent);
+fp_out:
+        cfs_put_file(fp);
 
         return rc;
 }
