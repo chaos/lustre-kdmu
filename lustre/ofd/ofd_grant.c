@@ -327,63 +327,6 @@ restat:
         return left;
 }
 
-/* Substract what client have used already.  We don't subtract
- * this from the tot_granted yet, so that other client's can't grab
- * that space before we have actually allocated our blocks.  That
- * happens in filter_grant_commit() after the writes are done.
- */
-int filter_grant_client_calc(struct obd_export *exp, obd_size *left,
-                             unsigned long *used, unsigned long *ungranted)
-{
-        struct filter_device *ofd = filter_exp(exp);
-        struct obd_device *obd = exp->exp_obd;
-        struct filter_export_data *fed = &exp->exp_filter_data;
-        unsigned long using = 0;
-        int rc = 0;
-
-        LASSERT_SEM_LOCKED(&ofd->ofd_grant_sem);
-
-        *left -= *ungranted;
-        LASSERT(fed->fed_grant >= *used);
-        fed->fed_grant -= *used;
-        fed->fed_pending += *used + *ungranted;
-        ofd->ofd_tot_granted += *ungranted;
-        ofd->ofd_tot_pending += *used + *ungranted;
-
-        CDEBUG(D_CACHE,
-               "%s: cli %s/%p used: %lu ungranted: %lu grant: %lu dirty: %lu\n",
-               obd->obd_name, exp->exp_client_uuid.uuid, exp, *used,
-               *ungranted, fed->fed_grant, fed->fed_dirty);
-
-        /* Rough calc in case we don't refresh cached statfs data,
-         * in fragments */
-        LASSERT(obd->obd_osfs.os_bsize);
-        using = ((*used + *ungranted + 1 ) / obd->obd_osfs.os_bsize);
-        if (obd->obd_osfs.os_bavail > using)
-                obd->obd_osfs.os_bavail -= using;
-        else
-                obd->obd_osfs.os_bavail = 0;
-
-        if (fed->fed_dirty < *used) {
-                CWARN("%s: cli %s/%p claims used %lu > fed_dirty %lu\n",
-                       obd->obd_name, exp->exp_client_uuid.uuid, exp,
-                       *used, fed->fed_dirty);
-                *used = fed->fed_dirty;
-        }
-        ofd->ofd_tot_dirty -= *used;
-        fed->fed_dirty -= *used;
-
-        if (fed->fed_dirty < 0 || fed->fed_grant < 0 || fed->fed_pending < 0) {
-                CERROR("%s: cli %s/%p dirty %ld pend %ld grant %ld\n",
-                       obd->obd_name, exp->exp_client_uuid.uuid, exp,
-                       fed->fed_dirty, fed->fed_pending, fed->fed_grant);
-                cfs_mutex_up(&ofd->ofd_grant_sem);
-                LBUG();
-        }
-        PRINTK_GRANTS(ofd, fed);
-        return rc;
-}
-
 /* When clients have dirtied as much space as they've been granted they
  * fall through to sync writes.  These sync writes haven't been expressed
  * in grants and need to error with ENOSPC when there isn't room in the
@@ -394,13 +337,16 @@ int filter_grant_client_calc(struct obd_export *exp, obd_size *left,
  */
 int filter_grant_check(const struct lu_env *env, struct obd_export *exp, 
                        struct obdo *oa, struct niobuf_local *lnb, int nrpages,
-                       obd_size *left, unsigned long *used, unsigned long *ungranted)
+                       obd_size *left, unsigned long *used)
 {
         struct filter_export_data *fed = &exp->exp_filter_data;
+        struct obd_device *obd = exp->exp_obd;
         struct filter_device *ofd = filter_exp(exp);
-        int i, rc = -ENOSPC, bytes;
+        unsigned long ungranted = 0;
+        int i, rc = -ENOSPC, bytes, using = 0;
 
         LASSERT_SEM_LOCKED(&ofd->ofd_grant_sem);
+        *used = 0;
 
         for (i = 0; i < nrpages; i++) {
 
@@ -424,12 +370,12 @@ int filter_grant_check(const struct lu_env *env, struct obd_export *exp,
                                 continue;
                         }
                 }
-                if (*left > *ungranted + bytes) {
+                if (*left > ungranted + bytes) {
                         /* if enough space, pretend it was granted */
-                        *ungranted += bytes;
+                        ungranted += bytes;
                         lnb[i].flags |= OBD_BRW_GRANTED;
                         lnb[i].lnb_grant_used = bytes;
-                        CDEBUG(0, "idx %d ungranted=%lu\n", i, *ungranted);
+                        CDEBUG(0, "idx %d ungranted=%lu\n", i, ungranted);
                         rc = 0;
                         continue;
                 }
@@ -448,7 +394,45 @@ int filter_grant_check(const struct lu_env *env, struct obd_export *exp,
                                 exp->exp_client_uuid.uuid, exp, i, bytes);
         }
 
+        *left -= ungranted;
+        LASSERT(fed->fed_grant >= *used);
+        fed->fed_grant -= *used;
+        fed->fed_pending += *used + ungranted;
+        ofd->ofd_tot_granted += ungranted;
+        ofd->ofd_tot_pending += *used + ungranted;
+
+        CDEBUG(D_CACHE,
+               "%s: cli %s/%p used: %lu ungranted: %lu grant: %lu dirty: %lu\n",
+               obd->obd_name, exp->exp_client_uuid.uuid, exp, *used,
+               ungranted, fed->fed_grant, fed->fed_dirty);
+
+        /* Rough calc in case we don't refresh cached statfs data,
+         * in fragments */
+        LASSERT(obd->obd_osfs.os_bsize);
+        using = ((*used + ungranted + 1 ) / obd->obd_osfs.os_bsize);
+        if (obd->obd_osfs.os_bavail > using)
+                obd->obd_osfs.os_bavail -= using;
+        else
+                obd->obd_osfs.os_bavail = 0;
+
+        if (fed->fed_dirty < *used) {
+                CWARN("%s: cli %s/%p claims used %lu > fed_dirty %lu\n",
+                       obd->obd_name, exp->exp_client_uuid.uuid, exp,
+                       *used, fed->fed_dirty);
+                *used = fed->fed_dirty;
+        }
+        ofd->ofd_tot_dirty -= *used;
+        fed->fed_dirty -= *used;
+
+        if (fed->fed_dirty < 0 || fed->fed_grant < 0 || fed->fed_pending < 0) {
+                CERROR("%s: cli %s/%p dirty %ld pend %ld grant %ld\n",
+                       obd->obd_name, exp->exp_client_uuid.uuid, exp,
+                       fed->fed_dirty, fed->fed_pending, fed->fed_grant);
+                cfs_mutex_up(&ofd->ofd_grant_sem);
+                LBUG();
+        }
         PRINTK_GRANTS(ofd, fed);
+
         return rc;
 }
 
