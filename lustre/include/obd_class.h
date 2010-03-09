@@ -103,7 +103,6 @@ void obd_zombie_impexp_stop(void);
 void obd_zombie_impexp_cull(void);
 void obd_zombie_barrier(void);
 void obd_exports_barrier(struct obd_device *obd);
-
 /* obd_config.c */
 int class_process_config(struct lustre_cfg *lcfg);
 int class_process_proc_param(char *prefix, struct lprocfs_vars *lvars,
@@ -270,6 +269,18 @@ static inline enum obd_option exp_flags_from_obd(struct obd_device *obd)
                 (obd->obd_force ? OBD_OPT_FORCE : 0) |
                 (obd->obd_abort_recovery ? OBD_OPT_ABORT_RECOV : 0) |
                 0);
+}
+
+static inline struct lu_target *class_exp2tgt(struct obd_export *exp)
+{
+        LASSERT(exp->exp_obd);
+        return exp->exp_obd->u.obt.obt_lut;
+}
+
+static inline struct lr_server_data *class_server_data(struct obd_device *obd)
+{
+        LASSERT(obd->u.obt.obt_lut);
+        return &obd->u.obt.obt_lut->lut_lsd;
 }
 
 void obdo_cpy_md(struct obdo *dst, struct obdo *src, obd_flag valid);
@@ -1741,16 +1752,14 @@ static inline int md_getstatus(struct obd_export *exp,
         RETURN(rc);
 }
 
-static inline int md_getattr(struct obd_export *exp, const struct lu_fid *fid,
-                             struct obd_capa *oc, obd_valid valid, int ea_size,
+static inline int md_getattr(struct obd_export *exp, struct md_op_data *op_data,
                              struct ptlrpc_request **request)
 {
         int rc;
         ENTRY;
         EXP_CHECK_MD_OP(exp, getattr);
         EXP_MD_COUNTER_INCREMENT(exp, getattr);
-        rc = MDP(exp->exp_obd, getattr)(exp, fid, oc, valid,
-                                        ea_size, request);
+        rc = MDP(exp->exp_obd, getattr)(exp, op_data, request);
         RETURN(rc);
 }
 
@@ -1823,17 +1832,14 @@ static inline int md_enqueue(struct obd_export *exp,
 }
 
 static inline int md_getattr_name(struct obd_export *exp,
-                                  const struct lu_fid *fid, struct obd_capa *oc,
-                                  const char *name, int namelen,
-                                  obd_valid valid, int ea_size, __u32 suppgid,
+                                  struct md_op_data *op_data,
                                   struct ptlrpc_request **request)
 {
         int rc;
         ENTRY;
         EXP_CHECK_MD_OP(exp, getattr_name);
         EXP_MD_COUNTER_INCREMENT(exp, getattr_name);
-        rc = MDP(exp->exp_obd, getattr_name)(exp, fid, oc, name, namelen,
-                                             valid, ea_size, suppgid, request);
+        rc = MDP(exp->exp_obd, getattr_name)(exp, op_data, request);
         RETURN(rc);
 }
 

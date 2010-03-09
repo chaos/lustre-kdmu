@@ -134,6 +134,7 @@ struct obd_statfs {
 #define LL_IOC_LLOOP_INFO               _IOWR('f', 171, long)
 #define LL_IOC_LLOOP_DETACH_BYDEV       _IOWR('f', 172, long)
 #define LL_IOC_PATH2FID                 _IOR ('f', 173, long)
+#define LL_IOC_GET_MDTIDX               _IOR ('f', 174, int)
 
 #define LL_STATFS_MDC           1
 #define LL_STATFS_LOV           2
@@ -347,8 +348,6 @@ typedef struct lu_fid lustre_fid;
 #define LUSTRE_Q_FINVALIDATE 0x80000c     /* invalidate filter quota data */
 
 #define UGQUOTA 2       /* set both USRQUOTA and GRPQUOTA */
-#define IMMQUOTA 0x4    /* set immutable quota flag, cannot be turned on/off
-                         * on-fly. temporary used by SOM */
 
 struct if_quotacheck {
         char                    obd_type[16];

@@ -140,7 +140,8 @@ static int ldlm_completion_tail(struct ldlm_lock *lock)
                            CFS_DURATION_T"s", delay);
 
                 /* Update our time estimate */
-                at_add(&lock->l_resource->lr_namespace->ns_at_estimate, delay);
+                at_measured(&lock->l_resource->lr_namespace->ns_at_estimate,
+                            delay);
                 result = 0;
         }
         return result;
@@ -1344,7 +1345,7 @@ static ldlm_policy_res_t ldlm_cancel_lrur_policy(struct ldlm_namespace *ns,
          * Inform pool about current CLV to see it via proc.
          */
         ldlm_pool_set_clv(pl, lv);
-        return (slv == 1 || lv < slv) ?
+        return (slv == 0 || lv < slv) ?
                 LDLM_POLICY_KEEP_LOCK : LDLM_POLICY_CANCEL_LOCK;
 }
 

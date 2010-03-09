@@ -940,30 +940,6 @@ int lprocfs_at_hist_helper(char *page, int count, int rc,
         return rc;
 }
 
-int lprocfs_rd_quota_resend_count(char *page, char **start, off_t off,
-                                  int count, int *eof, void *data)
-{
-        struct obd_device *obd = data;
-
-        return snprintf(page, count, "%d\n",
-                        cfs_atomic_read(&obd->u.cli.cl_quota_resends));
-}
-
-int lprocfs_wr_quota_resend_count(struct file *file, const char *buffer,
-                                  unsigned long count, void *data)
-{
-        struct obd_device *obd = data;
-        int val, rc;
-
-        rc = lprocfs_write_helper(buffer, count, &val);
-        if (rc)
-                return rc;
-
-        cfs_atomic_set(&obd->u.cli.cl_quota_resends, val);
-
-        return count;
-}
-
 /* See also ptlrpc_lprocfs_rd_timeouts */
 int lprocfs_rd_timeouts(char *page, char **start, off_t off, int count,
                         int *eof, void *data)
@@ -1768,6 +1744,7 @@ int lprocfs_exp_setup(struct obd_export *exp, lnet_nid_t *nid, int *newnid)
         struct nid_stat *new_stat, *old_stat;
         struct obd_device *obd = NULL;
         cfs_proc_dir_entry_t *entry;
+        char *buffer = NULL;
         int rc = 0;
         ENTRY;
 
@@ -1820,9 +1797,16 @@ int lprocfs_exp_setup(struct obd_export *exp, lnet_nid_t *nid, int *newnid)
                 GOTO(destroy_new, rc = -EALREADY);
         }
         /* not found - create */
-        new_stat->nid_proc = lprocfs_register(libcfs_nid2str(*nid),
+        OBD_ALLOC(buffer, LNET_NIDSTR_SIZE);
+        if (buffer == NULL)
+                GOTO(destroy_new, rc = -ENOMEM);
+
+        memcpy(buffer, libcfs_nid2str(*nid), LNET_NIDSTR_SIZE);
+        new_stat->nid_proc = lprocfs_register(buffer, 
                                               obd->obd_proc_exports_entry,
                                               NULL, NULL);
+        OBD_FREE(buffer, LNET_NIDSTR_SIZE);
+
         if (new_stat->nid_proc == NULL) {
                 CERROR("Error making export directory for nid %s\n",
                        libcfs_nid2str(*nid));
@@ -2320,8 +2304,6 @@ EXPORT_SYMBOL(lprocfs_rd_kbytesfree);
 EXPORT_SYMBOL(lprocfs_rd_kbytesavail);
 EXPORT_SYMBOL(lprocfs_rd_filestotal);
 EXPORT_SYMBOL(lprocfs_rd_filesfree);
-EXPORT_SYMBOL(lprocfs_rd_quota_resend_count);
-EXPORT_SYMBOL(lprocfs_wr_quota_resend_count);
 
 EXPORT_SYMBOL(lprocfs_write_helper);
 EXPORT_SYMBOL(lprocfs_write_frac_helper);

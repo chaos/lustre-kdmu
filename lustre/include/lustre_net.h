@@ -118,12 +118,6 @@
 #define MDT_NUM_THREADS max(min_t(unsigned long, MDT_MAX_THREADS, \
                                   cfs_num_physpages >> (25 - CFS_PAGE_SHIFT)), \
                                   2UL)
-#define FLD_NUM_THREADS max(min_t(unsigned long, MDT_MAX_THREADS, \
-                                  cfs_num_physpages >> (25 - CFS_PAGE_SHIFT)), \
-                                  2UL)
-#define SEQ_NUM_THREADS max(min_t(unsigned long, MDT_MAX_THREADS, \
-                                  cfs_num_physpages >> (25 - CFS_PAGE_SHIFT)), \
-                                  2UL)
 
 /* Absolute limits */
 #define MDS_THREADS_MIN 2
@@ -388,8 +382,9 @@ struct ptlrpc_request {
         int rq_request_portal;  /* XXX FIXME bug 249 */
         int rq_reply_portal;    /* XXX FIXME bug 249 */
 
-        int rq_nob_received; /* client-side # reply bytes actually received  */
-
+        int rq_nob_received; /* client-side:
+                              * !rq_truncate : # reply bytes actually received,
+                              *  rq_truncate : required repbuf_len for resend */
         int rq_reqlen;
         struct lustre_msg *rq_reqmsg;
 

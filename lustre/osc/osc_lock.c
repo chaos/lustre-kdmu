@@ -1411,7 +1411,8 @@ static int osc_lock_has_pages(struct osc_lock *olck)
                 io->ci_obj = cl_object_top(obj);
                 cl_io_init(env, io, CIT_MISC, io->ci_obj);
                 cl_page_gang_lookup(env, obj, io,
-                                    descr->cld_start, descr->cld_end, plist, 0);
+                                    descr->cld_start, descr->cld_end, plist, 0,
+                                    NULL);
                 cl_lock_page_list_fixup(env, io, lock, plist);
                 if (plist->pl_nr > 0) {
                         CL_LOCK_DEBUG(D_ERROR, env, lock, "still has pages\n");
@@ -1469,13 +1470,14 @@ static void osc_lock_state(const struct lu_env *env,
                            enum cl_lock_state state)
 {
         struct osc_lock *lock = cl2osc_lock(slice);
-        struct osc_io   *oio  = osc_env_io(env);
 
         /*
          * XXX multiple io contexts can use the lock at the same time.
          */
         LINVRNT(osc_lock_invariant(lock));
         if (state == CLS_HELD && slice->cls_lock->cll_state != CLS_HELD) {
+                struct osc_io *oio = osc_env_io(env);
+
                 LASSERT(lock->ols_owner == NULL);
                 lock->ols_owner = oio;
         } else if (state != CLS_HELD)
@@ -1607,10 +1609,11 @@ static void osc_lock_lockless_state(const struct lu_env *env,
                                     enum cl_lock_state state)
 {
         struct osc_lock *lock = cl2osc_lock(slice);
-        struct osc_io   *oio  = osc_env_io(env);
 
         LINVRNT(osc_lock_invariant(lock));
         if (state == CLS_HELD) {
+                struct osc_io *oio  = osc_env_io(env);
+
                 LASSERT(lock->ols_owner == NULL);
                 lock->ols_owner = oio;
 

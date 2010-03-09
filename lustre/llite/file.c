@@ -75,7 +75,8 @@ void ll_pack_inode2opdata(struct inode *inode, struct md_op_data *op_data,
         op_data->op_attr.ia_ctime = inode->i_ctime;
         op_data->op_attr.ia_size = i_size_read(inode);
         op_data->op_attr_blocks = inode->i_blocks;
-        ((struct ll_iattr *)&op_data->op_attr)->ia_attr_flags = inode->i_flags;
+        ((struct ll_iattr *)&op_data->op_attr)->ia_attr_flags =
+                                        ll_inode_to_ext_flags(inode->i_flags);
         op_data->op_ioepoch = ll_i2info(inode)->lli_ioepoch;
         if (fh)
                 op_data->op_handle = *fh;
@@ -770,7 +771,7 @@ int ll_merge_lvb(struct inode *inode)
         ll_inode_size_lock(inode, 1);
         inode_init_lvb(inode, &lvb);
         rc = obd_merge_lvb(sbi->ll_dt_exp, lli->lli_smd, &lvb, 0);
-        i_size_write(inode, lvb.lvb_size);
+        cl_isize_write_nolock(inode, lvb.lvb_size);
         inode->i_blocks = lvb.lvb_blocks;
 
         LTIME_S(inode->i_mtime) = lvb.lvb_mtime;
@@ -1285,19 +1286,22 @@ int ll_lov_getstripe_ea_info(struct inode *inode, const char *filename,
         struct mdt_body  *body;
         struct lov_mds_md *lmm = NULL;
         struct ptlrpc_request *req = NULL;
-        struct obd_capa *oc;
+        struct md_op_data *op_data;
         int rc, lmmsize;
 
         rc = ll_get_max_mdsize(sbi, &lmmsize);
         if (rc)
                 RETURN(rc);
 
-        oc = ll_mdscapa_get(inode);
-        rc = md_getattr_name(sbi->ll_md_exp, ll_inode2fid(inode),
-                             oc, filename, strlen(filename) + 1,
-                             OBD_MD_FLEASIZE | OBD_MD_FLDIREA, lmmsize,
-                             ll_i2suppgid(inode), &req);
-        capa_put(oc);
+        op_data = ll_prep_md_op_data(NULL, inode, NULL, filename,
+                                     strlen(filename), lmmsize,
+                                     LUSTRE_OPC_ANY, NULL);
+        if (op_data == NULL)
+                RETURN(-ENOMEM);
+
+        op_data->op_valid = OBD_MD_FLEASIZE | OBD_MD_FLDIREA;
+        rc = md_getattr_name(sbi->ll_md_exp, op_data, &req);
+        ll_finish_md_op_data(op_data);
         if (rc < 0) {
                 CDEBUG(D_INFO, "md_getattr_name failed "
                        "on %s: rc %d\n", filename, rc);
@@ -1769,6 +1773,19 @@ int ll_file_ioctl(struct inode *inode, struct file *file, unsigned int cmd,
         case OBD_IOC_FID2PATH:
                 RETURN(ll_fid2path(ll_i2mdexp(inode), (void *)arg));
 
+        case LL_IOC_GET_MDTIDX: {
+                int mdtidx;
+
+                mdtidx = ll_get_mdt_idx(inode);
+                if (mdtidx < 0)
+                        RETURN(mdtidx);
+
+                if (put_user((int)mdtidx, (int*)arg))
+                        RETURN(-EFAULT);
+
+                RETURN(0);
+        }
+
         default: {
                 int err;
 
@@ -1804,9 +1821,7 @@ loff_t ll_file_seek(struct file *file, loff_t offset, int origin)
                 if (rc != 0)
                         RETURN(rc);
 
-                ll_inode_size_lock(inode, 0);
                 offset += i_size_read(inode);
-                ll_inode_size_unlock(inode, 0);
         } else if (origin == 1) { /* SEEK_CUR */
                 offset += file->f_pos;
         }
@@ -2125,10 +2140,9 @@ int __ll_inode_revalidate_it(struct dentry *dentry, struct lookup_intent *it,
 
                 ll_lookup_finish_locks(&oit, dentry);
         } else if (!ll_have_md_lock(dentry->d_inode, ibits)) {
-
                 struct ll_sb_info *sbi = ll_i2sbi(dentry->d_inode);
                 obd_valid valid = OBD_MD_FLGETATTR;
-                struct obd_capa *oc;
+                struct md_op_data *op_data;
                 int ealen = 0;
 
                 if (S_ISREG(inode->i_mode)) {
@@ -2137,13 +2151,19 @@ int __ll_inode_revalidate_it(struct dentry *dentry, struct lookup_intent *it,
                                 RETURN(rc);
                         valid |= OBD_MD_FLEASIZE | OBD_MD_FLMODEASIZE;
                 }
+
+                op_data = ll_prep_md_op_data(NULL, inode, NULL, NULL,
+                                             0, ealen, LUSTRE_OPC_ANY,
+                                             NULL);
+                if (op_data == NULL)
+                        RETURN(-ENOMEM);
+
+                op_data->op_valid = valid;
                 /* Once OBD_CONNECT_ATTRFID is not supported, we can't find one
                  * capa for this inode. Because we only keep capas of dirs
                  * fresh. */
-                oc = ll_mdscapa_get(inode);
-                rc = md_getattr(sbi->ll_md_exp, ll_inode2fid(inode), oc, valid,
-                                ealen, &req);
-                capa_put(oc);
+                rc = md_getattr(sbi->ll_md_exp, op_data, &req);
+                ll_finish_md_op_data(op_data);
                 if (rc) {
                         rc = ll_inode_revalidate_fini(inode, rc);
                         RETURN(rc);
@@ -2205,10 +2225,8 @@ int ll_getattr_it(struct vfsmount *mnt, struct dentry *de,
         stat->blksize = 1 << inode->i_blkbits;
 #endif
 
-        ll_inode_size_lock(inode, 0);
         stat->size = i_size_read(inode);
         stat->blocks = inode->i_blocks;
-        ll_inode_size_unlock(inode, 0);
 
         return 0;
 }
