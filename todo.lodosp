@@ -20,7 +20,7 @@
    - qos_add_tgt() to learn configuration (how OSTs map OSSs)
    - pass next device in all the methods (like cursor, lod_trans_stop(), etc)
    - lod_xattr_set() to make sure new striping is sane
-   - lod_*_xattr_set() to handle replay case
+!  - lod_*_xattr_set() to handle replay case
    - check all users of ld_active_tgt_count/ltd_active, remove using of that
 
 * OSP TODO
