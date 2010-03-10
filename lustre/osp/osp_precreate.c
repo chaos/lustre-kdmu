@@ -263,8 +263,10 @@ static int osp_precreate_send(struct osp_device *d)
         ptlrpc_request_set_replen(req);
 
         rc = ptlrpc_queue_wait(req);
-        if (rc)
+        if (rc) {
+                CERROR("%s: can't precreate: %d\n", d->opd_obd->obd_name, rc);
                 GOTO(out_req, rc);
+        }
 
         body = req_capsule_server_get(&req->rq_pill, &RMF_OST_BODY);
         if (body == NULL)

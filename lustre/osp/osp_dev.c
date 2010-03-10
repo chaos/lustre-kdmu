@@ -92,11 +92,32 @@ struct lu_object *osp_object_alloc(const struct lu_env *env,
 
 static int osp_shutdown(const struct lu_env *env, struct osp_device *d)
 {
+        struct obd_import *imp;
         int rc = 0;
         ENTRY;
 
         /* release last_used file */
         lu_object_put(env, &d->opd_last_used_file->do_lu);
+
+        imp = d->opd_obd->u.cli.cl_import;
+
+        /* Mark import deactivated now, so we don't try to reconnect if any
+         * of the cleanup RPCs fails (e.g. ldlm cancel, etc).  We don't
+         * fully deactivate the import, or that would drop all requests. */
+        cfs_spin_lock(&imp->imp_lock);
+        imp->imp_deactive = 1;
+        cfs_spin_unlock(&imp->imp_lock);
+
+        /* Some non-replayable imports (MDS's OSCs) are pinged, so just
+         * delete it regardless.  (It's safe to delete an import that was
+         * never added.) */
+        (void) ptlrpc_pinger_del_import(imp);
+
+        rc = ptlrpc_disconnect_import(imp, 0);
+        if (rc)
+                CERROR("can't disconnect: %d\n", rc);
+
+        ptlrpc_invalidate_import(imp);
 
         /* stop precreate thread */
         osp_precreate_fini(d);
@@ -416,23 +437,6 @@ static struct lu_device *osp_device_fini(const struct lu_env *env,
         obd_disconnect(m->opd_storage_exp);
 
         imp = m->opd_obd->u.cli.cl_import;
-
-        /* Mark import deactivated now, so we don't try to reconnect if any
-         * of the cleanup RPCs fails (e.g. ldlm cancel, etc).  We don't
-         * fully deactivate the import, or that would drop all requests. */
-        cfs_spin_lock(&imp->imp_lock);
-        imp->imp_deactive = 1;
-        cfs_spin_unlock(&imp->imp_lock);
-
-        /* Some non-replayable imports (MDS's OSCs) are pinged, so just
-         * delete it regardless.  (It's safe to delete an import that was
-         * never added.) */
-        (void) ptlrpc_pinger_del_import(imp);
-
-        rc = ptlrpc_disconnect_import(imp, 0);
-        LASSERT(rc == 0);
-
-        ptlrpc_invalidate_import(imp);
 
         if (imp->imp_rq_pool) {
                 ptlrpc_free_rq_pool(imp->imp_rq_pool);
