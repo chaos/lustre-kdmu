@@ -197,9 +197,8 @@ static inline int osp_precreate_near_empty_nolock(struct osp_device *d)
 {
         int window, rc = 0;
 
-        /* XXX: of course 10 should be replaced with something more smart */
         window = d->opd_pre_last_created - d->opd_pre_next;
-        if (window - d->opd_pre_reserved < 10)
+        if (window - d->opd_pre_reserved < d->opd_pre_grow_count / 2)
                 rc = 1;
 
         /* don't consider new precreation till OST is healty and has free space */
@@ -223,7 +222,7 @@ static int osp_precreate_send(struct osp_device *d)
         struct ptlrpc_request  *req;
         struct obd_import      *imp;
         struct ost_body        *body;
-        int                     rc;
+        int                     rc, grow, diff;
         ENTRY;
 
         /* don't precreate new objects till OST healthy and has free space */
@@ -249,10 +248,15 @@ static int osp_precreate_send(struct osp_device *d)
                 GOTO(out, rc);
         }
 
+        cfs_spin_lock(&d->opd_pre_lock);
+        if (d->opd_pre_grow_count > d->opd_pre_max_grow_count / 2)
+                d->opd_pre_grow_count = d->opd_pre_max_grow_count / 2;
+        grow = d->opd_pre_grow_count;
+        cfs_spin_unlock(&d->opd_pre_lock);
+
         body = req_capsule_client_get(&req->rq_pill, &RMF_OST_BODY);
         LASSERT(body);
-        /* XXX: the window should be adaptive */
-        body->oa.o_id = d->opd_pre_last_created + 50;
+        body->oa.o_id = d->opd_pre_last_created + grow;
         body->oa.o_gr = mdt_to_obd_objgrp(0);
         body->oa.o_valid = OBD_MD_FLGROUP;
 
@@ -267,9 +271,22 @@ static int osp_precreate_send(struct osp_device *d)
                 GOTO(out_req, rc = -EPROTO);
 
         CDEBUG(D_HA, "new last_created %lu\n", (unsigned long) body->oa.o_id);
-
         LASSERT(body->oa.o_id > d->opd_pre_next);
+
+        diff = body->oa.o_id - d->opd_pre_last_created;
+
         cfs_spin_lock(&d->opd_pre_lock);
+        if (diff < grow) {
+                /* the OST has not managed to create all the
+                 * objects we asked for */
+                d->opd_pre_grow_count = max(diff, OST_MIN_PRECREATE);
+                d->opd_pre_grow_slow = 1;
+        } else {
+                /* the OST is able to keep up with the work,
+                 * we could consider increasing grow_count
+                 * next time if needed */
+                d->opd_pre_grow_slow = 0;
+        }
         d->opd_pre_last_created = body->oa.o_id;
         cfs_spin_unlock(&d->opd_pre_lock);
 
@@ -386,6 +403,8 @@ static int osp_precreate_clean_orphans(struct osp_device *d)
         d->opd_pre_next = body->oa.o_id + 1;
         /* nothing precreated yet, the pool is empty */
         d->opd_pre_last_created = d->opd_pre_next; 
+        d->opd_pre_grow_count = OST_MIN_PRECREATE;
+        d->opd_pre_grow_slow = 0;
         cfs_spin_unlock(&d->opd_pre_lock);
 
         /* now we can wakeup all users awaiting for objects */
@@ -458,6 +477,8 @@ void osp_pre_update_status(struct osp_device *d, int rc)
                                d->opd_pre_status);
                 } else if (old == -ENOSPC) {
                         d->opd_pre_status = 0;
+                        d->opd_pre_grow_slow = 0;
+                        d->opd_pre_grow_count = OST_MIN_PRECREATE;
                         cfs_waitq_signal(&d->opd_pre_waitq);
                         CERROR("%s: rc %d, %lu blocks, %lu free, %lu used, "
                                "%lu avail -> %d\n", d->opd_obd->obd_name, rc,
@@ -581,6 +602,19 @@ int osp_precreate_reserve(struct osp_device *d)
         LASSERT(d->opd_pre_last_created >= d->opd_pre_next);
 
         while ((rc = d->opd_pre_status) == 0 || rc == -ENOSPC) {
+
+                /*
+                 * increase number of precreations
+                 */
+                if (d->opd_pre_grow_count < d->opd_pre_max_grow_count &&
+                        d->opd_pre_grow_slow == 0 &&
+                        ((d->opd_pre_last_created - d->opd_pre_next) <=
+                                d->opd_pre_grow_count / 4 + 1)) {
+                        cfs_spin_lock(&d->opd_pre_lock);
+                        d->opd_pre_grow_slow = 1;
+                        d->opd_pre_grow_count *= 2;
+                        cfs_spin_unlock(&d->opd_pre_lock);
+                }
 
                 /*
                  * we never use the last object in the window
@@ -717,6 +751,10 @@ int osp_init_precreate(struct osp_device *d)
         d->opd_pre_last_created = 1;
         d->opd_pre_reserved = 0;
         d->opd_got_disconnected = 1;
+        d->opd_pre_grow_slow = 0;
+        d->opd_pre_grow_count = OST_MIN_PRECREATE;
+        d->opd_pre_min_grow_count = OST_MIN_PRECREATE;
+        d->opd_pre_max_grow_count = OST_MAX_PRECREATE;
 
         cfs_spin_lock_init(&d->opd_pre_lock);
         cfs_waitq_init(&d->opd_pre_waitq);

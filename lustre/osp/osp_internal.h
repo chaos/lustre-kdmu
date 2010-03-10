@@ -96,6 +96,12 @@ struct osp_device {
         cfs_waitq_t                     opd_pre_user_waitq;
         /* current precreation status: working, failed, stopping? */
         int                             opd_pre_status;
+        /* how many to precreate next time */
+        int                             opd_pre_grow_count;
+        int                             opd_pre_min_grow_count;
+        int                             opd_pre_max_grow_count;
+        /* whether to grow precreation window next time or not */
+        int                             opd_pre_grow_slow;
 
         /*
          * OST synchronization

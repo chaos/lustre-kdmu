@@ -191,6 +191,93 @@ static int osp_wr_max_rpcs_in_prog(struct file *file, const char *buffer,
         return count;
 }
 
+static int osp_rd_create_count(char *page, char **start, off_t off, int count,
+                               int *eof, void *data)
+{
+        struct obd_device *obd = data;
+        struct osp_device *osp = lu2osp_dev(obd->obd_lu_dev);
+
+        if (osp == NULL)
+                return 0;
+
+        return snprintf(page, count, "%d\n", osp->opd_pre_grow_count);
+}
+
+static int osp_wr_create_count(struct file *file, const char *buffer,
+                               unsigned long count, void *data)
+{
+        struct obd_device *obd = data;
+        struct osp_device *osp = lu2osp_dev(obd->obd_lu_dev);
+        int val, rc, i;
+
+        if (osp == NULL)
+                return 0;
+
+        rc = lprocfs_write_helper(buffer, count, &val);
+        if (rc)
+                return rc;
+
+        /* The MDT ALWAYS needs to limit the precreate count to
+         * OST_MAX_PRECREATE, and the constant cannot be changed
+         * because it is a value shared between the OSP and OST
+         * that is the maximum possible number of objects that will
+         * ever be handled by MDT->OST recovery processing.
+         *
+         * If the OST ever gets a request to delete more orphans,
+         * this implies that something has gone badly on the MDT
+         * and the OST will refuse to delete so much data from the
+         * filesystem as a safety measure. */
+        if (val < OST_MIN_PRECREATE || val > OST_MAX_PRECREATE)
+                return -ERANGE;
+        if (val > osp->opd_pre_max_grow_count)
+                return -ERANGE;
+
+        for (i = 1; (i << 1) <= val; i <<= 1)
+                ;
+        osp->opd_pre_grow_count = i;
+
+        return count;
+}
+
+static int osp_rd_max_create_count(char *page, char **start, off_t off,
+                                   int count, int *eof, void *data)
+{
+        struct obd_device *obd = data;
+        struct osp_device *osp = lu2osp_dev(obd->obd_lu_dev);
+
+        if (osp == NULL)
+                return 0;
+
+        return snprintf(page, count, "%d\n", osp->opd_pre_max_grow_count);
+}
+
+static int osp_wr_max_create_count(struct file *file, const char *buffer,
+                                   unsigned long count, void *data)
+{
+        struct obd_device *obd = data;
+        struct osp_device *osp = lu2osp_dev(obd->obd_lu_dev);
+        int val, rc;
+
+        if (osp == NULL)
+                return 0;
+
+        rc = lprocfs_write_helper(buffer, count, &val);
+        if (rc)
+                return rc;
+
+        if (val < 0)
+                return -ERANGE;
+        if (val > OST_MAX_PRECREATE)
+                return -ERANGE;
+
+        if (osp->opd_pre_grow_count > val)
+                osp->opd_pre_grow_count = val;
+
+        osp->opd_pre_max_grow_count = val;
+
+        return count;
+}
+
 static int osp_rd_prealloc_next_id(char *page, char **start, off_t off,
                                    int count, int *eof, void *data)
 {
@@ -295,6 +382,10 @@ static struct lprocfs_vars lprocfs_osp_obd_vars[] = {
                                   osp_wr_max_rpcs_in_flight,   0 },
         { "max_rpcs_in_progress", osp_rd_max_rpcs_in_prog,
                                   osp_wr_max_rpcs_in_prog,     0 },
+        { "create_count",         osp_rd_create_count,
+                                  osp_wr_create_count,         0 },
+        { "max_create_count",     osp_rd_max_create_count,
+                                  osp_wr_max_create_count,     0 },
         { "prealloc_next_id",     osp_rd_prealloc_next_id,  0, 0 },
         { "prealloc_last_id",     osp_rd_prealloc_last_id,  0, 0 },
         { "prealloc_reserved",    osp_rd_prealloc_reserved, 0, 0 },
