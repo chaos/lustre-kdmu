@@ -26,7 +26,6 @@
 * OSP TODO
    - support for CMD (group = mds #) (where do we take mds #? encoded in config?)
    - batching in osp_sync.c so that the thread doesn't wake up for a single job
-!  - at umount be able to abort in-flight PRCs
 !  - in RPC interpret/commit callbacks handle errors
    - don't wake up the thread if precreation RPC is in-flight
 !  - send uid/gid changes immediately?
