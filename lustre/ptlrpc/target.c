@@ -417,6 +417,7 @@ int lut_init2(const struct lu_env *env, struct lu_target *lut,
 
         lut->lut_bottom = dt;
         lut->lut_last_rcvd = NULL;
+        obd->u.obt.obt_lut = lut;
 
         o = dt_locate(env, lut->lut_bottom, fid);
         if (!IS_ERR(o)) {
