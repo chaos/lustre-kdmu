@@ -24,7 +24,6 @@
    - check all users of ld_active_tgt_count/ltd_active, remove using of that
 
 * OSP TODO
-!  - adaptive precreation (shouldn't block in most cases), tunables in procfs
    - support for CMD (group = mds #) (where do we take mds #? encoded in config?)
    - batching in osp_sync.c so that the thread doesn't wake up for a single job
 !  - at umount be able to abort in-flight PRCs
