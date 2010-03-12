@@ -231,17 +231,7 @@ struct obd_device_target {
         struct super_block       *obt_sb;
         /** last_rcvd file */
         struct file              *obt_rcvd_filp;
-        /** server data in last_rcvd file */
-        struct lr_server_data    *obt_lsd;
-        /** Lock protecting client bitmap */
-        cfs_spinlock_t            obt_client_bitmap_lock;
-        /** Bitmap of known clients */
-        unsigned long            *obt_client_bitmap;
-        /** Server last transaction number */
-        __u64                     obt_last_transno;
-        /** Lock protecting last transaction number */
-        cfs_spinlock_t            obt_translock;
-        /** Number of mounts */
+        struct lu_target         *obt_lut;
         __u64                     obt_mount_count;
         cfs_semaphore_t           obt_quotachecking;
         struct lustre_quota_ctxt  obt_qctxt;
@@ -286,7 +276,6 @@ struct filter_ext {
 struct filter_obd {
         /* NB this field MUST be first */
         struct obd_device_target fo_obt;
-        struct lu_target     fo_lut;
         const char          *fo_fstype;
 
         int                  fo_group_count;
@@ -295,8 +284,6 @@ struct filter_obd {
         ///struct filter_subdirs   *fo_dentry_O_sub;
         cfs_semaphore_t      fo_init_lock;      /* group initialization lock */
         int                  fo_committed_group;
-
-#define CLIENT_QUOTA_DEFAULT_RESENDS 10
 
         cfs_spinlock_t       fo_objidlock;      /* protect fo_lastobjid */
 
@@ -367,11 +354,10 @@ struct filter_obd {
         int                      fo_sec_level;
 };
 
-#define fo_translock            fo_obt.obt_translock
+#define fo_translock            fo_obt.obt_lut->lut_translock
+#define fo_last_rcvd_slots      fo_obt.obt_lut->lut_client_bitmap
+#define fo_mount_count          fo_obt.obt_lut->lut_mount_count
 #define fo_rcvd_filp            fo_obt.obt_rcvd_filp
-#define fo_fsd                  fo_obt.obt_lsd
-#define fo_last_rcvd_slots      fo_obt.obt_client_bitmap
-#define fo_mount_count          fo_obt.obt_mount_count
 #define fo_vfsmnt               fo_obt.obt_vfsmnt
 
 struct timeout_item {
@@ -495,7 +481,6 @@ struct client_obd {
         struct lu_client_seq    *cl_seq;
 
         cfs_atomic_t             cl_resends; /* resend count */
-        cfs_atomic_t             cl_quota_resends; /* quota related resend count */
 };
 #define obd2cli_tgt(obd) ((char *)(obd)->u.cli.cl_target_uuid.uuid)
 
@@ -1239,6 +1224,7 @@ struct md_op_data {
         unsigned int            op_attr_flags;
 #endif
 #endif
+        __u64                   op_valid;
         loff_t                  op_attr_blocks;
 
         /* Size-on-MDS epoch and flags. */
@@ -1499,12 +1485,10 @@ struct md_ops {
                          struct lookup_intent *, struct md_op_data *,
                          struct lustre_handle *, void *, int,
                          struct ptlrpc_request **, int);
-        int (*m_getattr)(struct obd_export *, const struct lu_fid *,
-                         struct obd_capa *, obd_valid, int,
+        int (*m_getattr)(struct obd_export *, struct md_op_data *,
                          struct ptlrpc_request **);
-        int (*m_getattr_name)(struct obd_export *, const struct lu_fid *,
-                              struct obd_capa *, const char *, int, obd_valid,
-                              int, __u32, struct ptlrpc_request **);
+        int (*m_getattr_name)(struct obd_export *, struct md_op_data *,
+                              struct ptlrpc_request **);
         int (*m_intent_lock)(struct obd_export *, struct md_op_data *,
                              void *, int, struct lookup_intent *, int,
                              struct ptlrpc_request **,

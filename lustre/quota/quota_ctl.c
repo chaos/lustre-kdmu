@@ -143,8 +143,11 @@ int filter_quota_ctl(struct obd_device *unused, struct obd_export *exp,
 
         cfs_gettimeofday(&work_start);
         switch (oqctl->qc_cmd) {
-        case Q_FINVALIDATE:
         case Q_QUOTAON:
+                oqctl->qc_id = obt->obt_qfmt;
+                rc = generic_quota_on(obd, oqctl, 0);
+                break;
+        case Q_FINVALIDATE:
         case Q_QUOTAOFF:
                 cfs_down(&obt->obt_quotachecking);
                 if (oqctl->qc_cmd == Q_FINVALIDATE &&
@@ -172,20 +175,9 @@ int filter_quota_ctl(struct obd_device *unused, struct obd_export *exp,
                 if (oqctl->qc_stat == QUOTA_RECOVERING)
                         quota_unbarrier(handle);
 
-                if (oqctl->qc_cmd == Q_QUOTAON || oqctl->qc_cmd == Q_QUOTAOFF ||
+                if (oqctl->qc_cmd == Q_QUOTAOFF ||
                     oqctl->qc_cmd == Q_FINVALIDATE) {
-                        if (oqctl->qc_cmd == Q_QUOTAON) {
-                                if (!rc) {
-                                        obt->obt_qctxt.lqc_flags |=
-                                                UGQUOTA2LQC(oqctl->qc_type);
-                                        /* when quotaon, create lqs for every
-                                         * quota uid/gid b=18574 */
-                                        build_lqs(obd);
-                                } else if (rc == -EBUSY &&
-                                         quota_is_on(qctxt, oqctl)) {
-                                                rc = -EALREADY;
-                                }
-                        } else if (oqctl->qc_cmd == Q_QUOTAOFF) {
+                        if (oqctl->qc_cmd == Q_QUOTAOFF) {
                                 if (!rc)
                                         obt->obt_qctxt.lqc_flags &=
                                                 ~UGQUOTA2LQC(oqctl->qc_type);
@@ -302,7 +294,7 @@ int client_quota_ctl(struct obd_device *unused, struct obd_export *exp,
         struct ptlrpc_request   *req;
         struct obd_quotactl     *oqc;
         const struct req_format *rf;
-        int                      ver, opc, rc, resends = 0;
+        int                      ver, opc, rc;
         ENTRY;
 
         if (!strcmp(exp->exp_obd->obd_type->typ_name, LUSTRE_MDC_NAME)) {
@@ -316,8 +308,6 @@ int client_quota_ctl(struct obd_device *unused, struct obd_export *exp,
         } else {
                 RETURN(-EINVAL);
         }
-
-restart_request:
 
         req = ptlrpc_request_alloc_pack(class_exp2cliimp(exp), rf, ver, opc);
         if (req == NULL)
@@ -349,16 +339,6 @@ restart_request:
         EXIT;
 out:
         ptlrpc_req_finished(req);
-
-        if (client_quota_recoverable_error(rc)) {
-                resends++;
-                if (!client_quota_should_resend(resends, &exp->exp_obd->u.cli)) {
-                        CERROR("too many resend retries, returning error\n");
-                        RETURN(-EIO);
-                }
-
-                goto restart_request;
-        }
 
         return rc;
 }

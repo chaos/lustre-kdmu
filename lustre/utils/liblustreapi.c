@@ -955,18 +955,18 @@ int llapi_mds_getfileinfo(char *path, DIR *parent,
                         if (ret) {
                                 llapi_err(LLAPI_MSG_ERROR,
                                           "error: %s: lstat failed for %s",
-                                          __FUNCTION__, path);
+                                          __func__, path);
                                 return ret;
                         }
                 } else if (errno == ENOENT) {
                         llapi_err(LLAPI_MSG_WARN,
                                   "warning: %s: %s does not exist",
-                                  __FUNCTION__, path);
+                                  __func__, path);
                         return -ENOENT;
                 } else {
                         llapi_err(LLAPI_MSG_ERROR,
                                  "error: %s: IOC_MDC_GETFILEINFO failed for %s",
-                                 __FUNCTION__, path);
+                                 __func__, path);
                         return ret;
                 }
         }
@@ -989,7 +989,7 @@ static int llapi_semantic_traverse(char *path, int size, DIR *parent,
         d = opendir(path);
         if (!d && errno != ENOTDIR) {
                 llapi_err(LLAPI_MSG_ERROR, "%s: Failed to open '%s'",
-                          __FUNCTION__, path);
+                          __func__, path);
                 return -EINVAL;
         } else if (!d && !parent) {
                 /* ENOTDIR. Open the parent dir. */
@@ -1018,7 +1018,7 @@ static int llapi_semantic_traverse(char *path, int size, DIR *parent,
                 if ((len + dent->d_reclen + 2) > size) {
                         llapi_err(LLAPI_MSG_ERROR,
                                   "error: %s: string buffer is too small",
-                                  __FUNCTION__);
+                                  __func__);
                         break;
                 }
                 strcat(path, "/");
@@ -1043,7 +1043,7 @@ static int llapi_semantic_traverse(char *path, int size, DIR *parent,
                 case DT_UNKNOWN:
                         llapi_err(LLAPI_MSG_ERROR,
                                   "error: %s: '%s' is UNKNOWN type %d",
-                                  __FUNCTION__, dent->d_name, dent->d_type);
+                                  __func__, dent->d_name, dent->d_type);
                         break;
                 case DT_DIR:
                         ret = llapi_semantic_traverse(path, size, d, sem_init,
@@ -1281,7 +1281,7 @@ static int setup_obd_uuid(DIR *dir, char *dname, struct find_param *param)
         if (param->obduuid && (param->obdindex == OBD_NOT_FOUND)) {
                 llapi_err_noerrno(LLAPI_MSG_ERROR,
                                   "error: %s: unknown obduuid: %s",
-                                  __FUNCTION__, param->obduuid->uuid);
+                                  __func__, param->obduuid->uuid);
                 rc = -EINVAL;
         }
 
@@ -1338,7 +1338,7 @@ retry_get_uuids:
                         param->obdindexes[obdnum] = OBD_NOT_FOUND;
                         llapi_err_noerrno(LLAPI_MSG_ERROR,
                                           "error: %s: unknown obduuid: %s",
-                                          __FUNCTION__,
+                                          __func__,
                                           param->obduuid[obdnum].uuid);
                         ret = -EINVAL;
                 }
@@ -1736,17 +1736,17 @@ static int cb_find_init(char *path, DIR *parent, DIR *dir,
                         if (ret) {
                                 llapi_err(LLAPI_MSG_ERROR,
                                           "error: %s: lstat failed for %s",
-                                          __FUNCTION__, path);
+                                          __func__, path);
                                 return ret;
                         }
                 } else if (errno == ENOENT) {
                         llapi_err(LLAPI_MSG_WARN,
                                   "warning: %s: %s does not exist",
-                                  __FUNCTION__, path);
+                                  __func__, path);
                         goto decided;
                 } else {
                         llapi_err(LLAPI_MSG_ERROR,"error: %s: %s failed for %s",
-                                  __FUNCTION__, dir ? "LL_IOC_MDC_GETINFO" :
+                                  __func__, dir ? "LL_IOC_MDC_GETINFO" :
                                   "IOC_MDC_GETFILEINFO", path);
                         return ret;
                 }
@@ -1917,12 +1917,12 @@ obd_matches:
                         if (errno == ENOENT) {
                                 llapi_err(LLAPI_MSG_ERROR,
                                           "warning: %s: %s does not exist",
-                                          __FUNCTION__, path);
+                                          __func__, path);
                                 goto decided;
                         } else {
                                 llapi_err(LLAPI_MSG_ERROR,
                                           "%s: IOC_LOV_GETINFO on %s failed",
-                                          __FUNCTION__, path);
+                                          __func__, path);
                                 return ret;
                         }
                 }
@@ -1961,6 +1961,79 @@ int llapi_find(char *path, struct find_param *param)
         return param_callback(path, cb_find_init, cb_common_fini, param);
 }
 
+/*
+ * Get MDT number that the file/directory inode referenced
+ * by the open fd resides on.
+ * Return 0 and mdtidx on success, or -ve errno.
+ */
+int llapi_file_fget_mdtidx(int fd, int *mdtidx)
+{
+        if (ioctl(fd, LL_IOC_GET_MDTIDX, &mdtidx) < 0)
+                return -errno;
+        return 0;
+}
+
+static int cb_get_mdt_index(char *path, DIR *parent, DIR *d, void *data,
+                            cfs_dirent_t *de)
+{
+        struct find_param *param = (struct find_param *)data;
+        int ret = 0;
+        int mdtidx;
+
+        LASSERT(parent != NULL || d != NULL);
+
+        if (d) {
+                ret = llapi_file_fget_mdtidx(dirfd(d), &mdtidx);
+        } else if (parent) {
+                int fd;
+
+                fd = open(path, O_RDONLY);
+                if (fd > 0) {
+                        ret = llapi_file_fget_mdtidx(fd, &mdtidx);
+                        close(fd);
+                } else {
+                        ret = fd;
+                }
+        }
+
+        if (ret) {
+                if (errno == ENODATA) {
+                        if (!param->obduuid)
+                                llapi_printf(LLAPI_MSG_NORMAL,
+                                             "%s has no stripe info\n", path);
+                        goto out;
+                } else if (errno == ENOTTY) {
+                        llapi_err(LLAPI_MSG_ERROR,
+                                  "%s: '%s' not on a Lustre fs?",
+                                  __func__, path);
+                } else if (errno == ENOENT) {
+                        llapi_err(LLAPI_MSG_WARN,
+                                  "warning: %s: %s does not exist",
+                                  __func__, path);
+                        goto out;
+                } else {
+                        llapi_err(LLAPI_MSG_ERROR,
+                                  "error: %s: LL_IOC_GET_MDTIDX failed for %s",
+                                   __func__, path);
+                }
+                return ret;
+        }
+
+        if (param->quiet)
+                llapi_printf(LLAPI_MSG_NORMAL, "%d\n", mdtidx);
+        else
+                llapi_printf(LLAPI_MSG_NORMAL, "%s MDT index: %d\n",
+                             path, mdtidx);
+
+out:
+        /* Do not get down anymore? */
+        if (param->depth == param->maxdepth)
+                return 1;
+
+        param->depth++;
+        return 0;
+}
+
 static int cb_getstripe(char *path, DIR *parent, DIR *d, void *data,
                         cfs_dirent_t *de)
 {
@@ -1984,6 +2057,7 @@ static int cb_getstripe(char *path, DIR *parent, DIR *d, void *data,
                 fname = (fname == NULL ? path : fname + 1);
 
                 strncpy((char *)&param->lmd->lmd_lmm, fname, param->lumlen);
+
                 ret = ioctl(dirfd(parent), IOC_MDC_GETFILESTRIPE,
                             (void *)&param->lmd->lmd_lmm);
         }
@@ -1997,23 +2071,25 @@ static int cb_getstripe(char *path, DIR *parent, DIR *d, void *data,
                 } else if (errno == ENOTTY) {
                         llapi_err(LLAPI_MSG_ERROR,
                                   "%s: '%s' not on a Lustre fs?",
-                                  __FUNCTION__, path);
+                                  __func__, path);
                 } else if (errno == ENOENT) {
                         llapi_err(LLAPI_MSG_WARN,
                                   "warning: %s: %s does not exist",
-                                  __FUNCTION__, path);
+                                  __func__, path);
                         goto out;
                 } else {
                         llapi_err(LLAPI_MSG_ERROR,
                                   "error: %s: %s failed for %s",
-                                   __FUNCTION__, d ? "LL_IOC_LOV_GETSTRIPE" :
+                                   __func__, d ? "LL_IOC_LOV_GETSTRIPE" :
                                   "IOC_MDC_GETFILESTRIPE", path);
                 }
 
                 return ret;
         }
 
-        llapi_lov_dump_user_lmm(param, path, d ? 1 : 0);
+        if (!param->get_mdt_index)
+                llapi_lov_dump_user_lmm(param, path, d ? 1 : 0);
+
 out:
         /* Do not get down anymore? */
         if (param->depth == param->maxdepth)
@@ -2025,7 +2101,9 @@ out:
 
 int llapi_getstripe(char *path, struct find_param *param)
 {
-        return param_callback(path, cb_getstripe, cb_common_fini, param);
+        return param_callback(path, param->get_mdt_index ?
+                              cb_get_mdt_index : cb_getstripe,
+                              cb_common_fini, param);
 }
 
 int llapi_obd_statfs(char *path, __u32 type, __u32 index,
@@ -2060,7 +2138,7 @@ int llapi_obd_statfs(char *path, __u32 type, __u32 index,
         if (fd < 0) {
                 rc = errno ? -errno : -EBADF;
                 llapi_err(LLAPI_MSG_ERROR, "error: %s: opening '%s'",
-                          __FUNCTION__, path);
+                          __func__, path);
                 return rc;
         }
         rc = ioctl(fd, IOC_OBD_STATFS, (void *)rawbuf);
@@ -2308,7 +2386,7 @@ static int cb_quotachown(char *path, DIR *parent, DIR *d, void *data,
                 } else if (errno == ENOENT) {
                         llapi_err(LLAPI_MSG_ERROR,
                                   "warning: %s: %s does not exist",
-                                  __FUNCTION__, path);
+                                  __func__, path);
                         rc = 0;
                 } else if (errno != EISDIR) {
                         rc = errno;

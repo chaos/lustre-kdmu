@@ -797,7 +797,7 @@ test_14() {
 
         # echo "Iteration: $i OST: $OST"
         create_file $POOL_ROOT/dir1/file${i} $POOL 1
-        check_file_in_osts $POOL_ROOT/dir1/file${i} $OST
+        check_file_in_pool $POOL_ROOT/dir1/file${i} $POOL
         i=$((i+1))
     done
 
@@ -1313,7 +1313,8 @@ test_25() {
         stop $SINGLEMDS || return 1
         start $SINGLEMDS ${dev} $MDS_MOUNT_OPTS  || \
             { error "Failed to start $SINGLEMDS after stopping" && break; }
-	clients_up
+        wait_osc_import_state mds ost FULL
+        clients_up
 
         # Veriy that the pool got created and is usable
         echo "Creating a file in pool$i"

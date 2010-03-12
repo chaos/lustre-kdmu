@@ -2272,7 +2272,7 @@ struct cl_io {
                 struct cl_io_rw_common ci_rw;
                 struct cl_truncate_io {
                         /** new size to which file is truncated */
-                        size_t           tr_size;
+                        loff_t           tr_size;
                         struct obd_capa *tr_capa;
                 } ci_truncate;
                 struct cl_fault_io {
@@ -2661,7 +2661,8 @@ void                  cl_page_gang_lookup(const struct lu_env *env,
                                           struct cl_io *io,
                                           pgoff_t start, pgoff_t end,
                                           struct cl_page_list *plist,
-                                          int nonblock);
+                                          int nonblock,
+                                          int *resched);
 struct cl_page *cl_page_find        (const struct lu_env *env,
                                      struct cl_object *obj,
                                      pgoff_t idx, struct page *vmpage,

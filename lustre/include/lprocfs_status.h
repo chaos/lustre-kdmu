@@ -521,11 +521,6 @@ extern int lprocfs_wr_evict_client(libcfs_file_t *file, const char *buffer,
 extern int lprocfs_wr_ping(libcfs_file_t *file, const char *buffer,
                            unsigned long count, void *data);
 
-extern int lprocfs_rd_quota_resend_count(char *page, char **start, off_t off,
-                                         int count, int *eof, void *data);
-extern int lprocfs_wr_quota_resend_count(libcfs_file_t *file, const char *buffer,
-                                         unsigned long count, void *data);
-
 /* Statfs helpers */
 extern int lprocfs_rd_blksize(char *page, char **start, off_t off,
                               int count, int *eof, void *data);

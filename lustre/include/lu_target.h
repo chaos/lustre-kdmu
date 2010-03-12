@@ -56,11 +56,9 @@ struct lu_target {
         /** Lock protecting client bitmap */
         cfs_spinlock_t           lut_client_bitmap_lock;
         /** Bitmap of known clients */
-        unsigned long            lut_client_bitmap[LR_CLIENT_BITMAP_SIZE];
+        unsigned long           *lut_client_bitmap;
         /** Number of mounts */
         __u64                    lut_mount_count;
-        __u32                    lut_stale_export_age;
-        cfs_spinlock_t           lut_trans_table_lock;
 };
 
 typedef void (*lut_cb_t)(struct lu_target *lut, __u64 transno,
@@ -78,5 +76,5 @@ int lut_init(const struct lu_env *, struct lu_target *,
 int lut_init2(const struct lu_env *, struct lu_target *,
              struct obd_device *, struct dt_device *, struct lu_fid *);
 void lut_fini(const struct lu_env *, struct lu_target *);
-
+void lut_client_free(struct obd_export *);
 #endif /* __LUSTRE_LU_TARGET_H */

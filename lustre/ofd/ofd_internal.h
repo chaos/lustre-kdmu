@@ -175,6 +175,8 @@ struct filter_device {
         unsigned int             ofd_fl_oss_capa;
         cfs_list_t               ofd_capa_keys;
         cfs_hlist_head_t        *ofd_capa_hash;
+
+        int                      ofd_raid_degraded;
 };
 
 #define ofd_last_rcvd ofd_lut.lut_last_rcvd
@@ -499,7 +501,7 @@ int filter_grant_client_calc(struct obd_export *exp, obd_size *left,
                              unsigned long *used, unsigned long *ungranted);
 int filter_grant_check(const struct lu_env *env, struct obd_export *exp, 
                        struct obdo *oa, struct niobuf_local *lnb, int nrpages,
-                       obd_size *left, unsigned long *used, unsigned long *ungranted);
+                       obd_size *left, unsigned long *used);
 long filter_grant(const struct lu_env *env, struct obd_export *exp,
                   obd_size current_grant, obd_size want,
                   obd_size fs_space_left);

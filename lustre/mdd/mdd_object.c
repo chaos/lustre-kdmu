@@ -131,6 +131,7 @@ void mdd_buf_put(struct lu_buf *buf)
         else
                 OBD_FREE(buf->lb_buf, buf->lb_len);
         buf->lb_buf = NULL;
+        buf->lb_len = 0;
 }
 
 const struct lu_buf *mdd_buf_get_const(const struct lu_env *env,
@@ -1307,6 +1308,11 @@ mdd_declare_and_start_attr_set(const struct lu_env *env, struct md_object *obj,
         }
 
         rc = mdd_declare_setattr_log(env, mdd_obj, ma, lmm, lmm_size, handle);
+        if (rc)
+                GOTO(out, rc);
+
+        /* XXX: use appropriate len? */
+        rc = mdo_declare_xattr_set(env, mdd_obj, 4096, XATTR_NAME_ACL_ACCESS, 0, handle);
         if (rc)
                 GOTO(out, rc);
 

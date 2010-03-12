@@ -305,7 +305,6 @@ int client_obd_setup(struct obd_device *obddev, struct lustre_cfg *lcfg)
         cli->cl_cksum_type = cli->cl_supp_cksum_types = OBD_CKSUM_CRC32;
 #endif
         cfs_atomic_set(&cli->cl_resends, OSC_DEFAULT_RESENDS);
-        cfs_atomic_set(&cli->cl_quota_resends, CLIENT_QUOTA_DEFAULT_RESENDS);
 
         /* This value may be changed at connect time in
            ptlrpc_connect_interpret. */
@@ -1387,8 +1386,8 @@ target_start_and_reset_recovery_timer(struct obd_device *obd,
         if (!new_client && service_time)
                 /* Teach server about old server's estimates, as first guess
                  * at how long new requests will take. */
-                at_add(&req->rq_rqbd->rqbd_service->srv_at_estimate,
-                       service_time);
+                at_measured(&req->rq_rqbd->rqbd_service->srv_at_estimate,
+                            service_time);
 
         check_and_start_recovery_timer(obd);
 

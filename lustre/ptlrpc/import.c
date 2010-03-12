@@ -518,9 +518,9 @@ static int import_select_connection(struct obd_import *imp)
             !imp->imp_recon_bk /* not retrying */) {
                 if (at_get(&imp->imp_at.iat_net_latency) <
                     CONNECTION_SWITCH_MAX) {
-                        at_add(&imp->imp_at.iat_net_latency,
-                               at_get(&imp->imp_at.iat_net_latency) +
-                               CONNECTION_SWITCH_INC);
+                        at_measured(&imp->imp_at.iat_net_latency,
+                                    at_get(&imp->imp_at.iat_net_latency) +
+                                    CONNECTION_SWITCH_INC);
                 }
                 LASSERT(imp_conn->oic_last_attempt);
                 CWARN("%s: tried all connections, increasing latency to %ds\n",
@@ -1197,9 +1197,6 @@ static int completed_replay_interpret(const struct lu_env *env,
                         CDEBUG(D_WARNING,
                                "%s: version recovery fails, reconnecting\n",
                                req->rq_import->imp_obd->obd_name);
-                        cfs_spin_lock(&req->rq_import->imp_lock);
-                        req->rq_import->imp_vbr_failed = 0;
-                        cfs_spin_unlock(&req->rq_import->imp_lock);
                 } else {
                         CDEBUG(D_HA, "%s: LAST_REPLAY message error: %d, "
                                      "reconnecting\n",
@@ -1289,6 +1286,10 @@ int ptlrpc_import_recovery_state_machine(struct obd_import *imp)
                 CDEBUG(D_HA, "evicted from %s@%s; invalidating\n",
                        obd2cli_tgt(imp->imp_obd),
                        imp->imp_connection->c_remote_uuid.uuid);
+                /* reset vbr_failed flag upon eviction */
+                cfs_spin_lock(&imp->imp_lock);
+                imp->imp_vbr_failed = 0;
+                cfs_spin_unlock(&imp->imp_lock);
 
 #ifdef __KERNEL__
                 /* bug 17802:  XXX client_disconnect_export vs connect request
@@ -1487,7 +1488,7 @@ extern unsigned int at_min, at_max, at_history;
    This gives us a max of the last binlimit*AT_BINS secs without the storage,
    but still smoothing out a return to normalcy from a slow response.
    (E.g. remember the maximum latency in each minute of the last 4 minutes.) */
-int at_add(struct adaptive_timeout *at, unsigned int val)
+int at_measured(struct adaptive_timeout *at, unsigned int val)
 {
         unsigned int old = at->at_current;
         time_t now = cfs_time_current_sec();

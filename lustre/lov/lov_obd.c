@@ -1949,8 +1949,6 @@ static int lov_iocontrol(unsigned int cmd, struct obd_export *exp, int len,
                 __u32 index;
 
                 memcpy(&index, data->ioc_inlbuf2, sizeof(__u32));
-                LASSERT(data->ioc_plen1 == sizeof(struct obd_statfs));
-
                 if ((index >= count))
                         RETURN(-ENODEV);
 

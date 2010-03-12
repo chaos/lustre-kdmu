@@ -215,19 +215,6 @@ struct lustre_mount_info *server_get_mount_2(const char *name)
         RETURN(lmi);
 }
 
-#if 0
-static void unlock_mntput(struct vfsmount *mnt)
-{
-        if (kernel_locked()) {
-                cfs_unlock_kernel();
-                mntput(mnt);
-                cfs_lock_kernel();
-        } else {
-                mntput(mnt);
-        }
-}
-#endif
-
 static int lustre_put_lsi(struct super_block *sb);
 
 /* to be called from obd_cleanup methods */
@@ -248,6 +235,7 @@ int server_put_mount(const char *name)
 
         CDEBUG(D_MOUNT, "%p/%p from %s, refs=%d\n",
                lmi->lmi_sb, lsi, name, cfs_atomic_read(&lsi->lsi_mounts));
+
 
         if (lustre_put_lsi(lmi->lmi_sb)) {
                 CDEBUG(D_MOUNT, "Last put from %s\n", name);
@@ -1779,37 +1767,34 @@ static struct dt_device *server_kernel_mount(struct super_block *sb)
  * else we risk dereferencing a null pointer.
  * LNET may take e.g. 165s before killing zombies.
  */
-static void server_wait_finished(struct vfsmount *mnt)
+static void server_wait_finished(struct lustre_sb_info *lsi)
 {
        cfs_waitq_t             waitq;
        int                     rc, waited = 0;
        cfs_sigset_t            blocked;
 
-       /* XXX XXX: disabled in b_hd_kdmu */
-       return;
-
        cfs_waitq_init(&waitq);
 
-       while (atomic_read(&mnt->mnt_count) > 1) {
+       while (atomic_read(&lsi->lsi_mounts) > 1) {
                if (waited && (waited % 30 == 0))
                        LCONSOLE_WARN("Mount still busy with %d refs after "
                                       "%d secs.\n",
-                                      atomic_read(&mnt->mnt_count),
+                                      atomic_read(&lsi->lsi_mounts),
                                       waited);
                /* Cannot use l_event_wait() for an interruptible sleep. */
                waited += 3;
                blocked = l_w_e_set_sigs(sigmask(SIGKILL));
                cfs_waitq_wait_event_interruptible_timeout(
                        waitq,
-                       (atomic_read(&mnt->mnt_count) == 1),
+                       (atomic_read(&lsi->lsi_mounts) == 1),
                        cfs_time_seconds(3),
                        rc);
                cfs_block_sigs(blocked);
                if (rc < 0) {
                        LCONSOLE_EMERG("Danger: interrupted umount %s with "
                                       "%d refs!\n",
-                                      mnt->mnt_devname,
-                                      atomic_read(&mnt->mnt_count));
+                                      "FIXME(devname)",
+                                      atomic_read(&lsi->lsi_mounts));
                        break;
                }
        }
@@ -1819,7 +1804,6 @@ static void server_put_super(struct super_block *sb)
 {
         struct lustre_sb_info *lsi = s2lsi(sb);
         struct obd_device     *obd;
-        struct vfsmount       *mnt = NULL; /* XXX: */
         char *tmpname, *extraname = NULL;
         int tmpname_sz;
         int lddflags = lsi->lsi_ldd->ldd_flags;
@@ -1883,12 +1867,12 @@ static void server_put_super(struct super_block *sb)
                 }
         }
 
-        /* Clean the mgc and sb */
-        lustre_common_put_super(sb);
-
         /* Wait for the targets to really clean up - can't exit (and let the
            sb get destroyed) while the mount is still in use */
-        server_wait_finished(mnt);
+        server_wait_finished(lsi);
+
+        /* Clean the mgc and sb */
+        lustre_common_put_super(sb);
 
         /* Stop the servers (MDS, OSS) if no longer needed.  We must wait
            until the target is really gone so that our type refcount check
@@ -2094,11 +2078,6 @@ static int server_fill_super(struct super_block *sb)
         rc = server_fill_super_common(sb);
         if (rc)
                 GOTO(out_mnt, rc);
-
-        LCONSOLE_WARN("Server %s on device %s has started\n",
-                      ((lsi->lsi_lmd->lmd_flags & LMD_FLG_NOSVC) &&
-                       (IS_MDT(lsi->lsi_ldd))) ? "MGS" : lsi->lsi_ldd->ldd_svname,
-                      lsi->lsi_lmd->lmd_dev);
 
         RETURN(0);
 out_mnt:

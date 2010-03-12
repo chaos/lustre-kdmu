@@ -1050,6 +1050,7 @@ struct lov_mds_md_v3 {            /* LOV EA mds/wire data (little-endian) */
 #define OBD_MD_MDS         (0x0000000100000000ULL) /* where an inode lives on */
 #define OBD_MD_REINT       (0x0000000200000000ULL) /* reintegrate oa */
 #define OBD_MD_MEA         (0x0000000400000000ULL) /* CMD split EA  */
+#define OBD_MD_MDTIDX      (0x0000000800000000ULL) /* Get MDT index  */
 
 #define OBD_MD_FLXATTR     (0x0000001000000000ULL) /* xattr */
 #define OBD_MD_FLXATTRLS   (0x0000002000000000ULL) /* xattr list */
@@ -1257,7 +1258,6 @@ enum md_op_flags {
 #define MF_SOM_LOCAL_FLAGS (MF_SOM_CHANGE | MF_EPOCH_OPEN | MF_EPOCH_CLOSE)
 
 #define MDS_BFLAG_UNCOMMITTED_WRITES   0x1
-#define MDS_BFLAG_EXT_FLAGS     0x80000000 /* == EXT3_RESERVED_FL */
 
 /* these should be identical to their EXT3_*_FL counterparts, and are
  * redefined here only to avoid dragging in ext3_fs.h */
@@ -1268,29 +1268,26 @@ enum md_op_flags {
 #define MDS_DIRSYNC_FL          0x00010000 /* dirsync behaviour (dir only) */
 
 #ifdef __KERNEL__
-/* If MDS_BFLAG_IOC_FLAGS is set it means we requested EXT3_*_FL inode flags
- * and we need to decode these into local S_* flags in the inode.  Otherwise
- * we pass flags straight through (see bug 9486). */
+/* Convert wire MDS_*_FL to corresponding client local VFS S_* values
+ * for the client inode i_flags.  The MDS_*_FL are the Lustre wire
+ * protocol equivalents of LDISKFS_*_FL values stored on disk, while
+ * the S_* flags are kernel-internal values that change between kernel
+ * versions.  These flags are set/cleared via FSFILT_IOC_{GET,SET}_FLAGS.
+ * See b=16526 for a full history. */
 static inline int ll_ext_to_inode_flags(int flags)
 {
-        return (flags & MDS_BFLAG_EXT_FLAGS) ?
-               (((flags & MDS_SYNC_FL)      ? S_SYNC      : 0) |
+        return (((flags & MDS_SYNC_FL)      ? S_SYNC      : 0) |
                 ((flags & MDS_NOATIME_FL)   ? S_NOATIME   : 0) |
                 ((flags & MDS_APPEND_FL)    ? S_APPEND    : 0) |
 #if defined(S_DIRSYNC)
                 ((flags & MDS_DIRSYNC_FL)   ? S_DIRSYNC   : 0) |
 #endif
-                ((flags & MDS_IMMUTABLE_FL) ? S_IMMUTABLE : 0)) :
-               (flags & ~MDS_BFLAG_EXT_FLAGS);
+                ((flags & MDS_IMMUTABLE_FL) ? S_IMMUTABLE : 0));
 }
 
-/* If MDS_BFLAG_EXT_FLAGS is set it means we requested EXT3_*_FL inode flags
- * and we pass these straight through.  Otherwise we need to convert from
- * S_* flags to their EXT3_*_FL equivalents (see bug 9486). */
-static inline int ll_inode_to_ext_flags(int oflags, int iflags)
+static inline int ll_inode_to_ext_flags(int iflags)
 {
-        return (oflags & MDS_BFLAG_EXT_FLAGS) ? (oflags & ~MDS_BFLAG_EXT_FLAGS):
-               (((iflags & S_SYNC)      ? MDS_SYNC_FL      : 0) |
+        return (((iflags & S_SYNC)      ? MDS_SYNC_FL      : 0) |
                 ((iflags & S_NOATIME)   ? MDS_NOATIME_FL   : 0) |
                 ((iflags & S_APPEND)    ? MDS_APPEND_FL    : 0) |
 #if defined(S_DIRSYNC)
@@ -2598,10 +2595,9 @@ struct link_ea_header {
  * Stored in this crazy struct for maximum packing and endian-neutrality
  */
 struct link_ea_entry {
-        struct lu_fid      lee_parent_fid;
         /** __u16 stored big-endian, unaligned */
-        char               lee_reclen[2];
-        __u16              lee_padding;
+        unsigned char      lee_reclen[2];
+        unsigned char      lee_parent_fid[sizeof(struct lu_fid)];
         char               lee_name[0];
 }__attribute__((packed));
 

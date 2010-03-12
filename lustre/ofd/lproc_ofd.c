@@ -367,6 +367,38 @@ static int lprocfs_filter_rd_mds_sync(char *page, char **start, off_t off,
                                      "%u\n", fo_mds_ost_sync);
 }
 
+int lprocfs_filter_rd_degraded(char *page, char **start, off_t off,
+                               int count, int *eof, void *data)
+{
+        struct obd_device *obd;
+        struct filter_device *ofd;
+
+        *eof = 1;
+        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        ofd = filter_dev(obd->obd_lu_dev);
+
+        return libcfs_param_snprintf(page, count, data, LP_U32,
+                                     "%u\n", ofd->ofd_raid_degraded);
+}
+
+int lprocfs_filter_wr_degraded(libcfs_file_t *file, const char *buffer,
+                               unsigned long count, void *data)
+{
+        struct obd_device *obd;
+        struct filter_device *ofd;
+        int val, rc, flag = 0;
+
+        LIBCFS_PARAM_GET_DATA(obd, data, &flag);
+        ofd = filter_dev(obd->obd_lu_dev);
+        rc = lprocfs_write_helper(buffer, count, &val, flag);
+        if (rc)
+                return rc;
+
+        ofd->ofd_raid_degraded = !!val;
+
+        return count;
+}
+
 static struct lprocfs_vars lprocfs_filter_obd_vars[] = {
         { "uuid",         lprocfs_rd_uuid,          0, 0 },
         { "blocksize",    lprocfs_rd_blksize,       0, 0 },
@@ -390,6 +422,8 @@ static struct lprocfs_vars lprocfs_filter_obd_vars[] = {
         { "readcache_max_filesize",
                           lprocfs_filter_rd_readcache,
                           lprocfs_filter_wr_readcache, 0 },
+        { "degraded",     lprocfs_filter_rd_degraded,
+                              lprocfs_filter_wr_degraded, 0},
 #if 0
 #ifdef HAVE_QUOTA_SUPPORT
         { "quota_bunit_sz", lprocfs_rd_bunit, lprocfs_wr_bunit, 0},

@@ -10,7 +10,7 @@ set -e
 
 ONLY=${ONLY:-"$*"}
 # bug number for skipped test: 13297 2108 9789 3637 9789 3561 12622 12653 12653 5188 16260 19742 
-ALWAYS_EXCEPT="                27u   42a  42b  42c  42d  45   51d   65a   65e   68b  119d $SANITY_EXCEPT"
+ALWAYS_EXCEPT="                27u   42a  42b  42c  42d  45   51d   65a   65e   68b  $SANITY_EXCEPT"
 # bug number for skipped test: 2108 9789 3637 9789 3561 5188/5749 1443
 #ALWAYS_EXCEPT=${ALWAYS_EXCEPT:-"27m 42a 42b 42c 42d 45 68 76"}
 # UPDATE THE COMMENT ABOVE WITH BUG NUMBERS WHEN CHANGING ALWAYS_EXCEPT!
@@ -26,6 +26,7 @@ ALWAYS_EXCEPT="$ALWAYS_EXCEPT 76"
 # kDMU still need fixes
 # 52  -- immutable/append flags aren't implemented
 # 57  -- inode counting is different in zfs
+# 60  -- llog is broken
 # 129 -- broken /proc/fs/lustre/osd-* naming
 # 132 -- inode counting is different in zfs
 # 155 -- we don't control cache via OSD yet
@@ -33,7 +34,7 @@ ALWAYS_EXCEPT="$ALWAYS_EXCEPT 76"
 # 160 -- changelogs don't work yet
 # 162 -- DMU's osd_object_create() doesn't set XATTR_NAME_LMA
 # 180 -- ofd doesn't work with obdecho 
-ALWAYS_EXCEPT="$ALWAYS_EXCEPT 52a 52b 57a 57b 129 132 156 160 180"
+ALWAYS_EXCEPT="$ALWAYS_EXCEPT 52a 52b 57a 57b 60 129 132 156 160 180"
 
 case `uname -r` in
 2.4*) FSTYPE=${FSTYPE:-ext3} ;;
@@ -1033,7 +1034,7 @@ exhaust_precreations() {
 
 	do_facet mds${MDSIDX} lctl get_param osc.*OST*-osc-${MDT_INDEX}.prealloc*
 
-	mkdir -p $DIR/d27/${OST}
+	mkdir -p $DIR/$tdir/${OST}
 	$SETSTRIPE $DIR/$tdir/${OST} -i $OSTIDX -c 1
 #define OBD_FAIL_OST_ENOSPC              0x215
 	do_facet ost$((OSTIDX + 1)) lctl set_param fail_val=$FAILIDX
@@ -1797,6 +1798,23 @@ test_34f() { # bug 6242, 6243
 }
 run_test 34f "read from a file with no objects until EOF ======="
 
+test_34g() {
+	dd if=/dev/zero of=$DIR/$tfile bs=1 count=100 seek=$TEST_34_SIZE || error
+	$TRUNCATE $DIR/$tfile $((TEST_34_SIZE / 2))|| error
+	$CHECKSTAT -s $((TEST_34_SIZE / 2)) $DIR/$tfile || error "truncate failed"
+	cancel_lru_locks osc
+	$CHECKSTAT -s $((TEST_34_SIZE / 2)) $DIR/$tfile || \
+		error "wrong size after lock cancel"
+
+	$TRUNCATE $DIR/$tfile $TEST_34_SIZE || error
+	$CHECKSTAT -s $TEST_34_SIZE $DIR/$tfile || \
+		error "expanding truncate failed"
+	cancel_lru_locks osc
+	$CHECKSTAT -s $TEST_34_SIZE $DIR/$tfile || \
+		error "wrong expanded size after lock cancel"
+}
+run_test 34g "truncate long file ==============================="
+
 test_35a() {
 	cp /bin/sh $DIR/f35a
 	chmod 444 $DIR/f35a
@@ -2096,6 +2114,73 @@ test_42d() {
 }
 run_test 42d "test complete truncate of file with cached dirty data"
 
+page_size() {
+	getconf PAGE_SIZE
+}
+
+test_42e() { # bug22074
+	local TDIR=$DIR/${tdir}e
+	local pagesz=$(page_size)
+	local pages=16
+	local files=$((OSTCOUNT * 500))	# hopefully 500 files on each OST
+	local proc_osc0="osc.${FSNAME}-OST0000-osc-[^MDT]*"
+	local max_dirty_mb
+	local warmup_files
+
+	mkdir -p $TDIR
+	$LFS setstripe -c 1 $TDIR
+	createmany -o $TDIR/f $files
+
+	max_dirty_mb=$($LCTL get_param -n $proc_osc0/max_dirty_mb)
+
+	# we assume that with $OSTCOUNT files, at least one of them will
+	# be allocated on OST0.
+	warmup_files=$((OSTCOUNT * max_dirty_mb))
+	createmany -o $TDIR/w $warmup_files
+
+	# write a large amount of data into one file and sync, to get good
+	# avail_grant number from OST.
+	for ((i=0; i<$warmup_files; i++)); do
+		idx=$($LFS getstripe -i $TDIR/w$i)
+		[ $idx -ne 0 ] && continue
+		dd if=/dev/zero of=$TDIR/w$i bs="$max_dirty_mb"M count=1
+		break
+	done
+	[ $i -gt $warmup_files ] && error "OST0 is still cold"
+	sync
+	$LCTL get_param $proc_osc0/cur_dirty_bytes
+	$LCTL get_param $proc_osc0/cur_grant_bytes
+
+	# create as much dirty pages as we can while not to trigger the actual
+	# RPCs directly. but depends on the env, VFS may trigger flush during this
+	# period, hopefully we are good.
+	for ((i=0; i<$warmup_files; i++)); do
+		idx=$($LFS getstripe -i $TDIR/w$i)
+		[ $idx -ne 0 ] && continue
+		dd if=/dev/zero of=$TDIR/w$i bs=1M count=1 2>/dev/null
+	done
+	$LCTL get_param $proc_osc0/cur_dirty_bytes
+	$LCTL get_param $proc_osc0/cur_grant_bytes
+
+	# perform the real test
+	$LCTL set_param $proc_osc0/rpc_stats 0
+	for ((;i<$files; i++)); do
+		[ $($LFS getstripe -i $TDIR/f$i) -eq 0 ] || continue
+		dd if=/dev/zero of=$TDIR/f$i bs=$pagesz count=$pages 2>/dev/null
+	done
+	sync
+	$LCTL get_param $proc_osc0/rpc_stats
+
+	$LCTL get_param $proc_osc0/rpc_stats |
+		while read PPR RRPC RPCT RCUM BAR WRPC WPCT WCUM; do
+			[ "$PPR" != "16:" ] && continue
+			[ $WPCT -lt 85 ] && error "$pages-page write RPCs only $WPCT% < 85%"
+			break # we only want the "pages per rpc" stat
+		done
+	rm -rf $TDIR
+}
+run_test 42e "verify sub-RPC writes are not done synchronously"
+
 test_43() {
 	mkdir -p $DIR/$tdir
 	cp -p /bin/ls $DIR/$tdir/$tfile
@@ -2220,10 +2305,6 @@ test_45() {
 	start_writeback
 }
 run_test 45 "osc io page accounting ============================"
-
-page_size() {
-	getconf PAGE_SIZE
-}
 
 # in a 2 stripe file (lov.sh), page 1023 maps to page 511 in its object.  this
 # test tickles a bug where re-dirtying a page was failing to be mapped to the
