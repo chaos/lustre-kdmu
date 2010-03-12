@@ -722,7 +722,7 @@ LB_LINUX_TRY_COMPILE([
 AC_DEFUN([LC_UMOUNTBEGIN_HAS_VFSMOUNT],
 [AC_MSG_CHECKING([if umount_begin needs vfsmount parameter instead of super_block])
 tmp_flags="$EXTRA_KCFLAGS"
-#EXTRA_KCFLAGS="-Werror"
+EXTRA_KCFLAGS="-Werror"
 LB_LINUX_TRY_COMPILE([
 	#include <linux/fs.h>
 
@@ -787,7 +787,7 @@ LB_LINUX_TRY_COMPILE([
 AC_DEFUN([LC_VFS_READDIR_U64_INO],
 [AC_MSG_CHECKING([check vfs_readdir need 64bit inode number])
 tmp_flags="$EXTRA_KCFLAGS"
-#EXTRA_KCFLAGS="-Werror"
+EXTRA_KCFLAGS="-Werror"
 LB_LINUX_TRY_COMPILE([
 #include <linux/fs.h>
 	int fillonedir(void * __buf, const char * name, int namlen, loff_t offset,
@@ -1369,7 +1369,7 @@ AC_DEFUN([LC_FUNC_GRAB_CACHE_PAGE_NOWAIT_GFP],
 AC_DEFUN([LC_RW_TREE_LOCK],
 [AC_MSG_CHECKING([if kernel has tree_lock as rwlock])
 tmp_flags="$EXTRA_KCFLAGS"
-#EXTRA_KCFLAGS="-Werror"
+EXTRA_KCFLAGS="-Werror"
 LB_LINUX_TRY_COMPILE([
         #include <linux/fs.h>
 ],[
