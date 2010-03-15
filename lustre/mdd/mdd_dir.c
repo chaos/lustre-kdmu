@@ -1573,9 +1573,6 @@ static int mdd_create_data(const struct lu_env *env, struct md_object *pobj,
          * 2) CMD?
          */
 
-        /* XXX: no CMD support yet */
-        LASSERT(spec->no_create == 0);
-
         rc = mdd_iattr_get(env, son, ma);
         if (rc)
                 RETURN(rc);
