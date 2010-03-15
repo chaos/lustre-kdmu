@@ -896,7 +896,7 @@ test_41() {
     do_facet client dd if=/dev/zero of=$f bs=4k count=1 || return 3
     cancel_lru_locks osc
     # fail ost2 and read from ost1
-    local osc2dev=`do_facet $SINGLEMDS "lctl get_param -n devices | grep ${ost2_svc}-osc-MDT0000" | awk '{print $1}'`
+    local osc2dev=`do_facet $SINGLEMDS "lctl get_param -n devices | grep ${ost2_svc}-os[cp]-MDT0000" | awk '{print $1}'`
     [ -z "$osc2dev" ] && echo "OST: $ost2_svc" && lctl get_param -n devices && return 4
     do_facet $SINGLEMDS $LCTL --device $osc2dev deactivate || return 1
     do_facet client dd if=$f of=/dev/null bs=4k count=1 || return 3
