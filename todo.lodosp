@@ -17,10 +17,9 @@
    - lod_qos_prep_create() to extend striping if file size is too big
    - improve locking in lod_qos_statfs_update()
    - lod_qos_statfs_update() to recalculate space with fixed block size
-   - qos_add_tgt() to learn configuration (how OSTs map OSSs)
+!  - qos_add_tgt() to learn configuration (how OSTs map OSSs)
    - pass next device in all the methods (like cursor, lod_trans_stop(), etc)
    - lod_xattr_set() to make sure new striping is sane
-!  - lod_*_xattr_set() to handle replay case
    - check all users of ld_active_tgt_count/ltd_active, remove using of that
 
 * OSP TODO
@@ -29,11 +28,9 @@
 !  - in RPC interpret/commit callbacks handle errors
    - don't wake up the thread if precreation RPC is in-flight
 !  - send uid/gid changes immediately?
-!  - start orphan cleanup from osp_recovery_complete()
    - batch support
    - resend in osp_object_truncate()
    - decide on max-in-progress and max-in-flight
-
 
 * tests
    - s/lov/lod/
@@ -72,4 +69,9 @@ Lustre: DEBUG MARKER: sanityn test_15: @@@@@@ FAIL: LustreError: 9389:0:(ofd_gra
 Lustre: DEBUG MARKER: sanityn test_32b: @@@@@@ FAIL: lockless i/o was not triggered
 Lustre: DEBUG MARKER: sanityn test_34: @@@@@@ FAIL: no lock timeout happened
 
+
+== replay-single test 20b: write, unlink, eviction, replay, (test mds_cleanup_orphans) == 11:43:43 (1268642623)
+waited 0 for 19 ST osp lustre-OST0000-osp-MDT0000 lustre-MDT0000-lod_UUID 2
+waited 2 for 19 ST osp lustre-OST0000-osp-MDT0000 lustre-MDT0000-lod_UUID 2
+waited 6 for 19 ST osp lustre-OST0000-osp-MDT0000 lustre-MDT0000-lod_UUID 2
 
