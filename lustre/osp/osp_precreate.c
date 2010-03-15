@@ -573,9 +573,6 @@ static int osp_precreate_thread(void *_arg)
                 }
         }
 
-        /* finish all jobs */
-        CERROR("abort all jobs\n");
-
         thread->t_flags = SVC_STOPPED;
         cfs_waitq_signal(&thread->t_ctl_waitq);
 

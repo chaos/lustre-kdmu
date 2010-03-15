@@ -744,9 +744,6 @@ static int osp_sync_thread(void *_arg)
                  d->opd_syn_changes, d->opd_syn_rpc_in_progress,
                  d->opd_syn_rpc_in_flight);
 
-        /* finish all jobs */
-        CERROR("abort all jobs\n");
-
         rc = llog_cleanup(ctxt);
         if (rc)
                 CERROR("can't cleanup llog: %d\n", rc);
