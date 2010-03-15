@@ -108,7 +108,7 @@ static int filter_preprw_write(const struct lu_env *env, struct obd_export *exp,
         LASSERT(fo != NULL);
 
         if (!filter_object_exists(fo))
-                GOTO(out, rc = -ENOENT);
+                GOTO(out2, rc = -ENOENT);
 
         /* parse remote buffers to local buffers and prepare the latter */
         for (i = 0, j = 0; i < obj->ioo_bufcnt; i++) {
@@ -147,6 +147,7 @@ static int filter_preprw_write(const struct lu_env *env, struct obd_export *exp,
 out:
         if (rc)
                 dt_bufs_put(env, filter_object_child(fo), res, *nr_local);
+out2:
         filter_object_put(env, fo);
         RETURN(rc);
 }
