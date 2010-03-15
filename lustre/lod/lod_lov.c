@@ -336,9 +336,7 @@ int lod_get_lov_ea(const struct lu_env *env, struct lod_object *mo)
 repeat:
         lb.lb_buf = info->lti_ea_store;
         lb.lb_len = info->lti_ea_store_size;
-        dt_read_lock(env, next, 0);
         rc = dt_xattr_get(env, next, &lb, XATTR_NAME_LOV, BYPASS_CAPA);
-        dt_read_unlock(env, next);
 
         /* if object is not striped or inaccessible */
         if (rc == -ENODATA)
@@ -369,9 +367,9 @@ repeat:
 /*
  * Parse striping information stored in lti_ea_store
  */
-static int lod_parse_striping(const struct lu_env *env, struct lod_object *mo)
+int lod_parse_striping(const struct lu_env *env, struct lod_object *mo,
+                       const struct lu_buf *buf)
 {
-        struct lod_thread_info *info = lod_mti_get(env);
         struct lod_device      *md = lu2lod_dev(mo->mbo_obj.do_lu.lo_dev);
         struct lov_mds_md_v1   *lmm;
         struct lov_ost_data_v1 *objs;
@@ -382,8 +380,11 @@ static int lod_parse_striping(const struct lu_env *env, struct lod_object *mo)
         int                     rc = 0, i, idx;
         ENTRY;
 
-        LASSERT(info->lti_ea_store);
-        lmm = (struct lov_mds_md_v1 *) info->lti_ea_store;
+        LASSERT(buf);
+        LASSERT(buf->lb_buf);
+        LASSERT(buf->lb_len);
+
+        lmm = (struct lov_mds_md_v1 *) buf->lb_buf;
         magic = le32_to_cpu(lmm->lmm_magic);
 
         if (magic != LOV_MAGIC_V1 && magic != LOV_MAGIC_V3)
@@ -392,7 +393,7 @@ static int lod_parse_striping(const struct lu_env *env, struct lod_object *mo)
                 GOTO(out, rc = -EINVAL);
 
         mo->mbo_stripenr = le32_to_cpu(lmm->lmm_stripe_count);
-        LASSERT(info->lti_ea_store_size >= lov_mds_md_size(mo->mbo_stripenr,magic));
+        LASSERT(buf->lb_len >= lov_mds_md_size(mo->mbo_stripenr, magic));
 
         i = sizeof(struct dt_object *) * mo->mbo_stripenr;
         OBD_ALLOC(mo->mbo_stripe, i);
@@ -400,9 +401,12 @@ static int lod_parse_striping(const struct lu_env *env, struct lod_object *mo)
                 GOTO(out, rc = -ENOMEM);
         mo->mbo_stripes_allocated = mo->mbo_stripenr;
 
+        mo->mbo_stripe_size = lmm->lmm_stripe_size;
+
         if (magic == LOV_MAGIC_V3) {
                 struct lov_mds_md_v3 *v3 = (struct lov_mds_md_v3 *) lmm;
                 objs = &v3->lmm_objects[0];
+                lod_object_set_pool(mo, v3->lmm_pool_name);
         } else
                 objs = &lmm->lmm_objects[0];
 
@@ -411,7 +415,7 @@ static int lod_parse_striping(const struct lu_env *env, struct lod_object *mo)
                 idx = le64_to_cpu(objs[i].l_ost_idx);
                 lu_idif_build(&fid, le64_to_cpu(objs[i].l_object_id), idx);
 
-                LASSERT(md->lod_ost[idx]);
+                LASSERTF(md->lod_ost[idx], "idx %d\n", idx);
                 nd = &md->lod_ost[idx]->dd_lu_dev;
 
                 o = lu_object_find_at(env, nd, &fid, NULL);
@@ -437,8 +441,10 @@ out:
  */
 int lod_load_striping(const struct lu_env *env, struct lod_object *mo)
 {
-        struct dt_object  *next = dt_object_child(&mo->mbo_obj);
-        int                rc;
+        struct dt_object       *next = dt_object_child(&mo->mbo_obj);
+        struct lod_thread_info *info = lod_mti_get(env);
+        struct lu_buf           buf;
+        int                     rc;
         ENTRY;
 
         /* already initialized? */
@@ -453,7 +459,9 @@ int lod_load_striping(const struct lu_env *env, struct lod_object *mo)
                 GOTO(out, rc = 0);
 
         LASSERT(mo->mbo_stripenr == 0);
+        dt_read_lock(env, next, 0);
         rc = lod_get_lov_ea(env, mo);
+        dt_read_unlock(env, next);
         if (rc <= 0)
                 GOTO(out, rc);
 
@@ -461,7 +469,9 @@ int lod_load_striping(const struct lu_env *env, struct lod_object *mo)
          * there is LOV EA (striping information) in this object
          * let's parse it and create in-core objects for the stripes
          */
-        rc = lod_parse_striping(env, mo);
+        buf.lb_buf = info->lti_ea_store;
+        buf.lb_len = info->lti_ea_store_size;
+        rc = lod_parse_striping(env, mo, &buf);
 
 out:
         RETURN(rc);

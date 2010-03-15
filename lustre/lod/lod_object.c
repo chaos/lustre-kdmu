@@ -375,21 +375,35 @@ static int lod_declare_xattr_set(const struct lu_env *env,
         int                 rc;
         ENTRY;
 
+        /*
+         * allow to declare predefined striping on a new (!mode) object
+         * which is supposed to be replay of regular file creation
+         * (when LOV setting is declared)
+         */
         mode = dt->do_lu.lo_header->loh_attr & S_IFMT;
-        if (S_ISREG(mode) && !strcmp(name, XATTR_NAME_LOV)) {
+        if ((S_ISREG(mode) || !mode) && !strcmp(name, XATTR_NAME_LOV)) {
                 /*
                  * this is a request to manipulate object's striping
                  */
-                LASSERT(dt_object_exists(next));
-                rc = dt_attr_get(env, next, &attr, BYPASS_CAPA);
-                if (rc)
-                        RETURN(rc);
+                if (dt_object_exists(dt)) {
+                        rc = dt_attr_get(env, next, &attr, BYPASS_CAPA);
+                        if (rc)
+                                RETURN(rc);
+                } else {
+                        memset(&attr, 0, sizeof(attr));
+                        attr.la_valid = LA_TYPE | LA_MODE;
+                        attr.la_mode = S_IFREG;
+                }
                 rc = lod_declare_striped_object(env, dt, &attr, buf, th);
-                RETURN(rc);
+                if (rc)
+                        GOTO(out, rc);
+                rc = next->do_ops->do_declare_xattr_set(env, next, buf, name, fl, th);
+                GOTO(out, rc);
         }
 
         rc = next->do_ops->do_declare_xattr_set(env, next, buf, name, fl, th);
 
+out:
         RETURN(rc);
 }
 
@@ -399,6 +413,7 @@ static int lod_xattr_set(const struct lu_env *env,
                          struct lustre_capa *capa)
 {
         struct dt_object   *next = dt_object_child(dt);
+        struct lod_device  *d = lu2lod_dev(dt->do_lu.lo_dev);
         struct lod_object  *l = lod_dt_obj(dt);
         __u32               attr;
         int                 rc;
@@ -420,7 +435,9 @@ static int lod_xattr_set(const struct lu_env *env,
 
         } else if (S_ISREG(attr) && !strcmp(name, XATTR_NAME_LOV)) {
                 /*
-                 * this is a request to manipulate object's striping
+                 * XXX: check striping match what we already have
+                 * during req replay, declare_xattr_set() defines striping,
+                 * then create() does the work
                  */
                 rc = lod_striping_create(env, dt, NULL, NULL, th);
                 RETURN(rc);
@@ -502,12 +519,15 @@ static inline int lod_object_will_be_striped(int is_reg, const struct lu_fid *fi
 static int lod_cache_parent_striping(const struct lu_env *env,
                                       struct lod_object *lp)
 {
+        struct dt_object      *next = dt_object_child(&lp->mbo_obj);
         struct lov_user_md_v1 *v1;
         struct lov_user_md_v3 *v3;
         int                    rc;
         ENTRY;
 
+        dt_read_lock(env, next, 0);
         rc = lod_get_lov_ea(env, lp);
+        dt_read_unlock(env, next);
         if (rc < 0)
                 RETURN(rc);
 
@@ -557,14 +577,26 @@ static void lod_ah_init(const struct lu_env *env,
                         struct dt_object *child,
                         cfs_umode_t child_mode)
 {
-        struct lod_device *d = lu2lod_dev(parent->do_lu.lo_dev);
-        struct dt_object  *nextp = dt_object_child(parent);
-        struct dt_object  *nextc = dt_object_child(parent);
-        struct lod_object *lp = lod_dt_obj(parent);
-        struct lod_object *lc = lod_dt_obj(child);
+        struct lod_device *d = lu2lod_dev(child->do_lu.lo_dev);
+        struct dt_object  *nextp;
+        struct dt_object  *nextc;
+        struct lod_object *lp;
+        struct lod_object *lc;
         struct lov_desc   *desc;
         ENTRY;
 
+        if (unlikely(d->lod_recovery_completed == 0)) {
+                /*
+                 * no need in default striping during req. replay
+                 */
+                EXIT;
+                return;
+        }
+
+        nextp = dt_object_child(parent);
+        nextc = dt_object_child(parent);
+        lp = lod_dt_obj(parent);
+        lc = lod_dt_obj(child);
         LASSERT(lod_mti_get(env));
         LASSERT(parent);
         LASSERT(child);
@@ -686,16 +718,27 @@ int lod_declare_striped_object(const struct lu_env *env,
                                const struct lu_buf *lovea,
                                struct thandle      *th)
 {
+        struct lod_device  *d = lu2lod_dev(dt->do_lu.lo_dev);
         struct dt_object   *next = dt_object_child(dt);
         struct lod_object  *mo = lod_dt_obj(dt);
         struct lu_buf       buf;
         int                 rc;
         ENTRY;
 
-        LASSERT(mo->mbo_stripenr > 0);
+        if (OBD_FAIL_CHECK(OBD_FAIL_MDS_ALLOC_OBDO)) {
+                /* failed to create striping, let's reset
+                 * config so that others don't get confused */
+                lod_object_free_striping(mo);
+                GOTO(out, rc = -ENOMEM);
+        }
 
         /* choose OST and generate appropriate objects */
-        rc = lod_qos_prep_create(env, mo, attr, lovea, th);
+        if (unlikely(d->lod_recovery_completed == 0))
+                rc = lod_alloc_replay(env, mo, attr, lovea, th);
+        else {
+                LASSERT(mo->mbo_stripenr > 0);
+                rc = lod_qos_prep_create(env, mo, attr, lovea, th);
+        }
         if (rc) {
                 /* failed to create striping, let's reset
                  * config so that others don't get confused */
@@ -733,6 +776,7 @@ static int lod_declare_object_create(const struct lu_env *env,
                                      struct thandle *th)
 {
         struct dt_object   *next = dt_object_child(dt);
+        struct lod_device  *d = lu2lod_dev(dt->do_lu.lo_dev);
         struct lod_object  *mo = lod_dt_obj(dt);
         int                 rc;
         ENTRY;
@@ -755,7 +799,7 @@ static int lod_declare_object_create(const struct lu_env *env,
         /*
          * it's lod_ah_init() who has decided the object will striped
          */
-        if (dof->dof_type == DFT_REGULAR) {
+        if (dof->dof_type == DFT_REGULAR && d->lod_recovery_completed) {
                 /* callers don't want stripes */
                 /* XXX: all tricky interactions with ->ah_make_hint() decided
                  * to use strping, then ->declare_create() behaving differently
@@ -805,6 +849,7 @@ static int lod_object_create(const struct lu_env *env,
                              struct thandle *th)
 {
         struct dt_object   *next = dt_object_child(dt);
+        struct lod_device  *d = lu2lod_dev(dt->do_lu.lo_dev);
         struct lod_object  *mo = lod_dt_obj(dt);
         int                 rc;
         ENTRY;
@@ -812,7 +857,7 @@ static int lod_object_create(const struct lu_env *env,
         /* create local object */
         rc = dt_create(env, next, attr, hint, dof, th);
 
-        if (mo->mbo_stripe)
+        if (mo->mbo_stripe && d->lod_recovery_completed)
                 rc = lod_striping_create(env, dt, attr, dof, th);
 
         RETURN(rc);

@@ -1080,6 +1080,38 @@ out_nolock:
         RETURN(rc);
 }
 
+int lod_alloc_replay(const struct lu_env *env, struct lod_object *lo,
+                     struct lu_attr *attr, const struct lu_buf *buf,
+                     struct thandle *th)
+{
+        struct dt_object  *o;
+        int i, rc = 0;
+        ENTRY;
+
+        LASSERT(lo->mbo_stripe == NULL);
+        LASSERT(lo->mbo_stripenr == 0);
+        LASSERT(buf);
+
+        rc = lod_parse_striping(env, lo, buf);
+        if (rc)
+                GOTO(out, rc);
+
+        for (i = 0; i < lo->mbo_stripenr; i++) {
+
+                o = lo->mbo_stripe[i];
+                LASSERT(o);
+
+                rc = dt_declare_create(env, o, attr, NULL, NULL, th);
+                if (rc) {
+                        CERROR("can't declare create: %d\n", rc);
+                        break;
+                }
+        }
+
+out:
+        RETURN(rc);
+}
+
 /* Find the max stripecount we should use */
 static int lov_get_stripecnt(struct lov_obd *lov, __u32 stripe_count)
 {
@@ -1216,7 +1248,6 @@ int lod_qos_prep_create(const struct lu_env *env, struct lod_object *lo,
         if (lo->mbo_stripe == NULL)
                 GOTO(out, rc = -ENOMEM);
         lo->mbo_stripes_allocated = lo->mbo_stripenr;
-
 
         /* XXX: support for non-0 files w/o objects */
         if (lo->mbo_def_stripe_offset >= lov->desc.ld_tgt_count)
