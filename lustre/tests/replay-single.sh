@@ -23,6 +23,11 @@ require_dsh_mds || exit 0
 # bug number:  17466 18857,15962
 ALWAYS_EXCEPT="61d   33a 33b     $REPLAY_SINGLE_EXCEPT"
 
+# lodosp
+# 20b -- waited 6 for 19 ST osp lustre-OST0000-osp-MDT0000 lustre-MDT0000-lod_UUID 2
+# 34  -- lod_parse_striping()) ASSERTION(md->lod_ost[idx]) failed: idx 0
+ALWAYS_EXCEPT="$ALWAYS_EXCEPT 20b 34"
+
 if [ "$FAILURE_MODE" = "HARD" ] && mixed_ost_devs; then
     CONFIG_EXCEPTIONS="0b 42 47 61a 61c"
     echo -n "Several ost services on one ost node are used with FAILURE_MODE=$FAILURE_MODE. "
