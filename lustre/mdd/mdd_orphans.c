@@ -285,12 +285,11 @@ static int orphan_object_kill(const struct lu_env *env,
          * as its precondition for osd api we using. */
 
         mdo_ref_del(env, obj, th);
-        rc = mdo_destroy_obj(env, obj, th);
-
         if (S_ISDIR(mdd_object_type(obj))) {
                 mdo_ref_del(env, obj, th);
                 mdd_orphan_ref_del(env, mdd, th);
         }
+        rc = mdo_destroy_obj(env, obj, th);
         RETURN(rc);
 }
 
