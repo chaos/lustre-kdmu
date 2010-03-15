@@ -171,6 +171,8 @@ static int osp_recovery_complete(const struct lu_env *env,
         int                rc = 0;
         ENTRY;
         CERROR("%s: recovery is over\n", osp->opd_obd->obd_name);
+        osp->opd_recovery_completed = 1;
+        cfs_waitq_signal(&osp->opd_pre_waitq);
         RETURN(rc);
 }
 

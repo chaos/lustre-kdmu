@@ -78,6 +78,10 @@ struct osp_device {
         int                             opd_imp_connected;
         int                             opd_imp_active;
 
+        /* whether local recovery is completed:
+         * reported via ->ldo_recovery_complete() */
+        int                             opd_recovery_completed;
+
         /* 
          * Precreation pool
          */

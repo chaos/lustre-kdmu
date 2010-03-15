@@ -744,9 +744,6 @@ static int osp_sync_thread(void *_arg)
                  d->opd_syn_changes, d->opd_syn_rpc_in_progress,
                  d->opd_syn_rpc_in_flight);
 
-        /* abort all in-flights */
-        CERROR("abort all in-flight RPCs\n");
-
         /* finish all jobs */
         CERROR("abort all jobs\n");
 

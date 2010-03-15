@@ -354,13 +354,16 @@ static int osp_precreate_connection_from_mds(struct osp_device *d)
  * asks OST to clean precreate orphans
  * and gets next id for new objects
  */
-static int osp_precreate_clean_orphans(struct osp_device *d)
+static int osp_precreate_cleanup_orphans(struct osp_device *d)
 {
         struct ptlrpc_request  *req = NULL;
         struct obd_import      *imp;
         struct ost_body        *body;
         int                     rc;
         ENTRY;
+
+        LASSERT(d->opd_recovery_completed);
+        LASSERT(d->opd_pre_reserved == 0);
 
         imp = d->opd_obd->u.cli.cl_import;
         LASSERT(imp);
@@ -422,31 +425,6 @@ out_req:
         RETURN(rc);
 }
 
-/**
- * here we handle new connection to OST
- */
-static int osp_precreate_new_connection(struct osp_device *d)
-{       
-        int rc;
-        ENTRY;
-
-        /* XXX: analyze connection data, etc */
-
-        /*
-         * first of all, we declare our connection is originated by MDS
-         */
-        rc = osp_precreate_connection_from_mds(d);
-        if (rc)
-                RETURN(rc);
-
-        /*
-         * then we remove precreate orphans and update next id
-         */
-        rc = osp_precreate_clean_orphans(d);
-
-        RETURN(rc);
-}
-
 /*
  * the function updates current precreation status used: functional or not
  *
@@ -500,6 +478,7 @@ static int osp_precreate_thread(void *_arg)
 {
         struct osp_device      *d = _arg;
         struct ptlrpc_thread   *thread = &d->opd_pre_thread;
+        struct l_wait_info      lwi = { 0 };
         int                     rc;
         ENTRY;
        
@@ -520,7 +499,6 @@ static int osp_precreate_thread(void *_arg)
                  * need to be connected to OST
                  */
                 while (osp_precreate_running(d)) {
-                        struct l_wait_info lwi = { 0 };
 
                         l_wait_event(d->opd_pre_waitq,
                                         !osp_precreate_running(d) ||
@@ -536,7 +514,7 @@ static int osp_precreate_thread(void *_arg)
                         /* got connected, let's initialize connection */
                         d->opd_new_connection = 0;
                         d->opd_got_disconnected = 0;
-                        rc = osp_precreate_new_connection(d);
+                        rc = osp_precreate_connection_from_mds(d);
 
                         /* if initialization went well, move on */
                         if (rc == 0)
@@ -544,10 +522,30 @@ static int osp_precreate_thread(void *_arg)
                 }
 
                 /*
+                 * wait for local recovery to finish, so we can cleanup orphans
+                 * orphans are all objects since "last used" (assigned), but
+                 * there might be objects reserved and in some cases they won't
+                 * be used. we can't cleanup them till we're sure they won't be
+                 * used. so we block new reservations and wait till all reserved
+                 * objects either user or released.
+                 */
+                l_wait_event(d->opd_pre_waitq,
+                             (!d->opd_pre_reserved && d->opd_recovery_completed) ||
+                             !osp_precreate_running(d) ||
+                             d->opd_got_disconnected,
+                             &lwi);
+                if (osp_precreate_running(d) && !d->opd_got_disconnected) {
+                        rc = osp_precreate_cleanup_orphans(d);
+                        if (rc) {
+                                /* XXX: error handling? */
+                                CERROR("can't cleanup orphans: %d\n", rc);
+                        }
+                }
+
+                /*
                  * connected, can handle precreates now
                  */
                 while (osp_precreate_running(d)) {
-                        struct l_wait_info lwi = { 0 };
 
                         l_wait_event(d->opd_pre_waitq,
                                      !osp_precreate_running(d) ||
@@ -575,15 +573,11 @@ static int osp_precreate_thread(void *_arg)
                 }
         }
 
-        /* abort all in-flights */
-        CERROR("abort all in-flight stat RPCs\n");
-
         /* finish all jobs */
         CERROR("abort all jobs\n");
 
         thread->t_flags = SVC_STOPPED;
         cfs_waitq_signal(&thread->t_ctl_waitq);
-        CERROR("@@@@@@@@@ EXIT\n");
 
         RETURN(0);
 }
@@ -668,6 +662,14 @@ __u64 osp_precreate_get_id(struct osp_device *d)
         objid = d->opd_pre_next++;
         d->opd_pre_reserved--;
         cfs_spin_unlock(&d->opd_pre_lock);
+
+        /*
+         * probably main thread suspended orphan cleanup till
+         * all reservations are released, see comment in
+         * osp_precreate_thread() just before orphan cleanup
+         */
+        if (unlikely(d->opd_pre_reserved == 0 && d->opd_pre_status))
+                cfs_waitq_signal(&d->opd_pre_waitq);
 
         return objid;
 }

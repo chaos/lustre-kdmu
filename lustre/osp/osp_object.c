@@ -181,6 +181,13 @@ static int osp_declare_object_create(const struct lu_env *env,
 
         LASSERT(d->opd_last_used_file);
 
+        if (unlikely(lu_idif_id(lu_object_fid(&dt->do_lu)))) {
+                LASSERT(d->opd_recovery_completed == 0);
+                /* XXX: for compatibility use common for all OSPs file */
+                rc = dt_declare_record_write(env, d->opd_last_used_file, 8, 0, th);
+                RETURN(rc);
+        }
+
         /*
          * in declaration we need to reserve object so that we don't block
          * awaiting precreation RPC to complete
