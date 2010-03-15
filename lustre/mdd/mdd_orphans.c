@@ -585,7 +585,12 @@ int __mdd_declare_orphan_del(const struct lu_env *env,
         int rc;
 
         rc = mdd_declare_orphan_delete_obj(env, mdd, obj, th);
+        if (rc)
+                goto out;
         rc = mdo_declare_ref_del(env, obj, th);
+        if (rc)
+                goto out;
+        rc = mdo_declare_destroy_obj(env, obj, th);
 
         if (rc == 0 && S_ISDIR(mdd_object_type(obj))) {
                 rc = mdo_declare_ref_del(env, obj, th);
@@ -593,6 +598,7 @@ int __mdd_declare_orphan_del(const struct lu_env *env,
                         rc = mdd_declare_orphan_ref_del(env, mdd, th);
         }
 
+out:
         return rc;
 }
 
