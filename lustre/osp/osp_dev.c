@@ -697,8 +697,14 @@ static int osp_iocontrol(unsigned int cmd, struct obd_export *exp, int len,
         case OBD_IOC_LOV_GET_CONFIG:
         case LL_IOC_LOV_SETSTRIPE:
         case LL_IOC_LOV_GETSTRIPE:
-        case OBD_IOC_CLIENT_RECOVER:
                 CERROR("unsupported function: %d\n", cmd);
+                GOTO(out, err);
+
+        case OBD_IOC_CLIENT_RECOVER:
+                err = ptlrpc_recover_import(obd->u.cli.cl_import,
+                                            data->ioc_inlbuf1);
+                if (err > 0)
+                        err = 0;
                 GOTO(out, err);
 
         case OBD_IOC_POLL_QUOTACHECK:
