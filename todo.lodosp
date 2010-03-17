@@ -10,6 +10,7 @@
    - mdd never manipulate striping
    - sanity check/counter for thandle started and not stopped in *osd
    - changelog support
+!  - don't start processing till configuration is completed
 
 * LOD TODO
    - support for >1K OSTs (dynamic lod_ost in struct lod_device)
