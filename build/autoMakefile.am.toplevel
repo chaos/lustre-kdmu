@@ -71,7 +71,7 @@ dep: .depend
 CLEANFILES = .depend
 endif # !LINUX25
 
-modules: $(DEP) all-sources
+modules: $(DEP) all-sources all-symvers
 	$(MAKE) $(ARCH_UM) CC="$(CC)" -C $(LINUX_OBJ)		     \
 	-f $(PWD)/build/Makefile LUSTRE_LINUX_CONFIG=$(LINUX_CONFIG) \
         LINUXINCLUDE='$(EXTRA_LNET_INCLUDE) -I$$(srctree)/arch/$$(SRCARCH)/include -Iinclude $$(if $$(KBUILD_SRC),-Iinclude2 -I$$(srctree)/include) -include include/linux/autoconf.h' \
