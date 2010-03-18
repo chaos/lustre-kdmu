@@ -52,12 +52,14 @@
 
 #ifdef HAVE_SERVER_SUPPORT
 
+#if 0
 #ifdef HAVE_EXT4_LDISKFS
 #include <ldiskfs/ldiskfs_jbd2.h>
 #include <ldiskfs/ldiskfs.h>
 #else
 #include <linux/jbd.h>
 #include <linux/ldiskfs_fs.h>
+#endif
 #endif
 
 #endif
@@ -83,7 +85,8 @@ static int mea_all_chars_hash(int count, char *name, int namelen)
         return c;
 }
 
-#ifdef __KERNEL__
+#if 0
+//#ifdef __KERNEL__
 /* This hash calculate method must be same as the lvar hash method */
 
 #define LVAR_HASH_SANDWICH  (0)

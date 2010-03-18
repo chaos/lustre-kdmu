@@ -13,6 +13,8 @@
  * obdclass is shared by both client and server, it should not depend on ldiskfs.
  */
 
+#if 0
+
 #include <linux/fs.h>
 #include <linux/sched.h>
 #ifdef HAVE_SERVER_SUPPORT
@@ -232,3 +234,5 @@ int ldiskfsfs_dirhash(const char *name, int len, struct ldiskfs_dx_hash_info *hi
 	hinfo->minor_hash = minor_hash;
 	return 0;
 }
+
+#endif
