@@ -178,7 +178,10 @@ int fld_index_create(struct lu_server_fld *fld,
                      const struct lu_seq_range *range,
                      struct thandle *th)
 {
+#if 0
+        /* XXX: DMU/DMU OSD don't support binary keys yet */
         struct dt_object *dt_obj = fld->lsf_obj;
+#endif
         struct dt_device *dt_dev;
         seqno_t start;
         int rc;
