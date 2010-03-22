@@ -228,7 +228,6 @@ static int osp_sync(const struct lu_env *env, struct dt_device *dev)
 {
         ENTRY;
 
-        CERROR("not implemented yet\n");
         /*
          * XXX: wake up sync thread, command it to start flushing asap?
          */
