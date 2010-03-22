@@ -241,6 +241,10 @@ static int osp_precreate_send(struct osp_device *d)
         req = ptlrpc_request_alloc(imp, &RQF_OST_CREATE);
         if (req == NULL)
                 GOTO(out, rc = -ENOMEM);
+        req->rq_request_portal = OST_CREATE_PORTAL;
+        /* we should not resend create request - anyway we will have delorphan
+         * and kill these objects */
+        req->rq_no_delay = req->rq_no_resend = 1;
 
         rc = ptlrpc_request_pack(req, LUSTRE_OST_VERSION, OST_CREATE);
         if (rc) {
@@ -267,6 +271,7 @@ static int osp_precreate_send(struct osp_device *d)
                 CERROR("%s: can't precreate: %d\n", d->opd_obd->obd_name, rc);
                 GOTO(out_req, rc);
         }
+        LASSERT(req->rq_transno == 0);
 
         body = req_capsule_server_get(&req->rq_pill, &RMF_OST_BODY);
         if (body == NULL)
@@ -344,6 +349,7 @@ static int osp_precreate_connection_from_mds(struct osp_device *d)
         ptlrpc_request_set_replen(req);
 
         rc = ptlrpc_queue_wait(req);
+        LASSERT(req->rq_transno == 0);
 
         ptlrpc_req_finished(req);
 
@@ -394,6 +400,7 @@ static int osp_precreate_cleanup_orphans(struct osp_device *d)
         rc = ptlrpc_queue_wait(req);
         if (rc)
                 GOTO(out_req, rc);
+        LASSERT(req->rq_transno == 0);
 
         body = req_capsule_server_get(&req->rq_pill, &RMF_OST_BODY);
         if (body == NULL)
