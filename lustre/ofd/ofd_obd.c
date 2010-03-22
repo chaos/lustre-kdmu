@@ -657,6 +657,7 @@ int filter_setattr(struct obd_export *exp,
                 RETURN(rc);
 
         info = filter_info_init(&env, exp);
+        info->fti_no_need_trans = 0;
         filter_oti2info(info, oti);
 
         lu_idif_build(&info->fti_fid, oinfo->oi_oa->o_id, oinfo->oi_oa->o_gr);
@@ -744,7 +745,8 @@ static int filter_punch(struct obd_export *exp, struct obd_info *oinfo,
         if (rc)
                 RETURN(rc);
         info = filter_info_init(&env, exp);
-        filter_info2oti(info, oti);
+        info->fti_no_need_trans = 0;
+        filter_oti2info(info, oti);
 
         lu_idif_build(&info->fti_fid, oinfo->oi_oa->o_id, oinfo->oi_oa->o_gr);
         lu_idif_resid(&info->fti_fid, &info->fti_resid);
@@ -852,7 +854,7 @@ int filter_destroy(struct obd_export *exp,
         if (rc)
                 RETURN(rc);
         info = filter_info_init(&env, exp);
-
+        info->fti_no_need_trans = 0;
         filter_oti2info(info, oti);
 
         if (!(oa->o_valid & OBD_MD_FLGROUP))
@@ -913,6 +915,7 @@ static int filter_orphans_destroy(const struct lu_env *env,
         obd_gr                     gr = oa->o_gr;
         ENTRY;
 
+        info->fti_no_need_trans = 1;
         LASSERT(exp != NULL);
         skip_orphan = !!(exp->exp_connect_flags & OBD_CONNECT_SKIP_ORPHAN);
 
@@ -965,6 +968,7 @@ static int filter_create(struct obd_export *exp,
                 RETURN(rc);
 
         info = filter_info_init(&env, exp);
+        info->fti_no_need_trans = 1;
         filter_oti2info(info, oti);
 
         LASSERT(ea == NULL);

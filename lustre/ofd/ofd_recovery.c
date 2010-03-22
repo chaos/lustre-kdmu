@@ -174,7 +174,7 @@ static int filter_txn_start_cb(const struct lu_env *env,
 }
 
 /* Update last_rcvd records with latests transaction data */
-static int filter_txn_stop_cb(const struct lu_env *env,
+int filter_txn_stop_cb(const struct lu_env *env,
                               struct thandle *txn, void *cookie)
 {
         struct filter_device *ofd = cookie;
@@ -189,7 +189,6 @@ static int filter_txn_stop_cb(const struct lu_env *env,
         if (info->fti_exp == NULL || info->fti_no_need_trans ||
             info->fti_exp->exp_filter_data.fed_lcd == NULL) {
                 txi->txi_transno = 0;
-                info->fti_no_need_trans = 0;
                 RETURN(0);
         }
 
@@ -269,6 +268,7 @@ int filter_fs_setup(const struct lu_env *env, struct filter_device *ofd,
         ofd->ofd_txn_cb.dtc_txn_stop = filter_txn_stop_cb;
         ofd->ofd_txn_cb.dtc_txn_commit = filter_txn_commit_cb;
         ofd->ofd_txn_cb.dtc_cookie = ofd;
+        ofd->ofd_txn_cb.dtc_tag = LCT_DT_THREAD;
         CFS_INIT_LIST_HEAD(&ofd->ofd_txn_cb.dtc_linkage);
 
         dt_txn_callback_add(ofd->ofd_osd, &ofd->ofd_txn_cb);
