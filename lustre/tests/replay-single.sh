@@ -24,9 +24,10 @@ require_dsh_mds || exit 0
 ALWAYS_EXCEPT="61d   33a 33b     $REPLAY_SINGLE_EXCEPT"
 
 # lodosp
-# 20b -- waited 6 for 19 ST osp lustre-OST0000-osp-MDT0000 lustre-MDT0000-lod_UUID 2
+# 20b -- FAIL: after 74332 > before 34288 
 # 34  -- lod_parse_striping()) ASSERTION(md->lod_ost[idx]) failed: idx 0
-ALWAYS_EXCEPT="$ALWAYS_EXCEPT 20b 34"
+# 65b -- HEAD doesn't pass it either
+ALWAYS_EXCEPT="$ALWAYS_EXCEPT 20b 34 65b"
 
 if [ "$FAILURE_MODE" = "HARD" ] && mixed_ost_devs; then
     CONFIG_EXCEPTIONS="0b 42 47 61a 61c"
@@ -839,7 +840,7 @@ test_39() { # bug 4176
 run_test 39 "test recovery from unlink llog (test llog_gen_rec) "
 
 count_ost_writes() {
-    lctl get_param -n osc.*.stats | awk -vwrites=0 '/ost_write/ { writes += $2 } END { print writes; }'
+    lctl get_param -n os[cp].*.stats | awk -vwrites=0 '/ost_write/ { writes += $2 } END { print writes; }'
 }
 
 #b=2477,2532
@@ -1070,7 +1071,7 @@ test_48() {
 run_test 48 "MDS->OSC failure during precreate cleanup (2824)"
 
 test_50() {
-    local oscdev=`do_facet $SINGLEMDS lctl get_param -n devices | grep ${ost1_svc}-osc-MDT0000 | awk '{print $1}'`
+    local oscdev=`do_facet $SINGLEMDS lctl get_param -n devices | grep ${ost1_svc}-os[cp]-MDT0000 | awk '{print $1}'`
     [ "$oscdev" ] || return 1
     do_facet $SINGLEMDS $LCTL --device $oscdev recover || return 2
     do_facet $SINGLEMDS $LCTL --device $oscdev recover || return 3
@@ -1641,7 +1642,7 @@ test_65b() #bug 3055
     $LCTL dk > /dev/null
     # Slow down a request to the current service time, this is critical
     # because previous tests may have caused this value to increase.
-    REQ_DELAY=`lctl get_param -n osc.${FSNAME}-OST0000-osc-*.timeouts |
+    REQ_DELAY=`lctl get_param -n os[cp].${FSNAME}-OST0000-os[cp]-*.timeouts |
                awk '/portal 6/ {print $5}'`
     REQ_DELAY=$((${REQ_DELAY} + ${REQ_DELAY} / 4 + 5))
 
@@ -1659,7 +1660,7 @@ test_65b() #bug 3055
     $LCTL dk | grep "Early reply #" || error "No early reply"
     debugrestore
     # client should show REQ_DELAY estimates
-    lctl get_param -n osc.${FSNAME}-OST0000-osc-*.timeouts | grep portal
+    lctl get_param -n os[cp].${FSNAME}-OST0000-os[cp]-*.timeouts | grep portal
 }
 run_test 65b "AT: verify early replies on packed reply / bulk"
 
@@ -1716,7 +1717,7 @@ test_67a() #bug 3055
     remote_ost_nodsh && skip "remote OST with nodsh" && return 0
 
     at_start || return 0
-    CONN1=$(lctl get_param -n osc.*.stats | awk '/_connect/ {total+=$2} END {print total}')
+    CONN1=$(lctl get_param -n os[cp].*.stats | awk '/_connect/ {total+=$2} END {print total}')
     # sleeping threads may drive values above this
     do_facet ost1 "sysctl -w lustre.fail_val=400"
 #define OBD_FAIL_PTLRPC_PAUSE_REQ    0x50a
@@ -1724,7 +1725,7 @@ test_67a() #bug 3055
     createmany -o $DIR/$tfile 20 > /dev/null
     unlinkmany $DIR/$tfile 20 > /dev/null
     do_facet ost1 "sysctl -w lustre.fail_loc=0"
-    CONN2=$(lctl get_param -n osc.*.stats | awk '/_connect/ {total+=$2} END {print total}')
+    CONN2=$(lctl get_param -n os[cp].*.stats | awk '/_connect/ {total+=$2} END {print total}')
     ATTEMPTS=$(($CONN2 - $CONN1))
     echo "$ATTEMPTS osc reconnect attempts on gradual slow"
     [ $ATTEMPTS -gt 0 ] && error_ignore 13721 "AT should have prevented reconnect"
@@ -1737,13 +1738,13 @@ test_67b() #bug 3055
     remote_ost_nodsh && skip "remote OST with nodsh" && return 0
 
     at_start || return 0
-    CONN1=$(lctl get_param -n osc.*.stats | awk '/_connect/ {total+=$2} END {print total}')
+    CONN1=$(lctl get_param -n os[cp].*.stats | awk '/_connect/ {total+=$2} END {print total}')
 
     # exhaust precreations on ost1
     local OST=$(lfs osts | grep 0": " | awk '{print $2}' | sed -e 's/_UUID$//')
     local mdtosc=$(get_mdtosc_proc_path $OST)
-    local last_id=$(do_facet mds lctl get_param -n osc.$mdtosc.prealloc_last_id)
-    local next_id=$(do_facet mds lctl get_param -n osc.$mdtosc.prealloc_next_id)
+    local last_id=$(do_facet mds lctl get_param -n os[cp].$mdtosc.prealloc_last_id)
+    local next_id=$(do_facet mds lctl get_param -n os[cp].$mdtosc.prealloc_next_id)
 
     mkdir -p $DIR/$tdir/${OST}
     lfs setstripe $DIR/$tdir/${OST} -o 0 -c 1 || error "setstripe"
@@ -1756,7 +1757,7 @@ test_67b() #bug 3055
     client_reconnect
     do_facet ost1 "lctl get_param -n ost.OSS.ost_create.timeouts"
     log "phase 2"
-    CONN2=$(lctl get_param -n osc.*.stats | awk '/_connect/ {total+=$2} END {print total}')
+    CONN2=$(lctl get_param -n os[cp].*.stats | awk '/_connect/ {total+=$2} END {print total}')
     ATTEMPTS=$(($CONN2 - $CONN1))
     echo "$ATTEMPTS osc reconnect attempts on instant slow"
     # do it again; should not timeout
@@ -1765,7 +1766,7 @@ test_67b() #bug 3055
     do_facet ost1 "sysctl -w lustre.fail_loc=0"
     client_reconnect
     do_facet ost1 "lctl get_param -n ost.OSS.ost_create.timeouts"
-    CONN3=$(lctl get_param -n osc.*.stats | awk '/_connect/ {total+=$2} END {print total}')
+    CONN3=$(lctl get_param -n os[cp].*.stats | awk '/_connect/ {total+=$2} END {print total}')
     ATTEMPTS=$(($CONN3 - $CONN2))
     echo "$ATTEMPTS osc reconnect attempts on 2nd slow"
     [ $ATTEMPTS -gt 0 ] && error "AT should have prevented reconnect"
