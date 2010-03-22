@@ -108,6 +108,8 @@ static int osp_shutdown(const struct lu_env *env, struct osp_device *d)
         imp->imp_deactive = 1;
         cfs_spin_unlock(&imp->imp_lock);
 
+        ptlrpc_deactivate_import(imp);
+
         /* Some non-replayable imports (MDS's OSCs) are pinged, so just
          * delete it regardless.  (It's safe to delete an import that was
          * never added.) */
