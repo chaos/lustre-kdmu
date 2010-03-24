@@ -3920,7 +3920,7 @@ static int osd_device_init(const struct lu_env *env, struct lu_device *d,
 
         /* context for commit hooks */
         ctx = &osd_dev(d)->od_env_for_commit.le_ctx;
-        rc = lu_context_init(ctx, LCT_MD_THREAD|LCT_REMEMBER|LCT_NOREF);
+        rc = lu_context_init(ctx, LCT_MD_THREAD|LCT_DT_THREAD|LCT_REMEMBER|LCT_NOREF);
         if (rc == 0) {
                 /* XXX: somehow pass device name here */
                 if (name)
