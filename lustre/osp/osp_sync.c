@@ -63,7 +63,7 @@
 
 static int osp_sync_id_traction_init(struct osp_device *d);
 static void osp_sync_id_traction_fini(struct osp_device *d);
-static __u32 osp_sync_id_get(struct osp_device *d);
+static __u32 osp_sync_id_get(struct osp_device *d, __u32 id);
 static void osp_sync_remove_from_tracker(struct osp_device *d);
 
 /*
@@ -102,8 +102,8 @@ static void osp_sync_remove_from_tracker(struct osp_device *d);
 /* XXX: do math to learn reasonable threshold
  * should it be ~ number of changes fitting bulk? */
 #define OSP_SYN_THRESHOLD       10
-#define OSP_MAX_IN_FLIGHT       5
-#define OSP_MAX_IN_PROGRESS     10
+#define OSP_MAX_IN_FLIGHT       8
+#define OSP_MAX_IN_PROGRESS     256
 
 #define OSP_JOB_MAGIC         0x26112005
 
@@ -262,8 +262,7 @@ int osp_sync_add(const struct lu_env *env, struct osp_object *o,
         txn = osp_txn_info(&th->th_ctx);
         LASSERT(txn);
 
-        if (txn->oti_current_id == 0)
-                txn->oti_current_id = osp_sync_id_get(d);
+        txn->oti_current_id = osp_sync_id_get(d, txn->oti_current_id);
         u.hdr.lrh_id = txn->oti_current_id;
 
         ctxt = llog_get_context(obd, LLOG_MDS_OST_ORIG_CTXT);
@@ -1076,10 +1075,9 @@ static void osp_sync_id_traction_fini(struct osp_device *d)
 /*
  * generates id for the tracker
  */
-static __u32 osp_sync_id_get(struct osp_device *d)
+static __u32 osp_sync_id_get(struct osp_device *d, __u32 id)
 {
         struct osp_id_tracker *tr;
-        __u32                  id;
 
         tr = d->opd_syn_tracker;
         LASSERT(tr);
@@ -1088,8 +1086,10 @@ static __u32 osp_sync_id_get(struct osp_device *d)
 
         /* XXX: we can improve this introducing per-cpu preallocated ids? */
         cfs_spin_lock(&tr->otr_lock);
-        id = tr->otr_next_id++;
-        d->opd_syn_last_used_id = id;
+        if (id == 0)
+                id = tr->otr_next_id++;
+        if (id > d->opd_syn_last_used_id)
+                d->opd_syn_last_used_id = id;
         if (cfs_list_empty(&d->opd_syn_ontrack))
                 cfs_list_add(&d->opd_syn_ontrack, &tr->otr_wakeup_list);
         cfs_spin_unlock(&tr->otr_lock);
