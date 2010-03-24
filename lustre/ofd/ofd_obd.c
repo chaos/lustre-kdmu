@@ -214,6 +214,7 @@ static int filter_obd_connect(const struct lu_env *env, struct obd_export **_exp
                               struct obd_connect_data *data, void *localdata)
 {
         struct lsd_client_data    *lcd = NULL;
+        struct filter_thread_info *info;
         struct filter_export_data *fed;
         struct obd_export         *exp;
         struct filter_device      *ofd;
@@ -239,7 +240,8 @@ static int filter_obd_connect(const struct lu_env *env, struct obd_export **_exp
                 CERROR("Failure to refill session: '%d'\n", rc);
                 GOTO(out, rc);
         }
-        filter_info_init(env, exp);
+        info = filter_info_init(env, exp);
+        info->fti_no_need_trans = 1;
 
         rc = filter_parse_connect_data(env, exp, data);
         if (rc)

@@ -156,6 +156,7 @@ int filter_client_add(const struct lu_env *env, struct filter_device *ofd,
 int filter_client_free(struct lu_env *env, struct obd_export *exp)
 {
         struct filter_export_data *fed = &exp->exp_filter_data;
+        struct filter_thread_info *info;
         struct obd_device *obd = exp->exp_obd;
         struct filter_device *ofd = filter_exp(exp);
         struct lsd_client_data *lcd = fed->fed_lcd;
@@ -170,6 +171,9 @@ int filter_client_free(struct lu_env *env, struct obd_export *exp)
         /* XXX if lcd_uuid were a real obd_uuid, I could use obd_uuid_equals */
         if (!strcmp((char *)fed->fed_lcd->lcd_uuid, (char *)obd->obd_uuid.uuid))
                 GOTO(free, 0);
+
+        info = filter_info_init(env, exp);
+        info->fti_no_need_trans = 1;
 
         CDEBUG(D_INFO, "freeing client at idx %u, offset %lld with UUID '%s'\n",
                fed->fed_lr_idx, fed->fed_lr_off, fed->fed_lcd->lcd_uuid);
