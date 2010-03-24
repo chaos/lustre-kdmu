@@ -817,6 +817,7 @@ static void filter_fini(const struct lu_env *env, struct filter_device *m)
 #if 0
         filter_obd_llog_cleanup(obd);
 #endif
+        obd_exports_barrier(obd);
         obd_zombie_barrier();
 
         lut_fini(env, &m->ofd_lut);
