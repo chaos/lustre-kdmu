@@ -336,8 +336,8 @@ load_modules_local() {
         [ "$FSTYPE" = "ldiskfs" ] && load_module ../ldiskfs/ldiskfs/ldiskfs
         [ "$OSTFSTYPE" = "ldiskfs" ] && load_module ../ldiskfs/ldiskfs/ldiskfs
         [ "$MDSFSTYPE" = "ldiskfs" ] && load_module ../ldiskfs/ldiskfs/ldiskfs
-        [ "$OSTFSTYPE" = "zfs" ] && load_module "dmu-osd/osd-zfs"
-        [ "$MDSFSTYPE" = "zfs" ] && load_module "dmu-osd/osd-zfs"
+        [ "$OSTFSTYPE" = "zfs" ] && load_module "dmu-osd/osd_zfs"
+        [ "$MDSFSTYPE" = "zfs" ] && load_module "dmu-osd/osd_zfs"
         load_module mgs/mgs
         load_module mds/mds
         load_module mdd/mdd

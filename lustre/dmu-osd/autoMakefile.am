@@ -50,4 +50,4 @@ modulefs_DATA = osd$(KMODEXT)
 endif
 
 MOSTLYCLEANFILES := @MOSTLYCLEANFILES@ 
-DIST_SOURCES := $(osd-zfs-objs:%.o=%.c) osd_internal.h udmu.h udmu_util.h # osd_oi.h osd_igif.h
+DIST_SOURCES := $(osd_zfs-objs:%.o=%.c) osd_internal.h udmu.h udmu_util.h # osd_oi.h osd_igif.h
