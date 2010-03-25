@@ -321,7 +321,7 @@ struct filter_thread_info * filter_info_init(const struct lu_env *env,
 typedef void (*filter_cb_t)(const struct filter_device *mdt, __u64 transno,
                          void *data, int err);
 struct filter_commit_cb {
-        filter_cb_t  filter_cb_func;
+        lut_cb_t  filter_cb_func;
         void     *filter_cb_data;
 };
 
@@ -336,7 +336,7 @@ struct filter_txn_info {
 };
 
 static inline void filter_trans_add_cb(const struct thandle *th,
-                                       filter_cb_t cb_func, void *cb_data)
+                                       lut_cb_t cb_func, void *cb_data)
 {
         struct filter_txn_info *txi;
 

@@ -189,7 +189,6 @@ static int filter_txn_stop_cb(const struct lu_env *env,
         if (info->fti_exp == NULL || info->fti_no_need_trans ||
             info->fti_exp->exp_filter_data.fed_lcd == NULL) {
                 txi->txi_transno = 0;
-                info->fti_no_need_trans = 0;
                 RETURN(0);
         }
 
@@ -226,6 +225,9 @@ static int filter_txn_stop_cb(const struct lu_env *env,
         txi->txi_transno = info->fti_transno;
         cfs_spin_unlock(&ofd->ofd_transno_lock);
 
+        filter_trans_add_cb(txn, lut_cb_last_committed,
+                         class_export_cb_get(info->fti_exp));
+
         return filter_last_rcvd_update(info, txn);
 }
 
@@ -241,7 +243,7 @@ static int filter_txn_commit_cb(const struct lu_env *env,
 
         /* iterate through all additional callbacks */
         for (i = 0; i < txi->txi_cb_count; i++) {
-                txi->txi_cb[i].filter_cb_func(ofd, txi->txi_transno,
+                txi->txi_cb[i].filter_cb_func(&ofd->ofd_lut, txi->txi_transno,
                                               txi->txi_cb[i].filter_cb_data,
                                               0);
         }
@@ -269,6 +271,7 @@ int filter_fs_setup(const struct lu_env *env, struct filter_device *ofd,
         ofd->ofd_txn_cb.dtc_txn_stop = filter_txn_stop_cb;
         ofd->ofd_txn_cb.dtc_txn_commit = filter_txn_commit_cb;
         ofd->ofd_txn_cb.dtc_cookie = ofd;
+        ofd->ofd_txn_cb.dtc_tag = LCT_DT_THREAD;
         CFS_INIT_LIST_HEAD(&ofd->ofd_txn_cb.dtc_linkage);
 
         dt_txn_callback_add(ofd->ofd_osd, &ofd->ofd_txn_cb);
@@ -327,6 +330,10 @@ void filter_fs_cleanup(const struct lu_env *env, struct filter_device *ofd)
                 if (ofd->ofd_lastid_obj[i])
                         lu_object_put(env, &ofd->ofd_lastid_obj[i]->do_lu);
         }
+
+        i = dt_sync(env, ofd->ofd_osd);
+        if (i)
+                CERROR("can't sync: %d\n", i);
 
         /* Remove transaction callback */
         dt_txn_callback_del(ofd->ofd_osd, &ofd->ofd_txn_cb);
