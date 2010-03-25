@@ -2750,7 +2750,7 @@ banner() {
     msg="== ${TESTSUITE} $*"
     # pad the message out to 70 with "="
     last=${msg: -1:1}
-    [[ $last != "=" && $last != " " ]] && msg+=" "
+    [[ $last != "=" && $last != " " ]] && msg="$msg "
     for i in $(seq $((68 - ${#msg})) ); do
 	  msg="$msg="
     done
