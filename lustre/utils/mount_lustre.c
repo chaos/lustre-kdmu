@@ -503,7 +503,6 @@ int main(int argc, char *const argv[])
         char *target, *ptr;
         char *options, *optcopy, *orig_options = default_options;
         int i, nargs = 3, opt, rc, flags, optlen;
-        size_t usource_len;
         static struct option long_opt[] = {
                 {"fake", 0, 0, 'f'},
                 {"force", 0, 0, 1},

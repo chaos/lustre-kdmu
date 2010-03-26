@@ -714,7 +714,6 @@ int mdd_declare_setattr_log(const struct lu_env *env, struct mdd_object *obj,
         rc = llog_declare_add_2(ctxt, NULL, lsm, th);
         llog_ctxt_put(ctxt);
 
- out:
         obd_free_memmd(mds->mds_osc_exp, &lsm);
         RETURN(rc);
 }
