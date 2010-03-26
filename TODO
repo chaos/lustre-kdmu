@@ -1,0 +1,7 @@
+ofd:
+* re-use env from req (add env to obd methods?)
+* grants fail sometimes
+* lut: unification with mdt
+* check error handling
+
+
