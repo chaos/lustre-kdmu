@@ -1411,6 +1411,7 @@ static int osd_attr_set(const struct lu_env *env,
 
         OSD_EXEC_OP(handle, attr_set);
 
+        LASSERT((attr->la_valid & LA_NLINK) == 0);
         cfs_spin_lock(&obj->oo_guard);
         rc = osd_inode_setattr(env, obj->oo_inode, attr);
         cfs_spin_unlock(&obj->oo_guard);
