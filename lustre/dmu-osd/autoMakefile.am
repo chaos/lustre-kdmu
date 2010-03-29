@@ -46,4 +46,4 @@ endif # MODULES
 endif # ZFS_ENABLED
 
 MOSTLYCLEANFILES := @MOSTLYCLEANFILES@
-DIST_SOURCES := $(osd_zfs-objs:%.o=%.c) osd_internal.h udmu.h udmu_util.h # osd_oi.h osd_igif.h
+EXTRA_DIST := $(osd_zfs-objs:%.o=%.c) osd_internal.h udmu.h udmu_util.h
