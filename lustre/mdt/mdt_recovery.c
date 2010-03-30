@@ -566,6 +566,10 @@ int mdt_client_new(const struct lu_env *env, struct mdt_device *mdt)
 
         /* Write new client data. */
         off = med->med_lr_off;
+
+        if (OBD_FAIL_CHECK(OBD_FAIL_TGT_CLIENT_ADD))
+                RETURN(-ENOSPC);
+
         mdt_trans_credit_init(env, mdt, MDT_TXN_LAST_RCVD_WRITE_OP);
 
         th = mdt_trans_start(env, mdt);
@@ -860,7 +864,7 @@ static int mdt_txn_stop_cb(const struct lu_env *env,
                 mdt_versions_set(mti);
 
         /* filling reply data */
-        CDEBUG(D_INODE, "transno = %llu, last_committed = %llu\n",
+        CDEBUG(D_INODE, "transno = "LPU64", last_committed = "LPU64"\n",
                mti->mti_transno, req->rq_export->exp_obd->obd_last_committed);
 
         req->rq_transno = mti->mti_transno;

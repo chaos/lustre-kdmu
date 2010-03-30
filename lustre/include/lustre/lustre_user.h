@@ -41,6 +41,11 @@
 #ifndef _LUSTRE_USER_H
 #define _LUSTRE_USER_H
 
+/** \defgroup lustreuser lustreuser
+ *
+ * @{
+ */
+
 #include <lustre/ll_fiemap.h>
 #if defined(__linux__)
 #include <linux/lustre_user.h>
@@ -135,6 +140,8 @@ struct obd_statfs {
 #define LL_IOC_LLOOP_DETACH_BYDEV       _IOWR('f', 172, long)
 #define LL_IOC_PATH2FID                 _IOR ('f', 173, long)
 #define LL_IOC_GET_MDTIDX               _IOR ('f', 174, int)
+
+#define LL_IOC_HSM_CT_START             _IOW ('f', 178, struct lustre_kernelcomm *)
 
 #define LL_STATFS_MDC           1
 #define LL_STATFS_LOV           2
@@ -322,7 +329,11 @@ typedef struct lu_fid lustre_fid;
 
 /* scanf input parse format -- strip '[' first.
    e.g. sscanf(fidstr, SFID, RFID(&fid)); */
-#define SFID "0x%llx:0x%x:0x%x"
+/* #define SFID "0x"LPX64i":0x"LPSZX":0x"LPSZX""
+liblustreapi.c:2893: warning: format '%lx' expects type 'long unsigned int *', but argument 4 has type 'unsigned int *'
+liblustreapi.c:2893: warning: format '%lx' expects type 'long unsigned int *', but argument 5 has type 'unsigned int *'
+*/
+#define SFID "0x"LPX64i":0x%x:0x%x"
 #define RFID(fid)     \
         &((fid)->f_seq), \
         &((fid)->f_oid), \
@@ -500,10 +511,11 @@ struct changelog_rec {
         char                  cr_name[0];     /**< last element */
 } __attribute__((packed));
 
-struct ioc_changelog_clear {
+struct ioc_changelog {
+        __u64 icc_recno;
         __u32 icc_mdtindex;
         __u32 icc_id;
-        __u64 icc_recno;
+        __u32 icc_flags;
 };
 
 enum changelog_message_type {
@@ -586,5 +598,6 @@ static __inline__ struct hsm_action_item * hai_next(struct hsm_action_item *hai)
                                           cfs_size_round(hai->hai_len));
 }
 
+/** @} lustreuser */
 
 #endif /* _LUSTRE_USER_H */

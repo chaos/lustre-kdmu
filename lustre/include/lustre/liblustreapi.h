@@ -37,6 +37,11 @@
 #ifndef _LIBLUSTREAPI_H_
 #define _LIBLUSTREAPI_H_
 
+/** \defgroup llapi llapi
+ *
+ * @{
+ */
+
 #include <lustre/lustre_user.h>
 
 /* Initially allocate for these many OSTs, realloc if needed */
@@ -216,12 +221,14 @@ extern int llapi_changelog_clear(const char *mdtname, const char *idstr,
 
 /* HSM copytool interface.  priv is private state, managed internally
    by these functions */
-extern int llapi_copytool_start(void **priv, int flags, int archive_num_count,
-                                int *archive_nums);
+extern int llapi_copytool_start(void **priv, char *fsname, int flags,
+                                int archive_count, int *archives);
 extern int llapi_copytool_fini(void **priv);
 extern int llapi_copytool_recv(void *priv, struct hsm_action_list **hal,
                                int *msgsize);
 extern int llapi_copytool_free(struct hsm_action_list **hal);
+
+/** @} llapi */
 
 #endif
 

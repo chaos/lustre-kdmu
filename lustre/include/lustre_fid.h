@@ -41,6 +41,11 @@
 #ifndef __LINUX_FID_H
 #define __LINUX_FID_H
 
+/** \defgroup fid fid
+ *
+ * @{
+ */
+
 /*
  * struct lu_fid
  */
@@ -91,6 +96,9 @@ enum {
  * inodes in the IGIF namespace, so these reserved SEQ numbers must be
  * used sparingly until ldiskfs-based MDT backends and/or IGIF FIDs 
  * have been completely removed. */
+
+/** fid sequence for distributed fs objects */
+#define FID_SEQ_DISTRIBUTED_START     (FID_SEQ_START + 0x400ULL)
 
 /** special OID for local objects */
 enum {
@@ -343,5 +351,7 @@ static inline void range_be_to_cpu(struct lu_seq_range *dst, const struct lu_seq
         dst->lsr_end = be64_to_cpu(src->lsr_end);
         dst->lsr_mdt = be32_to_cpu(src->lsr_mdt);
 }
+
+/** @} fid */
 
 #endif /* __LINUX_FID_H */

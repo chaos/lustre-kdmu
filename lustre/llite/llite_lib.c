@@ -137,6 +137,8 @@ static struct ll_sb_info *ll_init_sbi(void)
 
         /* metadata statahead is enabled by default */
         sbi->ll_sa_max = LL_SA_RPC_DEF;
+        atomic_set(&sbi->ll_sa_total, 0);
+        atomic_set(&sbi->ll_sa_wrong, 0);
 
         RETURN(sbi);
 }
@@ -1537,6 +1539,7 @@ void ll_update_inode(struct inode *inode, struct lustre_md *md)
 
         LASSERT ((lsm != NULL) == ((body->valid & OBD_MD_FLEASIZE) != 0));
         if (lsm != NULL) {
+                cfs_down(&lli->lli_och_sem);
                 if (lli->lli_smd == NULL) {
                         if (lsm->lsm_magic != LOV_MAGIC_V1 &&
                             lsm->lsm_magic != LOV_MAGIC_V3) {
@@ -1545,16 +1548,18 @@ void ll_update_inode(struct inode *inode, struct lustre_md *md)
                         }
                         CDEBUG(D_INODE, "adding lsm %p to inode %lu/%u(%p)\n",
                                lsm, inode->i_ino, inode->i_generation, inode);
+                        /* cl_inode_init must go before lli_smd or a race is
+                         * possible where client thinks the file has stripes,
+                         * but lov raid0 is not setup yet and parallel e.g.
+                         * glimpse would try to use uninitialized lov */
                         cl_inode_init(inode, md);
-                        /* ll_inode_size_lock() requires it is only
-                         * called with lli_smd != NULL or lock_lsm == 0
-                         *  or we can race between lock/unlock.
-                         *  bug 9547 */
                         lli->lli_smd = lsm;
+                        cfs_up(&lli->lli_och_sem);
                         lli->lli_maxbytes = lsm->lsm_maxbytes;
                         if (lli->lli_maxbytes > PAGE_CACHE_MAXBYTES)
                                 lli->lli_maxbytes = PAGE_CACHE_MAXBYTES;
                 } else {
+                        cfs_up(&lli->lli_och_sem);
                         LASSERT(lli->lli_smd->lsm_magic == lsm->lsm_magic &&
                                 lli->lli_smd->lsm_stripe_count ==
                                 lsm->lsm_stripe_count);

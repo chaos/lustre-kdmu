@@ -2842,7 +2842,6 @@ static int mdt_msg_check_version(struct lustre_msg *msg)
         switch (lustre_msg_get_opc(msg)) {
         case MDS_CONNECT:
         case MDS_DISCONNECT:
-        case MDS_SET_INFO:
         case OBD_PING:
         case SEC_CTX_INIT:
         case SEC_CTX_INIT_CONT:
@@ -2868,6 +2867,7 @@ static int mdt_msg_check_version(struct lustre_msg *msg)
         case MDS_SYNC:
         case MDS_GETXATTR:
         case MDS_SETXATTR:
+        case MDS_SET_INFO:
         case MDS_GET_INFO:
         case MDS_QUOTACHECK:
         case MDS_QUOTACTL:
@@ -4840,8 +4840,8 @@ static int mdt_object_print(const struct lu_env *env, void *cookie,
                             lu_printer_t p, const struct lu_object *o)
 {
         struct mdt_object *mdto = mdt_obj((struct lu_object *)o);
-        return (*p)(env, cookie, LUSTRE_MDT_NAME"-object@%p(ioepoch=%llu "
-                    "flags=%llx, epochcount=%d, writecount=%d)",
+        return (*p)(env, cookie, LUSTRE_MDT_NAME"-object@%p(ioepoch="LPU64" "
+                    "flags="LPX64", epochcount=%d, writecount=%d)",
                     mdto, mdto->mot_ioepoch, mdto->mot_flags,
                     mdto->mot_ioepoch_count, mdto->mot_writecount);
 }
@@ -5024,14 +5024,11 @@ static int mdt_obd_connect(const struct lu_env *env,
                         memcpy(lcd->lcd_uuid, cluuid, sizeof lcd->lcd_uuid);
                         lexp->exp_mdt_data.med_lcd = lcd;
                         rc = mdt_client_new(env, mdt);
-                        if (rc != 0) {
-                                OBD_FREE_PTR(lcd);
-                                lexp->exp_mdt_data.med_lcd = NULL;
-                        } else {
+                        if (rc == 0)
                                 mdt_export_stats_init(obd, lexp, localdata);
-                        }
-                } else
+                } else {
                         rc = -ENOMEM;
+                }
         }
 
 out:
@@ -5570,7 +5567,7 @@ int mdt_obd_postrecov(struct obd_device *obd)
  */
 int mdt_hsm_copytool_send(struct obd_export *exp)
 {
-        struct lnl_hdr *lh;
+        struct kuc_hdr *lh;
         struct hsm_action_list *hal;
         struct hsm_action_item *hai;
         int rc, len;
@@ -5585,10 +5582,10 @@ int mdt_hsm_copytool_send(struct obd_export *exp)
         if (lh == NULL)
                 RETURN(-ENOMEM);
 
-        lh->lnl_magic = LNL_MAGIC;
-        lh->lnl_transport = LNL_TRANSPORT_HSM;
-        lh->lnl_msgtype = HMT_ACTION_LIST;
-        lh->lnl_msglen = len;
+        lh->kuc_magic = KUC_MAGIC;
+        lh->kuc_transport = KUC_TRANSPORT_HSM;
+        lh->kuc_msgtype = HMT_ACTION_LIST;
+        lh->kuc_msglen = len;
 
         hal = (struct hsm_action_list *)(lh + 1);
         hal->hal_version = HAL_VERSION;
@@ -5609,10 +5606,11 @@ int mdt_hsm_copytool_send(struct obd_export *exp)
 
         /* Uses the ldlm reverse import; this rpc will be seen by
           the ldlm_callback_handler */
-        rc = target_set_info_rpc(exp->exp_imp_reverse, LDLM_SET_INFO,
-                                 sizeof(KEY_HSM_COPYTOOL_SEND),
-                                 KEY_HSM_COPYTOOL_SEND,
-                                 len, lh, NULL);
+        rc = do_set_info_async(exp->exp_imp_reverse,
+                               LDLM_SET_INFO, LUSTRE_OBD_VERSION,
+                               sizeof(KEY_HSM_COPYTOOL_SEND),
+                               KEY_HSM_COPYTOOL_SEND,
+                               len, lh, NULL);
 
         OBD_FREE(lh, len);
 

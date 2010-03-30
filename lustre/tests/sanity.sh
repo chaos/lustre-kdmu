@@ -490,7 +490,7 @@ test_17i() { #bug 20018
 	local foo=$DIR/$tdir/$tfile
 	ln -s $foo $foo || error "create symlink failed"
 #define OBD_FAIL_MDS_READLINK_EPROTO     0x143
-	do_facet mds lctl set_param fail_loc=0x80000144
+	do_facet mds lctl set_param fail_loc=0x80000143
 	ls -l $foo && error "error not detected"
 	return 0
 }
@@ -1203,6 +1203,8 @@ test_27w() { # bug 10997
         $LSTRIPE $DIR/$tdir/f0 -s 65536 || error "lstripe failed"
         size=`$GETSTRIPE $DIR/$tdir/f0 -s`
         [ $size -ne 65536 ] && error "stripe size $size != 65536" || true
+        gsdir=$($LFS getstripe -d $DIR/$tdir)
+        [ $(echo $gsdir | grep -c stripe_count) -ne 1 ] && error "$LFS getstripe -d $DIR/$tdir failed"
 
         [ "$OSTCOUNT" -lt "2" ] && skip_env "skipping multiple stripe count/offset test" && return
         for i in `seq 1 $OSTCOUNT`; do
@@ -2562,7 +2564,7 @@ test_52a() {
 	link $DIR/d52a/foo $DIR/d52a/foo_link 2>/dev/null && error "link worked"
 	echo foo >> $DIR/d52a/foo || error "append foo failed"
 	mrename $DIR/d52a/foo $DIR/d52a/foo_ren && error "rename worked"
-	lsattr $DIR/d52a/foo | egrep -q "^-+[ae]-+ $DIR/d52a/foo" || error "lsattr"
+	lsattr $DIR/d52a/foo | egrep -q "^-+a[-e]+ $DIR/d52a/foo" || error "lsattr"
 	chattr -a $DIR/d52a/foo || error "chattr -a failed"
         cp -r $DIR/d52a /tmp/
 	rm -fr $DIR/d52a || error "cleanup rm failed"
@@ -2582,7 +2584,7 @@ test_52b() {
 	mrename $DIR/d52b/foo $DIR/d52b/foo_ren && error "rename worked"
 	[ -f $DIR/d52b/foo ] || error
 	[ -f $DIR/d52b/foo_ren ] && error
-	lsattr $DIR/d52b/foo | egrep -q "^-+[ie]-+ $DIR/d52b/foo" || error "lsattr"
+	lsattr $DIR/d52b/foo | egrep -q "^-+i[-e]+ $DIR/d52b/foo" || error "lsattr"
 	chattr -i $DIR/d52b/foo || error "chattr failed"
 
 	rm -fr $DIR/d52b || error
@@ -6622,15 +6624,16 @@ run_test 162 "path lookup sanity"
 
 test_163() {
 	remote_mds_nodsh && skip "remote MDS with nodsh" && return
-	copytool --test || { skip "copytool not runnable: $?" && return; }
-	copytool &
+	copytool --test $FSNAME || { skip "copytool not runnable: $?" && return; }
+	copytool $FSNAME &
 	sleep 1
 	local uuid=$($LCTL get_param -n mdc.${FSNAME}-MDT0000-mdc-*.uuid)
 	# this proc file is temporary and linux-only
-	do_facet mds lctl set_param mdt.${FSNAME}-MDT0000.mdccomm=$uuid || error "lnl send failed"
-	kill $!
+	do_facet mds lctl set_param mdt.${FSNAME}-MDT0000.mdccomm=$uuid ||\
+         error "kernel->userspace send failed"
+	kill -INT $!
 }
-run_test 163 "LustreNetLink kernelcomms"
+run_test 163 "kernel <-> userspace comms"
 
 test_169() {
 	# do directio so as not to populate the page cache

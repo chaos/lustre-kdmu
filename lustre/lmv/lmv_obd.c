@@ -806,8 +806,9 @@ static int lmv_iocontrol(unsigned int cmd, struct obd_export *exp,
                 OBD_FREE_PTR(oqctl);
                 break;
         }
+        case OBD_IOC_CHANGELOG_SEND:
         case OBD_IOC_CHANGELOG_CLEAR: {
-                struct ioc_changelog_clear *icc = karg;
+                struct ioc_changelog *icc = karg;
 
                 if (icc->icc_mdtindex >= count)
                         RETURN(-ENODEV);
@@ -2413,7 +2414,7 @@ static int lmv_readpage(struct obd_export *exp, const struct lu_fid *fid,
                                 CDEBUG(D_INODE,
                                        ""DFID" reset end "LPX64" tgt %d\n",
                                        PFID(&rid),
-                                       le64_to_cpu(dp->ldp_hash_end), tgt_idx);
+                                       (__u64)le64_to_cpu(dp->ldp_hash_end), tgt_idx);
                         }
                 }
                 cfs_kunmap(page);
@@ -2967,9 +2968,8 @@ int lmv_intent_getattr_async(struct obd_export *exp,
         RETURN(rc);
 }
 
-int lmv_revalidate_lock(struct obd_export *exp,
-                        struct lookup_intent *it,
-                        struct lu_fid *fid)
+int lmv_revalidate_lock(struct obd_export *exp, struct lookup_intent *it,
+                        struct lu_fid *fid, __u32 *bits)
 {
         struct obd_device       *obd = exp->exp_obd;
         struct lmv_obd          *lmv = &obd->u.lmv;
@@ -2985,7 +2985,7 @@ int lmv_revalidate_lock(struct obd_export *exp,
         if (IS_ERR(tgt))
                 RETURN(PTR_ERR(tgt));
 
-        rc = md_revalidate_lock(tgt->ltd_exp, it, fid);
+        rc = md_revalidate_lock(tgt->ltd_exp, it, fid, bits);
         RETURN(rc);
 }
 

@@ -41,6 +41,11 @@
 #ifndef LIBLUSTRE_H__
 #define LIBLUSTRE_H__
 
+/** \defgroup liblustre liblustre
+ *
+ * @{
+ */
+
 #ifdef __KERNEL__
 #error Kernel files should not #include <liblustre.h>
 #endif
@@ -302,7 +307,6 @@ int cfs_curproc_is_in_groups(gid_t gid);
 #define daemonize(l) do {} while (0)
 #define sigfillset(l) do {} while (0)
 #define recalc_sigpending(l) do {} while (0)
-#define cfs_kernel_thread(l,m,n) LBUG()
 
 #define USERMODEHELPER(path, argv, envp) (0)
 #define SIGNAL_MASK_ASSERT()
@@ -517,5 +521,7 @@ static inline void set_fs(mm_segment_t seg)
 #include <lustre_import.h>
 #include <lustre_export.h>
 #include <lustre_net.h>
+
+/** @} liblustre */
 
 #endif
