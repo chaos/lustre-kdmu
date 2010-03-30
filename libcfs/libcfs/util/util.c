@@ -26,61 +26,22 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright  2010 Sun Microsystems, Inc. All rights reserved
  * Use is subject to license terms.
  */
 /*
  * This file is part of Lustre, http://www.lustre.org/
  * Lustre is a trademark of Sun Microsystems, Inc.
- */
-
-#ifndef __LINUX_MDT_H
-#define __LINUX_MDT_H
-
-/** \defgroup mdt mdt
  *
- * @{
+ * libcfs/libcfs/util/util.c
+ *
  */
 
-#include <lustre/lustre_idl.h>
-#include <lustre_req_layout.h>
-#include <md_object.h>
-#include <dt_object.h>
-#include <libcfs/libcfs.h>
+#include <libcfs/libcfsutil.h>
+#include "../tracefile.h"
 
-/*
- * Common thread info for mdt, seq and fld
- */
-struct com_thread_info {
-        /*
-         * for req-layout interface.
-         */
-        struct req_capsule *cti_pill;
-};
-
-enum {
-        ESERIOUS = 0x0001000
-};
-
-static inline int err_serious(int rc)
+int
+libcfs_tcd_type_max(void)
 {
-        LASSERT(rc < 0);
-        LASSERT(-rc < ESERIOUS);
-        return -(-rc | ESERIOUS);
+        return CFS_TCD_TYPE_MAX;
 }
-
-static inline int clear_serious(int rc)
-{
-        if (rc < 0)
-                rc = -(-rc & ~ESERIOUS);
-        return rc;
-}
-
-static inline int is_serious(int rc)
-{
-        return (rc < 0 && -rc & ESERIOUS);
-}
-
-/** @} mdt */
-
-#endif

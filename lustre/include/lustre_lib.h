@@ -41,6 +41,11 @@
 #ifndef _LUSTRE_LIB_H
 #define _LUSTRE_LIB_H
 
+/** \defgroup lib lib
+ *
+ * @{
+ */
+
 #include <libcfs/libcfs.h>
 #include <lustre/lustre_idl.h>
 #include <lustre_ver.h>
@@ -76,10 +81,11 @@ void target_destroy_export(struct obd_export *exp);
 int target_pack_pool_reply(struct ptlrpc_request *req);
 int target_handle_ping(struct ptlrpc_request *req);
 void target_committed_to_req(struct ptlrpc_request *req);
-int target_set_info_rpc(struct obd_import *imp, int opcode,
-                        obd_count keylen, void *key,
-                        obd_count vallen, void *val,
-                        struct ptlrpc_request_set *set);
+int do_set_info_async(struct obd_import *imp,
+                      int opcode, int version,
+                      obd_count keylen, void *key,
+                      obd_count vallen, void *val,
+                      struct ptlrpc_request_set *set);
 
 /* quotacheck callback, dqacq/dqrel callback handler */
 int target_handle_qc_callback(struct ptlrpc_request *req);
@@ -817,5 +823,7 @@ do {                                                                    \
 #else
 #define LIBLUSTRE_CLIENT (1)
 #endif
+
+/** @} lib */
 
 #endif /* _LUSTRE_LIB_H */

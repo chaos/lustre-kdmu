@@ -41,6 +41,11 @@
 #ifndef _LUSTRE_USER_H
 #define _LUSTRE_USER_H
 
+/** \defgroup lustreuser lustreuser
+ *
+ * @{
+ */
+
 #include <lustre/ll_fiemap.h>
 #if defined(__linux__)
 #include <linux/lustre_user.h>
@@ -329,7 +334,11 @@ typedef struct lu_fid lustre_fid;
 
 /* scanf input parse format -- strip '[' first.
    e.g. sscanf(fidstr, SFID, RFID(&fid)); */
-#define SFID "0x%llx:0x%x:0x%x"
+/* #define SFID "0x"LPX64i":0x"LPSZX":0x"LPSZX""
+liblustreapi.c:2893: warning: format '%lx' expects type 'long unsigned int *', but argument 4 has type 'unsigned int *'
+liblustreapi.c:2893: warning: format '%lx' expects type 'long unsigned int *', but argument 5 has type 'unsigned int *'
+*/
+#define SFID "0x"LPX64i":0x%x:0x%x"
 #define RFID(fid)     \
         &((fid)->f_seq), \
         &((fid)->f_oid), \
@@ -594,5 +603,6 @@ static __inline__ struct hsm_action_item * hai_next(struct hsm_action_item *hai)
                                           cfs_size_round(hai->hai_len));
 }
 
+/** @} lustreuser */
 
 #endif /* _LUSTRE_USER_H */
