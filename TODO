@@ -3,5 +3,6 @@ ofd:
 * grants fail sometimes
 * lut: unification with mdt
 * check error handling
+* compare with uptodate obdfilter to identify missed fixes, etc
 
 
