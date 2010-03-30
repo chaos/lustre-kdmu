@@ -35,6 +35,7 @@
 #
 
 if DMU_OSD_ENABLED
+if ! KDMU
 
 DMU_INC = -I $(DMU_SRC)/src/lib/libudmu/include
 
@@ -44,10 +45,11 @@ libdmuosd_a_CPPFLAGS = $(LLCPPFLAGS) -DLUSTRE_VERSION=\"32\" -DBUILD_VERSION=\"1
 libdmuosd_a_CFLAGS = $(LLCFLAGS) ${DMU_INC}
 
 endif
-
-if MODULES
-modulefs_DATA = osd$(KMODEXT)
 endif
 
-MOSTLYCLEANFILES := @MOSTLYCLEANFILES@ 
+if MODULES
+modulefs_DATA = osd_zfs$(KMODEXT)
+endif
+
+MOSTLYCLEANFILES := @MOSTLYCLEANFILES@
 DIST_SOURCES := $(osd_zfs-objs:%.o=%.c) osd_internal.h udmu.h udmu_util.h # osd_oi.h osd_igif.h

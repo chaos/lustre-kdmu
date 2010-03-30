@@ -486,29 +486,48 @@ if test x$dmu_osd = xyes; then
 		AC_CONFIG_SUBDIRS(lustre/zfs-lustre)
 	else
 		# Kernel DMU
-		SPL_SUBDIR="spl"
-		ZFS_SUBDIR="zfs"
+		AC_ARG_WITH([spl],
+			AC_HELP_STRING([--with-spl], [set path to spl]),
+			[
+				SPL_SUBDIR=""
+				SPL_DIR="$with_spl"
+				SPL_EXTRA_PRE_CFLAGS="-I$SPL_DIR"
+			],[
+				SPL_SUBDIR="spl"
+				SPL_DIR="$PWD/$SPL_SUBDIR"
+				LB_CHECK_FILE([$SPL_DIR/module/spl/spl-generic.c],[],[
+					AC_MSG_ERROR([A complete SPL tree was not found in $SPL_DIR.])
+				])
+				SPL_EXTRA_PRE_CFLAGS="-I$SPL_DIR/include -I$SPL_DIR"
+				AC_CONFIG_SUBDIRS(spl)
 
-		SPL_DIR="$PWD/$SPL_SUBDIR"
-		ZFS_DIR="$PWD/$ZFS_SUBDIR"
+			])
 
-		LB_CHECK_FILE([$SPL_DIR/module/spl/spl-generic.c],[],[
-			AC_MSG_ERROR([A complete SPL tree was not found in $SPL_DIR.])
-		])
-
-		LB_CHECK_FILE([$ZFS_DIR/module/zfs/dmu.c],[],[
-			AC_MSG_ERROR([A complete kernel DMU tree was not found in $ZFS_DIR.])
-		])
-
-		AC_CONFIG_SUBDIRS(spl)
-		ac_configure_args="$ac_configure_args --with-spl=$SPL_DIR"
-		AC_CONFIG_SUBDIRS(zfs)
+		AC_ARG_WITH([zfs],
+			AC_HELP_STRING([--with-zfs], [set path to zfs]),
+			[
+				ZFS_SUBDIR=""
+				ZFS_DIR="$with_zfs"
+				ZFS_EXTRA_PRE_CFLAGS="-I$ZFS_DIR"
+			],[
+				ZFS_SUBDIR="zfs"
+				ZFS_DIR="$PWD/$ZFS_SUBDIR"
+				LB_CHECK_FILE([$ZFS_DIR/module/zfs/dmu.c],[],[
+					AC_MSG_ERROR([A complete kernel DMU tree was not found in $ZFS_DIR.])
+				])
+				ZFS_EXTRA_PRE_CFLAGS="-I$ZFS_DIR/module/zcommon/include -I$ZFS_DIR/module/avl/include -I$ZFS_DIR/module/nvpair/include -I$ZFS_DIR/module/zfs/include -I$ZFS_DIR"
+				ac_configure_args="$ac_configure_args --with-spl=$SPL_DIR"
+				AC_CONFIG_SUBDIRS(zfs)
+			])
 	fi
 fi
+
 AC_SUBST(SPL_SUBDIR)
 AC_SUBST(ZFS_SUBDIR)
 AC_SUBST(SPL_DIR)
 AC_SUBST(ZFS_DIR)
+AC_SUBST(SPL_EXTRA_PRE_CFLAGS)
+AC_SUBST(ZFS_EXTRA_PRE_CFLAGS)
 AM_CONDITIONAL(DMU_OSD_ENABLED, test x$dmu_osd = xyes)
 AM_CONDITIONAL(KDMU, test x$dmu_osd$enable_uoss = xyesno)
 ])

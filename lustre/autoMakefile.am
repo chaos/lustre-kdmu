@@ -40,7 +40,7 @@ AUTOMAKE_OPTIONS = foreign
 ALWAYS_SUBDIRS := include lvfs obdclass ldlm ptlrpc osc lov obdecho \
 	mgc fid fld doc utils tests scripts autoconf contrib
 
-SERVER_SUBDIRS := ofd ost mds mgs mdt cmm mdd osd
+SERVER_SUBDIRS := ofd ost mds mgs mdt cmm mdd osd dmu-osd
 
 CLIENT_SUBDIRS := mdc lmv llite lclient
 
@@ -69,7 +69,7 @@ SUBDIRS += $(LIBLUSTRE_SUBDIRS)
 endif
 
 DIST_SUBDIRS := $(ALWAYS_SUBDIRS) $(SERVER_SUBDIRS) $(CLIENT_SUBDIRS)	\
-	$(LIBLUSTRE_SUBDIRS) $(QUOTA_SUBDIRS) dmu-osd
+	$(LIBLUSTRE_SUBDIRS) $(QUOTA_SUBDIRS)
 
 EXTRA_DIST = BUGS FDL kernel_patches
 
