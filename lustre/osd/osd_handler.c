@@ -903,6 +903,11 @@ static int osd_label_set(const struct lu_env *env, const struct dt_device *dt,
 out:
         journal_stop(handle);
 
+        if (rc == 0) {
+                osd_procfs_fini(osd_dt_dev(dt));
+                osd_procfs_init(osd_dt_dev(dt), label);
+        }
+
         return rc;
 }
 
@@ -4004,9 +4009,13 @@ static int osd_mount(const struct lu_env *env,
 
         ENTRY;
 
+        if (strlen(dev) >= sizeof(o->od_mntdev))
+                RETURN(-E2BIG);
+
         if (o->od_mnt != NULL)
                 RETURN(0);
         
+        strcpy(o->od_mntdev, dev);
         o->od_obj_area = NULL;
 
         OBD_PAGE_ALLOC(__page, CFS_ALLOC_STD);
@@ -4041,6 +4050,8 @@ static int osd_mount(const struct lu_env *env,
                 LCONSOLE_WARN("OSD: IAM mode enabled\n");
         } else
                 o->od_iop_mode = 1;
+
+        osd_procfs_init(o, osd_label_get(env, &o->od_dt_dev));
 out:
         OBD_PAGE_FREE(__page);
 

@@ -238,6 +238,7 @@ struct osd_device {
         struct fsfilt_operations *od_fsops;
 
         struct osd_compat_objid  *od_ost_map;
+        char                      od_mntdev[128];
 };
 
 /**

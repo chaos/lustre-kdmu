@@ -221,13 +221,9 @@ static int lprocfs_osd_rd_mntdev(char *page, char **start, off_t off, int count,
         struct osd_device *osd = data;
 
         LASSERT(osd != NULL);
-        /* XXX */
-        //LASSERT(osd->od_mount->lmi_mnt->mnt_devname);
         *eof = 1;
 
-        /* XXX */
-        return snprintf(page, count, "%s\n", "ohoho");
-                        //osd->od_mount->lmi_mnt->mnt_devname);
+        return snprintf(page, count, "%s\n", osd->od_mntdev);
 }
 
 struct lprocfs_vars lprocfs_osd_obd_vars[] = {
