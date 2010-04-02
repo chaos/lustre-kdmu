@@ -25,16 +25,16 @@ ALWAYS_EXCEPT="$ALWAYS_EXCEPT 76"
 
 # kDMU still need fixes
 # 52  -- immutable/append flags aren't implemented
-# 57  -- inode counting is different in zfs
+# 54c -- need support for mntdev in osd
+# 56a -- FAIL: lfs getstripe --obd wrong: found 6, expected 3 
 # 60  -- llog is broken
-# 129 -- broken /proc/fs/lustre/osd-* naming
+# 103 -- broken acl support
 # 132 -- inode counting is different in zfs
 # 155 -- we don't control cache via OSD yet
 # 156 -- ^^
 # 160 -- changelogs don't work yet
-# 162 -- DMU's osd_object_create() doesn't set XATTR_NAME_LMA
 # 180 -- ofd doesn't work with obdecho 
-ALWAYS_EXCEPT="$ALWAYS_EXCEPT 52a 52b 57a 57b 60 129 132 156 160 180"
+ALWAYS_EXCEPT="$ALWAYS_EXCEPT 52a 52b 54c 56a 60 103 132 155 156 160 180"
 
 case `uname -r` in
 2.4*) FSTYPE=${FSTYPE:-ext3} ;;
@@ -2615,7 +2615,7 @@ test_53() {
 	local ostnum
 
 	# only test MDT0000
-        for value in $(do_facet $SINGLEMDS lctl get_param osc.*-osc-MDT0000.prealloc_last_id) ; do
+        for value in $(do_facet $SINGLEMDS lctl get_param os[cp].*-os[cp]-MDT0000.prealloc_last_id) ; do
                 param=`echo ${value[0]} | cut -d "=" -f1`
                 ostname=`echo $param | cut -d "." -f2 | cut -d - -f 1-2`
                 mds_last=$(do_facet $SINGLEMDS lctl get_param -n $param)
@@ -2974,7 +2974,7 @@ test_57a() {
 	# note test will not do anything if MDS is not local
 	remote_mds_nodsh && skip "remote MDS with nodsh" && return
 
-	local MNTDEV="osd.*MDT*.mntdev"
+	local MNTDEV="osd*.*MDT*.mntdev"
 	DEV=$(do_facet $SINGLEMDS lctl get_param -n $MNTDEV)
 	[ -z "$DEV" ] && error "can't access $MNTDEV"
 	for DEV in $(do_facet $SINGLEMDS lctl get_param -n $MNTDEV); do
@@ -3009,7 +3009,7 @@ test_57b() {
 	sync
 	sleep 1
 	df $dir  #make sure we get new statfs data
-	local MDSFREE=$(do_facet $mymds lctl get_param -n osd.*MDT000$((num -1)).kbytesfree)
+	local MDSFREE=$(do_facet $mymds lctl get_param -n osd*.*MDT000$((num -1)).kbytesfree)
 	local MDCFREE=$(lctl get_param -n mdc.*MDT000$((num -1))-mdc-*.kbytesfree)
 	echo "opening files to create objects/EAs"
 	local FILE
@@ -3023,7 +3023,7 @@ test_57b() {
 
 	sleep 1  #make sure we get new statfs data
 	df $dir
-	local MDSFREE2=$(do_facet $mymds lctl get_param -n osd.*MDT000$((num -1)).kbytesfree)
+	local MDSFREE2=$(do_facet $mymds lctl get_param -n osd*.*MDT000$((num -1)).kbytesfree)
 	local MDCFREE2=$(lctl get_param -n mdc.*MDT000$((num -1))-mdc-*.kbytesfree)
 	if [ "$MDCFREE2" -lt "$((MDCFREE - 8))" ]; then
 		if [ "$MDSFREE" != "$MDSFREE2" ]; then
@@ -5674,7 +5674,7 @@ set_dir_limits () {
         for node in $(mdts_nodes); do
                 devs=$(do_node $node "lctl get_param -n devices" | awk '($3 ~ "mdt" && $4 ~ "MDT") { print $4 }')
 	        for dev in $devs; do
-		        mntdev=$(do_node $node "lctl get_param -n osd.$dev.mntdev")
+		        mntdev=$(do_node $node "lctl get_param -n osd*.$dev.mntdev")
 		        do_node $node "echo $1 >$LDPROC/\\\$(basename $mntdev)/max_dir_size"
 		done
 	done
