@@ -792,7 +792,7 @@ build_lustre() {
         echo NORPM mode. Only compiling.
     fi
 
-    # build and install the spl and zfs -devel RPMs for lustre to use
+    # build and install the spl and zfs (and -devel) RPMs for lustre to use
     local pkg
     for pkg in spl zfs; do
 
@@ -837,6 +837,26 @@ build_lustre() {
         ln $pkg/$pkg-*.tar.gz $TOPDIR/SOURCES ||
             error "failed to link $pkg/$pkg-*.tar.gz into $TOPDIR/SOURCES"
 
+        # first, the userspace tools RPMs
+        if ! $RPMBUILD $targets ${rpmbuildopt} $pkg/$pkg.spec \
+            --nodeps \
+            --define "_tmppath /var/tmp" \
+            --define "_topdir $TOPDIR" 2>&1; then
+            return 255
+        fi
+
+        if $DO_SRC; then
+            # XXX - hackity hack hack.  see above.
+            # if ! $RPMBUILD -ts lustre/$pkg/$pkg-*.tar.gz
+            if ! $RPMBUILD -bs $pkg/$pkg.spec \
+                --nodeps \
+                --define "_tmppath /var/tmp" \
+                --define "_topdir $TOPDIR" 2>&1; then
+                return 255
+            fi
+        fi
+
+        # now the kernel modules RPMs
         if ! $RPMBUILD $targets ${rpmbuildopt} $pkg/$rpmmod.spec \
             --nodeps \
             --define "require_kdir ${linux}" \

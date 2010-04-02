@@ -1809,10 +1809,13 @@ int main(int argc, char *const argv[])
         }
 
         if (mountopts) {
-                /* If user specifies mount opts, don't use defaults,
-                   but always use always_mountopts */
-                sprintf(ldd->ldd_mount_opts, "%s,%s",
-                        always_mountopts, mountopts);
+                trim_mountfsoptions(mountopts);
+                (void)check_mountfsoptions(mountopts, default_mountopts, 1);
+                if (check_mountfsoptions(mountopts, always_mountopts, 0)) {
+                        ret = EINVAL;
+                        goto out;
+                }
+                sprintf(ldd->ldd_mount_opts, "%s", mountopts);
         } else {
 #ifdef TUNEFS
                 if (ldd->ldd_mount_opts[0] == 0)
@@ -1821,6 +1824,7 @@ int main(int argc, char *const argv[])
                 {
                         sprintf(ldd->ldd_mount_opts, "%s%s",
                                 always_mountopts, default_mountopts);
+                        trim_mountfsoptions(ldd->ldd_mount_opts);
                 }
         }
 
