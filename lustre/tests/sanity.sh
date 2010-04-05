@@ -25,16 +25,18 @@ ALWAYS_EXCEPT="$ALWAYS_EXCEPT 76"
 
 # kDMU still need fixes
 # 52  -- immutable/append flags aren't implemented
-# 54c -- need support for mntdev in osd
+# 54c -- e2fsck lookups mntdev in osd/, doesn't support osd-{ldiskfs/zfs}
 # 56a -- FAIL: lfs getstripe --obd wrong: found 6, expected 3 
 # 60  -- llog is broken
-# 103 -- broken acl support
-# 132 -- inode counting is different in zfs
 # 155 -- we don't control cache via OSD yet
 # 156 -- ^^
 # 160 -- changelogs don't work yet
 # 180 -- ofd doesn't work with obdecho 
-ALWAYS_EXCEPT="$ALWAYS_EXCEPT 52a 52b 54c 56a 60 103 132 155 156 160 180"
+ALWAYS_EXCEPT="$ALWAYS_EXCEPT 52a 52b 54c 56a 60 155 156 160 180"
+
+# 132 -- inode counting is different in zfs
+[ "$FSTYPE" = "zfs" -o "$OSTFSTYPE" = "zfs" -o "$MDSFSTYPE" = "zfs" ] && \
+	ALWAYS_EXCEPT="$ALWAYS_EXCEPT 132"
 
 case `uname -r` in
 2.4*) FSTYPE=${FSTYPE:-ext3} ;;
