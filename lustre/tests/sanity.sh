@@ -28,15 +28,15 @@ ALWAYS_EXCEPT="$ALWAYS_EXCEPT 76"
 # 54c -- e2fsck lookups mntdev in osd/, doesn't support osd-{ldiskfs/zfs}
 # 56a -- FAIL: lfs getstripe --obd wrong: found 6, expected 3 
 # 60  -- llog is broken
-# 155 -- we don't control cache via OSD yet
-# 156 -- ^^
 # 160 -- changelogs don't work yet
 # 180 -- ofd doesn't work with obdecho 
-ALWAYS_EXCEPT="$ALWAYS_EXCEPT 52a 52b 54c 56a 60 155 156 160 180"
+ALWAYS_EXCEPT="$ALWAYS_EXCEPT 52 54c 56a 60 160 180"
 
 # 132 -- inode counting is different in zfs
+# 155 -- we don't control cache via ZFS OSD yet
+# 156 -- we don't control cache via ZFS OSD yet
 [ "$FSTYPE" = "zfs" -o "$OSTFSTYPE" = "zfs" -o "$MDSFSTYPE" = "zfs" ] && \
-	ALWAYS_EXCEPT="$ALWAYS_EXCEPT 132"
+	ALWAYS_EXCEPT="$ALWAYS_EXCEPT 132 155 156"
 
 case `uname -r` in
 2.4*) FSTYPE=${FSTYPE:-ext3} ;;
@@ -6144,7 +6144,7 @@ run_test 150 "truncate/append tests"
 function roc_hit() {
     local list=$(comma_list $(osts_nodes))
 
-    ACCNUM=$(do_nodes $list $LCTL get_param -n obdfilter.*.stats | \
+    ACCNUM=$(do_nodes $list $LCTL get_param -n osd*.*.stats | \
         awk '/'cache_hit'/ {sum+=$2} END {print sum}')
     echo $ACCNUM
 }
@@ -6156,7 +6156,7 @@ function set_cache() {
         on=0;
     fi
     local list=$(comma_list $(osts_nodes))
-    do_nodes $list lctl set_param obdfilter.*.${1}_cache_enable $on
+    do_nodes $list lctl set_param osd*.*.${1}_cache_enable $on
 
     cancel_lru_locks osc
 }
@@ -6168,18 +6168,18 @@ test_151() {
         local list=$(comma_list $(osts_nodes))
 
         # check whether obdfilter is cache capable at all
-        if ! do_nodes $list $LCTL get_param -n obdfilter.*.read_cache_enable > /dev/null; then
+        if ! do_nodes $list $LCTL get_param -n osd*.*.read_cache_enable > /dev/null; then
                 echo "not cache-capable obdfilter"
                 return 0
         fi
 
         # check cache is enabled on all obdfilters
-        if do_nodes $list $LCTL get_param -n obdfilter.*.read_cache_enable | grep 0 >&/dev/null; then
+        if do_nodes $list $LCTL get_param -n osd*.*.read_cache_enable | grep 0 >&/dev/null; then
                 echo "oss cache is disabled"
                 return 0
         fi
 
-        do_nodes $list $LCTL set_param -n obdfilter.*.writethrough_cache_enable 1
+        do_nodes $list $LCTL set_param -n osd*.*.writethrough_cache_enable 1
 
         # pages should be in the case right after write
         dd if=/dev/urandom of=$DIR/$tfile bs=4k count=$CPAGES || error "dd failed"
@@ -6193,7 +6193,7 @@ test_151() {
 
         # the following read invalidates the cache
         cancel_lru_locks osc
-        do_nodes $list $LCTL set_param -n obdfilter.*.read_cache_enable 0
+        do_nodes $list $LCTL set_param -n osd*.*.read_cache_enable 0
         cat $DIR/$tfile >/dev/null
 
         # now data shouldn't be found in the cache
@@ -6205,7 +6205,7 @@ test_151() {
                 error "IN CACHE: before: $BEFORE, after: $AFTER"
         fi
 
-        do_nodes $list $LCTL set_param -n obdfilter.*.read_cache_enable 1
+        do_nodes $list $LCTL set_param -n osd*.*.read_cache_enable 1
         rm -f $DIR/$tfile
 }
 run_test 151 "test cache on oss and controls ==============================="
@@ -6259,6 +6259,9 @@ test_155_load() {
     local big=$(do_nodes $list grep "cache" /proc/cpuinfo | \
         awk '{sum+=$4} END{print sum}')
 
+	if let "big == 0"; then
+		let "big=512"
+	fi
     log big is $big K
 
     dd if=/dev/urandom of=$temp bs=6096 count=1 || \
