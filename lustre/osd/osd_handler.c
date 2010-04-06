@@ -4117,6 +4117,9 @@ static struct lu_device *osd_device_alloc(const struct lu_env *env,
                                 l = ERR_PTR(-ENOMEM);
                         }
                         o->od_iop_mode = 1;
+                        o->od_read_cache = 1;
+                        o->od_writethrough_cache = 1;
+                        o->od_readcache_max_filesize = OSD_MAX_CACHE_SIZE;
                 } else
                         l = ERR_PTR(result);
 

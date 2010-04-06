@@ -160,7 +160,7 @@ static int dio_complete_routine(struct bio *bio, unsigned int done, int error)
                         LASSERT(PageLocked(bvl->bv_page));
                         ClearPageConstant(bvl->bv_page);
                 }
-        } else {
+        } else if (iobuf->dr_pages[0]->mapping) {
                 if (mapping_cap_page_constant_write(iobuf->dr_pages[0]->mapping)){
                         bio_for_each_segment(bvl, bio, i) {
                                 ClearPageConstant(bvl->bv_page);
@@ -371,6 +371,22 @@ static int osd_map_remote_to_local(loff_t offset, ssize_t len, int *nrpages,
         RETURN(0);
 }
 
+struct page *osd_get_page(struct dt_object *dt, loff_t offset, int rw)
+{
+        struct inode      *inode = osd_dt_obj(dt)->oo_inode;
+        struct osd_device *d = osd_obj2dev(osd_dt_obj(dt));
+        struct page       *page;
+
+        LASSERT(inode);
+
+        page = find_or_create_page(inode->i_mapping, offset >> CFS_PAGE_SHIFT,
+                                   GFP_NOFS | __GFP_HIGHMEM);
+        if (unlikely(page == NULL))
+                lprocfs_counter_add(d->od_stats, LPROC_OSD_NO_PAGE, 1);
+
+        return page;
+}
+
 int osd_get_bufs(const struct lu_env *env, struct dt_object *d, loff_t pos,
                  ssize_t len, struct niobuf_local *l, int rw,
                  struct lustre_capa *capa)
@@ -398,9 +414,7 @@ int osd_get_bufs(const struct lu_env *env, struct dt_object *d, loff_t pos,
                  * needs to keep the pages all aligned properly. */
                 lb->obj = obj;
         
-                lb->page = find_or_create_page(obj->oo_inode->i_mapping,
-                                                lb->file_offset >> CFS_PAGE_SHIFT,
-                                                GFP_NOFS | __GFP_HIGHMEM);
+                lb->page = osd_get_page(d, lb->file_offset, rw);
                 if (lb->page == NULL)
                         GOTO(cleanup, rc = -ENOMEM);
 
@@ -454,9 +468,11 @@ static int osd_write_prep(const struct lu_env *env, struct dt_object *dt,
         struct filter_iobuf *iobuf = &oti->oti_iobuf;
         struct inode *inode = osd_dt_obj(dt)->oo_inode;
         struct osd_device  *osd = osd_obj2dev(osd_dt_obj(dt));
+        struct timeval start, end;
+        unsigned long timediff;
         ssize_t isize;
         __s64 maxidx;
-        int rc, i;
+        int rc, i, cache = 0;
 
         LASSERT(inode);
 
@@ -465,7 +481,17 @@ static int osd_write_prep(const struct lu_env *env, struct dt_object *dt,
         isize = i_size_read(inode);
         maxidx = ((isize + CFS_PAGE_SIZE - 1) >> CFS_PAGE_SHIFT) - 1;
 
+        if (osd->od_writethrough_cache)
+                cache = 1;
+        if (isize > osd->od_readcache_max_filesize)
+                cache = 0;
+
+        cfs_gettimeofday(&start);
         for (i = 0; i < npages; i++) {
+
+                if (cache == 0)
+                        truncate_complete_page(inode->i_mapping, lb[i].page);
+
                 if (lb[i].len == CFS_PAGE_SIZE)
                         continue;
 
@@ -484,6 +510,10 @@ static int osd_write_prep(const struct lu_env *env, struct dt_object *dt,
                         kunmap(lb[i].page);
                 }
         }
+        cfs_gettimeofday(&end);
+        timediff = cfs_timeval_sub(&end, &start, NULL);
+        lprocfs_counter_add(osd->od_stats, LPROC_OSD_GET_PAGE, timediff);
+
         rc = osd->od_fsops->fs_map_inode_pages(inode, iobuf->dr_pages,
                         iobuf->dr_npages, iobuf->dr_blocks,
                         NULL, 0, NULL);
@@ -565,6 +595,8 @@ static int osd_write_commit(const struct lu_env *env, struct dt_object *dt,
         }
                 
         rc = osd_do_bio(inode, iobuf, OBD_BRW_WRITE);
+        /* XXX: if write fails, we should drop pages from the cache */
+
         RETURN(0);
 }
 
@@ -575,12 +607,20 @@ static int osd_read_prep(const struct lu_env *env, struct dt_object *dt,
         struct filter_iobuf *iobuf = &oti->oti_iobuf;
         struct inode *inode = osd_dt_obj(dt)->oo_inode;
         struct osd_device  *osd = osd_obj2dev(osd_dt_obj(dt));
-        int rc = 0, i, m = 0;
+        struct timeval start, end;
+        unsigned long timediff;
+        int rc = 0, i, m = 0, cache = 0;
 
         LASSERT(inode);
 
         filter_init_iobuf(iobuf);
 
+        if (osd->od_read_cache)
+                cache = 1;
+        if (i_size_read(inode) > osd->od_readcache_max_filesize)
+                cache = 0;
+
+        cfs_gettimeofday(&start);
         for (i = 0; i < npages; i++) {
 
                 if (i_size_read(inode) <= lb[i].file_offset)
@@ -594,11 +634,22 @@ static int osd_read_prep(const struct lu_env *env, struct dt_object *dt,
                         lb[i].rc = lb[i].len;
                 m += lb[i].len;
 
-                if (PageUptodate(lb[i].page))
-                        continue;
-
-                filter_iobuf_add_page(iobuf, lb[i].page);
+                lprocfs_counter_add(osd->od_stats, LPROC_OSD_CACHE_ACCESS, 1);
+                if (PageUptodate(lb[i].page)) {
+                        lprocfs_counter_add(osd->od_stats,
+                                            LPROC_OSD_CACHE_HIT, 1);
+                } else {
+                        lprocfs_counter_add(osd->od_stats,
+                                            LPROC_OSD_CACHE_MISS, 1);
+                        filter_iobuf_add_page(iobuf, lb[i].page);
+                }
+                if (cache == 0)
+                        truncate_complete_page(inode->i_mapping, lb[i].page);
         }
+        cfs_gettimeofday(&end);
+        timediff = cfs_timeval_sub(&end, &start, NULL);
+        lprocfs_counter_add(osd->od_stats, LPROC_OSD_GET_PAGE, timediff);
+
         if (iobuf->dr_npages) {
                 rc = osd->od_fsops->fs_map_inode_pages(inode, iobuf->dr_pages,
                                 iobuf->dr_npages,

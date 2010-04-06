@@ -239,6 +239,10 @@ struct osd_device {
 
         struct osd_compat_objid  *od_ost_map;
         char                      od_mntdev[128];
+
+        unsigned long long        od_readcache_max_filesize;
+        int                       od_read_cache;
+        int                       od_writethrough_cache;
 };
 
 /**
@@ -464,6 +468,19 @@ static inline int osd_invariant(const struct osd_object *obj)
 #else
 #define osd_invariant(obj) (1)
 #endif
+
+enum {
+        LPROC_OSD_READ_BYTES = 0,
+        LPROC_OSD_WRITE_BYTES = 1,
+        LPROC_OSD_GET_PAGE = 2,
+        LPROC_OSD_NO_PAGE = 3,
+        LPROC_OSD_CACHE_ACCESS = 4,
+        LPROC_OSD_CACHE_HIT = 5,
+        LPROC_OSD_CACHE_MISS = 6,
+        LPROC_OSD_LAST,
+};
+
+#define OSD_MAX_CACHE_SIZE OBD_OBJECT_EOF
 
 #endif /* __KERNEL__ */
 #endif /* _OSD_INTERNAL_H */
