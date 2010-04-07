@@ -1741,6 +1741,70 @@ test_33b() {
 }
 run_test 33b "test open file with malformed flags (No panic and return error)"
 
+test_33c() {
+        local ostnum
+        local ostname
+        local write_bytes
+        local all_zeros
+
+        all_zeros=:
+        rm -fr $DIR/d33
+        mkdir -p $DIR/d33
+        # Read: 0, Write: 4, create/destroy: 2/0, stat: 1, punch: 0
+
+        sync
+        for ostnum in $(seq $OSTCOUNT); do
+                # test-framework's OST numbering is one-based, while Lustre's
+                # is zero-based
+                ostname=$(printf "lustre-OST%.4d" $((ostnum - 1)))
+                # Parsing llobdstat's output sucks; we could grep the /proc
+                # path, but that's likely to not be as portable as using the
+                # llobdstat utility.  So we parse lctl output instead.
+                write_bytes=$(do_facet ost$ostnum lctl get_param -n \
+                        obdfilter/$ostname/stats |
+                        awk '/^write_bytes/ {print $7}' )
+                echo "baseline_write_bytes@$OSTnum/$ostname=$write_bytes"
+                if (( ${write_bytes:-0} > 0 ))
+                then
+                        all_zeros=false
+                        break;
+                fi
+        done
+
+        $all_zeros || return 0
+
+        # Write four bytes
+        echo foo > $DIR/d33/bar
+        # Really write them
+        sync
+
+        # Total up write_bytes after writing.  We'd better find non-zeros.
+        for ostnum in $(seq $OSTCOUNT); do
+                ostname=$(printf "lustre-OST%.4d" $((ostnum - 1)))
+                write_bytes=$(do_facet ost$ostnum lctl get_param -n \
+                        obdfilter/$ostname/stats |
+                        awk '/^write_bytes/ {print $7}' )
+                echo "write_bytes@$OSTnum/$ostname=$write_bytes"
+                if (( ${write_bytes:-0} > 0 ))
+                then
+                        all_zeros=false
+                        break;
+                fi
+        done
+
+        if $all_zeros
+        then
+                for ostnum in $(seq $OSTCOUNT); do
+                        ostname=$(printf "lustre-OST%.4d" $((ostnum - 1)))
+                        echo "Check that write_bytes is present in obdfilter/*/stats:"
+                        do_facet ost$ostnum lctl get_param -n \
+                                obdfilter/$ostname/stats
+                done
+                error "OST not keeping write_bytes stats (b22312)"
+        fi
+}
+run_test 33c "test llobdstat and write_bytes"
+
 TEST_34_SIZE=${TEST_34_SIZE:-2000000000000}
 test_34a() {
 	rm -f $DIR/f34
@@ -3551,10 +3615,9 @@ num_inodes() {
 	awk '/lustre_inode_cache/ {print $2; exit}' /proc/slabinfo
 }
 
-test_76() { # bug 1443
-	DETH=$(grep deathrow /proc/kallsyms /proc/ksyms 2> /dev/null | wc -l)
-	[ $DETH -eq 0 ] && skip "No _iget." && return 0
-        BEFORE_INODES=`num_inodes`
+test_76() { # Now for bug 20433, added originally in bug 1443
+	cancel_lru_locks osc
+	BEFORE_INODES=`num_inodes`
 	echo "before inodes: $BEFORE_INODES"
 	local COUNT=1000
 	[ "$SLOW" = "no" ] && COUNT=100
@@ -3562,13 +3625,22 @@ test_76() { # bug 1443
 		touch $DIR/$tfile
 		rm -f $DIR/$tfile
 	done
+	cancel_lru_locks osc
 	AFTER_INODES=`num_inodes`
 	echo "after inodes: $AFTER_INODES"
-	[ $AFTER_INODES -gt $((BEFORE_INODES + 32)) ] && \
-		error "inode slab grew from $BEFORE_INODES to $AFTER_INODES"
-	true
+	local wait=0
+	while [ $AFTER_INODES -gt $BEFORE_INODES ]; do
+		sleep 2
+		AFTER_INODES=`num_inodes`
+		wait=$((wait+2))
+		echo "wait $wait seconds inodes: $AFTER_INODES"
+		if [ $wait -gt 30 ]; then
+			error "inode slab grew from $BEFORE_INODES to $AFTER_INODES"
+		fi
+	done
 }
-run_test 76 "destroy duplicate inodes in client inode cache ===="
+run_test 76 "confirm clients recycle inodes properly ===="
+
 
 export ORIG_CSUM=""
 set_checksums()
@@ -4393,6 +4465,28 @@ test_102j() {
 	compare_stripe_info1 "$RUNAS"
 }
 run_test 102j "non-root tar restore stripe info from tarfile, not keep osts ==="
+
+test_102k() {
+        touch $DIR/$tfile
+        # b22187 just check that does not crash for regular file.
+        setfattr -n trusted.lov $DIR/$tfile
+        # b22187 'setfattr -n trusted.lov' should work as remove LOV EA for directories
+        local test_kdir=$DIR/d102k
+        mkdir $test_kdir
+        local default_size=`$GETSTRIPE -s $test_kdir`
+        local default_count=`$GETSTRIPE -c $test_kdir`
+        local default_offset=`$GETSTRIPE -o $test_kdir`
+        $SETSTRIPE -s 65536 -i 1 -c 2 $test_kdir || error 'dir setstripe failed'
+        setfattr -n trusted.lov $test_kdir
+        local stripe_size=`$GETSTRIPE -s $test_kdir`
+        local stripe_count=`$GETSTRIPE -c $test_kdir`
+        local stripe_offset=`$GETSTRIPE -o $test_kdir`
+        [ $stripe_size -eq $default_size ] || error "stripe size $stripe_size != $default_size"
+        [ $stripe_count -eq $default_count ] || error "stripe count $stripe_count != $default_count"
+        [ $stripe_offset -eq $default_offset ] || error "stripe offset $stripe_offset != $default_offset"
+        rm -rf $DIR/$tfile $test_kdir
+}
+run_test 102k "setfattr without parameter of value shouldn't cause a crash"
 
 cleanup_test102
 

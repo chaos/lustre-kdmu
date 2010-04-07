@@ -2664,9 +2664,6 @@ static int osd_index_declare_iam_delete(const struct lu_env *env,
 {
         struct osd_thandle    *oh;
 
-        LASSERT(dt_object_exists(dt));
-        LASSERT(handle != NULL);
-
         oh = container_of0(handle, struct osd_thandle, ot_super);
         LASSERT(oh->ot_handle == NULL);
 

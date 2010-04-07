@@ -9,17 +9,27 @@ tbd  Sun Microsystems, Inc.
          2.6.18-164.11.1.0.1.el5 (OEL 5)
          2.6.16.60-0.42.8 (SLES 10),
          2.6.27.19-5 (SLES11)
-       * Recommended e2fsprogs version: 1.41.6.sun1
-       * Note that reiserfs quotas are disabled on SLES 10 in this kernel.
+	 2.6.29.4-167.fc11 (FC11)
+       * Recommended e2fsprogs version: 1.41.10-sun2
 
-Severity   : enhancement
-Bugzilla   : 19422
-Description: Build spl, zfs and lustre with lbuild
-Details    : Allow lbuild to build the spl, zfs and lustre packages with
-	     kDMU enabled.  This includes some fixes to "make dist" for
-	     spl and zfs as well as enhancing both the spl and zfs location
-	     detection as as the --with-spl and --with-zfs configure options.
+Severity   : normal
+Bugzilla   : 21829, 22312
+Description: Fix llobdstat.
+Details    : 1. Now updating the write_bytes counter
+	     2. Port script fixes from 1.8.
 
+Severity   : normal
+Bugzilla   : 20433
+Description: decrease the usage of memory on clients.
+Details    : 1. On clients, recycle dentries and inodes unused.
+	     2. Delete the code related to ll_deathrow(att 6215 in bug 1443). It
+	        is useless now.
+
+Severity   : normal
+Bugzilla   : 21829
+Description: llobdstat fix and enhancement
+Details    : add a counter to set a limit to how many samples will be returned
+	     fix a wildcard in the path to limit to obdfilter stats only
 
 Severity   : normal
 Bugzilla   : 21259
