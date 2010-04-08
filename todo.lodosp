@@ -4,6 +4,7 @@
    - error handling
    - a way to find lu_site
 !  - save on tx allocations
+   - pass next device in all the methods (like cursor, lod_trans_stop(), etc)
 
 * MDD, OSD
    - ->do_create() to set initial attributes
@@ -19,7 +20,6 @@
    - improve locking in lod_qos_statfs_update()
    - lod_qos_statfs_update() to recalculate space with fixed block size
 !  - qos_add_tgt() to learn configuration (how OSTs map OSSs)
-   - pass next device in all the methods (like cursor, lod_trans_stop(), etc)
    - lod_xattr_set() to make sure new striping is sane
    - check all users of ld_active_tgt_count/ltd_active, remove using of that
 
