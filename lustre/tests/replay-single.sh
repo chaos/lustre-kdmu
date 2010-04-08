@@ -20,7 +20,7 @@ GRANT_CHECK_LIST=${GRANT_CHECK_LIST:-""}
 require_dsh_mds || exit 0
 
 # Skip these tests
-# bug number:  17466 18857,15962
+# bug number:  17466 18857
 ALWAYS_EXCEPT="61d   33a 33b     $REPLAY_SINGLE_EXCEPT"
 
 # lodosp
@@ -1176,6 +1176,9 @@ test_53c() {
         kill -USR1 $close_pid
         cancel_lru_locks mdc    # force the close
 
+        #bz20647: make sure all pids are exists before failover
+        [ -d /proc/$close_pid ] || error "close_pid doesn't exist"
+        [ -d /proc/$open_pid ] || error "open_pid doesn't exists"
         replay_barrier_nodf $SINGLEMDS
         fail_nodf $SINGLEMDS
         wait $open_pid || return 1
@@ -1269,6 +1272,9 @@ test_53f() {
         kill -USR1 $close_pid
         cancel_lru_locks mdc    # force the close
 
+        #bz20647: make sure all pids are exists before failover
+        [ -d /proc/$close_pid ] || error "close_pid doesn't exist"
+        [ -d /proc/$open_pid ] || error "open_pid doesn't exists"
         replay_barrier_nodf $SINGLEMDS
         fail_nodf $SINGLEMDS
         wait $open_pid || return 1
@@ -1301,8 +1307,11 @@ test_53g() {
         do_facet $SINGLEMDS "lctl set_param fail_loc=0x80000115"
         kill -USR1 $close_pid
         cancel_lru_locks mdc    # force the close
-
         do_facet $SINGLEMDS "lctl set_param fail_loc=0"
+
+        #bz20647: make sure all pids are exists before failover
+        [ -d /proc/$close_pid ] || error "close_pid doesn't exist"
+        [ -d /proc/$open_pid ] || error "open_pid doesn't exists"
         replay_barrier_nodf $SINGLEMDS
         fail_nodf $SINGLEMDS
         wait $open_pid || return 1
@@ -1336,6 +1345,9 @@ test_53h() {
         cancel_lru_locks mdc    # force the close
         sleep 1
 
+        #bz20647: make sure all pids are exists before failover
+        [ -d /proc/$close_pid ] || error "close_pid doesn't exist"
+        [ -d /proc/$open_pid ] || error "open_pid doesn't exists"
         replay_barrier_nodf $SINGLEMDS
         fail_nodf $SINGLEMDS
         wait $open_pid || return 1
@@ -1849,7 +1861,7 @@ test_70b () {
 	[ "$SLOW" = "no" ] && duration=60
 	local cmd="rundbench 1 -t $duration"
 	local PID=""
-	do_nodes --verbose $clients "set -x; MISSING_DBENCH_OK=$MISSING_DBENCH_OK \
+	do_nodesv $clients "set -x; MISSING_DBENCH_OK=$MISSING_DBENCH_OK \
 		PATH=:$PATH:$LUSTRE/utils:$LUSTRE/tests/:$DBENCH_LIB \
 		DBENCH_LIB=$DBENCH_LIB TESTSUITE=$TESTSUITE TESTNAME=$TESTNAME \
 		LCTL=$LCTL $cmd" &
@@ -2027,8 +2039,8 @@ test_83b() {
 run_test 83b "fail log_add during unlink recovery"
 
 test_84a() {
-#define OBD_FAIL_MDS_OPEN_WAIT_CREATE  0x143
-    do_facet $SINGLEMDS "lctl set_param fail_loc=0x80000143"
+#define OBD_FAIL_MDS_OPEN_WAIT_CREATE  0x144
+    do_facet $SINGLEMDS "lctl set_param fail_loc=0x80000144"
     createmany -o $DIR/$tfile- 1 &
     PID=$!
     mds_evict_client

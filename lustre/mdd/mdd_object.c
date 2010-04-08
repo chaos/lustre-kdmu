@@ -46,11 +46,6 @@
 #define DEBUG_SUBSYSTEM S_MDS
 
 #include <linux/module.h>
-#ifdef HAVE_EXT4_LDISKFS
-#include <ldiskfs/ldiskfs_jbd2.h>
-#else
-#include <linux/jbd.h>
-#endif
 #include <obd.h>
 #include <obd_class.h>
 #include <obd_support.h>
@@ -59,11 +54,6 @@
 #include <lustre_fid.h>
 
 #include <lustre_param.h>
-#ifdef HAVE_EXT4_LDISKFS
-#include <ldiskfs/ldiskfs.h>
-#else
-#include <linux/ldiskfs_fs.h>
-#endif
 #include <lustre_mds.h>
 #include <lustre/lustre_idl.h>
 
@@ -315,7 +305,7 @@ static int mdd_object_print(const struct lu_env *env, void *cookie,
 {
         struct mdd_object *mdd = lu2mdd_obj((struct lu_object *)o);
         return (*p)(env, cookie, LUSTRE_MDD_NAME"-object@%p(open_count=%d, "
-                    "valid=%x, cltime=%llu, flags=%lx)",
+                    "valid=%x, cltime="LPU64", flags=%lx)",
                     mdd, mdd->mod_count, mdd->mod_valid,
                     mdd->mod_cltime, mdd->mod_flags);
 }
@@ -1275,7 +1265,9 @@ mdd_declare_and_start_attr_set(const struct lu_env *env, struct md_object *obj,
                 if (rc)
                         GOTO(out, rc);
         }
-        rc = mdo_declare_xattr_set(env, mdd_obj, NULL, XATTR_NAME_ACL_ACCESS, 0, handle);
+
+        /* XXX: use appropriate len? */
+        rc = mdo_declare_xattr_set(env, mdd_obj, 4096, XATTR_NAME_ACL_ACCESS, 0, handle);
         if (rc)
                 GOTO(out, rc);
 

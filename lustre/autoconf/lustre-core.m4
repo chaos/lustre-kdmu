@@ -421,6 +421,9 @@ AC_DEFUN([LC_POSIX_ACL_XATTR_H],
 [LB_CHECK_FILE([$LINUX/include/linux/posix_acl_xattr.h],[
         AC_MSG_CHECKING([if linux/posix_acl_xattr.h can be compiled])
         LB_LINUX_TRY_COMPILE([
+                #ifdef CONFIG_FS_POSIX_ACL
+                #  include <linux/fs.h>
+                #endif
                 #include <linux/posix_acl_xattr.h>
         ],[],[
                 AC_MSG_RESULT([yes])
@@ -432,18 +435,6 @@ AC_DEFUN([LC_POSIX_ACL_XATTR_H],
 $1
 ],[
 AC_MSG_RESULT([no])
-])
-])
-
-#
-# LC_EXPORT___IGET
-# starting from 2.6.19 linux kernel exports __iget()
-#
-AC_DEFUN([LC_EXPORT___IGET],
-[LB_CHECK_SYMBOL_EXPORT([__iget],
-[fs/inode.c],[
-        AC_DEFINE(HAVE_EXPORT___IGET, 1, [kernel exports __iget])
-],[
 ])
 ])
 
@@ -1397,7 +1388,7 @@ EXTRA_KCFLAGS="$tmp_flags"
 AC_DEFUN([LC_CONST_ACL_SIZE],
 [AC_MSG_CHECKING([calc acl size])
 tmp_flags="$CFLAGS"
-CFLAGS="$CFLAGS -I$LINUX/include -I$LINUX_OBJ/include -I$LINUX_OBJ/include2 $EXTRA_KCFLAGS"
+CFLAGS="$CFLAGS -I$LINUX/include -I$LINUX_OBJ/include -I$LINUX_OBJ/include2 -I$LINUX/arch/`uname -m|sed -e 's/ppc.*/powerpc/' -e 's/x86_64/x86/' -e 's/i.86/x86/'`/include $EXTRA_KCFLAGS"
 AC_TRY_RUN([
 #define __KERNEL__
 #include <linux/autoconf.h>

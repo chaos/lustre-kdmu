@@ -178,7 +178,10 @@ int fld_index_create(struct lu_server_fld *fld,
                      const struct lu_seq_range *range,
                      struct thandle *th)
 {
-        //struct dt_object *dt_obj = fld->lsf_obj;
+#if 0
+        /* XXX: DMU/DMU OSD don't support binary keys yet */
+        struct dt_object *dt_obj = fld->lsf_obj;
+#endif
         struct dt_device *dt_dev;
         seqno_t start;
         int rc;
@@ -281,7 +284,7 @@ int fld_index_lookup(struct lu_server_fld *fld,
         range->lsr_mdt = 0;
         rc = 0;
 
-        CDEBUG(D_INFO, "%s: lookup seq = %llx range : "DRANGE" rc = %d\n",
+        CDEBUG(D_INFO, "%s: lookup seq = "LPX64" range : "DRANGE" rc = %d\n",
                fld->lsf_name, seq, PRANGE(range), rc);
 
         RETURN(rc);

@@ -41,8 +41,6 @@
 #ifndef _MDD_INTERNAL_H
 #define _MDD_INTERNAL_H
 
-#include <asm/semaphore.h>
-
 #include <lustre_acl.h>
 #include <lustre_eacl.h>
 #include <obd.h>
@@ -146,10 +144,6 @@ enum mod_flags {
         ORPHAN_OBJ = 1 << 3,
         MNLINK_OBJ = 1 << 4
 };
-
-#define LUSTRE_APPEND_FL LDISKFS_APPEND_FL
-#define LUSTRE_IMMUTABLE_FL LDISKFS_IMMUTABLE_FL
-#define LUSTRE_DIRSYNC_FL LDISKFS_DIRSYNC_FL
 
 enum mdd_object_role {
         MOR_SRC_PARENT,

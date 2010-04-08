@@ -787,7 +787,6 @@ static void filter_fini(const struct lu_env *env, struct filter_device *m)
 {
         struct obd_device *obd = filter_obd(m);
         struct lu_device  *d = &m->ofd_dt_dev.dd_lu_dev;
-        int                waited = 0;
 
         /* At this point, obd exports might still be on the "obd_zombie_exports"
          * list, and obd_zombie_impexp_thread() is trying to destroy them.

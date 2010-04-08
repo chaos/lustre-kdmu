@@ -405,6 +405,13 @@ int __llog_process(struct llog_handle *loghandle, llog_cb_t cb,
 }
 EXPORT_SYMBOL(__llog_process);
 
+int llog_process(struct llog_handle *loghandle, llog_cb_t cb,
+                 void *data, void *catdata)
+{
+        return __llog_process(loghandle, cb, data, catdata, 1);
+}
+EXPORT_SYMBOL(llog_process);
+
 inline int llog_get_size(struct llog_handle *loghandle)
 {
         if (loghandle && loghandle->lgh_hdr)

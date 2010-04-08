@@ -26,34 +26,22 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2009 Sun Microsystems, Inc. All rights reserved
+ * Copyright  2010 Sun Microsystems, Inc. All rights reserved
  * Use is subject to license terms.
  */
 /*
  * This file is part of Lustre, http://www.lustre.org/
  * Lustre is a trademark of Sun Microsystems, Inc.
  *
- * Author: Nathan Rutman <nathan.rutman@sun.com>
+ * libcfs/libcfs/util/util.c
  *
- * libcfs/include/libcfs/posix-kernelcomm.h
- *
- * kernel - userspace communications.
  */
 
-#ifndef __LIBCFS_POSIX_KERNELCOMM_H__
-#define __LIBCFS_POSIX_KERNELCOMM_H__
+#include <libcfs/libcfsutil.h>
+#include "../tracefile.h"
 
-#ifndef __LIBCFS_LIBCFS_H__
-#error Do not #include this file directly. #include <libcfs/libcfs.h> instead
-#endif
-
-typedef int lustre_netlink;
-int libcfs_ulnl_start(lustre_netlink *l, int groups);
-int libcfs_ulnl_stop(lustre_netlink *l);
-struct lnl_hdr;
-int libcfs_ulnl_msg_get(lustre_netlink *l, int maxsize, int transport,
-                        struct lnl_hdr **lnlhh);
-int libcfs_ulnl_msg_free(struct lnl_hdr **lnlhh);
-
-#endif
-
+int
+libcfs_tcd_type_max(void)
+{
+        return CFS_TCD_TYPE_MAX;
+}

@@ -554,7 +554,7 @@ int llog_cat_process_cb(struct llog_handle *cat_llh, struct llog_rec_hdr *rec,
 }
 
 int __llog_cat_process(struct llog_handle *cat_llh, llog_cb_t cb, void *data,
-                     int startcat, int startidx, int fork)
+                       int startcat, int startidx, int fork)
 {
         struct llog_process_data d;
         struct llog_log_hdr *llh = cat_llh->lgh_hdr;
@@ -575,7 +575,7 @@ int __llog_cat_process(struct llog_handle *cat_llh, llog_cb_t cb, void *data,
 
                 cd.lpcd_first_idx = llh->llh_cat_idx;
                 cd.lpcd_last_idx = 0;
-                rc = llog_process(cat_llh, llog_cat_process_cb, &d, &cd);
+                rc = __llog_process(cat_llh, llog_cat_process_cb, &d, &cd, fork);
                 if (rc != 0)
                         RETURN(rc);
 
@@ -589,6 +589,13 @@ int __llog_cat_process(struct llog_handle *cat_llh, llog_cb_t cb, void *data,
         RETURN(rc);
 }
 EXPORT_SYMBOL(__llog_cat_process);
+
+int llog_cat_process(struct llog_handle *cat_llh, llog_cb_t cb, void *data,
+                     int startcat, int startidx)
+{
+        return __llog_cat_process(cat_llh, cb, data, startcat, startidx, 1);
+}
+EXPORT_SYMBOL(llog_cat_process);
 
 #ifdef __KERNEL__
 int llog_cat_process_thread(void *data)

@@ -748,15 +748,19 @@ static int lmv_iocontrol(unsigned int cmd, struct obd_export *exp,
                 if (!mdc_obd)
                         RETURN(-EINVAL);
 
+                /* copy UUID */
+                if (cfs_copy_to_user(data->ioc_pbuf2, obd2cli_tgt(mdc_obd),
+                                     min((int) data->ioc_plen2,
+                                         (int) sizeof(struct obd_uuid))))
+                        RETURN(-EFAULT);
+
                 rc = obd_statfs(mdc_obd, &stat_buf,
                                 cfs_time_current_64() - CFS_HZ, 0);
                 if (rc)
                         RETURN(rc);
                 if (cfs_copy_to_user(data->ioc_pbuf1, &stat_buf,
-                                     data->ioc_plen1))
-                        RETURN(-EFAULT);
-                if (cfs_copy_to_user(data->ioc_pbuf2, obd2cli_tgt(mdc_obd),
-                                     data->ioc_plen2))
+                                     min((int) data->ioc_plen1,
+                                         (int) sizeof(stat_buf))))
                         RETURN(-EFAULT);
                 break;
         }
@@ -806,8 +810,9 @@ static int lmv_iocontrol(unsigned int cmd, struct obd_export *exp,
                 OBD_FREE_PTR(oqctl);
                 break;
         }
+        case OBD_IOC_CHANGELOG_SEND:
         case OBD_IOC_CHANGELOG_CLEAR: {
-                struct ioc_changelog_clear *icc = karg;
+                struct ioc_changelog *icc = karg;
 
                 if (icc->icc_mdtindex >= count)
                         RETURN(-ENODEV);
@@ -1366,6 +1371,36 @@ static int lmv_change_cbdata(struct obd_export *exp, const struct lu_fid *fid,
 
         RETURN(0);
 }
+
+static int lmv_find_cbdata(struct obd_export *exp, const struct lu_fid *fid,
+                           ldlm_iterator_t it, void *data)
+{
+        struct obd_device   *obd = exp->exp_obd;
+        struct lmv_obd      *lmv = &obd->u.lmv;
+        int                  i;
+        int                  rc;
+        ENTRY;
+
+        rc = lmv_check_connect(obd);
+        if (rc)
+                RETURN(rc);
+
+        CDEBUG(D_INODE, "CBDATA for "DFID"\n", PFID(fid));
+
+        /*
+         * With CMD every object can have two locks in different namespaces:
+         * lookup lock in space of mds storing direntry and update/open lock in
+         * space of mds storing inode.
+         */
+        for (i = 0; i < lmv->desc.ld_tgt_count; i++) {
+                rc = md_find_cbdata(lmv->tgts[i].ltd_exp, fid, it, data);
+                if (rc)
+                        RETURN(rc);
+        }
+
+        RETURN(rc);
+}
+
 
 static int lmv_close(struct obd_export *exp, struct md_op_data *op_data,
                      struct md_open_data *mod, struct ptlrpc_request **request)
@@ -2413,7 +2448,7 @@ static int lmv_readpage(struct obd_export *exp, const struct lu_fid *fid,
                                 CDEBUG(D_INODE,
                                        ""DFID" reset end "LPX64" tgt %d\n",
                                        PFID(&rid),
-                                       le64_to_cpu(dp->ldp_hash_end), tgt_idx);
+                                       (__u64)le64_to_cpu(dp->ldp_hash_end), tgt_idx);
                         }
                 }
                 cfs_kunmap(page);
@@ -2967,9 +3002,8 @@ int lmv_intent_getattr_async(struct obd_export *exp,
         RETURN(rc);
 }
 
-int lmv_revalidate_lock(struct obd_export *exp,
-                        struct lookup_intent *it,
-                        struct lu_fid *fid)
+int lmv_revalidate_lock(struct obd_export *exp, struct lookup_intent *it,
+                        struct lu_fid *fid, __u32 *bits)
 {
         struct obd_device       *obd = exp->exp_obd;
         struct lmv_obd          *lmv = &obd->u.lmv;
@@ -2985,7 +3019,7 @@ int lmv_revalidate_lock(struct obd_export *exp,
         if (IS_ERR(tgt))
                 RETURN(PTR_ERR(tgt));
 
-        rc = md_revalidate_lock(tgt->ltd_exp, it, fid);
+        rc = md_revalidate_lock(tgt->ltd_exp, it, fid, bits);
         RETURN(rc);
 }
 
@@ -3012,6 +3046,7 @@ struct obd_ops lmv_obd_ops = {
 struct md_ops lmv_md_ops = {
         .m_getstatus            = lmv_getstatus,
         .m_change_cbdata        = lmv_change_cbdata,
+        .m_find_cbdata          = lmv_find_cbdata,
         .m_close                = lmv_close,
         .m_create               = lmv_create,
         .m_done_writing         = lmv_done_writing,

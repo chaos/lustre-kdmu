@@ -25,16 +25,18 @@ ALWAYS_EXCEPT="$ALWAYS_EXCEPT 76"
 
 # kDMU still need fixes
 # 52  -- immutable/append flags aren't implemented
-# 57  -- inode counting is different in zfs
+# 54c -- e2fsck lookups mntdev in osd/, doesn't support osd-{ldiskfs/zfs}
+# 56a -- FAIL: lfs getstripe --obd wrong: found 6, expected 3 
 # 60  -- llog is broken
-# 129 -- broken /proc/fs/lustre/osd-* naming
-# 132 -- inode counting is different in zfs
-# 155 -- we don't control cache via OSD yet
-# 156 -- ^^
 # 160 -- changelogs don't work yet
-# 162 -- DMU's osd_object_create() doesn't set XATTR_NAME_LMA
 # 180 -- ofd doesn't work with obdecho 
-ALWAYS_EXCEPT="$ALWAYS_EXCEPT 52a 52b 57a 57b 60 129 132 156 160 180"
+ALWAYS_EXCEPT="$ALWAYS_EXCEPT 52 54c 56a 60 160 180"
+
+# 132 -- inode counting is different in zfs
+# 155 -- we don't control cache via ZFS OSD yet
+# 156 -- we don't control cache via ZFS OSD yet
+[ "$FSTYPE" = "zfs" -o "$OSTFSTYPE" = "zfs" -o "$MDSFSTYPE" = "zfs" ] && \
+	ALWAYS_EXCEPT="$ALWAYS_EXCEPT 132 155 156"
 
 # LOD/OSP branch needs fixes:
 # 60  -- llog_osd_create()) ASSERTION(dt) failed
@@ -507,7 +509,7 @@ test_17i() { #bug 20018
 	local foo=$DIR/$tdir/$tfile
 	ln -s $foo $foo || error "create symlink failed"
 #define OBD_FAIL_MDS_READLINK_EPROTO     0x143
-	do_facet mds lctl set_param fail_loc=0x80000144
+	do_facet mds lctl set_param fail_loc=0x80000143
 	ls -l $foo && error "error not detected"
 	return 0
 }
@@ -1222,6 +1224,8 @@ test_27w() { # bug 10997
         $LSTRIPE $DIR/$tdir/f0 -s 65536 || error "lstripe failed"
         size=`$GETSTRIPE $DIR/$tdir/f0 -s`
         [ $size -ne 65536 ] && error "stripe size $size != 65536" || true
+        gsdir=$($LFS getstripe -d $DIR/$tdir)
+        [ $(echo $gsdir | grep -c stripe_count) -ne 1 ] && error "$LFS getstripe -d $DIR/$tdir failed"
 
         [ "$OSTCOUNT" -lt "2" ] && skip_env "skipping multiple stripe count/offset test" && return
         for i in `seq 1 $OSTCOUNT`; do
@@ -1742,6 +1746,70 @@ test_33b() {
         $RUNAS $OPENFILE -f 1286739555 $DIR/d33/f33 && error "create" || true
 }
 run_test 33b "test open file with malformed flags (No panic and return error)"
+
+test_33c() {
+        local ostnum
+        local ostname
+        local write_bytes
+        local all_zeros
+
+        all_zeros=:
+        rm -fr $DIR/d33
+        mkdir -p $DIR/d33
+        # Read: 0, Write: 4, create/destroy: 2/0, stat: 1, punch: 0
+
+        sync
+        for ostnum in $(seq $OSTCOUNT); do
+                # test-framework's OST numbering is one-based, while Lustre's
+                # is zero-based
+                ostname=$(printf "lustre-OST%.4d" $((ostnum - 1)))
+                # Parsing llobdstat's output sucks; we could grep the /proc
+                # path, but that's likely to not be as portable as using the
+                # llobdstat utility.  So we parse lctl output instead.
+                write_bytes=$(do_facet ost$ostnum lctl get_param -n \
+                        obdfilter/$ostname/stats |
+                        awk '/^write_bytes/ {print $7}' )
+                echo "baseline_write_bytes@$OSTnum/$ostname=$write_bytes"
+                if (( ${write_bytes:-0} > 0 ))
+                then
+                        all_zeros=false
+                        break;
+                fi
+        done
+
+        $all_zeros || return 0
+
+        # Write four bytes
+        echo foo > $DIR/d33/bar
+        # Really write them
+        sync
+
+        # Total up write_bytes after writing.  We'd better find non-zeros.
+        for ostnum in $(seq $OSTCOUNT); do
+                ostname=$(printf "lustre-OST%.4d" $((ostnum - 1)))
+                write_bytes=$(do_facet ost$ostnum lctl get_param -n \
+                        obdfilter/$ostname/stats |
+                        awk '/^write_bytes/ {print $7}' )
+                echo "write_bytes@$OSTnum/$ostname=$write_bytes"
+                if (( ${write_bytes:-0} > 0 ))
+                then
+                        all_zeros=false
+                        break;
+                fi
+        done
+
+        if $all_zeros
+        then
+                for ostnum in $(seq $OSTCOUNT); do
+                        ostname=$(printf "lustre-OST%.4d" $((ostnum - 1)))
+                        echo "Check that write_bytes is present in obdfilter/*/stats:"
+                        do_facet ost$ostnum lctl get_param -n \
+                                obdfilter/$ostname/stats
+                done
+                error "OST not keeping write_bytes stats (b22312)"
+        fi
+}
+run_test 33c "test llobdstat and write_bytes"
 
 TEST_34_SIZE=${TEST_34_SIZE:-2000000000000}
 test_34a() {
@@ -2581,7 +2649,7 @@ test_52a() {
 	link $DIR/d52a/foo $DIR/d52a/foo_link 2>/dev/null && error "link worked"
 	echo foo >> $DIR/d52a/foo || error "append foo failed"
 	mrename $DIR/d52a/foo $DIR/d52a/foo_ren && error "rename worked"
-	lsattr $DIR/d52a/foo | egrep -q "^-+[ae]-+ $DIR/d52a/foo" || error "lsattr"
+	lsattr $DIR/d52a/foo | egrep -q "^-+a[-e]+ $DIR/d52a/foo" || error "lsattr"
 	chattr -a $DIR/d52a/foo || error "chattr -a failed"
         cp -r $DIR/d52a /tmp/
 	rm -fr $DIR/d52a || error "cleanup rm failed"
@@ -2601,7 +2669,7 @@ test_52b() {
 	mrename $DIR/d52b/foo $DIR/d52b/foo_ren && error "rename worked"
 	[ -f $DIR/d52b/foo ] || error
 	[ -f $DIR/d52b/foo_ren ] && error
-	lsattr $DIR/d52b/foo | egrep -q "^-+[ie]-+ $DIR/d52b/foo" || error "lsattr"
+	lsattr $DIR/d52b/foo | egrep -q "^-+i[-e]+ $DIR/d52b/foo" || error "lsattr"
 	chattr -i $DIR/d52b/foo || error "chattr failed"
 
 	rm -fr $DIR/d52b || error
@@ -2619,7 +2687,7 @@ test_53() {
 	local ostnum
 
 	# only test MDT0000
-        for value in $(do_facet $SINGLEMDS lctl get_param osc.*-osc-MDT0000.prealloc_last_id) ; do
+        for value in $(do_facet $SINGLEMDS lctl get_param os[cp].*-os[cp]-MDT0000.prealloc_last_id) ; do
                 param=`echo ${value[0]} | cut -d "=" -f1`
                 ostname=`echo $param | cut -d "." -f2 | cut -d - -f 1-2`
                 mds_last=$(do_facet $SINGLEMDS lctl get_param -n $param)
@@ -2978,7 +3046,7 @@ test_57a() {
 	# note test will not do anything if MDS is not local
 	remote_mds_nodsh && skip "remote MDS with nodsh" && return
 
-	local MNTDEV="osd.*MDT*.mntdev"
+	local MNTDEV="osd*.*MDT*.mntdev"
 	DEV=$(do_facet $SINGLEMDS lctl get_param -n $MNTDEV)
 	[ -z "$DEV" ] && error "can't access $MNTDEV"
 	for DEV in $(do_facet $SINGLEMDS lctl get_param -n $MNTDEV); do
@@ -3013,7 +3081,7 @@ test_57b() {
 	sync
 	sleep 1
 	df $dir  #make sure we get new statfs data
-	local MDSFREE=$(do_facet $mymds lctl get_param -n osd.*MDT000$((num -1)).kbytesfree)
+	local MDSFREE=$(do_facet $mymds lctl get_param -n osd*.*MDT000$((num -1)).kbytesfree)
 	local MDCFREE=$(lctl get_param -n mdc.*MDT000$((num -1))-mdc-*.kbytesfree)
 	echo "opening files to create objects/EAs"
 	local FILE
@@ -3027,7 +3095,7 @@ test_57b() {
 
 	sleep 1  #make sure we get new statfs data
 	df $dir
-	local MDSFREE2=$(do_facet $mymds lctl get_param -n osd.*MDT000$((num -1)).kbytesfree)
+	local MDSFREE2=$(do_facet $mymds lctl get_param -n osd*.*MDT000$((num -1)).kbytesfree)
 	local MDCFREE2=$(lctl get_param -n mdc.*MDT000$((num -1))-mdc-*.kbytesfree)
 	if [ "$MDCFREE2" -lt "$((MDCFREE - 8))" ]; then
 		if [ "$MDSFREE" != "$MDSFREE2" ]; then
@@ -3554,10 +3622,9 @@ num_inodes() {
 	awk '/lustre_inode_cache/ {print $2; exit}' /proc/slabinfo
 }
 
-test_76() { # bug 1443
-	DETH=$(grep deathrow /proc/kallsyms /proc/ksyms 2> /dev/null | wc -l)
-	[ $DETH -eq 0 ] && skip "No _iget." && return 0
-        BEFORE_INODES=`num_inodes`
+test_76() { # Now for bug 20433, added originally in bug 1443
+	cancel_lru_locks osc
+	BEFORE_INODES=`num_inodes`
 	echo "before inodes: $BEFORE_INODES"
 	local COUNT=1000
 	[ "$SLOW" = "no" ] && COUNT=100
@@ -3565,13 +3632,22 @@ test_76() { # bug 1443
 		touch $DIR/$tfile
 		rm -f $DIR/$tfile
 	done
+	cancel_lru_locks osc
 	AFTER_INODES=`num_inodes`
 	echo "after inodes: $AFTER_INODES"
-	[ $AFTER_INODES -gt $((BEFORE_INODES + 32)) ] && \
-		error "inode slab grew from $BEFORE_INODES to $AFTER_INODES"
-	true
+	local wait=0
+	while [ $AFTER_INODES -gt $BEFORE_INODES ]; do
+		sleep 2
+		AFTER_INODES=`num_inodes`
+		wait=$((wait+2))
+		echo "wait $wait seconds inodes: $AFTER_INODES"
+		if [ $wait -gt 30 ]; then
+			error "inode slab grew from $BEFORE_INODES to $AFTER_INODES"
+		fi
+	done
 }
-run_test 76 "destroy duplicate inodes in client inode cache ===="
+run_test 76 "confirm clients recycle inodes properly ===="
+
 
 export ORIG_CSUM=""
 set_checksums()
@@ -4396,6 +4472,28 @@ test_102j() {
 	compare_stripe_info1 "$RUNAS"
 }
 run_test 102j "non-root tar restore stripe info from tarfile, not keep osts ==="
+
+test_102k() {
+        touch $DIR/$tfile
+        # b22187 just check that does not crash for regular file.
+        setfattr -n trusted.lov $DIR/$tfile
+        # b22187 'setfattr -n trusted.lov' should work as remove LOV EA for directories
+        local test_kdir=$DIR/d102k
+        mkdir $test_kdir
+        local default_size=`$GETSTRIPE -s $test_kdir`
+        local default_count=`$GETSTRIPE -c $test_kdir`
+        local default_offset=`$GETSTRIPE -o $test_kdir`
+        $SETSTRIPE -s 65536 -i 1 -c 2 $test_kdir || error 'dir setstripe failed'
+        setfattr -n trusted.lov $test_kdir
+        local stripe_size=`$GETSTRIPE -s $test_kdir`
+        local stripe_count=`$GETSTRIPE -c $test_kdir`
+        local stripe_offset=`$GETSTRIPE -o $test_kdir`
+        [ $stripe_size -eq $default_size ] || error "stripe size $stripe_size != $default_size"
+        [ $stripe_count -eq $default_count ] || error "stripe count $stripe_count != $default_count"
+        [ $stripe_offset -eq $default_offset ] || error "stripe offset $stripe_offset != $default_offset"
+        rm -rf $DIR/$tfile $test_kdir
+}
+run_test 102k "setfattr without parameter of value shouldn't cause a crash"
 
 cleanup_test102
 
@@ -5679,7 +5777,7 @@ set_dir_limits () {
         for node in $(mdts_nodes); do
                 devs=$(do_node $node "lctl get_param -n devices" | awk '($3 ~ "mdt" && $4 ~ "MDT") { print $4 }')
 	        for dev in $devs; do
-		        mntdev=$(do_node $node "lctl get_param -n osd.$dev.mntdev")
+		        mntdev=$(do_node $node "lctl get_param -n osd*.$dev.mntdev")
 		        do_node $node "echo $1 >$LDPROC/\\\$(basename $mntdev)/max_dir_size"
 		done
 	done
@@ -6147,7 +6245,7 @@ run_test 150 "truncate/append tests"
 function roc_hit() {
     local list=$(comma_list $(osts_nodes))
 
-    ACCNUM=$(do_nodes $list $LCTL get_param -n obdfilter.*.stats | \
+    ACCNUM=$(do_nodes $list $LCTL get_param -n osd*.*.stats | \
         awk '/'cache_hit'/ {sum+=$2} END {print sum}')
     echo $ACCNUM
 }
@@ -6159,7 +6257,7 @@ function set_cache() {
         on=0;
     fi
     local list=$(comma_list $(osts_nodes))
-    do_nodes $list lctl set_param obdfilter.*.${1}_cache_enable $on
+    do_nodes $list lctl set_param osd*.*.${1}_cache_enable $on
 
     cancel_lru_locks osc
 }
@@ -6171,18 +6269,18 @@ test_151() {
         local list=$(comma_list $(osts_nodes))
 
         # check whether obdfilter is cache capable at all
-        if ! do_nodes $list $LCTL get_param -n obdfilter.*.read_cache_enable > /dev/null; then
+        if ! do_nodes $list $LCTL get_param -n osd*.*.read_cache_enable > /dev/null; then
                 echo "not cache-capable obdfilter"
                 return 0
         fi
 
         # check cache is enabled on all obdfilters
-        if do_nodes $list $LCTL get_param -n obdfilter.*.read_cache_enable | grep 0 >&/dev/null; then
+        if do_nodes $list $LCTL get_param -n osd*.*.read_cache_enable | grep 0 >&/dev/null; then
                 echo "oss cache is disabled"
                 return 0
         fi
 
-        do_nodes $list $LCTL set_param -n obdfilter.*.writethrough_cache_enable 1
+        do_nodes $list $LCTL set_param -n osd*.*.writethrough_cache_enable 1
 
         # pages should be in the case right after write
         dd if=/dev/urandom of=$DIR/$tfile bs=4k count=$CPAGES || error "dd failed"
@@ -6196,7 +6294,7 @@ test_151() {
 
         # the following read invalidates the cache
         cancel_lru_locks osc
-        do_nodes $list $LCTL set_param -n obdfilter.*.read_cache_enable 0
+        do_nodes $list $LCTL set_param -n osd*.*.read_cache_enable 0
         cat $DIR/$tfile >/dev/null
 
         # now data shouldn't be found in the cache
@@ -6208,7 +6306,7 @@ test_151() {
                 error "IN CACHE: before: $BEFORE, after: $AFTER"
         fi
 
-        do_nodes $list $LCTL set_param -n obdfilter.*.read_cache_enable 1
+        do_nodes $list $LCTL set_param -n osd*.*.read_cache_enable 1
         rm -f $DIR/$tfile
 }
 run_test 151 "test cache on oss and controls ==============================="
@@ -6263,9 +6361,8 @@ test_155_load() {
         awk '{sum+=$4} END{print sum}')
 
 	if let "big == 0"; then
-		big=256
+		let "big=512"
 	fi
-
     log big is $big K
 
     dd if=/dev/urandom of=$temp bs=6096 count=1 || \
@@ -6646,15 +6743,16 @@ run_test 162 "path lookup sanity"
 
 test_163() {
 	remote_mds_nodsh && skip "remote MDS with nodsh" && return
-	copytool --test || { skip "copytool not runnable: $?" && return; }
-	copytool &
+	copytool --test $FSNAME || { skip "copytool not runnable: $?" && return; }
+	copytool $FSNAME &
 	sleep 1
 	local uuid=$($LCTL get_param -n mdc.${FSNAME}-MDT0000-mdc-*.uuid)
 	# this proc file is temporary and linux-only
-	do_facet mds lctl set_param mdt.${FSNAME}-MDT0000.mdccomm=$uuid || error "lnl send failed"
-	kill $!
+	do_facet mds lctl set_param mdt.${FSNAME}-MDT0000.mdccomm=$uuid ||\
+         error "kernel->userspace send failed"
+	kill -INT $!
 }
-run_test 163 "LustreNetLink kernelcomms"
+run_test 163 "kernel <-> userspace comms"
 
 test_169() {
 	# do directio so as not to populate the page cache

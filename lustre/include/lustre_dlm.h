@@ -37,6 +37,11 @@
 #ifndef _LUSTRE_DLM_H__
 #define _LUSTRE_DLM_H__
 
+/** \defgroup ldlm ldlm
+ *
+ * @{
+ */
+
 #if defined(__linux__)
 #include <linux/lustre_dlm.h>
 #elif defined(__APPLE__)
@@ -852,7 +857,7 @@ int ldlm_namespace_foreach_res(struct ldlm_namespace *ns,
                                ldlm_res_iterator_t iter, void *closure);
 
 int ldlm_replay_locks(struct obd_import *imp);
-void ldlm_resource_iterate(struct ldlm_namespace *, const struct ldlm_res_id *,
+int ldlm_resource_iterate(struct ldlm_namespace *, const struct ldlm_res_id *,
                            ldlm_iterator_t iter, void *data);
 
 /* ldlm_flock.c */
@@ -1180,4 +1185,7 @@ void ldlm_pool_set_clv(struct ldlm_pool *pl, __u64 clv);
 void ldlm_pool_set_limit(struct ldlm_pool *pl, __u32 limit);
 void ldlm_pool_add(struct ldlm_pool *pl, struct ldlm_lock *lock);
 void ldlm_pool_del(struct ldlm_pool *pl, struct ldlm_lock *lock);
+
+/** @} ldlm */
+
 #endif

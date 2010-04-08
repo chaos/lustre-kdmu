@@ -222,8 +222,8 @@ int obd_alloc_fail(const void *ptr, const char *name, const char *type,
 #define OBD_FAIL_MDS_FAIL_LOV_LOG_ADD    0x140
 #define OBD_FAIL_MDS_LOV_PREP_CREATE     0x141
 #define OBD_FAIL_MDS_REINT_DELAY         0x142
-#define OBD_FAIL_MDS_OPEN_WAIT_CREATE    0x143
-#define OBD_FAIL_MDS_READLINK_EPROTO     0x144
+#define OBD_FAIL_MDS_READLINK_EPROTO     0x143
+#define OBD_FAIL_MDS_OPEN_WAIT_CREATE    0x144
 
 /* CMD */
 #define OBD_FAIL_MDS_IS_SUBDIR_NET       0x180
@@ -359,6 +359,7 @@ int obd_alloc_fail(const void *ptr, const char *name, const char *type,
 #define OBD_FAIL_TGT_FAKE_EXP            0x708
 #define OBD_FAIL_TGT_REPLAY_DELAY        0x709
 #define OBD_FAIL_TGT_LAST_REPLAY         0x710
+#define OBD_FAIL_TGT_CLIENT_ADD          0x711
 
 #define OBD_FAIL_MDC_REVALIDATE_PAUSE    0x800
 #define OBD_FAIL_MDC_ENQUEUE_PAUSE       0x801
@@ -402,7 +403,7 @@ int obd_alloc_fail(const void *ptr, const char *name, const char *type,
 #define OBD_FAIL_LLOG_ORIGIN_HANDLE_WRITE_REC_NET   0x1307
 #define OBD_FAIL_LLOG_ORIGIN_HANDLE_CLOSE_NET       0x1308
 #define OBD_FAIL_LLOG_CATINFO_NET                   0x1309
-
+#define OBD_FAIL_MDS_SYNC_CAPA_SL                    0x1310
 
 /* Failure injection control */
 #define OBD_FAIL_MASK_SYS    0x0000FF00

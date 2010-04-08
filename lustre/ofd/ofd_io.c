@@ -144,7 +144,6 @@ static int filter_preprw_write(const struct lu_env *env, struct obd_export *exp,
         if (rc == 0)
                 rc = dt_write_prep(env, filter_object_child(fo), res, *nr_local, &used);
 
-out:
         if (rc)
                 dt_bufs_put(env, filter_object_child(fo), res, *nr_local);
 out2:
