@@ -25,14 +25,14 @@ ALWAYS_EXCEPT="$ALWAYS_EXCEPT 76"
 
 # kDMU still need fixes
 # 52  -- immutable/append flags aren't implemented
-# 54c -- e2fsck lookups mntdev in osd/, doesn't support osd-{ldiskfs/zfs}
+# 54c -- (bug 22525) e2fsck lookups mntdev in osd/, doesn't support osd-{ldiskfs/zfs}
 # 56a -- FAIL: lfs getstripe --obd wrong: found 6, expected 3 
 # 60  -- llog is broken
-# 160 -- changelogs don't work yet
+# 160 -- (bug 22448) changelogs don't work yet
 # 180 -- ofd doesn't work with obdecho 
 ALWAYS_EXCEPT="$ALWAYS_EXCEPT 52 54c 56a 60 160 180"
 
-# 57a -- can't determine dnode size in ZFS yet
+# 57a -- (bug 22607) can't determine dnode size in ZFS yet
 # 132 -- inode counting is different in zfs
 # 155 -- we don't control cache via ZFS OSD yet
 # 156 -- we don't control cache via ZFS OSD yet
