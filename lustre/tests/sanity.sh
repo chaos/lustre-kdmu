@@ -32,11 +32,12 @@ ALWAYS_EXCEPT="$ALWAYS_EXCEPT 76"
 # 180 -- ofd doesn't work with obdecho 
 ALWAYS_EXCEPT="$ALWAYS_EXCEPT 52 54c 56a 60 160 180"
 
+# 57a -- can't determine dnode size in ZFS yet
 # 132 -- inode counting is different in zfs
 # 155 -- we don't control cache via ZFS OSD yet
 # 156 -- we don't control cache via ZFS OSD yet
 [ "$FSTYPE" = "zfs" -o "$OSTFSTYPE" = "zfs" -o "$MDSFSTYPE" = "zfs" ] && \
-	ALWAYS_EXCEPT="$ALWAYS_EXCEPT 132 155 156"
+	ALWAYS_EXCEPT="$ALWAYS_EXCEPT 57a 132 155 156"
 
 case `uname -r` in
 2.4*) FSTYPE=${FSTYPE:-ext3} ;;
