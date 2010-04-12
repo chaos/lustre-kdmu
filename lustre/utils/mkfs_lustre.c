@@ -1550,8 +1550,16 @@ int parse_opts(int argc, char *const argv[], struct mkfs_opts *mop,
                 }
         }//while
 
-        /* optind points to device or pool name */
-        strscpy(mop->mo_device, argv[optind], sizeof(mop->mo_device));
+        if (optind == argc) {
+                /* The user didn't specify device name */
+                fatal();
+                fprintf(stderr, "Not enough arguments - device name or "
+                        "pool/dataset name not specified.\n");
+                return EINVAL;
+        } else {
+                /* optind points to device or pool/filesystem name */
+                strscpy(mop->mo_device, argv[optind], sizeof(mop->mo_device));
+        }
 
         if (mop->mo_ldd.ldd_mount_type == LDD_MT_ZFS) {
                 /* Common mistake: user gave device name instead of pool name */
@@ -1564,7 +1572,7 @@ int parse_opts(int argc, char *const argv[], struct mkfs_opts *mop,
                 }
                 if (strchr(mop->mo_device, '/') == NULL) {
                         fatal();
-                        fprintf(stderr, "Incomplete pool/dataset name: '%s'\n"
+                        fprintf(stderr, "Incomplete ZFS dataset name: '%s'\n"
                                 "Please run '%s --help' for syntax help.\n",
                                 mop->mo_device, progname);
                         return EINVAL;
