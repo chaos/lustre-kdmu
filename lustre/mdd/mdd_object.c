@@ -1208,7 +1208,7 @@ static int mdd_changelog_data_store(const struct lu_env     *env,
         LASSERT(handle != NULL);
         LASSERT(mdd_obj != NULL);
 
-        if ((type == CL_SETATTR) &&
+        if ((type == CL_TIME) &&
             cfs_time_before_64(mdd->mdd_cl.mc_starttime, mdd_obj->mod_cltime)) {
                 /* Don't need multiple updates in this log */
                 /* Don't check under lock - no big deal if we get an extra
@@ -1460,9 +1460,12 @@ static int mdd_attr_set(const struct lu_env *env, struct md_object *obj,
 
         }
 cleanup:
-        if ((rc == 0) && (ma->ma_attr.la_valid & (LA_MTIME | LA_CTIME)))
-                rc = mdd_changelog_data_store(env, mdd, CL_SETATTR, mdd_obj,
-                                              handle);
+        if (rc == 0)
+                rc = mdd_changelog_data_store(env, mdd,
+                                              (ma->ma_attr.la_valid &
+                                               ~(LA_MTIME|LA_CTIME|LA_ATIME)) ?
+                                              CL_SETATTR : CL_TIME,
+                                              mdd_obj, handle);
         mdd_trans_stop(env, mdd, rc, handle);
 #ifdef HAVE_QUOTA_SUPPORT
         if (quota_opc) {

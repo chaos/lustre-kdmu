@@ -988,14 +988,14 @@ static void osc_lock_to_lockless(const struct lu_env *env,
                         io->ci_lockreq == CILR_NEVER);
 
                 ocd = &class_exp2cliimp(osc_export(oob))->imp_connect_data;
-                ols->ols_locklessable = (io->ci_type != CIT_TRUNC) &&
+                ols->ols_locklessable = (io->ci_type != CIT_SETATTR) &&
                                 (io->ci_lockreq == CILR_MAYBE) &&
                                 (ocd->ocd_connect_flags & OBD_CONNECT_SRVLOCK);
                 if (io->ci_lockreq == CILR_NEVER ||
                         /* lockless IO */
                     (ols->ols_locklessable && osc_object_is_contended(oob)) ||
                         /* lockless truncate */
-                    (io->ci_type == CIT_TRUNC &&
+                    (cl_io_is_trunc(io) &&
                      (ocd->ocd_connect_flags & OBD_CONNECT_TRUNCLOCK) &&
                       osd->od_lockless_truncate)) {
                         ols->ols_locklessable = 1;
@@ -1558,8 +1558,7 @@ static void osc_lock_lockless_state(const struct lu_env *env,
                  * host object */
                 if (cl_object_same(oio->oi_cl.cis_obj, slice->cls_obj))
                         oio->oi_lockless = 1;
-        } else
-                lock->ols_owner = NULL;
+        }
 }
 
 static int osc_lock_lockless_fits_into(const struct lu_env *env,
@@ -1572,9 +1571,7 @@ static int osc_lock_lockless_fits_into(const struct lu_env *env,
         if (!(need->cld_enq_flags & CEF_NEVER))
                 return 0;
 
-        /* To solve the problem of stacking echo client upon osc directly.
-         * see bug 22147 for details.
-         */
+        /* lockless lock should only be used by its owning io. b22147 */
         return (lock->ols_owner == osc_env_io(env));
 }
 
