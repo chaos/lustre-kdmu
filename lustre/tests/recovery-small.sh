@@ -759,6 +759,26 @@ test_28() {      # bug 6086 - error adding new clients
 }
 run_test 28 "handle error adding new clients (bug 6086)"
 
+test_29a() { # bug 22273 - error adding new clients
+	#define OBD_FAIL_TGT_CLIENT_ADD 0x711
+	do_facet $SINGLEMDS "lctl set_param fail_loc=0x80000711"
+	# fail abort so client will be new again
+	fail_abort $SINGLEMDS
+	client_up || error "reconnect failed"
+	return 0
+}
+run_test 29a "error adding new clients doesn't cause LBUG (bug 22273)"
+
+test_29b() { # bug 22273 - error adding new clients
+	#define OBD_FAIL_TGT_CLIENT_ADD 0x711
+	do_facet ost1 "lctl set_param fail_loc=0x80000711"
+	# fail abort so client will be new again
+	fail_abort ost1
+	client_up || error "reconnect failed"
+	return 0
+}
+run_test 29b "error adding new clients doesn't cause LBUG (bug 22273)"
+
 test_50() {
 	mkdir -p $DIR/$tdir
 	# put a load of file creates/writes/deletes
@@ -785,6 +805,9 @@ test_50() {
 run_test 50 "failover MDS under load"
 
 test_51() {
+	#define OBD_FAIL_MDS_SYNC_CAPA_SL                    0x1310
+	do_facet ost1 lctl set_param fail_loc=0x00001310
+
 	mkdir -p $DIR/$tdir
 	# put a load of file creates/writes/deletes
 	writemany -q $DIR/$tdir/$tfile 0 5 &
@@ -1070,12 +1093,12 @@ test_61()
 
 	replay_barrier $SINGLEMDS
 	createmany -o $DIR/$tdir/$tfile-%d 10 
-	local oid=`do_facet ost1 "lctl get_param -n obdfilter.*OST0000.last_id"`
+	local oid=`do_facet ost1 "lctl get_param -n obdfilter.${ost1_svc}.last_id"`
 
 	fail_abort $SINGLEMDS
 	
 	touch $DIR/$tdir/$tfile
-	local id=`$LFS getstripe $DIR/$tdir/$tfile |awk '$2 ~ /^[1-9]+/ {print $2}'`
+	local id=`$LFS getstripe $DIR/$tdir/$tfile |awk '($1 ~ 0 && $2 ~ /^[1-9]+/) {print $2}'`
 	[ $id -le $oid ] && error "the orphan objid was reused, failed"
 
 	# Cleanup

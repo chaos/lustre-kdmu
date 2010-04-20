@@ -211,7 +211,7 @@ void la_from_obdo(struct lu_attr *dst, struct obdo *obdo, obd_flag valid)
                 dst->la_gid = obdo->o_gid;
                 newvalid |= LA_GID;
         }
-        dst->la_valid |= newvalid;
+        dst->la_valid = newvalid;
 }
 EXPORT_SYMBOL(la_from_obdo);
 

@@ -38,6 +38,11 @@
 #define _LUSTRE_SEC_H_
 
 #include<libcfs/params_tree.h>
+/** \defgroup sec sec
+ *
+ * @{
+ */
+
 /*
  * to avoid include
  */
@@ -816,5 +821,7 @@ enum {
         LUSTRE_SEC_SPECIFY      = 2,
         LUSTRE_SEC_ALL          = 3
 };
+
+/** @} sec */
 
 #endif /* _LUSTRE_SEC_H_ */

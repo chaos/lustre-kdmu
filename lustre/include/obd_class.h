@@ -1415,6 +1415,20 @@ static inline int obd_change_cbdata(struct obd_export *exp,
         RETURN(rc);
 }
 
+static inline int obd_find_cbdata(struct obd_export *exp,
+                                  struct lov_stripe_md *lsm,
+                                  ldlm_iterator_t it, void *data)
+{
+        int rc;
+        ENTRY;
+
+        EXP_CHECK_DT_OP(exp, find_cbdata);
+        EXP_COUNTER_INCREMENT(exp, find_cbdata);
+
+        rc = OBP(exp->exp_obd, find_cbdata)(exp, lsm, it, data);
+        RETURN(rc);
+}
+
 static inline int obd_cancel(struct obd_export *exp,
                              struct lov_stripe_md *ea, __u32 mode,
                              struct lustre_handle *lockh)
@@ -1768,6 +1782,18 @@ static inline int md_change_cbdata(struct obd_export *exp,
         RETURN(rc);
 }
 
+static inline int md_find_cbdata(struct obd_export *exp,
+                                 const struct lu_fid *fid,
+                                 ldlm_iterator_t it, void *data)
+{
+        int rc;
+        ENTRY;
+        EXP_CHECK_MD_OP(exp, find_cbdata);
+        EXP_MD_COUNTER_INCREMENT(exp, find_cbdata);
+        rc = MDP(exp->exp_obd, find_cbdata)(exp, fid, it, data);
+        RETURN(rc);
+}
+
 static inline int md_close(struct obd_export *exp, struct md_op_data *op_data,
                            struct md_open_data *mod,
                            struct ptlrpc_request **request)
@@ -2108,13 +2134,13 @@ static inline int md_intent_getattr_async(struct obd_export *exp,
 
 static inline int md_revalidate_lock(struct obd_export *exp,
                                      struct lookup_intent *it,
-                                     struct lu_fid *fid)
+                                     struct lu_fid *fid, __u32 *bits)
 {
         int rc;
         ENTRY;
         EXP_CHECK_MD_OP(exp, revalidate_lock);
         EXP_MD_COUNTER_INCREMENT(exp, revalidate_lock);
-        rc = MDP(exp->exp_obd, revalidate_lock)(exp, it, fid);
+        rc = MDP(exp->exp_obd, revalidate_lock)(exp, it, fid, bits);
         RETURN(rc);
 }
 

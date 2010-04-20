@@ -51,6 +51,11 @@
 #ifndef _LUSTRE_LOG_H
 #define _LUSTRE_LOG_H
 
+/** \defgroup log log
+ *
+ * @{
+ */
+
 #if defined(__linux__)
 #include <linux/lustre_log.h>
 #elif defined(__APPLE__)
@@ -115,11 +120,16 @@ int llog_init_handle(struct llog_handle *handle, int flags,
 extern void llog_free_handle(struct llog_handle *handle);
 int llog_process(struct llog_handle *loghandle, llog_cb_t cb,
                  void *data, void *catdata);
+int llog_process_flags(struct llog_handle *loghandle, llog_cb_t cb,
+                 void *data, void *catdata, int flags);
 int llog_reverse_process(struct llog_handle *loghandle, llog_cb_t cb,
                          void *data, void *catdata);
 extern int llog_cancel_rec(struct llog_handle *loghandle, int index);
 extern int llog_close(struct llog_handle *cathandle);
 extern int llog_get_size(struct llog_handle *loghandle);
+
+/* llog_process flags */
+#define LLOG_FLAG_NODEAMON 0x0001
 
 /* llog_cat.c - catalog api */
 struct llog_process_data {
@@ -138,6 +148,7 @@ struct llog_process_data {
          */
         int                  lpd_startcat;
         int                  lpd_startidx;
+        int                  lpd_flags;  /** llog_process flags */
 };
 
 struct llog_process_cat_data {
@@ -178,6 +189,8 @@ int llog_cat_cancel_records(struct llog_handle *cathandle, int count,
                             struct llog_cookie *cookies);
 int llog_cat_process(struct llog_handle *cat_llh, llog_cb_t cb, void *data,
                      int startcat, int startidx);
+int llog_cat_process_flags(struct llog_handle *cat_llh, llog_cb_t cb, void *data,
+                     int flags, int startcat, int startidx);
 int llog_cat_process_thread(void *data);
 int llog_cat_reverse_process(struct llog_handle *cat_llh, llog_cb_t cb, void *data);
 int llog_cat_set_first_idx(struct llog_handle *cathandle, int index);
@@ -927,5 +940,7 @@ int lustre_process_log(struct super_block *sb, char *logname,
                        struct config_llog_instance *cfg);
 int lustre_end_log(struct super_block *sb, char *logname,
                    struct config_llog_instance *cfg);
+
+/** @} log */
 
 #endif

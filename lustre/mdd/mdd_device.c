@@ -46,11 +46,6 @@
 #define DEBUG_SUBSYSTEM S_MDS
 
 #include <linux/module.h>
-#ifdef HAVE_EXT4_LDISKFS
-#include <ldiskfs/ldiskfs_jbd2.h>
-#else
-#include <linux/jbd.h>
-#endif
 #include <obd.h>
 #include <obd_class.h>
 #include <lustre_ver.h>
@@ -59,11 +54,6 @@
 
 #include <lustre_disk.h>
 #include <lustre_fid.h>
-#ifdef HAVE_EXT4_LDISKFS
-#include <ldiskfs/ldiskfs.h>
-#else
-#include <linux/ldiskfs_fs.h>
-#endif
 #include <lustre_mds.h>
 #include <lustre/lustre_idl.h>
 #include <lustre_disk.h>      /* for changelogs */
@@ -1165,7 +1155,11 @@ static int mdd_init_capa_ctxt(const struct lu_env *env, struct md_device *m,
         int rc;
         ENTRY;
 
+        /* need barrier for mds_capa_keys access. */
+        cfs_down_write(&mds->mds_notify_lock);
         mds->mds_capa_keys = keys;
+        cfs_up_write(&mds->mds_notify_lock);
+
         rc = mdd_child_ops(mdd)->dt_init_capa_ctxt(env, mdd->mdd_child, mode,
                                                    timeout, alg, keys);
         RETURN(rc);
@@ -1410,7 +1404,7 @@ static int mdd_changelog_user_purge(struct mdd_device *mdd, int id,
         int rc;
         ENTRY;
 
-        CDEBUG(D_IOCTL, "Purge request: id=%d, endrec="LPD64"\n", id, endrec);
+        CDEBUG(D_IOCTL, "Purge request: id=%d, endrec=%lld\n", id, endrec);
 
         data.mcud_id = id;
         data.mcud_minid = 0;

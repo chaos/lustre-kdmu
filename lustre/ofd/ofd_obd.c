@@ -214,6 +214,7 @@ static int filter_obd_connect(const struct lu_env *env, struct obd_export **_exp
                               struct obd_connect_data *data, void *localdata)
 {
         struct lsd_client_data    *lcd = NULL;
+        struct filter_thread_info *info;
         struct filter_export_data *fed;
         struct obd_export         *exp;
         struct filter_device      *ofd;
@@ -239,7 +240,8 @@ static int filter_obd_connect(const struct lu_env *env, struct obd_export **_exp
                 CERROR("Failure to refill session: '%d'\n", rc);
                 GOTO(out, rc);
         }
-        filter_info_init(env, exp);
+        info = filter_info_init(env, exp);
+        info->fti_no_need_trans = 1;
 
         rc = filter_parse_connect_data(env, exp, data);
         if (rc)
@@ -657,6 +659,7 @@ int filter_setattr(struct obd_export *exp,
                 RETURN(rc);
 
         info = filter_info_init(&env, exp);
+        info->fti_no_need_trans = 0;
         filter_oti2info(info, oti);
 
         lu_idif_build(&info->fti_fid, oinfo->oi_oa->o_id, oinfo->oi_oa->o_gr);
@@ -696,6 +699,10 @@ int filter_setattr(struct obd_export *exp,
                        (long unsigned) info->fti_fid.f_oid,
                        info->fti_fid.f_seq);
                 GOTO(out, rc = PTR_ERR(fo));
+        }
+        if (!filter_object_exists(fo)) {
+                CERROR("can't find object "DFID"\n", PFID(&info->fti_fid));
+                GOTO(out_unlock, rc = -ENOENT);
         }
 
         la_from_obdo(&info->fti_attr, oinfo->oi_oa, oinfo->oi_oa->o_valid);
@@ -743,7 +750,8 @@ static int filter_punch(struct obd_export *exp, struct obd_info *oinfo,
         if (rc)
                 RETURN(rc);
         info = filter_info_init(&env, exp);
-        filter_info2oti(info, oti);
+        info->fti_no_need_trans = 0;
+        filter_oti2info(info, oti);
 
         lu_idif_build(&info->fti_fid, oinfo->oi_oa->o_id, oinfo->oi_oa->o_gr);
         lu_idif_resid(&info->fti_fid, &info->fti_resid);
@@ -854,7 +862,7 @@ int filter_destroy(struct obd_export *exp,
         if (rc)
                 RETURN(rc);
         info = filter_info_init(&env, exp);
-
+        info->fti_no_need_trans = 0;
         filter_oti2info(info, oti);
 
         if (!(oa->o_valid & OBD_MD_FLGROUP))
@@ -915,6 +923,7 @@ static int filter_orphans_destroy(const struct lu_env *env,
         obd_gr                     gr = oa->o_gr;
         ENTRY;
 
+        info->fti_no_need_trans = 1;
         LASSERT(exp != NULL);
         skip_orphan = !!(exp->exp_connect_flags & OBD_CONNECT_SKIP_ORPHAN);
 
@@ -967,6 +976,7 @@ static int filter_create(struct obd_export *exp,
                 RETURN(rc);
 
         info = filter_info_init(&env, exp);
+        info->fti_no_need_trans = 1;
         filter_oti2info(info, oti);
 
         LASSERT(ea == NULL);

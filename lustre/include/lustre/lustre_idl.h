@@ -1261,39 +1261,39 @@ enum md_op_flags {
 
 /* these should be identical to their EXT3_*_FL counterparts, and are
  * redefined here only to avoid dragging in ext3_fs.h */
-#define MDS_SYNC_FL             0x00000008 /* Synchronous updates */
-#define MDS_IMMUTABLE_FL        0x00000010 /* Immutable file */
-#define MDS_APPEND_FL           0x00000020 /* writes to file may only append */
-#define MDS_NOATIME_FL          0x00000080 /* do not update atime */
-#define MDS_DIRSYNC_FL          0x00010000 /* dirsync behaviour (dir only) */
+#define LUSTRE_SYNC_FL         0x00000008 /* Synchronous updates */
+#define LUSTRE_IMMUTABLE_FL    0x00000010 /* Immutable file */
+#define LUSTRE_APPEND_FL       0x00000020 /* writes to file may only append */
+#define LUSTRE_NOATIME_FL      0x00000080 /* do not update atime */
+#define LUSTRE_DIRSYNC_FL      0x00010000 /* dirsync behaviour (dir only) */
 
 #ifdef __KERNEL__
-/* Convert wire MDS_*_FL to corresponding client local VFS S_* values
- * for the client inode i_flags.  The MDS_*_FL are the Lustre wire
+/* Convert wire LUSTRE_*_FL to corresponding client local VFS S_* values
+ * for the client inode i_flags.  The LUSTRE_*_FL are the Lustre wire
  * protocol equivalents of LDISKFS_*_FL values stored on disk, while
  * the S_* flags are kernel-internal values that change between kernel
  * versions.  These flags are set/cleared via FSFILT_IOC_{GET,SET}_FLAGS.
  * See b=16526 for a full history. */
 static inline int ll_ext_to_inode_flags(int flags)
 {
-        return (((flags & MDS_SYNC_FL)      ? S_SYNC      : 0) |
-                ((flags & MDS_NOATIME_FL)   ? S_NOATIME   : 0) |
-                ((flags & MDS_APPEND_FL)    ? S_APPEND    : 0) |
+        return (((flags & LUSTRE_SYNC_FL)      ? S_SYNC      : 0) |
+                ((flags & LUSTRE_NOATIME_FL)   ? S_NOATIME   : 0) |
+                ((flags & LUSTRE_APPEND_FL)    ? S_APPEND    : 0) |
 #if defined(S_DIRSYNC)
-                ((flags & MDS_DIRSYNC_FL)   ? S_DIRSYNC   : 0) |
+                ((flags & LUSTRE_DIRSYNC_FL)   ? S_DIRSYNC   : 0) |
 #endif
-                ((flags & MDS_IMMUTABLE_FL) ? S_IMMUTABLE : 0));
+                ((flags & LUSTRE_IMMUTABLE_FL) ? S_IMMUTABLE : 0));
 }
 
 static inline int ll_inode_to_ext_flags(int iflags)
 {
-        return (((iflags & S_SYNC)      ? MDS_SYNC_FL      : 0) |
-                ((iflags & S_NOATIME)   ? MDS_NOATIME_FL   : 0) |
-                ((iflags & S_APPEND)    ? MDS_APPEND_FL    : 0) |
+        return (((iflags & S_SYNC)      ? LUSTRE_SYNC_FL      : 0) |
+                ((iflags & S_NOATIME)   ? LUSTRE_NOATIME_FL   : 0) |
+                ((iflags & S_APPEND)    ? LUSTRE_APPEND_FL    : 0) |
 #if defined(S_DIRSYNC)
-                ((iflags & S_DIRSYNC)   ? MDS_DIRSYNC_FL   : 0) |
+                ((iflags & S_DIRSYNC)   ? LUSTRE_DIRSYNC_FL   : 0) |
 #endif
-                ((iflags & S_IMMUTABLE) ? MDS_IMMUTABLE_FL : 0));
+                ((iflags & S_IMMUTABLE) ? LUSTRE_IMMUTABLE_FL : 0));
 }
 #endif
 
@@ -2229,12 +2229,6 @@ struct changelog_setinfo {
         __u32 cs_id;
 } __attribute__((packed));
 
-struct changelog_show {
-        __u64 cs_startrec;
-        __u32 cs_pid;
-        __u32 cs_flags;
-} __attribute__((packed));
-
 /** changelog record */
 struct llog_changelog_rec {
         struct llog_rec_hdr  cr_hdr;
@@ -2612,7 +2606,7 @@ struct getinfo_fid2path {
 
 void lustre_swab_fid2path (struct getinfo_fid2path *gf);
 
-extern void lustre_swab_lnlh(struct lnl_hdr *);
+extern void lustre_swab_kuch(struct kuc_hdr *);
 
 
 #endif

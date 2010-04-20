@@ -149,7 +149,9 @@ struct ll_inode_info {
         cfs_list_t              lli_dead_list;
 
         cfs_semaphore_t         lli_och_sem; /* Protects access to och pointers
-                                                and their usage counters */
+                                                and their usage counters, also
+                                                atomicity of check-update of
+                                                lli_smd */
         /* We need all three because every inode may be opened in different
            modes */
         struct obd_client_handle *lli_mds_read_och;
@@ -366,10 +368,6 @@ struct ll_sb_info {
         unsigned int              ll_namelen;
         struct file_operations   *ll_fop;
 
-#ifdef HAVE_EXPORT___IGET
-        cfs_list_t                ll_deathrow;/*inodes to be destroyed (b1443)*/
-        cfs_spinlock_t            ll_deathrow_lock;
-#endif
         /* =0 - hold lock over whole read/write
          * >0 - max. chunk to be read/written w/o lock re-acquiring */
         unsigned long             ll_max_rw_chunk;
@@ -389,15 +387,10 @@ struct ll_sb_info {
 
         /* metadata stat-ahead */
         unsigned int              ll_sa_max;     /* max statahead RPCs */
-        unsigned int              ll_sa_wrong;   /* statahead thread stopped for
-                                                  * low hit ratio */
-        unsigned int              ll_sa_total;   /* statahead thread started
+        atomic_t                  ll_sa_total;   /* statahead thread started
                                                   * count */
-        unsigned long long        ll_sa_blocked; /* ls count waiting for
-                                                  * statahead */
-        unsigned long long        ll_sa_cached;  /* ls count got in cache */
-        unsigned long long        ll_sa_hit;     /* hit count */
-        unsigned long long        ll_sa_miss;    /* miss count */
+        atomic_t                  ll_sa_wrong;   /* statahead thread stopped for
+                                                  * low hit ratio */
 
         dev_t                     ll_sdev_orig; /* save s_dev before assign for
                                                  * clustred nfs */
@@ -574,9 +567,10 @@ int ll_md_blocking_ast(struct ldlm_lock *, struct ldlm_lock_desc *,
 struct lookup_intent *ll_convert_intent(struct open_intent *oit,
                                         int lookup_flags);
 #endif
+void ll_lookup_it_alias(struct dentry **de, struct inode *inode, __u32 bits);
 int ll_lookup_it_finish(struct ptlrpc_request *request,
-                        struct lookup_intent *it, void *data);
-void ll_lookup_finish_locks(struct lookup_intent *it, struct dentry *dentry);
+                        struct lookup_intent *it, void *data,
+                        struct inode **alias);
 
 /* llite/rw.c */
 int ll_prepare_write(struct file *, struct page *, unsigned from, unsigned to);

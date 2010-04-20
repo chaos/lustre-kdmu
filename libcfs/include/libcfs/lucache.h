@@ -155,4 +155,7 @@ struct upcall_cache *upcall_cache_init(const char *name);
 void upcall_cache_cleanup(struct upcall_cache *hash);
 
 #endif
+
+/** @} ucache */
+
 #endif /* _UPCALL_CACHE_H */

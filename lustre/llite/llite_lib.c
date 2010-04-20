@@ -124,10 +124,6 @@ static struct ll_sb_info *ll_init_sbi(void)
         sbi->ll_flags |= LL_SBI_LRU_RESIZE;
 #endif
 
-#ifdef HAVE_EXPORT___IGET
-        CFS_INIT_LIST_HEAD(&sbi->ll_deathrow);
-        cfs_spin_lock_init(&sbi->ll_deathrow_lock);
-#endif
         for (i = 0; i <= LL_PROCESS_HIST_MAX; i++) {
                 cfs_spin_lock_init(&sbi->ll_rw_extents_info.pp_extents[i]. \
                                    pp_r_hist.oh_lock);
@@ -137,6 +133,8 @@ static struct ll_sb_info *ll_init_sbi(void)
 
         /* metadata statahead is enabled by default */
         sbi->ll_sa_max = LL_SA_RPC_DEF;
+        atomic_set(&sbi->ll_sa_total, 0);
+        atomic_set(&sbi->ll_sa_wrong, 0);
 
         RETURN(sbi);
 }
@@ -579,104 +577,6 @@ void lustre_dump_dentry(struct dentry *dentry, int recur)
         }
 }
 
-#ifdef HAVE_EXPORT___IGET
-static void prune_dir_dentries(struct inode *inode)
-{
-        struct dentry *dentry, *prev = NULL;
-
-        /* due to lustre specific logic, a directory
-         * can have few dentries - a bug from VFS POV */
-restart:
-        spin_lock(&dcache_lock);
-        if (!list_empty(&inode->i_dentry)) {
-                dentry = list_entry(inode->i_dentry.prev,
-                                    struct dentry, d_alias);
-                /* in order to prevent infinite loops we
-                 * break if previous dentry is busy */
-                if (dentry != prev) {
-                        prev = dentry;
-                        dget_locked(dentry);
-                        spin_unlock(&dcache_lock);
-
-                        /* try to kill all child dentries */
-                        lock_dentry(dentry);
-                        shrink_dcache_parent(dentry);
-                        unlock_dentry(dentry);
-                        dput(dentry);
-
-                        /* now try to get rid of current dentry */
-                        d_prune_aliases(inode);
-                        goto restart;
-                }
-        }
-        spin_unlock(&dcache_lock);
-}
-
-static void prune_deathrow_one(struct ll_inode_info *lli)
-{
-        struct inode *inode = ll_info2i(lli);
-
-        /* first, try to drop any dentries - they hold a ref on the inode */
-        if (S_ISDIR(inode->i_mode))
-                prune_dir_dentries(inode);
-        else
-                d_prune_aliases(inode);
-
-
-        /* if somebody still uses it, leave it */
-        LASSERT(atomic_read(&inode->i_count) > 0);
-        if (atomic_read(&inode->i_count) > 1)
-                goto out;
-
-        CDEBUG(D_INODE, "inode %lu/%u(%d) looks a good candidate for prune\n",
-               inode->i_ino,inode->i_generation,
-               atomic_read(&inode->i_count));
-
-        /* seems nobody uses it anymore */
-        inode->i_nlink = 0;
-
-out:
-        iput(inode);
-        return;
-}
-
-static void prune_deathrow(struct ll_sb_info *sbi, int try)
-{
-        struct ll_inode_info *lli;
-        int empty;
-
-        do {
-                if (need_resched() && try)
-                        break;
-
-                if (try) {
-                        if (!cfs_spin_trylock(&sbi->ll_deathrow_lock))
-                                break;
-                } else {
-                        cfs_spin_lock(&sbi->ll_deathrow_lock);
-                }
-
-                empty = 1;
-                lli = NULL;
-                if (!cfs_list_empty(&sbi->ll_deathrow)) {
-                        lli = cfs_list_entry(sbi->ll_deathrow.next,
-                                             struct ll_inode_info,
-                                             lli_dead_list);
-                        cfs_list_del_init(&lli->lli_dead_list);
-                        if (!cfs_list_empty(&sbi->ll_deathrow))
-                                empty = 0;
-                }
-                cfs_spin_unlock(&sbi->ll_deathrow_lock);
-
-                if (lli)
-                        prune_deathrow_one(lli);
-
-        } while (empty == 0);
-}
-#else /* !HAVE_EXPORT___IGET */
-#define prune_deathrow(sbi, try) do {} while (0)
-#endif /* HAVE_EXPORT___IGET */
-
 void client_common_put_super(struct super_block *sb)
 {
         struct ll_sb_info *sbi = ll_s2sbi(sb);
@@ -694,9 +594,6 @@ void client_common_put_super(struct super_block *sb)
         ll_close_thread_shutdown(sbi->ll_lcq);
 
         cl_sb_fini(sb);
-
-        /* destroy inodes in deathrow */
-        prune_deathrow(sbi, 0);
 
         cfs_list_del(&sbi->ll_conn_chain);
 
@@ -1126,11 +1023,6 @@ void ll_clear_inode(struct inode *inode)
 #endif
         lli->lli_inode_magic = LLI_INODE_DEAD;
 
-#ifdef HAVE_EXPORT___IGET
-        cfs_spin_lock(&sbi->ll_deathrow_lock);
-        cfs_list_del_init(&lli->lli_dead_list);
-        cfs_spin_unlock(&sbi->ll_deathrow_lock);
-#endif
         ll_clear_inode_capas(inode);
         /*
          * XXX This has to be done before lsm is freed below, because
@@ -1537,6 +1429,7 @@ void ll_update_inode(struct inode *inode, struct lustre_md *md)
 
         LASSERT ((lsm != NULL) == ((body->valid & OBD_MD_FLEASIZE) != 0));
         if (lsm != NULL) {
+                cfs_down(&lli->lli_och_sem);
                 if (lli->lli_smd == NULL) {
                         if (lsm->lsm_magic != LOV_MAGIC_V1 &&
                             lsm->lsm_magic != LOV_MAGIC_V3) {
@@ -1545,16 +1438,18 @@ void ll_update_inode(struct inode *inode, struct lustre_md *md)
                         }
                         CDEBUG(D_INODE, "adding lsm %p to inode %lu/%u(%p)\n",
                                lsm, inode->i_ino, inode->i_generation, inode);
+                        /* cl_inode_init must go before lli_smd or a race is
+                         * possible where client thinks the file has stripes,
+                         * but lov raid0 is not setup yet and parallel e.g.
+                         * glimpse would try to use uninitialized lov */
                         cl_inode_init(inode, md);
-                        /* ll_inode_size_lock() requires it is only
-                         * called with lli_smd != NULL or lock_lsm == 0
-                         *  or we can race between lock/unlock.
-                         *  bug 9547 */
                         lli->lli_smd = lsm;
+                        cfs_up(&lli->lli_och_sem);
                         lli->lli_maxbytes = lsm->lsm_maxbytes;
                         if (lli->lli_maxbytes > PAGE_CACHE_MAXBYTES)
                                 lli->lli_maxbytes = PAGE_CACHE_MAXBYTES;
                 } else {
+                        cfs_up(&lli->lli_och_sem);
                         LASSERT(lli->lli_smd->lsm_magic == lsm->lsm_magic &&
                                 lli->lli_smd->lsm_stripe_count ==
                                 lsm->lsm_stripe_count);
@@ -1997,7 +1892,6 @@ int ll_prep_inode(struct inode **inode,
 
         LASSERT(*inode || sb);
         sbi = sb ? ll_s2sbi(sb) : ll_i2sbi(*inode);
-        prune_deathrow(sbi, 1);
         memset(&md, 0, sizeof(struct lustre_md));
 
         rc = md_get_lustre_md(sbi->ll_md_exp, req, sbi->ll_dt_exp,

@@ -567,7 +567,7 @@ static void mdt_empty_transno(struct mdt_thread_info* info)
         }
         cfs_spin_unlock(&mdt->mdt_transno_lock);
 
-        CDEBUG(D_INODE, "transno = %llu, last_committed = %llu\n",
+        CDEBUG(D_INODE, "transno = "LPU64", last_committed = "LPU64"\n",
                         info->mti_transno,
                         req->rq_export->exp_obd->obd_last_committed);
 
@@ -1372,7 +1372,6 @@ int mdt_reint_open(struct mdt_thread_info *info, struct mdt_lock_handle *lhc)
         if (!(msg_flags & MSG_REPLAY) && create_flags & MDS_OPEN_LOCK) {
                 ldlm_mode_t lm;
 
-                LASSERT(!created);
                 if (create_flags & FMODE_WRITE)
                         lm = LCK_CW;
                 else if (create_flags & MDS_FMODE_EXEC)

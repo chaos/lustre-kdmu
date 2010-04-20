@@ -81,6 +81,7 @@ cfs_user_write (cfs_file_t *filp, const char *buf, size_t count, loff_t *offset)
 			break;
                 buf += size;
 		count -= size;
+                buf += size;
 		size = 0;
 	}
 	set_fs(fs);

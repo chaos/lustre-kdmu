@@ -265,7 +265,7 @@ load_module() {
 	    (($# > 0)) && shift 2
 
             # Ensure we have accept=all for lnet
-            if [ $module = lnet ]; then
+            if [ $(basename $module) = lnet ]; then
                 # OK, this is a bit wordy...
                 local arg accept_all_present=false
                 for arg in "$@"; do
@@ -336,8 +336,8 @@ load_modules_local() {
         [ "$FSTYPE" = "ldiskfs" ] && load_module ../ldiskfs/ldiskfs/ldiskfs
         [ "$OSTFSTYPE" = "ldiskfs" ] && load_module ../ldiskfs/ldiskfs/ldiskfs
         [ "$MDSFSTYPE" = "ldiskfs" ] && load_module ../ldiskfs/ldiskfs/ldiskfs
-        [ "$OSTFSTYPE" = "zfs" ] && load_module "dmu-osd/osd-zfs"
-        [ "$MDSFSTYPE" = "zfs" ] && load_module "dmu-osd/osd-zfs"
+        [ "$OSTFSTYPE" = "zfs" ] && load_module "dmu-osd/osd_zfs"
+        [ "$MDSFSTYPE" = "zfs" ] && load_module "dmu-osd/osd_zfs"
         load_module mgs/mgs
         load_module mds/mds
         load_module mdd/mdd
@@ -411,7 +411,7 @@ check_gss_daemon_nodes() {
     local list=$1
     dname=$2
 
-    do_nodes --verbose $list "num=\\\$(ps -o cmd -C $dname | grep $dname | wc -l);
+    do_nodesv $list "num=\\\$(ps -o cmd -C $dname | grep $dname | wc -l);
 if [ \\\"\\\$num\\\" -ne 1 ]; then
     echo \\\$num instance of $dname;
     exit 1;
@@ -1005,6 +1005,8 @@ start_client_loads () {
         testnum=$((nodenum % numloads))
         start_client_load ${clients[nodenum]} ${CLIENT_LOADS[testnum]}
     done
+    # bug 22169: wait the background threads to start
+    sleep 2
 }
 
 # only for remote client 
@@ -1591,6 +1593,10 @@ do_node() {
     return ${PIPESTATUS[0]}
 }
 
+do_nodev() {
+    do_node --verbose "$@"
+}
+
 single_local_node () {
    [ "$1" = "$HOSTNAME" ]
 }
@@ -1619,7 +1625,7 @@ do_nodes() {
 
     if single_local_node $rnodes; then
         if $verbose; then
-           do_node --verbose $rnodes "$@"
+           do_nodev $rnodes "$@"
         else
            do_node $rnodes "$@"
         fi
@@ -1651,6 +1657,10 @@ do_facet() {
     local HOST=`facet_active_host $facet`
     [ -z $HOST ] && echo No host defined for facet ${facet} && exit 1
     do_node $HOST "$@"
+}
+
+do_nodesv() {
+    do_nodes --verbose "$@"
 }
 
 add() {
@@ -2675,13 +2685,8 @@ run_test() {
     return $?
 }
 
-EQUALS="======================================================================"
 equals_msg() {
-    msg="$@"
-
-    local suffixlen=$((${#EQUALS} - ${#msg}))
-    [ $suffixlen -lt 5 ] && suffixlen=5
-    log `echo $(printf '===== %s %.*s\n' "$msg" $suffixlen $EQUALS)`
+    banner "$*"
 }
 
 log() {
@@ -2720,8 +2725,8 @@ pass() {
 }
 
 check_mds() {
-    FFREE=$(do_node $SINGLEMDS lctl get_param -n osd.*MDT*.filesfree | awk 'BEGIN{avail=0}; {avail+=$1}; END{print avail}')
-    FTOTAL=$(do_node $SINGLEMDS lctl get_param -n osd.*MDT*.filestotal | awk 'BEGIN{avail=0}; {avail+=$1}; END{print avail}')
+    FFREE=$(do_node $SINGLEMDS lctl get_param -n osd*.*MDT*.filesfree | awk 'BEGIN{avail=0}; {avail+=$1}; END{print avail}')
+    FTOTAL=$(do_node $SINGLEMDS lctl get_param -n osd*.*MDT*.filestotal | awk 'BEGIN{avail=0}; {avail+=$1}; END{print avail}')
     [ $FFREE -ge $FTOTAL ] && error "files free $FFREE > total $FTOTAL" || true
 }
 
@@ -2736,18 +2741,15 @@ reset_fail_loc () {
 # Log a message (on all nodes) padded with "=" before and after. 
 # Also appends a timestamp and prepends the testsuite name.
 # 
+
+EQUALS="===================================================================================================="
 banner() {
     msg="== ${TESTSUITE} $*"
-    # pad the message out to 70 with "="
     last=${msg: -1:1}
-    [[ $last != "=" && $last != " " ]] && msg+=" "
-    for i in $(seq $((68 - ${#msg})) ); do
-	  msg="$msg="
-    done
+    [[ $last != "=" && $last != " " ]] && msg="$msg "
+    msg=$(printf '%s%.*s'  "$msg"  $((${#EQUALS} - ${#msg})) $EQUALS )
     # always include at least == after the message
-    msg="$msg=="
-
-    log "$msg $(date +"%H:%M:%S (%s)")"
+    log "$msg== $(date +"%H:%M:%S (%s)")"
 }
 
 #
@@ -2792,7 +2794,7 @@ run_one_logged() {
     rm -rf $LOGDIR/err
 
     echo
-    run_one $1 "$2" 2>&1 | tee $test_log
+    (run_one $1 "$2") 2>&1 | tee $test_log
     local RC=${PIPESTATUS[0]}
 
     [ $RC -ne 0 ] && [ ! -f $LOGDIR/err ] && \
@@ -3079,7 +3081,7 @@ setstripe_nfsserver () {
 
     [ -z $nfsserver ] && echo "$dir is not nfs mounted" && return 1
 
-    do_node --verbose $nfsserver lfs setstripe "$@"
+    do_nodev $nfsserver lfs setstripe "$@"
 }
 
 check_runas_id_ret() {
@@ -3231,7 +3233,7 @@ calc_osc_kbytes () {
 # generate a stream of formatted strings (<node> <param name>=<param value>)
 save_lustre_params() {
         local s
-        do_nodes --verbose $1 "lctl get_param $2 | while read s; do echo \\\$s; done"
+        do_nodesv $1 "lctl get_param $2 | while read s; do echo \\\$s; done"
 }
 
 # restore lustre parameters from input stream, produces by save_lustre_params
@@ -3379,12 +3381,13 @@ get_osc_import_name() {
 }
 
 wait_import_state () {
-    local expected=$1
-    local CONN_PROC=$2
+    local facet=$1
+    local expected=$2
+    local CONN_PROC=$3
     local CONN_STATE
     local i=0
 
-    CONN_STATE=$($LCTL get_param -n $CONN_PROC 2>/dev/null | cut -f2)
+    CONN_STATE=$(do_facet $facet $LCTL get_param -n $CONN_PROC | awk '/state/ {print $2}')
     while [ "${CONN_STATE}" != "${expected}" ]; do
         if [ "${expected}" == "DISCONN" ]; then
             # for disconn we can check after proc entry is removed
@@ -3397,7 +3400,7 @@ wait_import_state () {
         [ $i -ge $(($TIMEOUT * 3 / 2)) ] && \
             error "can't put import for $CONN_PROC into ${expected} state" && return 1
         sleep 1
-        CONN_STATE=$($LCTL get_param -n $CONN_PROC 2>/dev/null | cut -f2)
+        CONN_STATE=$(do_facet $facet $LCTL get_param -n $CONN_PROC | awk '/state/ {print $2}')
         i=$(($i + 1))
     done
 
@@ -3410,33 +3413,26 @@ wait_osc_import_state() {
     local ost_facet=$2
     local expected=$3
     local ost=$(get_osc_import_name $facet $ost_facet)
-    local CONN_PROC
-    local CONN_STATE
-    local i=0
+    local CONN_PROC="osc.${ost}.import"
 
-    CONN_PROC="osc.${ost}.ost_server_uuid"
-    CONN_STATE=$(do_facet $facet lctl get_param -n $CONN_PROC 2>/dev/null | cut -f2)
-    while [ "${CONN_STATE}" != "${expected}" ]; do
-        if [ "${expected}" == "DISCONN" ]; then 
-            # for disconn we can check after proc entry is removed
-            [ "x${CONN_STATE}" == "x" ] && return 0
-            #  with AT we can have connect request timeout ~ reconnect timeout
-            # and test can't see real disconnect
-            [ "${CONN_STATE}" == "CONNECTING" ] && return 0
-        fi
-        # disconnect rpc should be wait not more obd_timeout
-        [ $i -ge $(($TIMEOUT * 3 / 2)) ] && \
-            error "can't put import for ${ost}(${ost_facet}) into ${expected} state" && return 1
-        sleep 1
-        CONN_STATE=$(do_facet $facet lctl get_param -n $CONN_PROC 2>/dev/null | cut -f2)
-        i=$(($i + 1))
-    done
-
-    log "${ost_facet} now in ${CONN_STATE} state"
+    wait_import_state $facet $expected $CONN_PROC || return 1
     return 0
 }
+
 get_clientmdc_proc_path() {
-    echo "${1}-mdc-*"
+    local mdc=$(convert_facet2label $1)
+
+    echo "${mdc}-mdc-*"
+}
+
+wait_mdc_import_state() {
+    local facet=$1
+    local expected=$2
+    local mdc=$(get_clientmdc_proc_path $facet)
+    local CONN_PROC="mdc.${mdc}.import"
+
+    wait_import_state client $expected $CONN_PROC || return 1
+    return 0
 }
 
 do_rpc_nodes () {
@@ -3445,27 +3441,32 @@ do_rpc_nodes () {
 
     # Add paths to lustre tests for 32 and 64 bit systems.
     local RPATH="$RLUSTRE/tests:/usr/lib/lustre/tests:/usr/lib64/lustre/tests:$PATH"
-    do_nodes --verbose $list "PATH=$RPATH sh rpc.sh $@ "
+    do_nodesv $list "PATH=$RPATH sh rpc.sh $@ "
+}
+
+wait_client_import_state () {
+    local facet=$1
+    local expected=$2
+    shift
+
+    case $facet in
+        ost* ) wait_osc_import_state client $facet $expected || return 1;;
+        mds* ) wait_mdc_import_state $facet $expected || return 1 ;;
+           * ) error "unknown facet!"
+               return 1 ;;
+    esac
+    return 0
 }
 
 wait_clients_import_state () {
     local list=$1
-    local facet=$2
-    local expected=$3
     shift
 
-    local label=$(convert_facet2label $facet)
-    local proc_path
-    case $facet in
-        ost* ) proc_path="osc.$(get_clientosc_proc_path $label).ost_server_uuid" ;;
-        mds* ) proc_path="mdc.$(get_clientmdc_proc_path $label).mds_server_uuid" ;;
-        *) error "unknown facet!" ;;
-    esac
-
-    if ! do_rpc_nodes $list wait_import_state $expected $proc_path; then
-        error "import is not in ${expected} state"
+    if ! do_rpc_nodes $list wait_client_import_state "$@"; then
+        error "import is not in expected state"
         return 1
     fi
+    return 0
 }
 
 oos_full() {
@@ -3606,7 +3607,7 @@ gather_logs () {
         return
     fi
 
-    do_nodes --verbose $list \
+    do_nodesv $list \
         "$LCTL dk > ${prefix}.debug_log.\\\$(hostname).${suffix};
          dmesg > ${prefix}.dmesg.\\\$(hostname).${suffix}"
     if [ ! -f $LOGDIR/shared ]; then

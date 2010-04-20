@@ -238,6 +238,11 @@ struct osd_device {
         struct fsfilt_operations *od_fsops;
 
         struct osd_compat_objid  *od_ost_map;
+        char                      od_mntdev[128];
+
+        unsigned long long        od_readcache_max_filesize;
+        int                       od_read_cache;
+        int                       od_writethrough_cache;
 };
 
 /**
@@ -251,6 +256,7 @@ struct osd_fid_pack {
 };
 
 struct osd_it_ea_dirent {
+        struct lu_fid   oied_fid;
         __u64           oied_ino;
         __u64           oied_off;
         unsigned short  oied_namelen;
@@ -258,7 +264,14 @@ struct osd_it_ea_dirent {
         char            oied_name[0];
 } __attribute__((packed));
 
-#define OSD_IT_EA_BUFSIZE       CFS_PAGE_SIZE
+/**
+ * as osd_it_ea_dirent (in memory dirent struct for osd) is greater
+ * than lu_dirent struct. osd readdir reads less number of dirent than
+ * required for mdd dir page. so buffer size need to be increased so that
+ * there  would be one ext3 readdir for every mdd readdir page.
+ */
+
+#define OSD_IT_EA_BUFSIZE       (CFS_PAGE_SIZE + CFS_PAGE_SIZE/4)
 
 /**
  * This is iterator's in-memory data structure in interoperability
@@ -378,7 +391,8 @@ struct osd_thread_info {
         struct inode           oti_inode;
         struct lu_env          oti_obj_delete_tx_env;
 #define OSD_FID_REC_SZ 32
-        char                   oti_fid_packed[OSD_FID_REC_SZ];
+        char                   oti_ldp[OSD_FID_REC_SZ];
+        char                   oti_ldp2[OSD_FID_REC_SZ];
 };
 
 /* osd_lproc.c */
@@ -452,6 +466,19 @@ static inline int osd_invariant(const struct osd_object *obj)
 #else
 #define osd_invariant(obj) (1)
 #endif
+
+enum {
+        LPROC_OSD_READ_BYTES = 0,
+        LPROC_OSD_WRITE_BYTES = 1,
+        LPROC_OSD_GET_PAGE = 2,
+        LPROC_OSD_NO_PAGE = 3,
+        LPROC_OSD_CACHE_ACCESS = 4,
+        LPROC_OSD_CACHE_HIT = 5,
+        LPROC_OSD_CACHE_MISS = 6,
+        LPROC_OSD_LAST,
+};
+
+#define OSD_MAX_CACHE_SIZE OBD_OBJECT_EOF
 
 #endif /* __KERNEL__ */
 #endif /* _OSD_INTERNAL_H */

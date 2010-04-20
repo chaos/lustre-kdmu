@@ -488,6 +488,8 @@ int osd_compat_objid_lookup(struct osd_thread_info *info, struct osd_device *dev
         int                      rc = 0;
         int                      dirn;
         char                     name[32];
+        struct ldiskfs_dir_entry_2 *de;
+        struct buffer_head         *bh;
         ENTRY;
 
         /* on the very first lookup we find and open directories */
@@ -514,17 +516,33 @@ int osd_compat_objid_lookup(struct osd_thread_info *info, struct osd_device *dev
         LASSERT(d);
 
         sprintf(name, "%Lu", objid);
-        o = ll_lookup_one_len(name, d, strlen(name));
+        o = &info->oti_child_dentry;
+        o->d_parent = d;
+        o->d_name.hash = 0;
+        o->d_name.name = name;
+        /* XXX: we can use rc from sprintf() instead of strlen() */
+        o->d_name.len = strlen(name);
 
-        if (IS_ERR(o))
-                GOTO(cleanup, rc = PTR_ERR(o));
-        if (o->d_inode) {
-                id->oii_ino = o->d_inode->i_ino;
-                id->oii_gen = o->d_inode->i_generation;
-        } else {
-                rc = -ENOENT;
+        LOCK_INODE_MUTEX(d->d_inode);
+        bh = ll_ldiskfs_find_entry(d->d_inode, o, &de);
+        UNLOCK_INODE_MUTEX(d->d_inode);
+
+        rc = -ENOENT;
+        if (bh) {
+                struct inode *inode;
+
+                id->oii_ino = le32_to_cpu(de->inode);
+                brelse(bh);
+
+                id->oii_gen = OSD_OII_NOGEN;
+                inode = osd_iget(info, dev, id);
+
+                if (IS_ERR(inode))
+                        GOTO(cleanup, rc = PTR_ERR(inode));
+                rc = 0;
+                id->oii_gen = inode->i_generation;
+                iput(inode);
         }
-        dput(o);
 
 cleanup:
         RETURN(rc);
