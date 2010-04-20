@@ -831,7 +831,10 @@ int lprocfs_rd_import(char *page, char **start, off_t off, int count,
                       cfs_atomic_read(&imp->imp_inval_count));
 
         lprocfs_stats_collect(obd->obd_svc_stats, PTLRPC_REQWAIT_CNTR, &ret);
-        do_div(ret.lc_sum, ret.lc_count);
+        if (ret.lc_count != 0)
+                do_div(ret.lc_sum, ret.lc_count);
+        else
+                ret.lc_sum = 0;
         i += snprintf(page + i, count - i,
                       "    rpcs:\n"
                       "       inflight: %u\n"
@@ -871,7 +874,7 @@ int lprocfs_rd_import(char *page, char **start, off_t off, int count,
                 lprocfs_stats_collect(obd->obd_svc_stats,
                                       PTLRPC_LAST_CNTR + BRW_READ_BYTES + rw,
                                       &ret);
-                if (ret.lc_sum > 0) {
+                if (ret.lc_sum > 0 && ret.lc_count > 0) {
                         do_div(ret.lc_sum, ret.lc_count);
                         i += snprintf(page + i, count - i,
                                       "    %s_data_averages:\n"
@@ -882,7 +885,7 @@ int lprocfs_rd_import(char *page, char **start, off_t off, int count,
                 k = (int)ret.lc_sum;
                 j = opcode_offset(OST_READ + rw) + EXTRA_MAX_OPCODES;
                 lprocfs_stats_collect(obd->obd_svc_stats, j, &ret);
-                if (ret.lc_sum > 0) {
+                if (ret.lc_sum > 0 && ret.lc_count != 0) {
                         do_div(ret.lc_sum, ret.lc_count);
                         i += snprintf(page + i, count - i,
                                       "       %s_per_rpc: "LPU64"\n",
@@ -2234,18 +2237,45 @@ out:
 }
 EXPORT_SYMBOL(lprocfs_obd_rd_recovery_status);
 
-int lprocfs_obd_rd_recovery_maxtime(char *page, char **start, off_t off,
-                                    int count, int *eof, void *data)
+int lprocfs_obd_rd_recovery_time_soft(char *page, char **start, off_t off,
+                                      int count, int *eof, void *data)
+{
+        struct obd_device *obd = (struct obd_device *)data;
+        LASSERT(obd != NULL);
+
+        return snprintf(page, count, "%d\n",
+                        obd->obd_recovery_timeout);
+}
+EXPORT_SYMBOL(lprocfs_obd_rd_recovery_time_soft);
+
+int lprocfs_obd_wr_recovery_time_soft(struct file *file, const char *buffer,
+                                      unsigned long count, void *data)
+{
+        struct obd_device *obd = (struct obd_device *)data;
+        int val, rc;
+        LASSERT(obd != NULL);
+
+        rc = lprocfs_write_helper(buffer, count, &val);
+        if (rc)
+                return rc;
+
+        obd->obd_recovery_timeout = val;
+        return count;
+}
+EXPORT_SYMBOL(lprocfs_obd_wr_recovery_time_soft);
+
+int lprocfs_obd_rd_recovery_time_hard(char *page, char **start, off_t off,
+                                      int count, int *eof, void *data)
 {
         struct obd_device *obd = data;
         LASSERT(obd != NULL);
 
-        return snprintf(page, count, "%lu\n", obd->obd_recovery_max_time);
+        return snprintf(page, count, "%lu\n", obd->obd_recovery_time_hard);
 }
-EXPORT_SYMBOL(lprocfs_obd_rd_recovery_maxtime);
+EXPORT_SYMBOL(lprocfs_obd_rd_recovery_time_hard);
 
-int lprocfs_obd_wr_recovery_maxtime(struct file *file, const char *buffer,
-                                    unsigned long count, void *data)
+int lprocfs_obd_wr_recovery_time_hard(struct file *file, const char *buffer,
+                                      unsigned long count, void *data)
 {
         struct obd_device *obd = data;
         int val, rc;
@@ -2255,11 +2285,10 @@ int lprocfs_obd_wr_recovery_maxtime(struct file *file, const char *buffer,
         if (rc)
                 return rc;
 
-        obd->obd_recovery_max_time = val;
+        obd->obd_recovery_time_hard = val;
         return count;
 }
-EXPORT_SYMBOL(lprocfs_obd_wr_recovery_maxtime);
-
+EXPORT_SYMBOL(lprocfs_obd_wr_recovery_time_hard);
 
 EXPORT_SYMBOL(lprocfs_register);
 EXPORT_SYMBOL(lprocfs_srch);
