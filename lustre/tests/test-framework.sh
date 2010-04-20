@@ -346,7 +346,7 @@ load_modules_local() {
         load_module cmm/cmm
         load_module osd/osd_ldiskfs
         load_module ost/ost
-        load_module ofd/ofd
+        load_module ofd/obdfilter
     fi
 
     load_module llite/lustre
