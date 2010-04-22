@@ -112,7 +112,7 @@ repeat:
         err = filter_last_rcvd_write(env, ofd, lcd, &off, th);
 
         CDEBUG(D_INFO, "wrote client lcd at idx %u off %llu (len %u)\n",
-               cl_idx, fed->fed_lr_off, sizeof(*fed->fed_lcd));
+               cl_idx, fed->fed_lr_off, (unsigned) sizeof(*fed->fed_lcd));
 
         filter_trans_stop(env, ofd, th);
 
