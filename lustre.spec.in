@@ -111,7 +111,7 @@ cd $RPM_BUILD_DIR/lustre-%{version}
 # XXX -Werror doesn't work with kDMU yet
 #%define optflags -g -O2 -Werror
 %define optflags -g -O2
-%configure @ac_configure_args@ %{?configure_flags:%configure_flags}
+%configure @ac_configure_args@ %{?configure_flags}
 make -j $RPM_BUILD_NCPUS -s
 
 %install
