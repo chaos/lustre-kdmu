@@ -140,6 +140,15 @@ init_test_env() {
     if ! echo $PATH | grep -q $LUSTRE/../zfs/cmd/zfs; then
         export PATH=$PATH:$LUSTRE/../zfs/cmd/zfs:$LUSTRE/../zfs/cmd/zpool
     fi
+
+    # default zfs-test location
+    if ! echo $PATH | grep -q /usr/libexec/zfs/; then
+        export PATH=$PATH:/usr/libexec/zfs/
+    fi
+
+    export ZFS_SH=${ZFS_SH:-`which zfs.sh`}
+    export ZPOOL=${ZPOOL:-`which zpool`}
+
     if ! echo $PATH | grep -q $LUSTRE/tests/mpi; then
         export PATH=$PATH:$LUSTRE/tests/mpi
     fi
@@ -197,6 +206,8 @@ init_test_env() {
             ;;
     esac
     export LOAD_MODULES_REMOTE=${LOAD_MODULES_REMOTE:-false}
+    export USE_QUOTA=${USE_QUOTA:-no}
+    zfs && USE_QUOTA=no
 
     # Paths on remote nodes, if different
     export RLUSTRE=${RLUSTRE:-$LUSTRE}
@@ -225,12 +236,6 @@ init_test_env() {
     [ "$TESTSUITELOG" ] && rm -f $TESTSUITELOG || true
     rm -f $TMP/*active
 }
-
-case `uname -r` in
-2.4.*) EXT=".o"; USE_QUOTA=no; [ ! "$CLIENTONLY" ] && FSTYPE=ext3;;
-    *) EXT=".ko"; USE_QUOTA=yes;;
-esac
-
 
 module_loaded () {
    /sbin/lsmod | grep -q "^$1"
@@ -357,7 +362,10 @@ load_modules_local() {
     $LCTL modules > $OGDB/ogdb-$HOSTNAME
 
     # 'mount' doesn't look in $PATH, just sbin
-    [ -f $LUSTRE/utils/mount.lustre ] && cp $LUSTRE/utils/mount.lustre /sbin/. || true
+    if [ -f $LUSTRE/utils/mount.lustre ] ; then
+        cp $LUSTRE/utils/mount.lustre /sbin/. ||
+            cp $LUSTRE/utils/mount.lustre /rw/sbin/.
+    fi
 }
 
 load_modules () {
@@ -519,27 +527,34 @@ cleanup_gss() {
     fi
 }
 
+facet_fstype () {
+    local facet=$1
+    local var
+
+    case $facet in
+        mds* ) var=MDSFSTYPE ;;
+        ost* ) var=OSTFSTYPE ;;
+        mgs* ) echo $FSTYPE; return ;;
+        *) error "unknown facet!" ;;
+    esac
+   
+    [[ -n ${!var} ]] && echo ${!var} || echo $FSTYPE 
+}
+
 devicelabel() {
     local facet=$1
     local dev=$2
     local label
 
-    set +e
-    label=$(do_facet ${facet} "$E2LABEL ${dev} 2>/dev/null")
-    if [ $? == 0 ]; then
-        set -e
-        echo $label
-        return 0
-    fi
-    set -e
+    local fstype=$(facet_fstype $facet)
 
-    label=$(do_facet ${facet} "$ZFSLABEL ${dev}")
-    if [ $? == 0 ]; then
-        echo $label
-        return 0
-    fi
+    case $fstype in
+        ldiskfs ) label=$(do_facet ${facet} "$E2LABEL ${dev} 2>/dev/null");;
+        zfs ) label=$(do_facet ${facet} "$ZFSLABEL ${dev}");;
+        * ) error "unknown fstype!";;
+    esac
 
-    echo ""
+    echo $label
 }
 
 mdsdevlabel() {
@@ -579,10 +594,10 @@ mount_facet() {
         [ -z "$label" ] && echo no label for ${!dev} && exit 1
         eval export ${facet}_svc=${label}
         set +e
-        fstype=$(do_facet $facet lctl get_param -n osd\*.${label}.fstype)
+#        fstype=$(do_facet $facet lctl get_param -n *.${label}.fstype)
         set -e
         eval export ${facet}_fstype=${fstype}
-        echo Started ${label}
+        echo Started ${label} fstype $fstype
     fi
     return $RC
 }
@@ -1672,19 +1687,67 @@ add() {
     do_facet ${facet} $MKFS $*
 }
 
+facet_zvdev () {
+    local facet=$1
+    local var=${facet}_ZDEV
+
+    local vdev=${!var}
+    if [ -z "$vdev" ]; then
+        vdev=${ZVDEVBASE}-${facet}
+    fi
+
+    echo -n $vdev
+}
+
+facetdevname () {
+    local facet=$1
+
+    # no init_facet_vars yet; ~sigh; will be simplified after 20850 fixed
+    local base=$(echo $facet | tr -d [:digit:])
+    local num=$(echo $facet | tr -d [:alpha:])
+
+    local dev=$(${base}devname $num)
+    echo $dev
+}
+
 ostdevname() {
-    num=$1
-    DEVNAME=OSTDEV$num
-    #if $OSTDEVn isn't defined, default is $OSTDEVBASE + num
-    eval DEVPTR=${!DEVNAME:=${OSTDEVBASE}${num}}
+    local num=$1
+    local DEVNAME=OSTDEV$num
+
+    #if $OSTDEVn isn't defined, default is
+    # ldiskfs:  $OSTDEVBASE + num
+    # zfs: ${ZPOOLBASE}ost${num}/ost${num}
+
+    # ldiskfs
+    local var=${OSTDEVBASE}${num}
+
+    # zfs
+    # default: own pool for each ost
+    # tankost1/ost1,
+    # tankost2/ost2
+    # ZPOOLBASE=tank
+
+    if [ "$OSTFSTYPE" = "zfs" ]; then
+        var=${ZPOOLBASE}ost${num}/ost${num}
+    fi 
+    eval DEVPTR=${!DEVNAME:=${var}}
     echo -n $DEVPTR
 }
 
 mdsdevname() {
-    num=$1
-    DEVNAME=MDSDEV$num
+    local num=$1
+    local DEVNAME=MDSDEV$num
     #if $MDSDEVn isn't defined, default is $MDSDEVBASE + num
-    eval DEVPTR=${!DEVNAME:=${MDSDEVBASE}${num}}
+
+    # ldiskfs
+    local var=${MDSDEVBASE}${num}
+
+    # zfs
+    if [ "$MDSFSTYPE" = "zfs" ]; then
+        var=${ZPOOLBASE}mds${num}/mds${num}
+    fi
+
+    eval DEVPTR=${!DEVNAME:=${var}}
     echo -n $DEVPTR
 }
 
@@ -1739,6 +1802,9 @@ cleanupall() {
     stopall $*
     unload_modules
     cleanup_gss
+
+    [ -z $ZCLEANUP ] || \
+        { echo ZFS cleanup ... && zfs_cleanup_all; }
 }
 
 mdsmkfsopts()
@@ -1751,11 +1817,114 @@ combined_mgs_mds () {
     [[ $MDSDEV1 = $MGSDEV ]] && [[ $mds1_HOST = $mgs_HOST ]]
 }
 
+zfs () {
+   [ "$MDSFSTYPE" = "zfs" ] || [ "$OSTFSTYPE" = "zfs" ]
+}
+
+zfs_modules () {
+    # FIXME: actually we need to check all modules,
+    # like it is done by zfs/common.sh: check_modules ()
+    # but lets just check zfs for meantime
+    lsmod | grep -q ^zfs || sh $ZFS_SH $1
+}
+
+zfs_create_pool () {
+    local pool=$1
+    local vdev=$2
+
+    $ZPOOL list | grep $pool && echo $pool exist, skip creation && return 0
+
+    test -b $vdev || dd if=/dev/zero of=$vdev bs=1M count=256
+    zfs_modules
+    $ZPOOL create -f $pool $vdev
+}
+
+zfs_destroy_pool () {
+    local pool=$1
+
+    if $ZPOOL list | grep -w $pool; then
+        # destroy only
+        $ZPOOL destroy -f $pool
+    fi
+
+}
+
+zfs_init () {
+    zfs || return 0
+
+    if [ "$MDSFSTYPE" = "zfs" ] && combined_mgs_mds; then
+        echo combined mgs/mds is not supported for fstype $MDSFSTYPE, please set MGSDEV correctly
+        return 1
+    fi
+
+    local facet
+    local facets=$(get_facets MDS),$(get_facets OST)
+
+    for facet in ${facets//,/ }; do
+        zfs_create_pool_facet $facet
+    done
+}
+
+# pool name is set in MDSDEV1, OSTDEV1,
+# OSTDEV1=tank1/ost1
+# OSTDEV2=tank2/ost2, etc.
+# FIXME: not sure how many levels the device name cound have
+facet_pool () {
+    local facet=$1
+
+    local dev=$(facetdevname $facet)
+    echo ${dev//\/$facet}
+}
+
+zfs_create_pool_facet () {
+    local facet=$1
+
+    [[ $(facet_fstype $facet) = zfs ]] || return 0
+
+    # we just ignore the user errors like :
+    # ost1_ZDEV=<dev1>
+    # ost2_ZDEV=<dev2>
+    # OSTDEV1=tank1/ost1
+    # OSTDEV2=tank1/ost2
+    # in this case ost2_ZDEV will be ignored by zfs_create_pool,
+    # because of tank1 already exists
+    local dev=$(facet_zvdev $facet)
+
+    local pool=$(facet_pool $facet)
+    local host=$(facet_host $facet)
+    do_rpc_nodes $host zfs_create_pool $pool $dev
+    add_pool_to_list ${host}.${pool}
+}
+
+zfs_cleanup () {
+    # cleanup all pools we have created on this host 
+    local host=$(hostname)
+    local list=${host}_CREATED_POOLS
+    echo the list of created pools: ${!list}
+
+    # this list could be empty in case if we run on existing pools
+    # The possible solution is:
+    #    cleanup all exiting pools if ZCLEANUP=yes
+    #    (to provide the cleanup by llmount.sh)
+    for pool in ${!list//,/ }; do
+        echo DESTROY $pool on $host
+        zfs_destroy_pool $pool
+        remove_pool_from_list ${hostname}.$pool
+        zfs_modules -u
+    done
+}
+
+zfs_cleanup_all () {
+    do_rpc_nodes $(servers_list) zfs_cleanup
+}
+
 formatall() {
     if [ "$IAMDIR" == "yes" ]; then
         MDS_MKFS_OPTS="$MDS_MKFS_OPTS --iam-dir"
         MDSn_MKFS_OPTS="$MDSn_MKFS_OPTS --iam-dir"
     fi
+
+    zfs_init
 
     [ "$FSTYPE" ] && FSTYPE_OPT="--backfstype $FSTYPE"
 
@@ -2989,6 +3158,10 @@ remote_nodes_list () {
     local rnodes=$(nodes_list)
     rnodes=$(echo " $rnodes " | sed -re "s/\s+$HOSTNAME\s+/ /g")
     echo $rnodes
+}
+
+servers_list () {
+    echo $(comma_list $(osts_nodes) $(mdts_nodes))
 }
 
 init_clients_lists () {
