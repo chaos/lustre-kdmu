@@ -67,7 +67,6 @@ endif # TESTS
 mmap_sanity_SOURCES= mmap_sanity.c
 
 LIBLUSTREAPI := $(top_builddir)/lustre/utils/liblustreapi.a $(top_builddir)/libcfs/libcfs/libcfsutil.a
-ll_getstripe_info_LDADD=$(LIBLUSTREAPI)
 multiop_LDADD=$(LIBLUSTREAPI) -lrt
 copytool_LDADD=$(LIBLUSTREAPI)
 

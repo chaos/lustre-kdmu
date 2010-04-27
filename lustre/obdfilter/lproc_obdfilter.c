@@ -436,18 +436,23 @@ int lprocfs_filter_wr_degraded(libcfs_file_t *file, const char *buffer,
 int lprocfs_filter_rd_degraded(char *page, char **start, off_t off,
                                int count, int *eof, void *data)
 {
-        struct obd_device *obd = data;
+        struct obd_device *obd;
 
-        return snprintf(page, count, "%u\n", obd->u.filter.fo_raid_degraded);
+        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        *eof = 1;
+
+        return libcfs_param_snprintf(page, count, data, LP_U32,
+                                     "%u\n", obd->u.filter.fo_raid_degraded);
 }
 
-int lprocfs_filter_wr_degraded(struct file *file, const char *buffer,
+int lprocfs_filter_wr_degraded(libcfs_file_t *file, const char *buffer,
                                unsigned long count, void *data)
 {
-        struct obd_device *obd = data;
-        int val, rc;
+        struct obd_device *obd;
+        int val, rc, flag = 0;
 
-        rc = lprocfs_write_helper(buffer, count, &val);
+        LIBCFS_PARAM_GET_DATA(obd, data, &flag);
+        rc = lprocfs_write_helper(buffer, count, &val, flag);
         if (rc)
                 return rc;
 

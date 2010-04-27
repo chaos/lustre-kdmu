@@ -43,6 +43,11 @@
 
 #include <libcfs/libcfs.h>
 
+/** \defgroup ucache ucache
+ *
+ * @{
+ */
+
 #define UC_CACHE_NEW            0x01
 #define UC_CACHE_ACQUIRING      0x02
 #define UC_CACHE_INVALID        0x04

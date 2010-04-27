@@ -114,36 +114,6 @@ static int lprocfs_filter_rd_mntdev(char *page, char **start, off_t off,
         return rc;
 }
 
-static int lprocfs_filter_rd_last_id(char *page, char **start, off_t off,
-                                     int count, int *eof, void *data)
-{
-        struct obd_device *obd;
-        struct filter_device *ofd;
-        struct filter_obd *filter;
-        int retval = 0, rc, i;
-        __u64 temp;
-
-        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
-        *eof = 1;
-        if (obd == NULL)
-                return 0;
-        ofd = filter_dev(obd->obd_lu_dev);
-        filter = &obd->u.filter;
-        for (i = FILTER_GROUP_MDS0; i < filter->fo_group_count; i++) {
-                temp = (__u64)filter_last_id(ofd, (obd_gr)i);
-                rc = libcfs_param_snprintf(page, count, data, LP_U64,
-                                           LPU64"\n", temp);
-                if (rc < 0) {
-                        retval = rc;
-                        break;
-                }
-                page += rc;
-                count -= rc;
-                retval += rc;
-        }
-        return retval;
-}
-
 int lprocfs_filter_rd_readcache(char *page, char **start, off_t off, int count,
                                 int *eof, void *data)
 {

@@ -844,21 +844,29 @@ static int lprocfs_wr_mdt_som(libcfs_file_t *file, const char *buffer,
 }
 
 /* Temporary; for testing purposes only */
-static int lprocfs_mdt_wr_mdc(struct file *file, const char *buffer,
+static int lprocfs_mdt_wr_mdc(libcfs_file_t *file, const char *buffer,
                               unsigned long count, void *data)
 {
-        struct obd_device *obd = data;
-        struct obd_export *exp = NULL;
+        struct obd_device *obd;
+        struct obd_export *exp;
         struct obd_uuid uuid;
-        char tmpbuf[sizeof(struct obd_uuid)];
+        char kernbuf[sizeof(struct obd_uuid)];
+        int flag = 0;
 
-        sscanf(buffer, "%40s", tmpbuf);
+        LIBCFS_PARAM_GET_DATA(obd, data, &flag);
+        if (count >= sizeof(kernbuf)) {
+                return -EINVAL;
+        }
+        if (libcfs_param_copy(flag, kernbuf, buffer, count)) {
+                return -EFAULT;
+        }
 
-        obd_str2uuid(&uuid, tmpbuf);
+        obd_str2uuid(&uuid, kernbuf);
         exp = cfs_hash_lookup(obd->obd_uuid_hash, &uuid);
         if (exp == NULL) {
                 CERROR("%s: no export %s found\n",
                        obd->obd_name, obd_uuid2str(&uuid));
+                return -EINVAL;
         } else {
                 mdt_hsm_copytool_send(exp);
                 class_export_put(exp);

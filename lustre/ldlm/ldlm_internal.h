@@ -213,8 +213,6 @@ typedef enum ldlm_policy_res ldlm_policy_res_t;
                 struct ldlm_pool *pl;                                       \
                 type tmp;                                                   \
                                                                             \
-                tmp = pl->pl_##var;                                         \
-                                                                            \
                 LIBCFS_PARAM_GET_DATA(pl, data, NULL);                      \
                 *eof = 1;                                                   \
                 cfs_spin_lock(&pl->pl_lock);                                \
@@ -231,13 +229,16 @@ typedef enum ldlm_policy_res ldlm_policy_res_t;
         int lprocfs_wr_##var(libcfs_file_t *file, const char *buffer,       \
                              unsigned long count, void *data)               \
         {                                                                   \
+                struct libcfs_param_cb_data tmp_data;                       \
                 struct ldlm_pool *pl;                                       \
                 type tmp;                                                   \
                 int rc;                                                     \
                                                                             \
                 LIBCFS_PARAM_GET_DATA(pl, data, NULL);                      \
-                rc = lprocfs_wr_uint(file, buffer, count, &tmp);            \
-                if (rc) {                                                   \
+                memcpy(&tmp_data, data, sizeof(tmp_data));                  \
+                tmp_data.cb_data = &tmp;                                    \
+                rc = lprocfs_wr_uint(file, buffer, count, &tmp_data);       \
+                if (rc < 0) {                                               \
                         CERROR("Can't parse user input, rc = %d\n", rc);    \
                         return rc;                                          \
                 }                                                           \

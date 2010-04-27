@@ -657,9 +657,8 @@ static int ll_rd_statahead_stats(char *page, char **start, off_t off,
 {
         struct super_block *sb;
         struct ll_sb_info *sbi;
-        int flag = 0;
 
-        LIBCFS_PARAM_GET_DATA(sb, data, &flag);
+        LIBCFS_PARAM_GET_DATA(sb, data, NULL);
         sbi = ll_s2sbi(sb);
         *eof = 1;
         return libcfs_param_snprintf(page, count, data, LP_STR,

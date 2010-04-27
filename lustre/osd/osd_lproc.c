@@ -246,9 +246,10 @@ int lprocfs_osd_rd_filesfree(char *page, char **start, off_t off, int count,
                              int *eof, void *data)
 {
         struct osd_device *osd;
+        int rc;
 
         LIBCFS_PARAM_GET_DATA(osd, data, NULL);
-        int rc = osd_statfs(NULL, &osd->od_dt_dev, &osd->od_kstatfs);
+        rc = osd_statfs(NULL, &osd->od_dt_dev, &osd->od_kstatfs);
         if (!rc) {
                 *eof = 1;
                 rc = libcfs_param_snprintf(page, count, data, LP_U64, LPU64"\n",
@@ -284,7 +285,7 @@ static int lprocfs_osd_rd_mntdev(char *page, char **start, off_t off, int count,
 }
 
 static int lprocfs_osd_rd_cache(char *page, char **start, off_t off,
-                                   int count, int *eof, void *data)
+                                int count, int *eof, void *data)
 {
         struct osd_device *osd;
 
@@ -297,7 +298,7 @@ static int lprocfs_osd_rd_cache(char *page, char **start, off_t off,
 }
 
 static int lprocfs_osd_wr_cache(libcfs_file_t *file, const char *buffer,
-                     unsigned long count, void *data)
+                                unsigned long count, void *data)
 {
         struct osd_device *osd;
         int val, rc, flag;
@@ -328,7 +329,7 @@ static int lprocfs_osd_rd_wcache(char *page, char **start, off_t off,
 }
 
 static int lprocfs_osd_wr_wcache(libcfs_file_t *file, const char *buffer,
-                     unsigned long count, void *data)
+                                 unsigned long count, void *data)
 {
         struct osd_device *osd;
         int val, rc, flag;
