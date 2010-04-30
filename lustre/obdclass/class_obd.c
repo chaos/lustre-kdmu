@@ -438,7 +438,6 @@ int obd_init_checks(void)
 int obd_proc_read_version(char *page, char **start, off_t off, int count,
                           int *eof, void *data)
 {
-        *eof = 1;
 #ifdef HAVE_VFS_INTENT_PATCHES
         return libcfs_param_snprintf(page, count, data, LP_STR,
                       "lustre: %s\nkernel: %u\nbuild:  %s\n",
@@ -454,7 +453,6 @@ int obd_proc_read_version(char *page, char **start, off_t off, int count,
 int obd_proc_read_pinger(char *page, char **start, off_t off, int count,
                          int *eof, void *data)
 {
-        *eof = 1;
         return libcfs_param_snprintf(page, count, data, LP_STR, "%s",
 #ifdef ENABLE_PINGER
                         "on"
@@ -483,7 +481,6 @@ static int obd_proc_read_health(char *page, char **start, off_t off,
                                 int count, int *eof, void *data)
 {
         int rc = 0, i;
-        *eof = 1;
 
         if (libcfs_catastrophe)
                 rc += snprintf(page + rc, count - rc, "LBUG\n");

@@ -481,7 +481,6 @@ int lprocfs_rd_uint(char *page, char **start, off_t off,
         unsigned int *temp;
 
         LIBCFS_PARAM_GET_DATA(temp, data, NULL);
-        *eof = 1;
 
         return libcfs_param_snprintf(page, count, data, LP_U32, "%u\n", *temp);
 }
@@ -515,7 +514,6 @@ int lprocfs_rd_u64(char *page, char **start, off_t off,
         __u64 *temp;
 
         LIBCFS_PARAM_GET_DATA(temp, data, NULL);
-        *eof = 1;
 
         return libcfs_param_snprintf(page, count, data, LP_U64,
                                      LPU64"\n", *temp);
@@ -528,7 +526,6 @@ int lprocfs_rd_atomic(char *page, char **start, off_t off,
 
         LIBCFS_PARAM_GET_DATA(atom, data, NULL);
         LASSERT(atom != NULL);
-        *eof = 1;
 
         return libcfs_param_snprintf(page, count, data, LP_D32, "%d\n",
                                      cfs_atomic_read(atom));
@@ -561,7 +558,6 @@ int lprocfs_rd_uuid(char *page, char **start, off_t off, int count,
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         LASSERT(obd != NULL);
-        *eof = 1;
 
         return libcfs_param_snprintf(page, count, data, LP_STR,
                                      "%s\n", obd->obd_uuid.uuid);
@@ -575,7 +571,6 @@ int lprocfs_rd_name(char *page, char **start, off_t off, int count,
         LIBCFS_PARAM_GET_DATA(dev, data, NULL);
         LASSERT(dev != NULL);
         LASSERT(dev->obd_name != NULL);
-        *eof = 1;
 
         return libcfs_param_snprintf(page, count, data, LP_STR,
                                      "%s\n", dev->obd_name);
@@ -593,7 +588,6 @@ int lprocfs_rd_fstype(char *page, char **start, off_t off, int count, int *eof,
         if (obd->obd_fsops == NULL)
                 return 0;
         LASSERT(obd->obd_fsops->fs_type != NULL);
-        *eof = 1;
 
         return libcfs_param_snprintf(page, count, data, LP_STR,
                                      "%s\n", obd->obd_fsops->fs_type);
@@ -609,11 +603,9 @@ int lprocfs_rd_blksize(char *page, char **start, off_t off, int count,
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         rc = obd_statfs(obd, &osfs, cfs_time_current_64() - CFS_HZ,
                         OBD_STATFS_NODELAY);
-        if (!rc) {
-                *eof = 1;
+        if (!rc)
                 rc = libcfs_param_snprintf(page, count, data, LP_U32,
                                            "%u\n", osfs.os_bsize);
-        }
         return rc;
 }
 
@@ -627,7 +619,6 @@ int lprocfs_rd_kbytestotal(char *page, char **start, off_t off, int count,
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         rc = obd_statfs(obd, &osfs, cfs_time_current_64() - CFS_HZ,
                         OBD_STATFS_NODELAY);
-        *eof = 1;
         if (!rc) {
                 __u32 blk_size = osfs.os_bsize >> 10;
                 __u64 result = osfs.os_blocks;
@@ -651,7 +642,6 @@ int lprocfs_rd_kbytesfree(char *page, char **start, off_t off, int count,
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         rc = obd_statfs(obd, &osfs, cfs_time_current_64() - CFS_HZ,
                             OBD_STATFS_NODELAY);
-        *eof = 1;
         if (!rc) {
                 __u32 blk_size = osfs.os_bsize >> 10;
                 __u64 result = osfs.os_bfree;
@@ -675,7 +665,6 @@ int lprocfs_rd_kbytesavail(char *page, char **start, off_t off, int count,
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         rc = obd_statfs(obd, &osfs, cfs_time_current_64() - CFS_HZ,
                             OBD_STATFS_NODELAY);
-        *eof = 1;
         if (!rc) {
                 __u32 blk_size = osfs.os_bsize >> 10;
                 __u64 result = osfs.os_bavail;
@@ -699,11 +688,9 @@ int lprocfs_rd_filestotal(char *page, char **start, off_t off, int count,
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         rc = obd_statfs(obd, &osfs, cfs_time_current_64() - CFS_HZ,
                         OBD_STATFS_NODELAY);
-        if (!rc) {
-                *eof = 1;
+        if (!rc)
                 rc = libcfs_param_snprintf(page, count, data, LP_U64,
                                            LPU64"\n", osfs.os_files);
-        }
 
         return rc;
 }
@@ -718,11 +705,9 @@ int lprocfs_rd_filesfree(char *page, char **start, off_t off, int count,
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         rc = obd_statfs(obd, &osfs, cfs_time_current_64() - CFS_HZ,
                             OBD_STATFS_NODELAY);
-        if (!rc) {
-                *eof = 1;
+        if (!rc)
                 rc = libcfs_param_snprintf(page, count, data, LP_U64,
                                            LPU64"\n", osfs.os_ffree);
-        }
         return rc;
 }
 
@@ -739,7 +724,6 @@ int lprocfs_rd_server_uuid(char *page, char **start, off_t off, int count,
         LPROCFS_CLIMP_CHECK(obd);
         imp = obd->u.cli.cl_import;
         imp_state_name = ptlrpc_import_state_name(imp->imp_state);
-        *eof = 1;
         rc = libcfs_param_snprintf(page, count, data, LP_STR, "%s\t%s%s\n",
                       obd2cli_tgt(obd), imp_state_name,
                       imp->imp_deactive ? "\tDEACTIVATED" : "");
@@ -760,7 +744,6 @@ int lprocfs_rd_conn_uuid(char *page, char **start, off_t off, int count,
 
         LPROCFS_CLIMP_CHECK(obd);
         conn = obd->u.cli.cl_import->imp_connection;
-        *eof = 1;
         if (conn && obd->u.cli.cl_import)
                 rc = libcfs_param_snprintf(page, count, data, LP_STR,
                                 "%s\n", conn->c_remote_uuid.uuid);
@@ -915,7 +898,6 @@ int lprocfs_rd_import(char *page, char **start, off_t off, int count,
         LASSERT(obd != NULL);
         LPROCFS_CLIMP_CHECK(obd);
         imp = obd->u.cli.cl_import;
-        *eof = 1;
 
         i = snprintf(page, count,
                      "import:\n"
@@ -1025,7 +1007,6 @@ int lprocfs_rd_state(char *page, char **start, off_t off, int count,
         LASSERT(obd != NULL);
         LPROCFS_CLIMP_CHECK(obd);
         imp = obd->u.cli.cl_import;
-        *eof = 1;
 
         rc = snprintf(page, count, "current_state: %s\n",
                      ptlrpc_import_state_name(imp->imp_state));
@@ -1070,7 +1051,6 @@ int lprocfs_rd_timeouts(char *page, char **start, off_t off, int count,
         LASSERT(obd != NULL);
         LPROCFS_CLIMP_CHECK(obd);
         imp = obd->u.cli.cl_import;
-        *eof = 1;
 
         now = cfs_time_current_sec();
 
@@ -1119,7 +1099,6 @@ int lprocfs_rd_connect_flags(char *page, char **start, off_t off,
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         LPROCFS_CLIMP_CHECK(obd);
-        *eof = 1;
         flags = obd->u.cli.cl_import->imp_connect_data.ocd_connect_flags;
         rc = snprintf(page, count, "flags="LPX64"\n", flags);
         rc += obd_connect_flags2str(page + rc, count - rc, flags,
@@ -1138,7 +1117,6 @@ int lprocfs_rd_num_exports(char *page, char **start, off_t off, int count,
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         LASSERT(obd != NULL);
-        *eof = 1;
 
         return libcfs_param_snprintf(page, count, data, LP_D32,
                                      "%u\n", obd->obd_num_exports);
@@ -1151,7 +1129,6 @@ int lprocfs_rd_numrefs(char *page, char **start, off_t off, int count,
 
         LIBCFS_PARAM_GET_DATA(class, data, NULL);
         LASSERT(class != NULL);
-        *eof = 1;
 
         return libcfs_param_snprintf(page, count, data, LP_D32,
                                      "%d\n", class->typ_refcnt);
@@ -1738,7 +1715,6 @@ int lprocfs_exp_rd_nid(char *page, char **start, off_t off, int count,
 
         LIBCFS_PARAM_GET_DATA(exp, data, NULL);
         LASSERT(exp != NULL);
-        *eof = 1;
 
         return libcfs_param_snprintf(page, count, data, LP_STR,
                                      "%s\n", obd_export_nid2str(exp));
@@ -1782,7 +1758,6 @@ int lprocfs_exp_rd_uuid(char *page, char **start, off_t off, int count,
 
         LIBCFS_PARAM_GET_DATA(stats, data, NULL);
         obd = stats->nid_obd;
-        *eof = 1;
         page[0] = '\0';
         lprocfs_exp_rd_cb_data_init(&cb_data, page, count, eof, &len);
         cfs_hash_for_each_key(obd->obd_nid_hash, &stats->nid,
@@ -1818,7 +1793,6 @@ int lprocfs_exp_rd_hash(char *page, char **start, off_t off, int count,
 
         LIBCFS_PARAM_GET_DATA(stats, data, NULL);
         obd = stats->nid_obd;
-        *eof = 1;
         page[0] = '\0';
         lprocfs_exp_rd_cb_data_init(&cb_data, page, count, eof, &len);
         cfs_hash_for_each_key(obd->obd_nid_hash, &stats->nid,
@@ -1830,7 +1804,6 @@ int lprocfs_exp_rd_hash(char *page, char **start, off_t off, int count,
 int lprocfs_nid_stats_clear_read(char *page, char **start, off_t off,
                                         int count, int *eof,  void *data)
 {
-        *eof = 1;
         return libcfs_param_snprintf(page, count, data, LP_STR, "%s\n",
                             "Write into this file to clear all nid stats and "
                             "stale nid entries");
@@ -2281,7 +2254,6 @@ int lprocfs_obd_rd_hash(char *page, char **start, off_t off,
         int c = 0;
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
-        *eof = 1;
         if (obd == NULL)
                 return 0;
 
@@ -2304,7 +2276,6 @@ int lprocfs_obd_rd_recovery_status(char *page, char **start, off_t off,
         LIBCFS_PARAM_GET_DATA(obd, data, &flag);
         LASSERT(obd != NULL);
         LASSERT(count >= 0);
-        *eof = 1;
 
         /* Set start of user data returned to
            page + off since the user may have
@@ -2420,7 +2391,6 @@ int lprocfs_obd_rd_recovery_maxtime(char *page, char **start, off_t off,
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         LASSERT(obd != NULL);
-        *eof = 1;
 
         return libcfs_param_snprintf(page, count, data, LP_U32, "%lu\n",
                                      obd->obd_recovery_max_time);

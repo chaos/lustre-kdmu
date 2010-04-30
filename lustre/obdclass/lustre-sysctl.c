@@ -96,7 +96,6 @@ static int libcfs_param_timeout_read(char *page, char **start, off_t off,
 static int libcfs_param_memory_alloc_read(char *page, char **start, off_t off,
                                     int count, int *eof, void *data)
 {
-        *eof = 1;
         return libcfs_param_snprintf(page, count, data, LP_U64,
                                      LPU64"\n", obd_memory_sum());
 }
@@ -104,7 +103,6 @@ static int libcfs_param_memory_alloc_read(char *page, char **start, off_t off,
 static int libcfs_param_pages_alloc_read(char *page, char **start, off_t off,
                                          int count, int *eof, void *data)
 {
-        *eof = 1;
         return libcfs_param_snprintf(page, count, data, LP_U64,
                                      LPU64"\n", obd_pages_sum());
 }
@@ -112,7 +110,6 @@ static int libcfs_param_pages_alloc_read(char *page, char **start, off_t off,
 static int libcfs_param_mem_max_read(char *page, char **start, off_t off,
                                int count, int *eof, void *data)
 {
-        *eof = 1;
         return libcfs_param_snprintf(page, count, data, LP_U64,
                                      LPU64"\n", obd_memory_max());
 }
@@ -120,7 +117,6 @@ static int libcfs_param_mem_max_read(char *page, char **start, off_t off,
 static int libcfs_param_pages_max_read(char *page, char **start, off_t off,
                                        int count, int *eof, void *data)
 {
-        *eof = 1;
         return libcfs_param_snprintf(page, count, data, LP_U64,
                                      LPU64"\n", obd_pages_max());
 }
@@ -134,7 +130,6 @@ libcfs_param_max_dirty_pages_in_mb_read(char *page, char **start, off_t off,
         int rc;
 
         LIBCFS_PARAM_GET_DATA(value, data, NULL);
-        *eof = 1;
         mult = 1 << (20 - CFS_PAGE_SHIFT);
         rc = lprocfs_read_frac_helper(page, count, *value, mult);
         if (rc > 0)
@@ -178,7 +173,6 @@ libcfs_param_alloc_fail_rate_read(char *page, char **start, off_t off,
         int rc;
 
         LIBCFS_PARAM_GET_DATA(value, data, NULL);
-        *eof = 1;
         rc = lprocfs_read_frac_helper(page, count, *value, OBD_ALLOC_FAIL_MULT);
         if (rc > 0)
                 rc = libcfs_param_snprintf(page, count, data, LP_DB,

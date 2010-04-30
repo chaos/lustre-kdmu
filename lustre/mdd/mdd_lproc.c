@@ -154,7 +154,6 @@ static int lprocfs_rd_atime_diff(char *page, char **start, off_t off,
         struct mdd_device *mdd;
 
         LIBCFS_PARAM_GET_DATA(mdd, data, NULL);
-        *eof = 1;
 
         return libcfs_param_snprintf(page, count, data, LP_U32,
                                      "%lu\n", mdd->mdd_atime_diff);
@@ -169,7 +168,6 @@ static int lprocfs_rd_changelog_mask(char *page, char **start, off_t off,
         int i = 0, rc = 0;
 
         LIBCFS_PARAM_GET_DATA(mdd, data, NULL);
-        *eof = 1;
         while (i < CL_LAST) {
                 if (mdd->mdd_cl.mc_mask & (1 << i))
                         rc += snprintf(page + rc, count - rc, "%s ",
@@ -243,7 +241,6 @@ static int lprocfs_rd_changelog_users(char *page, char **start, off_t off,
         __u64 cur;
 
         LIBCFS_PARAM_GET_DATA(mdd, data, NULL);
-        *eof = 1;
 
         ctxt = llog_get_context(mdd2obd_dev(mdd),LLOG_CHANGELOG_USER_ORIG_CTXT);
         if (ctxt == NULL)
@@ -280,7 +277,6 @@ static int mdd_lprocfs_quota_rd_type(char *page, char **start, off_t off,
         struct mdd_device *mdd;
 
         LIBCFS_PARAM_GET_DATA(mdd, data, NULL);
-        *eof = 1;
         memcpy(&tmp_data, data, sizeof tmp_data);
         tmp_data.cb_data = mdd->mdd_obd_dev;
         return lprocfs_quota_rd_type(page, start, off, count, eof,
@@ -305,7 +301,6 @@ static int lprocfs_rd_sync_perm(char *page, char **start, off_t off,
 {
         struct mdd_device *mdd;
 
-        *eof = 1;
         LIBCFS_PARAM_GET_DATA(mdd, data, NULL);
         LASSERT(mdd != NULL);
         return libcfs_param_snprintf(page, count, data, LP_D32,

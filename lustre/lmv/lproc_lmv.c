@@ -55,7 +55,6 @@ static int lmv_rd_numobd(char *page, char **start, off_t off, int count,
         LIBCFS_PARAM_GET_DATA(dev, data, NULL);
         LASSERT(dev != NULL);
         desc = &dev->u.lmv.desc;
-        *eof = 1;
 
         return libcfs_param_snprintf(page, count, data, LP_U32,
                                      "%u\n", desc->ld_tgt_count);
@@ -92,7 +91,6 @@ static int lmv_rd_placement(char *page, char **start, off_t off, int count,
         LIBCFS_PARAM_GET_DATA(dev, data, NULL);
         LASSERT(dev != NULL);
         lmv = &dev->u.lmv;
-        *eof = 1;
 
         return libcfs_param_snprintf(page, count, data, LP_STR, "%s\n",
                       placement_policy2name(lmv->lmv_placement));
@@ -147,7 +145,6 @@ static int lmv_rd_activeobd(char *page, char **start, off_t off, int count,
         LIBCFS_PARAM_GET_DATA(dev, data, NULL);
         LASSERT(dev != NULL);
         desc = &dev->u.lmv.desc;
-        *eof = 1;
 
         return libcfs_param_snprintf(page, count, data, LP_U32,
                                      "%u\n", desc->ld_active_tgt_count);
@@ -162,7 +159,6 @@ static int lmv_rd_desc_uuid(char *page, char **start, off_t off, int count,
         LIBCFS_PARAM_GET_DATA(dev, data, NULL);
         LASSERT(dev != NULL);
         lmv = &dev->u.lmv;
-        *eof = 1;
 
         return libcfs_param_snprintf(page, count, data, LP_STR,
                                      "%s\n", lmv->desc.ld_uuid.uuid);

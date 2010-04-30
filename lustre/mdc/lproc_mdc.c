@@ -50,7 +50,6 @@ static int mdc_rd_max_rpcs_in_flight(char *page, char **start, off_t off,
 
         LIBCFS_PARAM_GET_DATA(dev, data, NULL);
         cli = &dev->u.cli;
-        *eof = 1;
         client_obd_list_lock(&cli->cl_loi_list_lock);
         rc = libcfs_param_snprintf(page, count, data, LP_U32, "%u\n",
                                    cli->cl_max_rpcs_in_flight);

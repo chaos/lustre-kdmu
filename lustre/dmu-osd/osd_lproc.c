@@ -130,11 +130,9 @@ int lprocfs_osd_rd_blksize(char *page, char **start, off_t off, int count,
 
         LIBCFS_PARAM_GET_DATA(osd, data, NULL);
         rc = osd_statfs(NULL, &osd->od_dt_dev, &osd->od_kstatfs);
-        if (!rc) {
-                *eof = 1;
+        if (!rc)
                 rc = libcfs_param_snprintf(page, count, data, LP_D32,
                                            "%ld\n", osd->od_kstatfs.f_bsize);
-        }
         return rc;
 }
 
@@ -153,7 +151,6 @@ int lprocfs_osd_rd_kbytestotal(char *page, char **start, off_t off, int count,
                 while (blk_size >>= 1)
                         result <<= 1;
 
-                *eof = 1;
                 rc = libcfs_param_snprintf(page, count, data, LP_U64,
                                            LPU64"\n", result);
         }
@@ -175,7 +172,6 @@ int lprocfs_osd_rd_kbytesfree(char *page, char **start, off_t off, int count,
                 while (blk_size >>= 1)
                         result <<= 1;
 
-                *eof = 1;
                 rc = libcfs_param_snprintf(page, count, data, LP_U64,
                                            LPU64"\n", result);
         }
@@ -197,7 +193,6 @@ int lprocfs_osd_rd_kbytesavail(char *page, char **start, off_t off, int count,
                 while (blk_size >>= 1)
                         result <<= 1;
 
-                *eof = 1;
                 rc = libcfs_param_snprintf(page, count, data, LP_U64,
                                            LPU64"\n", result);
         }
@@ -212,11 +207,9 @@ int lprocfs_osd_rd_filestotal(char *page, char **start, off_t off, int count,
 
         LIBCFS_PARAM_GET_DATA(osd, data, NULL);
         rc = osd_statfs(NULL, &osd->od_dt_dev, &osd->od_kstatfs);
-        if (!rc) {
-                *eof = 1;
+        if (!rc)
                 rc = libcfs_param_snprintf(page, count, data, LP_U64,
                                            LPU64"\n", osd->od_kstatfs.f_files);
-        }
 
         return rc;
 }
@@ -229,11 +222,9 @@ int lprocfs_osd_rd_filesfree(char *page, char **start, off_t off, int count,
 
         LIBCFS_PARAM_GET_DATA(osd, data, NULL);
         rc = osd_statfs(NULL, &osd->od_dt_dev, &osd->od_kstatfs);
-        if (!rc) {
-                *eof = 1;
+        if (!rc)
                 rc = libcfs_param_snprintf(page, count, data, LP_U64,
                                            LPU64"\n", osd->od_kstatfs.f_ffree);
-        }
         return rc;
 }
 
@@ -244,7 +235,6 @@ int lprocfs_osd_rd_fstype(char *page, char **start, off_t off, int count,
 
         LIBCFS_PARAM_GET_DATA(osd, data, NULL);
         LASSERT(osd != NULL);
-        *eof = 1;
 
         return libcfs_param_snprintf(page, count, data, LP_STR, "%s", "zfs\n");
 }
@@ -256,7 +246,6 @@ static int lprocfs_osd_rd_mntdev(char *page, char **start, off_t off, int count,
 
         LIBCFS_PARAM_GET_DATA(osd, data, NULL);
         LASSERT(osd != NULL);
-        *eof = 1;
 
         return libcfs_param_snprintf(page, count, data, LP_STR,
                                      "%s\n", osd->od_objset.name);

@@ -52,7 +52,6 @@ static int lov_rd_stripesize(char *page, char **start, off_t off, int count,
         LIBCFS_PARAM_GET_DATA(dev, data, NULL);
         LASSERT(dev != NULL);
         desc = &dev->u.lov.desc;
-        *eof = 1;
 
         return libcfs_param_snprintf(page, count, data, LP_U64, LPU64"\n",
                                      desc->ld_default_stripe_size);
@@ -88,7 +87,6 @@ static int lov_rd_stripeoffset(char *page, char **start, off_t off, int count,
         LIBCFS_PARAM_GET_DATA(dev, data, NULL);
         LASSERT(dev != NULL);
         desc = &dev->u.lov.desc;
-        *eof = 1;
 
         return libcfs_param_snprintf(page, count, data, LP_U64, LPU64"\n",
                                      desc->ld_default_stripe_offset);
@@ -123,7 +121,6 @@ static int lov_rd_stripetype(char *page, char **start, off_t off, int count,
         LIBCFS_PARAM_GET_DATA(dev, data, NULL);
         LASSERT(dev != NULL);
         desc = &dev->u.lov.desc;
-        *eof = 1;
 
         return libcfs_param_snprintf(page, count, data, LP_U32,
                                      "%u\n", desc->ld_pattern);
@@ -158,7 +155,6 @@ static int lov_rd_stripecount(char *page, char **start, off_t off, int count,
         LIBCFS_PARAM_GET_DATA(dev, data, NULL);
         LASSERT(dev != NULL);
         desc = &dev->u.lov.desc;
-        *eof = 1;
         temp = (__s16)(desc->ld_default_stripe_count + 1) - 1;
 
         return libcfs_param_snprintf(page, count, data, LP_D32, "%d\n", temp);
@@ -192,7 +188,6 @@ static int lov_rd_numobd(char *page, char **start, off_t off, int count,
         LIBCFS_PARAM_GET_DATA(dev, data, NULL);
         LASSERT(dev != NULL);
         desc = &dev->u.lov.desc;
-        *eof = 1;
 
         return libcfs_param_snprintf(page, count, data, LP_U32,
                                      "%u\n", desc->ld_tgt_count);
@@ -207,7 +202,6 @@ static int lov_rd_activeobd(char *page, char **start, off_t off, int count,
         LIBCFS_PARAM_GET_DATA(dev, data, NULL);
         LASSERT(dev != NULL);
         desc = &dev->u.lov.desc;
-        *eof = 1;
 
         return libcfs_param_snprintf(page, count, data, LP_U32, "%u\n",
                                      desc->ld_active_tgt_count);
@@ -222,7 +216,6 @@ static int lov_rd_desc_uuid(char *page, char **start, off_t off, int count,
         LIBCFS_PARAM_GET_DATA(dev, data, NULL);
         LASSERT(dev != NULL);
         lov = &dev->u.lov;
-        *eof = 1;
 
         return libcfs_param_snprintf(page, count, data, LP_STR, "%s\n",
                                      lov->desc.ld_uuid.uuid);
@@ -239,7 +232,6 @@ static int lov_rd_qos_priofree(char *page, char **start, off_t off, int count,
         LIBCFS_PARAM_GET_DATA(dev, data, &flag);
         LASSERT(dev != NULL);
         lov = &dev->u.lov;
-        *eof = 1;
 
         return libcfs_param_snprintf(page, count, data, LP_STR, "%d%%\n",
                                      (lov->lov_qos.lq_prio_free * 100) >> 8);
@@ -277,7 +269,6 @@ static int lov_rd_qos_thresholdrr(char *page, char **start, off_t off,
         LIBCFS_PARAM_GET_DATA(dev, data, &flag);
         LASSERT(dev != NULL);
         lov = &dev->u.lov;
-        *eof = 1;
 
         return libcfs_param_snprintf(page, count, data, LP_STR, "%d%%\n",
                                      (lov->lov_qos.lq_threshold_rr * 100) >> 8);
@@ -315,7 +306,6 @@ static int lov_rd_qos_maxage(char *page, char **start, off_t off, int count,
         LIBCFS_PARAM_GET_DATA(dev, data, NULL);
         LASSERT(dev != NULL);
         lov = &dev->u.lov;
-        *eof = 1;
 
         return libcfs_param_snprintf_common(page, count, data, LP_U32,
                         NULL, "sec", "%u", lov->desc.ld_qos_maxage);

@@ -51,7 +51,6 @@ static int osc_rd_active(char *page, char **start, off_t off,
         int temp;
 
         LIBCFS_PARAM_GET_DATA(dev, data, NULL);
-        *eof = 1;
         LPROCFS_CLIMP_CHECK(dev);
         temp = !dev->u.cli.cl_import->imp_deactive;
         rc = libcfs_param_snprintf(page, count, data, LP_D32, "%d\n", temp);
@@ -92,7 +91,6 @@ static int osc_rd_max_pages_per_rpc(char *page, char **start, off_t off,
 
         LIBCFS_PARAM_GET_DATA(dev, data, NULL);
         cli = &dev->u.cli;
-        *eof = 1;
         client_obd_list_lock(&cli->cl_loi_list_lock);
         rc = libcfs_param_snprintf(page, count, data, LP_D32, "%d\n",
                                    cli->cl_max_pages_per_rpc);
@@ -139,7 +137,6 @@ static int osc_rd_max_rpcs_in_flight(char *page, char **start, off_t off,
 
         LIBCFS_PARAM_GET_DATA(dev, data, NULL);
         cli = &dev->u.cli;
-        *eof = 1;
         client_obd_list_lock(&cli->cl_loi_list_lock);
         rc = libcfs_param_snprintf(page, count, data, LP_D32, "%u\n",
                                    cli->cl_max_rpcs_in_flight);
@@ -189,7 +186,6 @@ static int osc_rd_max_dirty_mb(char *page, char **start, off_t off, int count,
 
         LIBCFS_PARAM_GET_DATA(dev, data, NULL);
         cli = &dev->u.cli;
-        *eof = 1;
         client_obd_list_lock(&cli->cl_loi_list_lock);
         val = cli->cl_dirty_max;
         client_obd_list_unlock(&cli->cl_loi_list_lock);
@@ -239,7 +235,6 @@ static int osc_rd_cur_dirty_bytes(char *page, char **start, off_t off,
 
         LIBCFS_PARAM_GET_DATA(dev, data, NULL);
         cli = &dev->u.cli;
-        *eof = 1;
         client_obd_list_lock(&cli->cl_loi_list_lock);
         rc = libcfs_param_snprintf(page, count, data, LP_U32, "%lu\n",
                                    cli->cl_dirty);
@@ -257,7 +252,6 @@ static int osc_rd_cur_grant_bytes(char *page, char **start, off_t off,
 
         LIBCFS_PARAM_GET_DATA(dev, data, NULL);
         cli = &dev->u.cli;
-        *eof = 1;
         client_obd_list_lock(&cli->cl_loi_list_lock);
         rc = libcfs_param_snprintf(page, count, data, LP_U32, "%lu\n",
                                    cli->cl_avail_grant);
@@ -306,7 +300,6 @@ static int osc_rd_grant_shrink_interval(char *page, char **start, off_t off,
 {
         struct obd_device *obd;
 
-        *eof = 1;
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         if (obd == NULL)
                 return 0;
@@ -343,7 +336,6 @@ static int osc_rd_create_count(char *page, char **start, off_t off, int count,
         struct obd_device *obd;
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
-        *eof = 1;
         if (obd == NULL)
                 return 0;
         return libcfs_param_snprintf(page, count, data, LP_D32, "%d\n",
@@ -416,7 +408,6 @@ static int osc_rd_max_create_count(char *page, char **start, off_t off,
         struct obd_device *obd;
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
-        *eof = 1;
         if (obd == NULL)
                 return 0;
         return libcfs_param_snprintf(page, count, data, LP_D32, "%d\n",
@@ -466,7 +457,6 @@ static int osc_rd_prealloc_next_id(char *page, char **start, off_t off,
         struct obd_device *obd;
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
-        *eof = 1;
         if (obd == NULL)
                 return 0;
         return libcfs_param_snprintf(page, count, data, LP_U64, LPU64"\n",
@@ -479,7 +469,6 @@ static int osc_rd_prealloc_last_id(char *page, char **start, off_t off,
         struct obd_device *obd;
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
-        *eof = 1;
         if (obd == NULL)
                 return 0;
         return libcfs_param_snprintf(page, count, data, LP_U64, LPU64"\n",
@@ -493,7 +482,6 @@ static int osc_rd_checksum(char *page, char **start, off_t off, int count,
         int temp;
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
-        *eof = 1;
         if (obd == NULL)
                 return 0;
         temp = obd->u.cli.cl_checksum ? 1 : 0;
@@ -528,7 +516,6 @@ static int osc_rd_checksum_type(char *page, char **start, off_t off, int count,
         DECLARE_CKSUM_NAME;
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
-        *eof = 1;
         if (obd == NULL)
                 return 0;
         for (i = 0; i < ARRAY_SIZE(cksum_name) && rc < count; i++) {
@@ -588,7 +575,6 @@ static int osc_rd_resend_count(char *page, char **start, off_t off, int count,
         int temp;
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
-        *eof = 1;
         temp = cfs_atomic_read(&obd->u.cli.cl_resends);
 
         return libcfs_param_snprintf(page, count, data, LP_D32, "%u\n", temp);
@@ -621,7 +607,6 @@ static int osc_rd_contention_seconds(char *page, char **start, off_t off,
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         od  = obd2osc_dev(obd);
-        *eof = 1;
 
         return libcfs_param_snprintf(page, count, data, LP_U32, "%u\n",
                                      od->od_contention_time);
@@ -649,7 +634,6 @@ static int osc_rd_lockless_truncate(char *page, char **start, off_t off,
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         od  = obd2osc_dev(obd);
-        *eof = 1;
 
         return libcfs_param_snprintf(page, count, data, LP_U32, "%u\n",
                                      od->od_lockless_truncate);
@@ -673,7 +657,6 @@ static int osc_rd_destroys_in_flight(char *page, char **start, off_t off,
 {
         struct obd_device *obd;
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
-        *eof = 1;
         return libcfs_param_snprintf(page, count, data, LP_U32, "%u\n",
                         cfs_atomic_read(&obd->u.cli.cl_destroy_in_flight));
 }

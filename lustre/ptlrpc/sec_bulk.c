@@ -144,7 +144,6 @@ int sptlrpc_proc_read_enc_pool(char *page, char **start, off_t off, int count,
 {
         int rc = 0;
 
-        *eof = 1;
         cfs_spin_lock(&page_pools.epp_lock);
 
         rc = libcfs_param_snprintf(page, count, data, LP_STR,

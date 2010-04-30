@@ -58,7 +58,6 @@ lnet_router_proc_stats_read (char *page, char **start, off_t off,
         lnet_counters_t *ctrs;
         int              rc;
 
-        *eof = 1;
         if (off != 0)
                 return 0;
 

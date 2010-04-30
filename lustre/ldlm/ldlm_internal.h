@@ -214,7 +214,6 @@ typedef enum ldlm_policy_res ldlm_policy_res_t;
                 type tmp;                                                   \
                                                                             \
                 LIBCFS_PARAM_GET_DATA(pl, data, NULL);                      \
-                *eof = 1;                                                   \
                 cfs_spin_lock(&pl->pl_lock);                                \
                 tmp = pl->pl_##var;                                         \
                 cfs_spin_unlock(&pl->pl_lock);                              \

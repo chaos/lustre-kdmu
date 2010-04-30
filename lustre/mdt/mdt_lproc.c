@@ -160,7 +160,6 @@ static int lprocfs_rd_identity_expire(char *page, char **start, off_t off,
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         mdt = mdt_dev(obd->obd_lu_dev);
-        *eof = 1;
         temp = mdt->mdt_identity_cache->uc_entry_expire / CFS_HZ;
 
         return libcfs_param_snprintf(page, count, data, LP_U32, "%lu\n", temp);
@@ -193,7 +192,6 @@ static int lprocfs_rd_identity_acquire_expire(char *page, char **start,
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         mdt = mdt_dev(obd->obd_lu_dev);
-        *eof = 1;
         temp = mdt->mdt_identity_cache->uc_acquire_expire / CFS_HZ;
 
         return libcfs_param_snprintf(page, count, data, LP_U32, "%lu\n", temp);
@@ -230,7 +228,6 @@ static int lprocfs_rd_identity_upcall(char *page, char **start, off_t off,
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         mdt = mdt_dev(obd->obd_lu_dev);
         hash = mdt->mdt_identity_cache;
-        *eof = 1;
         cfs_read_lock(&hash->uc_upcall_rwlock);
         rc = libcfs_param_snprintf(page, count, data, LP_STR,
                                    "%s\n", hash->uc_upcall);
@@ -373,7 +370,6 @@ static int lprocfs_rd_capa(char *page, char **start, off_t off,
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         mdt = mdt_dev(obd->obd_lu_dev);
-        *eof = 1;
 
         return libcfs_param_snprintf(page, count, data, LP_STR,
                       "capability on: %s %s\n",
@@ -425,7 +421,6 @@ static int lprocfs_wr_capa(libcfs_file_t *file, const char *buffer,
 static int lprocfs_rd_capa_count(char *page, char **start, off_t off,
                                  int count, int *eof, void *data)
 {
-        *eof = 1;
         return libcfs_param_snprintf(page, count, data, LP_STR, "%d %d\n",
                                      capa_count[CAPA_SITE_CLIENT],
                                      capa_count[CAPA_SITE_SERVER]);
@@ -440,7 +435,6 @@ static int lprocfs_rd_site_stats(char *page, char **start, off_t off,
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         mdt = mdt_dev(obd->obd_lu_dev);
-        *eof = 1;
         rc = lu_site_stats_print(mdt_lu_site(mdt), page, count);
         if (rc > 0)
                 rc = libcfs_param_snprintf(page, count, data, LP_STR,
@@ -457,7 +451,6 @@ static int lprocfs_rd_capa_timeout(char *page, char **start, off_t off,
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         mdt = mdt_dev(obd->obd_lu_dev);
-        *eof = 1;
 
         return libcfs_param_snprintf(page, count, data, LP_U32,
                                      "%lu\n", mdt->mdt_capa_timeout);
@@ -489,7 +482,6 @@ static int lprocfs_rd_ck_timeout(char *page, char **start, off_t off, int count,
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         mdt = mdt_dev(obd->obd_lu_dev);
-        *eof = 1;
 
         return libcfs_param_snprintf(page, count, data, LP_U32, "%lu\n",
                                      mdt->mdt_ck_timeout);
@@ -537,7 +529,6 @@ static int lprocfs_rd_sec_level(char *page, char **start, off_t off,
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         mdt = mdt_dev(obd->obd_lu_dev);
-        *eof = 1;
 
         return libcfs_param_snprintf(page, count, data, LP_D32, "%d\n",
                                      mdt->mdt_sec_level);
@@ -579,7 +570,6 @@ static int lprocfs_rd_cos(char *page, char **start, off_t off,
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         mdt = mdt_dev(obd->obd_lu_dev);
-        *eof = 1;
         temp = mdt_cos_is_enabled(mdt);
 
         return libcfs_param_snprintf(page, count, data, LP_D32, "%u\n", temp);
@@ -610,7 +600,6 @@ static int lprocfs_rd_root_squash(char *page, char **start, off_t off,
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         mdt = mdt_dev(obd->obd_lu_dev);
-        *eof = 1;
 
         return libcfs_param_snprintf(page, count, data, LP_STR, "%u:%u\n",
                                      mdt->mdt_squash_uid, mdt->mdt_squash_gid);
@@ -699,7 +688,6 @@ static int lprocfs_rd_nosquash_nids(char *page, char **start, off_t off,
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         mdt = mdt_dev(obd->obd_lu_dev);
-        *eof = 1;
         if (mdt->mdt_nosquash_str)
                 return libcfs_param_snprintf(page, count, data, LP_STR,
                                              "%s\n", mdt->mdt_nosquash_str);
@@ -783,7 +771,6 @@ static int lprocfs_rd_mdt_som(char *page, char **start, off_t off,
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         LASSERT(obd != NULL);
-        *eof = 1;
         mdt = mdt_dev(obd->obd_lu_dev);
 
         return libcfs_param_snprintf(page, count, data, LP_STR, "%sabled\n",

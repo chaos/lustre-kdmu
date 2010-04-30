@@ -1046,6 +1046,9 @@ static int libcfs_param_normal_read(char *buf, loff_t *ppos,
         if (page == NULL)
                 return -ENOMEM;
         while((left_bytes > 0) && !(*eof)) {
+                /* suppose *eof = 1 by default so that we don't need to
+                 * set it in each read_cb function. */
+                *eof = 1;
                 /* read the param value */
                 if (entry->lpe_cb_read != NULL)
                         bytes = entry->lpe_cb_read(page, &start, pos, count,
@@ -1189,7 +1192,6 @@ int libcfs_param_intvec_read(char *page, char **start, off_t off, int count,
 {
         unsigned long *temp = ((lparcb_t *)data)->cb_data;
 
-        *eof = 1;
         return libcfs_param_snprintf(page, count, data, LP_D32, NULL, *temp);
 }
 
@@ -1203,7 +1205,6 @@ int libcfs_param_string_write(libcfs_file_t *filp, const char *buffer,
 int libcfs_param_string_read(char *page, char **start, off_t off, int count,
                              int *eof, void *data)
 {
-        *eof = 1;
         return libcfs_param_snprintf(page, count, data, LP_STR, "%s",
                                    (char *)(((lparcb_t *)data)->cb_data));
 }

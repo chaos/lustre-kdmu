@@ -74,7 +74,6 @@ fld_proc_read_targets(char *page, char **start, off_t off,
         LIBCFS_PARAM_GET_DATA(fld, data, NULL);
         LASSERT(fld != NULL);
 
-        *eof = 1;
         cfs_spin_lock(&fld->lcf_lock);
         cfs_list_for_each_entry(target,
                                 &fld->lcf_targets, ft_chain)
@@ -104,7 +103,6 @@ fld_proc_read_hash(char *page, char **start, off_t off,
         LIBCFS_PARAM_GET_DATA(fld, data, NULL);
         LASSERT(fld != NULL);
 
-        *eof = 1;
         cfs_spin_lock(&fld->lcf_lock);
         rc = libcfs_param_snprintf(page, count, data, LP_STR,
                                    "%s\n", fld->lcf_hash->fh_name);

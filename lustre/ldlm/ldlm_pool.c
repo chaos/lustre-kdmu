@@ -658,7 +658,6 @@ static int lprocfs_rd_pool_state(char *page, char **start, off_t off,
         __u32 limit;
 
         LIBCFS_PARAM_GET_DATA(pl, data, NULL);
-        *eof = 1;
         cfs_spin_lock(&pl->pl_lock);
         slv = pl->pl_server_lock_volume;
         clv = pl->pl_client_lock_volume;
