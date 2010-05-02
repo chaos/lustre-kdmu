@@ -1267,7 +1267,9 @@ mdd_declare_and_start_attr_set(const struct lu_env *env, struct md_object *obj,
         }
 
         /* XXX: use appropriate len? */
-        rc = mdo_declare_xattr_set(env, mdd_obj, 4096, XATTR_NAME_ACL_ACCESS, 0, handle);
+        buf.lb_len = 4096;
+        rc = mdo_declare_xattr_set(env, mdd_obj, &buf,
+                                   XATTR_NAME_ACL_ACCESS, 0, handle);
         if (rc)
                 GOTO(out, rc);
 
