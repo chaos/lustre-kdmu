@@ -504,7 +504,7 @@ static int mdd_path_current(const struct lu_env *env,
                        PFID(&pli->pli_fid));
                 GOTO(out, rc = -EAGAIN);
         }
-
+        ptr++; /* skip leading / */
         memmove(pli->pli_path, ptr, pli->pli_path + pli->pli_pathlen - ptr);
 
         EXIT;
@@ -535,8 +535,7 @@ static int mdd_path(const struct lu_env *env, struct md_object *obj,
                 RETURN(-EOVERFLOW);
 
         if (mdd_is_root(mdo2mdd(obj), mdd_object_fid(md2mdd_obj(obj)))) {
-                path[0] = '/';
-                path[1] = '\0';
+                path[0] = '\0';
                 RETURN(0);
         }
 
@@ -616,9 +615,12 @@ int mdd_get_default_md(struct mdd_object *mdd_obj, struct lov_mds_md *lmm,
 
         ldesc = &mdd->mdd_obd_dev->u.mds.mds_lov_desc;
         LASSERT(ldesc != NULL);
+        LASSERT(size != NULL);
 
-        if (!lmm)
+        if (!lmm) {
+                *size = 0;
                 RETURN(0);
+        }
 
         lmm->lmm_magic = LOV_MAGIC_V1;
         lmm->lmm_object_gr = LOV_OBJECT_GROUP_DEFAULT;
@@ -642,12 +644,9 @@ static int __mdd_lmm_get(const struct lu_env *env,
 
         rc = mdd_get_md(env, mdd_obj, ma->ma_lmm, &ma->ma_lmm_size,
                         XATTR_NAME_LOV);
-
-        if (rc == 0 && (ma->ma_need & MA_LOV_DEF)) {
+        if (rc == 0 && ma->ma_need & MA_LOV_DEF)
                 rc = mdd_get_default_md(mdd_obj, ma->ma_lmm,
-                                &ma->ma_lmm_size);
-        }
-
+                                        &ma->ma_lmm_size);
         if (rc > 0) {
                 ma->ma_valid |= MA_LOV;
                 rc = 0;

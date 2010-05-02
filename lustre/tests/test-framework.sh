@@ -1137,10 +1137,7 @@ wait_recovery_complete () {
     local facet=$1
 
     # Use default policy if $2 is not passed by caller.
-    #define OBD_RECOVERY_TIMEOUT (obd_timeout * 5 / 2)
-    # as we are in process of changing obd_timeout in different ways
-    # let's set MAX longer than that
-    local MAX=${2:-$(( TIMEOUT * 4 ))}
+    local MAX=${2:-$(max_recovery_time)}
 
     local var_svc=${facet}_svc
     local procfile="*.${!var_svc}.recovery_status"
@@ -2716,6 +2713,7 @@ run_one_logged() {
     rm -rf $LOGDIR/err
 
     echo
+    log_sub_test_begin test_${1}
     (run_one $1 "$2") 2>&1 | tee $test_log
     local RC=${PIPESTATUS[0]}
 
@@ -2725,7 +2723,7 @@ run_one_logged() {
     duration=$((`date +%s` - $BEFORE))
     pass "(${duration}s)"
     [ -f $LOGDIR/err ] && TEST_ERROR=$(cat $LOGDIR/err)
-    log_sub_test test_${1} $TEST_STATUS $duration "$RC" "$TEST_ERROR"
+    log_sub_test_end $TEST_STATUS $duration "$RC" "$TEST_ERROR"
 
     if [ -f $LOGDIR/err ]; then
         $FAIL_ON_ERROR && exit $RC
@@ -3572,6 +3570,24 @@ do_ls () {
     return $rc
 }
 
+# target_start_and_reset_recovery_timer()
+#        service_time = at_est2timeout(service_time);
+#        service_time += 2 * (CONNECTION_SWITCH_MAX + CONNECTION_SWITCH_INC +
+#                             INITIAL_CONNECT_TIMEOUT);
+# CONNECTION_SWITCH_MAX : min(25U, max(CONNECTION_SWITCH_MIN,obd_timeout))
+#define CONNECTION_SWITCH_INC 1
+#define INITIAL_CONNECT_TIMEOUT max(CONNECTION_SWITCH_MIN,obd_timeout/20)
+#define CONNECTION_SWITCH_MIN 5U
+
+max_recovery_time () {
+    local init_connect_timeout=$(( TIMEOUT / 20 ))
+    [[ $init_connect_timeout > 5 ]] || init_connect_timeout=5 
+
+    local service_time=$(( $(at_max_get client) + $(( 2 * $(( 25 + 1  + init_connect_timeout)) )) ))
+
+    echo $service_time 
+}
+
 get_clients_mount_count () {
     local clients=${CLIENTS:-`hostname`}
 
@@ -3913,8 +3929,12 @@ log_test() {
     yml_log_test $1 >> $YAML_LOG
 }
 
-log_sub_test() {
-    yml_log_sub_test $@ >> $YAML_LOG
+log_sub_test_begin() {
+    yml_log_sub_test_begin $@ >> $YAML_LOG
+}
+
+log_sub_test_end() {
+    yml_log_sub_test_end $@ >> $YAML_LOG
 }
 
 run_llverdev()
