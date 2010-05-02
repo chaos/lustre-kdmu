@@ -402,18 +402,23 @@ void mdt_pack_attr2body(struct mdt_thread_info *info, struct mdt_body *b,
 {
         struct md_attr          *ma  = &info->mti_attr;
 
+        LASSERT(ma->ma_valid & MA_INODE);
+
         /*XXX should pack the reply body according to lu_valid*/
         b->valid |= OBD_MD_FLCTIME | OBD_MD_FLUID   |
                     OBD_MD_FLGID   | OBD_MD_FLTYPE  |
                     OBD_MD_FLMODE  | OBD_MD_FLNLINK | OBD_MD_FLFLAGS |
                     OBD_MD_FLATIME | OBD_MD_FLMTIME ;
 
-        if (!S_ISREG(attr->la_mode))
+        if (!S_ISREG(attr->la_mode)) {
                 b->valid |= OBD_MD_FLSIZE | OBD_MD_FLBLOCKS | OBD_MD_FLRDEV;
-
-        /* if no object is allocated on osts, the size on mds is valid. b=22272 */
-        if (ma->ma_lmm_size == 0)
-                b->valid |= OBD_MD_FLSIZE;
+        } else if (ma->ma_need & MA_LOV && ma->ma_lmm_size == 0) {
+                /* means no objects are allocated on osts. */
+                LASSERT(!(ma->ma_valid & MA_LOV));
+                LASSERT(attr->la_blocks == 0);
+                /* if no object is allocated on osts, the size on mds is valid. b=22272 */
+                b->valid |= OBD_MD_FLSIZE | OBD_MD_FLBLOCKS;
+        }
 
         b->atime      = attr->la_atime;
         b->mtime      = attr->la_mtime;
@@ -2255,12 +2260,12 @@ int mdt_object_lock(struct mdt_thread_info *info, struct mdt_object *o,
                           res_id, LDLM_FL_LOCAL_ONLY | LDLM_FL_ATOMIC_CB,
                           &info->mti_exp->exp_handle.h_cookie);
         if (rc)
-                GOTO(out, rc);
-
-out:
-        if (rc)
                 mdt_object_unlock(info, o, lh, 1);
-
+        else if (unlikely(OBD_FAIL_PRECHECK(OBD_FAIL_MDS_PDO_LOCK)) &&
+                 lh->mlh_pdo_hash != 0 &&
+                 (lh->mlh_reg_mode == LCK_PW || lh->mlh_reg_mode == LCK_EX)) {
+                OBD_FAIL_TIMEOUT(OBD_FAIL_MDS_PDO_LOCK, 10);
+        }
 
         RETURN(rc);
 }
@@ -5046,7 +5051,7 @@ static int mdt_obd_connect(const struct lu_env *env,
                         LASSERT(mti != NULL);
                         mti->mti_exp = lexp;
                         memcpy(lcd->lcd_uuid, cluuid, sizeof lcd->lcd_uuid);
-                        lexp->exp_mdt_data.med_lcd = lcd;
+                        lexp->exp_target_data.ted_lcd = lcd;
                         rc = mdt_client_new(env, mdt);
                         if (rc == 0)
                                 mdt_export_stats_init(obd, lexp, localdata);
@@ -5274,7 +5279,7 @@ static int mdt_upcall(const struct lu_env *env, struct md_device *md,
                                      m->mdt_max_mdsize, m->mdt_max_cookiesize);
                         mdt_allow_cli(m, CONFIG_SYNC);
                         if (data)
-                                (*(__u64 *)data) = m->mdt_mount_count;
+                                (*(__u64 *)data) = m->mdt_lut.lut_mount_count;
                         break;
                 case MD_NO_TRANS:
                         mti = lu_context_key_get(&env->le_ctx, &mdt_thread_key);

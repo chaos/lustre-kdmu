@@ -788,6 +788,8 @@ void ll_lli_init(struct ll_inode_info *lli)
         lli->lli_rmtperm_utime = 0;
         cfs_sema_init(&lli->lli_rmtperm_sem, 1);
         CFS_INIT_LIST_HEAD(&lli->lli_oss_capas);
+        cfs_spin_lock_init(&lli->lli_sa_lock);
+        CFS_INIT_LIST_HEAD(&lli->lli_sa_dentry);
 }
 
 int ll_fill_super(struct super_block *sb)
@@ -1248,14 +1250,14 @@ int ll_setattr_raw(struct inode *inode, struct iattr *attr)
 
         if (ia_valid & ATTR_SIZE)
                 attr->ia_valid |= ATTR_SIZE;
-        if (ia_valid & (ATTR_SIZE | ATTR_MTIME | ATTR_MTIME_SET)) {
-                /* mtime is set to past sending setattr op to osts under PW
-                 * 0:EOF extent lock (like truncate under PW new_size:EOF), if
-                 * mtime is not set to past setattr op is not sent to osts */
-                if ((ia_valid & ATTR_SIZE) ||
-                    LTIME_S(attr->ia_mtime) < LTIME_S(attr->ia_ctime))
-                        rc = ll_setattr_ost(inode, attr);
-        }
+        if ((ia_valid & ATTR_SIZE) | 
+            ((ia_valid | ATTR_ATIME | ATTR_ATIME_SET) &&
+             LTIME_S(attr->ia_atime) < LTIME_S(attr->ia_ctime)) ||
+            ((ia_valid | ATTR_MTIME | ATTR_MTIME_SET) &&
+             LTIME_S(attr->ia_mtime) < LTIME_S(attr->ia_ctime)))
+                /* perform truncate and setting mtime/atime to past under PW
+                 * 0:EOF extent lock (new_size:EOF for truncate) */
+                rc = ll_setattr_ost(inode, attr);
         EXIT;
 out:
         if (op_data) {

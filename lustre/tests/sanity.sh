@@ -6904,7 +6904,7 @@ test_161() {
     rm $DIR/$tdir/$tfile
     # rename
     mv $DIR/$tdir/foo1/sofia $DIR/$tdir/foo2/maggie
-    if [ "$($LFS fid2path $DIR --link 1 $FID)" != "/$tdir/foo2/maggie" ]
+    if [ "$($LFS fid2path $FSNAME --link 1 $FID)" != "$tdir/foo2/maggie" ]
 	then
 	$LFS fid2path $DIR $FID
 	err17935 "bad link rename"
@@ -6951,20 +6951,20 @@ test_162() {
     mkdir -p $DIR/$tdir/d2/p/q/r
 	# regular file
     FID=$($LFS path2fid $DIR/$tdir/d2/$tfile | tr -d '[')
-    check_path "/$tdir/d2/$tfile" $DIR $FID --link 0
+    check_path "$tdir/d2/$tfile" $FSNAME $FID --link 0
 
 	# softlink
     ln -s $DIR/$tdir/d2/$tfile $DIR/$tdir/d2/p/q/r/slink
     FID=$($LFS path2fid $DIR/$tdir/d2/p/q/r/slink | tr -d '[')
-    check_path "/$tdir/d2/p/q/r/slink" $DIR $FID --link 0
+    check_path "$tdir/d2/p/q/r/slink" $FSNAME $FID --link 0
 
 	# hardlink
     ln $DIR/$tdir/d2/$tfile $DIR/$tdir/d2/p/q/r/hlink
     mv $DIR/$tdir/d2/$tfile $DIR/$tdir/d2/a/b/c/new_file
     FID=$($LFS path2fid $DIR/$tdir/d2/a/b/c/new_file | tr -d '[')
     # fid2path dir/fsname should both work
-    check_path "/$tdir/d2/a/b/c/new_file" $FSNAME $FID --link 1
-    check_path "/$tdir/d2/p/q/r/hlink" $DIR $FID --link 0
+    check_path "$tdir/d2/a/b/c/new_file" $FSNAME $FID --link 1
+    check_path "$DIR/$tdir/d2/p/q/r/hlink" $DIR $FID --link 0
 
     # hardlink count: check that there are 2 links
     # Doesnt work with CMD yet: 17935
@@ -6973,7 +6973,7 @@ test_162() {
 
 	# hardlink indexing: remove the first link
     rm $DIR/$tdir/d2/p/q/r/hlink
-    check_path "/$tdir/d2/a/b/c/new_file" $DIR $FID --link 0
+    check_path "$tdir/d2/a/b/c/new_file" $FSNAME $FID --link 0
 
 	return 0
 }
@@ -7162,7 +7162,8 @@ TGTPOOL_MAX=$(($TGT_COUNT - 1))
 TGTPOOL_STEP=2
 TGTPOOL_LIST=`seq $TGTPOOL_FIRST $TGTPOOL_STEP $TGTPOOL_MAX`
 POOL_ROOT=${POOL_ROOT:-$DIR/d200.pools}
-POOL_DIR=$POOL_ROOT/dir_tst
+POOL_DIR_NAME=dir_tst
+POOL_DIR=$POOL_ROOT/$POOL_DIR_NAME
 POOL_FILE=$POOL_ROOT/file_tst
 
 check_file_in_pool()
@@ -7212,6 +7213,18 @@ test_200c() {
 	mkdir -p $POOL_DIR
 	$SETSTRIPE -c 2 -p $POOL $POOL_DIR
 	[ $? = 0 ] || error "Cannot set pool $POOL to $POOL_DIR"
+	# b-19919 test relative path works well
+	mkdir -p $POOL_DIR/$POOL_DIR_NAME
+	cd $POOL_DIR
+	$SETSTRIPE -c 2 -p $POOL $POOL_DIR_NAME
+	[ $? = 0 ] || error "Cannot set pool $POOL to $POOL_DIR/$POOL_DIR_NAME"
+	$SETSTRIPE -c 2 -p $POOL ./$POOL_DIR_NAME
+	[ $? = 0 ] || error "Cannot set pool $POOL to $POOL_DIR/./$POOL_DIR_NAME"
+	$SETSTRIPE -c 2 -p $POOL ../$POOL_DIR_NAME
+	[ $? = 0 ] || error "Cannot set pool $POOL to $POOL_DIR/../$POOL_DIR_NAME"
+	$SETSTRIPE -c 2 -p $POOL ../$POOL_DIR_NAME/$POOL_DIR_NAME
+	[ $? = 0 ] || error "Cannot set pool $POOL to $POOL_DIR/../$POOL_DIR_NAME/$POOL_DIR_NAME"
+	rm -rf $POOL_DIR_NAME; cd -
 }
 run_test 200c "Set pool on a directory ================================="
 

@@ -103,15 +103,8 @@ int check_quota_file(struct file *f, struct inode *inode, int type,
         static const uint quota_magics[] = LUSTRE_INITQMAGICS;
         const uint *quota_versions = lustre_initqversions[version];
 
-        if (!f && !inode) {
-                CERROR("check_quota_file failed!\n");
-                libcfs_debug_dumpstack(NULL);
-                return -EINVAL;
-        }
-
         size = lustre_read_quota(f, inode, type, (char *)&dqhead,
                                  sizeof(struct lustre_disk_dqheader), 0);
-
         if (size != sizeof(struct lustre_disk_dqheader))
                 return -EINVAL;
         if (le32_to_cpu(dqhead.dqh_magic) != quota_magics[type] ||
@@ -875,6 +868,7 @@ int lustre_commit_dquot(struct lustre_dquot *dquot)
         lustre_quota_version_t version = dquot->dq_info->qi_version;
         void *handle;
         struct inode *inode = dquot->dq_info->qi_files[dquot->dq_type]->f_dentry->d_inode;
+        int delete = 0;
 
         /* always clear the flag so we don't loop on an IO error... */
         cfs_clear_bit(DQ_MOD_B, &dquot->dq_flags);
@@ -882,15 +876,20 @@ int lustre_commit_dquot(struct lustre_dquot *dquot)
         /* The block/inode usage in admin quotafile isn't the real usage
          * over all cluster, so keep the fake dquot entry on disk is
          * meaningless, just remove it */
-        if (cfs_test_bit(DQ_FAKE_B, &dquot->dq_flags)) {
-                handle = lustre_quota_journal_start(inode, 1);
-                rc = lustre_delete_dquot(dquot, version);
-                lustre_quota_journal_stop(handle);
-        } else {
-                handle = lustre_quota_journal_start(inode, 0);
-                rc = lustre_write_dquot(dquot, version);
-                lustre_quota_journal_stop(handle);
+        if (cfs_test_bit(DQ_FAKE_B, &dquot->dq_flags))
+                delete = 1;
+        handle = lustre_quota_journal_start(inode, delete);
+        if (unlikely(IS_ERR(handle))) {
+                rc = PTR_ERR(handle);
+                CERROR("fail to lustre_quota_journal_start: rc = %d\n", rc);
+                return rc;
         }
+
+        if (delete)
+                rc = lustre_delete_dquot(dquot, version);
+        else
+                rc = lustre_write_dquot(dquot, version);
+        lustre_quota_journal_stop(handle);
 
         if (rc < 0)
                 return rc;

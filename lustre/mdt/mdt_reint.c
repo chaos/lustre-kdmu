@@ -415,13 +415,13 @@ static int mdt_reint_setattr(struct mdt_thread_info *info,
 
                 /* Close the found mfd, update attributes. */
                 ma->ma_lmm_size = info->mti_mdt->mdt_max_mdsize;
-                OBD_ALLOC(ma->ma_lmm, ma->ma_lmm_size);
+                OBD_ALLOC(ma->ma_lmm, info->mti_mdt->mdt_max_mdsize);
                 if (ma->ma_lmm == NULL)
                         GOTO(out_put, rc = -ENOMEM);
 
                 mdt_mfd_close(info, mfd);
 
-                OBD_FREE(ma->ma_lmm, ma->ma_lmm_size);
+                OBD_FREE(ma->ma_lmm, info->mti_mdt->mdt_max_mdsize);
         } else {
                 rc = mdt_attr_set(info, mo, ma, rr->rr_flags);
                 if (rc)
@@ -667,7 +667,7 @@ static int mdt_reint_link(struct mdt_thread_info *info,
 
         /* step 1: find & lock the target parent dir */
         lhp = &info->mti_lh[MDT_LH_PARENT];
-        mdt_lock_pdo_init(lhp, LCK_EX, rr->rr_name,
+        mdt_lock_pdo_init(lhp, LCK_PW, rr->rr_name,
                           rr->rr_namelen);
         mp = mdt_object_find_lock(info, rr->rr_fid2, lhp,
                                   MDS_INODELOCK_UPDATE);
@@ -977,6 +977,7 @@ static int mdt_reint_rename(struct mdt_thread_info *info,
                                                  MDS_INODELOCK_UPDATE);
                          if (rc)
                                  GOTO(out_unlock_source, rc);
+                         OBD_FAIL_TIMEOUT(OBD_FAIL_MDS_PDO_LOCK2, 10);
                 }
         } else {
                 mtgtdir = mdt_object_find(info->mti_env, info->mti_mdt,
