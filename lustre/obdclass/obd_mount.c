@@ -562,21 +562,31 @@ static int lustre_start_mgc(struct super_block *sb)
         sprintf(niduuid, "%s_%x", mgcname, i);
         if (lsi->lsi_flags & LSI_SERVER) {
                 ptr = lsi->lsi_ldd->ldd_params;
-                if (IS_MGS(lsi->lsi_ldd)) {
+                /* Use mgsnode= nids */
+                if (class_find_param(ptr, PARAM_MGSNODE, &ptr) == 0) {
+                        while (class_parse_nid(ptr, &nid, &ptr) == 0) {
+                                rc = do_lcfg(mgcname, nid, LCFG_ADD_UUID,
+                                             niduuid, 0, 0, 0);
+                                i++;
+                                /* Stop at the first failover nid */
+                                if (*ptr == ':')
+                                        break;
+                        }
+                } else if (lsi->lsi_lmd->lmd_mgs) {
+                        ptr = lsi->lsi_lmd->lmd_mgs;
+                        while (class_parse_nid(ptr, &nid, &ptr) == 0) {
+                                rc = do_lcfg(mgcname, nid, LCFG_ADD_UUID,
+                                             niduuid, 0, 0, 0);
+                                i++;
+                                /* Stop at the first failover nid */
+                                if (*ptr == ':')
+                                        break;
+                        }
+                } else if (IS_MGS(lsi->lsi_ldd)) {
                         /* Use local nids (including LO) */
                         lnet_process_id_t id;
                         while ((rc = LNetGetId(i++, &id)) != -ENOENT) {
                                 rc = do_lcfg(mgcname, id.nid,
-                                             LCFG_ADD_UUID, niduuid, 0,0,0);
-                        }
-                } else {
-                        /* Use mgsnode= nids */
-                        if (class_find_param(ptr, PARAM_MGSNODE, &ptr) != 0) {
-                                CERROR("No MGS nids given.\n");
-                                GOTO(out_free, rc = -EINVAL);
-                        }
-                        while (class_parse_nid(ptr, &nid, &ptr) == 0) {
-                                rc = do_lcfg(mgcname, nid,
                                              LCFG_ADD_UUID, niduuid, 0,0,0);
                                 i++;
                         }

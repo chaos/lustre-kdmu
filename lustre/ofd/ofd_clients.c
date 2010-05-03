@@ -53,7 +53,8 @@ int filter_client_new(const struct lu_env *env, struct filter_device *ofd,
 {
         struct obd_device *obd = filter_obd(ofd);
         unsigned long *bitmap = ofd->ofd_last_rcvd_slots;
-        struct lsd_client_data *lcd = fed->fed_lcd;
+        struct tg_export_data *ted = &fed->fed_ted;
+        struct lsd_client_data *lcd = ted->ted_lcd;
         loff_t off;
         int err, cl_idx = 0;
         struct thandle *th;
@@ -79,23 +80,23 @@ repeat:
                 goto repeat;
         }
 
-        fed->fed_lr_idx = cl_idx;
-        fed->fed_lr_off = ofd->ofd_fsd.lsd_client_start +
+        ted->ted_lr_idx = cl_idx;
+        ted->ted_lr_off = ofd->ofd_fsd.lsd_client_start +
                           cl_idx * ofd->ofd_fsd.lsd_client_size;
-        LASSERTF(fed->fed_lr_off > 0, "fed_lr_off = %llu\n", fed->fed_lr_off);
+        LASSERTF(ted->ted_lr_off > 0, "fed_lr_off = %llu\n", ted->ted_lr_off);
 
         CDEBUG(D_INFO, "client at index %d (%llu) with UUID '%s' added\n",
-               fed->fed_lr_idx, fed->fed_lr_off, fed->fed_lcd->lcd_uuid);
+               ted->ted_lr_idx, ted->ted_lr_off, lcd->lcd_uuid);
 
         CDEBUG(D_INFO, "writing client lcd at idx %u (%llu) (len %u)\n",
-               fed->fed_lr_idx, fed->fed_lr_off,
-               (unsigned int)sizeof(*fed->fed_lcd));
+               ted->ted_lr_idx, ted->ted_lr_off,
+               (unsigned int)sizeof(*ted->ted_lcd));
 
         th = filter_trans_create(env, ofd);
         if (IS_ERR(th))
                 RETURN(PTR_ERR(th));
         /* off is changed, use tmp value */
-        off = fed->fed_lr_off;
+        off = ted->ted_lr_off;
         dt_declare_record_write(env, ofd->ofd_last_rcvd, sizeof(*lcd), off, th);
         err = filter_trans_start(env, ofd, th);
         if (err)
@@ -112,7 +113,7 @@ repeat:
         err = filter_last_rcvd_write(env, ofd, lcd, &off, th);
 
         CDEBUG(D_INFO, "wrote client lcd at idx %u off %llu (len %u)\n",
-               cl_idx, fed->fed_lr_off, sizeof(*fed->fed_lcd));
+               cl_idx, ted->ted_lr_off, (unsigned) sizeof(*lcd));
 
         filter_trans_stop(env, ofd, th);
 
@@ -124,13 +125,14 @@ int filter_client_add(const struct lu_env *env, struct filter_device *ofd,
 {
         struct obd_device *obd = filter_obd(ofd);
         unsigned long *bitmap = ofd->ofd_last_rcvd_slots;
+        struct tg_export_data *ted = &fed->fed_ted;
         ENTRY;
 
         LASSERT(bitmap != NULL);
         LASSERT(cl_idx >= 0);
 
         /* XXX if lcd_uuid were a real obd_uuid, I could use obd_uuid_equals */
-        if (!strcmp((char *)fed->fed_lcd->lcd_uuid, (char *)obd->obd_uuid.uuid))
+        if (!strcmp((char *)ted->ted_lcd->lcd_uuid, (char *)obd->obd_uuid.uuid))
                 RETURN(0);
 
         /* the bitmap operations can handle cl_idx > sizeof(long) * 8, so
@@ -142,13 +144,13 @@ int filter_client_add(const struct lu_env *env, struct filter_device *ofd,
                 LBUG();
         }
 
-        fed->fed_lr_idx = cl_idx;
-        fed->fed_lr_off = ofd->ofd_fsd.lsd_client_start +
+        ted->ted_lr_idx = cl_idx;
+        ted->ted_lr_off = ofd->ofd_fsd.lsd_client_start +
                           cl_idx * ofd->ofd_fsd.lsd_client_size;
-        LASSERTF(fed->fed_lr_off > 0, "fed_lr_off = %llu\n", fed->fed_lr_off);
+        LASSERTF(ted->ted_lr_off > 0, "fed_lr_off = %llu\n", ted->ted_lr_off);
 
         CDEBUG(D_INFO, "client at index %d (%llu) with UUID '%s' added\n",
-               fed->fed_lr_idx, fed->fed_lr_off, fed->fed_lcd->lcd_uuid);
+               ted->ted_lr_idx, ted->ted_lr_off, ted->ted_lcd->lcd_uuid);
 
         RETURN(0);
 }
@@ -159,32 +161,33 @@ int filter_client_free(struct lu_env *env, struct obd_export *exp)
         struct filter_thread_info *info;
         struct obd_device *obd = exp->exp_obd;
         struct filter_device *ofd = filter_exp(exp);
-        struct lsd_client_data *lcd = fed->fed_lcd;
+        struct tg_export_data *ted = &fed->fed_ted;
+        struct lsd_client_data *lcd = ted->ted_lcd;
         struct thandle *th;
         loff_t off;
         int rc;
         ENTRY;
 
-        if (fed->fed_lcd == NULL)
+        if (lcd == NULL)
                 RETURN(0);
 
         /* XXX if lcd_uuid were a real obd_uuid, I could use obd_uuid_equals */
-        if (!strcmp((char *)fed->fed_lcd->lcd_uuid, (char *)obd->obd_uuid.uuid))
+        if (!strcmp((char *)lcd->lcd_uuid, (char *)obd->obd_uuid.uuid))
                 GOTO(free, 0);
 
         info = filter_info_init(env, exp);
         info->fti_no_need_trans = 1;
 
         CDEBUG(D_INFO, "freeing client at idx %u, offset %lld with UUID '%s'\n",
-               fed->fed_lr_idx, fed->fed_lr_off, fed->fed_lcd->lcd_uuid);
+               ted->ted_lr_idx, ted->ted_lr_off, lcd->lcd_uuid);
 
         LASSERT(ofd->ofd_last_rcvd_slots != NULL);
 
         /* Clear the bit _after_ zeroing out the client so we don't
            race with filter_client_add and zero out new clients.*/
-        if (!cfs_test_bit(fed->fed_lr_idx, ofd->ofd_last_rcvd_slots)) {
+        if (!cfs_test_bit(ted->ted_lr_idx, ofd->ofd_last_rcvd_slots)) {
                 CERROR("FILTER client %u: bit already clear in bitmap!!\n",
-                       fed->fed_lr_idx);
+                       ted->ted_lr_idx);
                 LBUG();
         }
 
@@ -194,7 +197,7 @@ int filter_client_free(struct lu_env *env, struct obd_export *exp)
                         GOTO(free, rc = PTR_ERR(th));
                 /* declare last_rcvd write */
                 dt_declare_record_write(env, ofd->ofd_last_rcvd, sizeof(*lcd),
-                                        fed->fed_lr_off, th);
+                                        ted->ted_lr_off, th);
                 /* declare header write */
                 dt_declare_record_write(env, ofd->ofd_last_rcvd,
                                         sizeof(ofd->ofd_fsd), 0, th);
@@ -204,7 +207,7 @@ int filter_client_free(struct lu_env *env, struct obd_export *exp)
                         GOTO(free, rc);
                 memset(lcd, 0, sizeof(*lcd));
                 /* off is changed after write, use tmp value */
-                off = fed->fed_lr_off;
+                off = ted->ted_lr_off;
                 rc = filter_last_rcvd_write(env, ofd, lcd, &off, th);
                 LASSERT(rc == 0);
 
@@ -215,20 +218,20 @@ int filter_client_free(struct lu_env *env, struct obd_export *exp)
 
                 CDEBUG(rc == 0 ? D_INFO : D_ERROR,
                        "zeroing out client %s at idx %u (%llu) in %s rc %d\n",
-                       fed->fed_lcd->lcd_uuid, fed->fed_lr_idx, fed->fed_lr_off,
+                       lcd->lcd_uuid, ted->ted_lr_idx, ted->ted_lr_off,
                        LAST_RCVD, rc);
         }
 
-        if (!cfs_test_and_clear_bit(fed->fed_lr_idx, ofd->ofd_last_rcvd_slots)){
+        if (!cfs_test_and_clear_bit(ted->ted_lr_idx, ofd->ofd_last_rcvd_slots)){
                 CERROR("FILTER client %u: bit already clear in bitmap!!\n",
-                       fed->fed_lr_idx);
+                       ted->ted_lr_idx);
                 LBUG();
         }
 
         EXIT;
 free:
-        OBD_FREE(fed->fed_lcd, sizeof(*fed->fed_lcd));
-        fed->fed_lcd = NULL;
+        OBD_FREE(ted->ted_lcd, sizeof(*ted->ted_lcd));
+        ted->ted_lcd = NULL;
 
         return 0;
 }

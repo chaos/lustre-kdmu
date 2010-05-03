@@ -255,7 +255,7 @@ static int filter_obd_connect(const struct lu_env *env, struct obd_export **_exp
                         GOTO(out, rc = -ENOMEM);
 
                 memcpy(lcd->lcd_uuid, cluuid, sizeof(lcd->lcd_uuid));
-                fed->fed_lcd = lcd;
+                fed->fed_ted.ted_lcd = lcd;
 
                 rc = filter_client_new(env, ofd, &exp->exp_filter_data);
                 if (rc != 0)
@@ -280,7 +280,7 @@ out:
         if (rc != 0) {
                 if (lcd) {
                         OBD_FREE_PTR(lcd);
-                        fed->fed_lcd = NULL;
+                        fed->fed_ted.ted_lcd = NULL;
                 }
                 class_disconnect(exp);
         } else {

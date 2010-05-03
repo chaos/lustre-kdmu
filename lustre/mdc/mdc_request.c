@@ -875,6 +875,7 @@ int mdc_close(struct obd_export *exp, struct md_op_data *op_data,
                  * exists and return no error in that case
                  */
                 if (mod) {
+                        DEBUG_REQ(D_HA, req, "Reset ESTALE = %d", rc);
                         LASSERT(mod->mod_open_req != NULL);
                         if (mod->mod_open_req->rq_committed)
                                 rc = 0;
@@ -1410,6 +1411,12 @@ static int mdc_iocontrol(unsigned int cmd, struct obd_export *exp, int len,
                         GOTO(out, rc = -EFAULT);
 
                 GOTO(out, rc = 0);
+        }
+        case LL_IOC_GET_CONNECT_FLAGS: {
+                if (cfs_copy_to_user(uarg, &exp->exp_connect_flags, sizeof(__u64)))
+                        GOTO(out, rc = -EFAULT);
+                else
+                        GOTO(out, rc = 0);
         }
         default:
                 CERROR("mdc_ioctl(): unrecognised ioctl %#x\n", cmd);

@@ -361,7 +361,8 @@ static int osd_map_remote_to_local(loff_t offset, ssize_t len, int *nrpages,
                 lb->rc = 0;
                 lb->lnb_grant_used = 0;
 
-                LASSERTF(plen <= len, "plen %u, len %u\n", plen, len);
+                LASSERTF(plen <= len, "plen %u, len %lld\n", plen,
+                         (long long) len);
                 offset += plen;
                 len -= plen;
                 lb++;

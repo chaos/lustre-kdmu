@@ -829,7 +829,7 @@ static int obf_attr_get(const struct lu_env *env, struct md_object *obj,
                 /* XXX: mdd can't access striping information directly */
                 if (ma->ma_need & MA_LOV_DEF) {
                         rc = mdd_get_default_md(mdd_obj, ma->ma_lmm,
-                                        &ma->ma_lmm_size);
+                                                &ma->ma_lmm_size);
                         if (rc > 0) {
                                 ma->ma_valid |= MA_LOV;
                                 rc = 0;
