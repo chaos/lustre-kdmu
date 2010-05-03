@@ -4615,8 +4615,6 @@ static int mdt_init0(const struct lu_env *env, struct mdt_device *m,
         m->mdt_nosquash_strlen = 0;
         cfs_init_rwsem(&m->mdt_squash_sem);
 
-        cfs_spin_lock_init(&m->mdt_client_bitmap_lock);
-
         mite = &m->mdt_mite;
         s->ld_md_site = mite;
 
