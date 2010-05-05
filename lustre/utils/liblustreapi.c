@@ -69,6 +69,7 @@
 #include <poll.h>
 
 #include <libcfs/libcfsutil.h>  /* l_ioctl */
+#include <libcfs/util/params_tree_util.h>
 #include <liblustre.h>
 #include <lnet/lnetctl.h>
 #include <obd.h>

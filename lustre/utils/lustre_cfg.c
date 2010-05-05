@@ -659,8 +659,8 @@ static int params_getparam_display(struct params_opts *popt, char *pattern)
                         memset(buf, 0, CFS_PAGE_SIZE);
                         params_count =
                                 params_read(pel->pel_name + PTREE_PRELEN,
-                                             pel->pel_name_len - PTREE_PRELEN,
-                                             buf, CFS_PAGE_SIZE, &offset, &eof);
+                                            pel->pel_name_len - PTREE_PRELEN,
+                                            buf, CFS_PAGE_SIZE, &offset, &eof);
                         if (params_count > 0) {
                                 params_show(popt->show_path, buf);
                                 /* usually, offset is set only in seq_read,

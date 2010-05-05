@@ -549,7 +549,7 @@ static void remove_param(const char *name, struct libcfs_param_entry *parent)
 }
 
 /**
- * interface for external use
+ * interfaces for external use
  */
 void libcfs_param_remove(const char *name, struct libcfs_param_entry *lpe)
 {
@@ -559,141 +559,88 @@ void libcfs_param_remove(const char *name, struct libcfs_param_entry *lpe)
 }
 
 /**
- * interface for pipe write in kernel space
+ * List all the subdirs of an entry by ioctl.
  */
-static int libcfs_param_pipe_write(cfs_file_t *filp, void *payload, int msgtype)
-{
-        struct libcfs_param_pipe_hdr *lpph = payload;
-
-        lpph->lpph_msgtype = msgtype;
-
-        return cfs_user_write(filp, (char *)lpph, lpph->lpph_msglen, 0);
-}
-
 struct list_param_cb_data {
-        cfs_file_t *lpcd_fp;
-        loff_t *lpcd_pos;
-        struct libcfs_param_pipe_hdr *lpcd_lpph;
+        char *buf;
+        int pos;
 };
 
 static void list_param_cb(void *obj, void *data)
 {
         struct libcfs_param_entry *lpe = obj;
-        struct list_param_cb_data *lpcd = data;
-        struct libcfs_param_pipe_hdr *lpph = lpcd->lpcd_lpph;
+        struct list_param_cb_data *lpcb = data;
         struct libcfs_param_info *lpi;
-        int rc = 0;
 
         LASSERT(lpe != NULL);
 
+        lpi = (struct libcfs_param_info *)(lpcb->buf + lpcb->pos);
         /* copy name_len, name, mode */
-        lpi = (struct libcfs_param_info *)(lpph + 1);
         lpi->lpi_name_len = lpe->lpe_name_len;
         lpi->lpi_mode = lpe->lpe_mode;
         strncpy(lpi->lpi_name, lpe->lpe_name, lpe->lpe_name_len);
         lpi->lpi_name[lpi->lpi_name_len] = '\0';
+        lpcb->pos += sizeof(struct libcfs_param_info);
 
-        rc = libcfs_param_pipe_write(lpcd->lpcd_fp, lpph, LPPH_MSG_LISTPARAM);
-        CDEBUG(D_INFO, "Send \"%s\" to fd=%p, len=%d, rc=%d\n",
-               lpe->lpe_name, lpcd->lpcd_fp, lpph->lpph_msglen, rc);
+        CDEBUG(D_INFO, "copy \"%s\" out, pos=%d\n", lpe->lpe_name, lpcb->pos);
 }
 
-struct list_thread_args {
-        struct libcfs_param_entry *lta_parent;
-        cfs_file_t *lta_fp;
-};
-
-int list_param_thread(void *data)
+static int list_param(struct libcfs_param_entry *parent, char *buf)
 {
-        struct list_thread_args *lta = data;
-        struct libcfs_param_entry *parent = lta->lta_parent;
-        struct libcfs_param_pipe_hdr *lpph;
         struct list_param_cb_data lpcd;
-        loff_t pos = 0;
         int rc = 0;
-        int len;
+        int pos = 0;
 
         if (parent == NULL)
                 return -EINVAL;
-        len = sizeof(*lpph) + sizeof(struct libcfs_param_info) + LPE_NAME_MAXLEN;
-        LIBCFS_ALLOC(lpph, len);
-        if (lpph == NULL) {
-                CERROR("No memory for lhl header.\n");
-                GOTO(out, rc = -ENOMEM);
-        }
-        /* build pipe msg header */
-        lpph->lpph_magic = LPPH_MAGIC;
-        lpph->lpph_msglen = len;
-        lpcd.lpcd_fp = lta->lta_fp;
-        lpcd.lpcd_lpph = lpph;
-        lpcd.lpcd_pos = &pos;
 
+        lpcd.buf = buf;
+        lpcd.pos = pos;
         cfs_down_write(&parent->lpe_rw_sem);
         cfs_hash_for_each(parent->lpe_hash_t, list_param_cb, &lpcd);
         cfs_up_write(&parent->lpe_rw_sem);
 
-        libcfs_param_pipe_write(lta->lta_fp, lpph, LPPH_MSG_SHUTDOWN);
-        LIBCFS_FREE(lpph, len);
-out:
-        libcfs_param_put(parent);
-        cfs_put_file(lta->lta_fp);
-        LIBCFS_FREE(lta, sizeof(*lta));
-
         return rc;
 }
 
-/**
- * List all the subdirs of an entry through pipe.
- */
-int libcfs_param_list(const char *parent_path, int fd)
+int libcfs_param_list(const char *parent_path, char *buf, int *buflen)
 {
         /* In kernel space, do like readdir
          * In user space, match these entries pathname with the pattern */
         struct libcfs_param_entry *parent;
-        struct list_thread_args *lta = NULL;
-        cfs_file_t *fp = NULL;
+        int datalen = 0;
+        int num;
         int rc;
 
+        if (buf == NULL) {
+                CERROR("The buffer is null.\n");
+                GOTO(out, rc = -ENOMEM);
+        }
         if (parent_path == NULL) {
                 CERROR("The full path is null.\n");
-                return -EINVAL;
-        }
-
-        fp = cfs_get_fd(fd);
-        if (fp == NULL) {
-                CERROR("The fd is invalid.\n");
-                return -EINVAL;
+                GOTO(out, rc = -EINVAL);
         }
 
         parent = lookup_param_by_path(parent_path, NULL);
         if (parent == NULL) {
                 CERROR("The parent entry %s doesn't exist.\n",
                        parent_path);
-                GOTO(fp_out, rc = -EEXIST);
+                GOTO(out, rc = -EEXIST);
         }
-
+        /* estimate if buflen is big enough */
+        num = cfs_atomic_read(&(parent->lpe_hash_t->hs_count));
+        if (num == 0)
+                GOTO(parent, rc = 0);
+        datalen = num * sizeof(struct libcfs_param_info);
+        if (datalen > *buflen)
+                GOTO(parent, rc = -ENOMEM);
         /* list the entries */
-        LIBCFS_ALLOC(lta, sizeof(*lta));
-        if (lta == NULL)
-                GOTO(lta_out, rc = -ENOMEM);
-        lta->lta_parent = parent;
-        lta->lta_fp = fp;
-
-        /* Use kernel thread to list params */
-        rc = cfs_kernel_thread(list_param_thread, lta, CLONE_VM | CLONE_FILES);
-        if (rc >= 0) {
-                CDEBUG(D_INFO, "start list_param_thread: %d\n", rc);
-                return rc;
-        }
-
-        CERROR("Failed to start list_param_thread: %d\n", rc);
-        LIBCFS_FREE(lta, sizeof(*lta));
-lta_out:
+        rc = list_param(parent, buf);
+parent:
         libcfs_param_put(parent);
-fp_out:
-        cfs_put_file(fp);
-
-        return rc;
+out:
+        *buflen = datalen;
+        return (rc < 0 ? rc : num);
 }
 
 /**

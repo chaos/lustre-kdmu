@@ -325,8 +325,10 @@ static int libcfs_ioctl_int(struct cfs_psdev_file *pfile,unsigned long cmd,
         }
 
         case IOC_LIBCFS_LIST_PARAM: {
-                err = libcfs_param_list(data->ioc_inlbuf1, data->ioc_u32[0]);
+                err = libcfs_param_list(data->ioc_inlbuf1, data->ioc_pbuf1,
+                                        &data->ioc_plen1);
                 data->ioc_u32[0] = err;
+                data->ioc_u32[1] = &data->ioc_plen1;
                 err = libcfs_ioctl_popdata(arg, data, sizeof(*data));
                 break;
         }
