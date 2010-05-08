@@ -669,14 +669,12 @@ static int osd_trans_start(const struct lu_env *env, struct dt_device *d,
                 udmu_tx_cb_register(oh->ot_tx, osd_trans_commit_cb, (void *)oh);
                 oh->ot_assigned = 1;
 
-                th->th_dev = dt
+                th->th_dev = d;
                 lu_device_get(&d->dd_lu_dev);
                 lu_context_init(&th->th_ctx, th->th_tags | LCT_TX_HANDLE);
                 lu_context_enter(&th->th_ctx);
 
-                hook_res = dt_txn_hook_start(env, d, th);
-                if (hook_res != 0)
-                        RETURN(ERR_PTR(hook_res));
+                rc = dt_txn_hook_start(env, d, th);
         }
 
         RETURN(-rc);
