@@ -525,7 +525,19 @@ struct params_opts{
         int show_path;
         int only_path;
         int show_type;
+        int recursive;
 };
+
+static void strrpl(char *str, char src, char dst)
+{
+        if (str == NULL)
+                return;
+        while (*str != '\0') {
+                if (*str == src)
+                        *str = dst;
+                str ++;
+        }
+}
 
 static void append_filetype(char *filename, mode_t mode)
 {
@@ -557,8 +569,7 @@ static char *display_name(char *filename, mode_t mode, int show_type)
 
         /* replace '/' with '.' to match conf_param and sysctl */
         tmp = filename;
-        while ((tmp = strchr(tmp, '/')) != NULL)
-                *tmp = '.';
+        strrpl(tmp, '/', '.');
 
         if (show_type)
                 append_filetype(filename, mode);
@@ -583,7 +594,7 @@ static void params_show(int show_path, char *buf)
         }
 }
 
-static int params_listparam_display(struct params_opts *popt, char *pattern)
+static int listparam_display(struct params_opts *popt, char *pattern)
 {
         int rc = 0;
         char filename[PATH_MAX + 1];    /* extra 1 byte for file type */
@@ -600,8 +611,25 @@ static int params_listparam_display(struct params_opts *popt, char *pattern)
                 memset(filename, 0, PATH_MAX + 1);
                 strcpy(filename, pel->pel_name);
                 if ((valuename = display_name(filename, pel->pel_mode,
-                                              popt->show_type)))
+                                              popt->show_type))) {
                         printf("%s\n", valuename);
+                        if (popt->recursive && S_ISDIR(pel->pel_mode)) {
+                                /* Here, we have to convert '.' to '/' again,
+                                 * same as what we did in get_patter().
+                                 * Because, to list param recursively,
+                                 * the matched params will be added "/*",
+                                 * and then passed again.
+                                 * For example,
+                                 * $lctl list_param -R ost.*
+                                 * Round1. get ost.num_refs and ost.OSS;
+                                 * Round2. try to list ost.OSS/*, but this '.'
+                                 * will be treated as a wildcard, not a separator.
+                                 */
+                                strrpl(valuename, '.', '/');
+                                strcat(valuename, "/*");
+                                listparam_display(popt, valuename);
+                        }
+                }
                 pel = pel->pel_next;
         }
 out:
@@ -611,7 +639,7 @@ out:
         return rc;
 }
 
-static int params_getparam_display(struct params_opts *popt, char *pattern)
+static int getparam_display(struct params_opts *popt, char *pattern)
 {
         int rc = 0;
         char *buf = NULL;
@@ -686,8 +714,8 @@ out:
         return rc;
 }
 
-static int params_setparam_display(struct params_opts *popt,
-                                   char *pattern, char *value)
+static int setparam_display(struct params_opts *popt, char *pattern,
+                            char *value)
 {
         int rc = 0;
         char filename[PATH_MAX + 1];    /* extra 1 byte for file type */
@@ -735,13 +763,14 @@ out:
 }
 
 static int params_cmdline(int argc, char **argv, char *options,
-                          struct params_opts *popt)
+                         struct params_opts *popt)
 {
         int ch;
 
         popt->show_path = 1;
         popt->only_path = 0;
         popt->show_type = 0;
+        popt->recursive = 0;
 
         while ((ch = getopt(argc, argv, options)) != -1) {
                 switch(ch) {
@@ -752,6 +781,9 @@ static int params_cmdline(int argc, char **argv, char *options,
                                 popt->show_path = 0;
                         case 'F':
                                 popt->show_type = 1;
+                                break;
+                        case 'R':
+                                popt->recursive = 1;
                                 break;
                         default:
                                 return -1;
@@ -773,19 +805,11 @@ static void get_pattern(char *path, char *pattern)
          */
         if (strchr(path, '.')) {
                 tmp = path;
-                while (*tmp != '\0') {
-                        if (*tmp == '.')
-                                *tmp = '/';
-                        tmp ++;
-                }
+                strrpl(tmp, '.', '/');
         }
         if (strchr(path, '#')) {
                 tmp = path;
-                while (*tmp != '\0') {
-                        if (*tmp == '#')
-                                *tmp = '.';
-                        tmp ++;
-                }
+                strrpl(tmp, '#', '.');
         }
         strcpy(pattern, path);
 }
@@ -796,13 +820,20 @@ int jt_lcfg_listparam(int argc, char **argv)
         struct params_opts popt;
         char pattern[PATH_MAX];
 
-        rc = params_cmdline(argc, argv, "F", &popt);
-        if (rc < 0 || rc >= argc)
+        rc = params_cmdline(argc, argv, "FR", &popt);
+        if (rc == argc && popt.recursive) {
+                /* if '-R' is given without a path, list all params.
+                 * Let's overwrite  the last param with '*' and
+                 * use that for a path. */
+                rc --;  /* we know at least "-R" is a parameter */
+                argv[rc] = "*";
+        } else if (rc < 0 || rc >= argc) {
                 return CMD_HELP;
+        }
 
         for (i = rc; i < argc; i++) {
                 get_pattern(argv[i], pattern);
-                rc = params_listparam_display(&popt, pattern);
+                rc = listparam_display(&popt, pattern);
                 if (rc < 0)
                         return rc;
         }
@@ -822,7 +853,7 @@ int jt_lcfg_getparam(int argc, char **argv)
 
         for (i = rc; i < argc; i++) {
                 get_pattern(argv[i], pattern);
-                rc = params_getparam_display(&popt, pattern);
+                rc = getparam_display(&popt, pattern);
                 if (rc < 0)
                         return rc;
         }
@@ -857,7 +888,7 @@ int jt_lcfg_setparam(int argc, char **argv)
                         }
                 }
                 get_pattern(path, pattern);
-                rc = params_setparam_display(&popt, pattern, value);
+                rc = setparam_display(&popt, pattern, value);
                 path = NULL;
                 value = NULL;
                 if (rc < 0)
