@@ -330,6 +330,7 @@ int filter_commitrw(int cmd, struct obd_export *exp,
         if (rc)
                 RETURN(rc);
         info = filter_info_init(&env, exp);
+        filter_oti2info(info, oti);
 
         LASSERT(npages > 0);
 

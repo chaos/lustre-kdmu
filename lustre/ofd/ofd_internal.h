@@ -545,4 +545,19 @@ static inline void lu_idif_from_resid(struct lu_fid *fid,
                       name->name[LUSTRE_RES_ID_VER_OFF]);
 }
 
+static inline void filter_oti2info(struct filter_thread_info *info,
+                                   struct obd_trans_info *oti)
+{
+        info->fti_xid = oti->oti_xid;
+        info->fti_transno = oti->oti_transno;
+}
+
+static inline void filter_info2oti(struct filter_thread_info *info,
+                                   struct obd_trans_info *oti)
+{
+        oti->oti_xid = info->fti_xid;
+        oti->oti_transno = info->fti_transno;
+}
+
+
 #endif /* _FILTER_INTERNAL_H */

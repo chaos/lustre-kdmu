@@ -49,20 +49,6 @@
 
 #include "ofd_internal.h"
 
-static inline void filter_oti2info(struct filter_thread_info *info,
-                                   struct obd_trans_info *oti)
-{
-        info->fti_xid = oti->oti_xid;
-        info->fti_transno = oti->oti_transno;
-}
-
-static inline void filter_info2oti(struct filter_thread_info *info,
-                                   struct obd_trans_info *oti)
-{
-        oti->oti_xid = info->fti_xid;
-        oti->oti_transno = info->fti_transno;
-}
-
 static int filter_obd_notify(struct obd_device *host,
                           struct obd_device *watched,
                           enum obd_notify_event ev, void *owner)
