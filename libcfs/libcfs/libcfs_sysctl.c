@@ -325,7 +325,7 @@ static struct libcfs_param_ctl_table libcfs_param_lnet_table[] = {
                 .write  = libcfs_param_string_write
         },
         {
-                .name   = "memused",
+                .name   = "lnet_memused",
                 .data   = &libcfs_kmemory,
                 .mode   = 0444,
                 .read   = libcfs_param_memused_read,
