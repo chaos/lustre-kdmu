@@ -580,6 +580,11 @@ static int osd_write_commit(const struct lu_env *env, struct dt_object *dt,
         rc = osd->od_fsops->fs_map_inode_pages(inode, iobuf->dr_pages,
                                                iobuf->dr_npages, iobuf->dr_blocks,
                                                NULL, 1, NULL);
+        if (rc) {
+                CERROR("can't write: %d\n", rc);
+                RETURN(rc);
+        }
+
         if (isize > i_size_read(inode)) {
                 i_size_write(inode, isize);
                 LDISKFS_I(inode)->i_disksize = isize;

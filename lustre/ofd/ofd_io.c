@@ -294,9 +294,8 @@ filter_commitrw_write(const struct lu_env *env, struct filter_device *ofd,
                 GOTO(out, rc);
 
         rc = dt_write_commit(env, filter_object_child(fo), res, niocount, th);
-        LASSERT(rc == 0);
 
-        if (la->la_valid) {
+        if (rc == 0 && la->la_valid) {
                 rc = dt_attr_set(env, filter_object_child(fo), la, th,
                                  filter_object_capa(env, fo));
                 LASSERT(rc == 0);
