@@ -350,7 +350,7 @@ static int osd_map_remote_to_local(loff_t offset, ssize_t len, int *nrpages,
                 lb->flags = 0;
                 lb->page = NULL;
                 lb->rc = 0;
-                lb->lnb_grant_used = 0;
+                lb->lnb_grant_used = 4096;
 
                 LASSERTF(plen <= len, "plen %u, len %lld\n", plen,
                          (long long) len);
@@ -580,11 +580,6 @@ static int osd_write_commit(const struct lu_env *env, struct dt_object *dt,
         rc = osd->od_fsops->fs_map_inode_pages(inode, iobuf->dr_pages,
                                                iobuf->dr_npages, iobuf->dr_blocks,
                                                NULL, 1, NULL);
-        if (rc) {
-                CERROR("can't write: %d\n", rc);
-                RETURN(rc);
-        }
-
         if (isize > i_size_read(inode)) {
                 i_size_write(inode, isize);
                 LDISKFS_I(inode)->i_disksize = isize;
