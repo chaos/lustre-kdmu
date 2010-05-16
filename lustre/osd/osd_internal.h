@@ -420,9 +420,6 @@ extern int ldiskfs_delete_entry(handle_t *handle,
                                 struct inode * dir,
                                 struct ldiskfs_dir_entry_2 * de_del,
                                 struct buffer_head * bh);
-extern struct buffer_head * ldiskfs_find_entry(struct dentry *dentry,
-                                               struct ldiskfs_dir_entry_2
-                                               ** res_dir);
 
 int osd_compat_init(struct osd_device *osd);
 void osd_compat_fini(struct osd_device *dev);

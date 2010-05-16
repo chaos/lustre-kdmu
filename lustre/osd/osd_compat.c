@@ -45,15 +45,6 @@
 #include <linux/types.h>
 /* prerequisite for linux/xattr.h */
 #include <linux/fs.h>
-/*
- * XXX temporary stuff: direct access to ldiskfs/jdb. Interface between osd
- * and file system is not yet specified.
- */
-/* handle_t, journal_start(), journal_stop() */
-#include <linux/jbd.h>
-/* LDISKFS_SB() */
-#include <linux/ldiskfs_fs.h>
-#include <linux/ldiskfs_jbd.h>
 
 /*
  * struct OBD_{ALLOC,FREE}*()
@@ -201,13 +192,14 @@ void osd_compat_fini(struct osd_device *dev)
 
 int osd_compat_del_entry(struct osd_thread_info *info,
                          struct osd_device *osd,
-                         struct dentry *dir, char *name,
+                         struct dentry *dird, char *name,
                          struct thandle *th)
 {
 	struct ldiskfs_dir_entry_2 *de;
         struct buffer_head         *bh;
         struct osd_thandle         *oh;
         struct dentry              *child;
+        struct inode               *dir = dird->d_inode;
         int                         rc;
         ENTRY;
 
@@ -220,17 +212,17 @@ int osd_compat_del_entry(struct osd_thread_info *info,
         child->d_name.hash = 0;
         child->d_name.name = name;
         child->d_name.len = strlen(name);
-        child->d_parent = dir;
+        child->d_parent = dird;
         child->d_inode = NULL;
 
-        LOCK_INODE_MUTEX(dir->d_inode);
+        LOCK_INODE_MUTEX(dir);
 	rc = -ENOENT;
-	bh = ldiskfs_find_entry(child, &de);
+	bh = ll_ldiskfs_find_entry(dir, child, &de);
 	if (bh) {
-	        rc = ldiskfs_delete_entry(oh->ot_handle, dir->d_inode, de, bh);
+	        rc = ldiskfs_delete_entry(oh->ot_handle, dir, de, bh);
 	        brelse(bh);
         }
-        UNLOCK_INODE_MUTEX(dir->d_inode);
+        UNLOCK_INODE_MUTEX(dir);
 
         RETURN(rc);
 }
@@ -490,6 +482,7 @@ int osd_compat_objid_lookup(struct osd_thread_info *info, struct osd_device *dev
         char                     name[32];
         struct ldiskfs_dir_entry_2 *de;
         struct buffer_head         *bh;
+        struct inode               *dir;
         ENTRY;
 
         /* on the very first lookup we find and open directories */
@@ -523,9 +516,10 @@ int osd_compat_objid_lookup(struct osd_thread_info *info, struct osd_device *dev
         /* XXX: we can use rc from sprintf() instead of strlen() */
         o->d_name.len = strlen(name);
 
-        LOCK_INODE_MUTEX(d->d_inode);
-        bh = ll_ldiskfs_find_entry(d->d_inode, o, &de);
-        UNLOCK_INODE_MUTEX(d->d_inode);
+        dir = d->d_inode;
+        LOCK_INODE_MUTEX(dir);
+        bh = ll_ldiskfs_find_entry(dir, o, &de);
+        UNLOCK_INODE_MUTEX(dir);
 
         rc = -ENOENT;
         if (bh) {
