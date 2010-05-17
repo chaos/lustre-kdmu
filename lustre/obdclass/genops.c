@@ -170,6 +170,7 @@ int class_register_type(struct obd_ops *dt_ops, struct md_ops *md_ops,
         if (type == NULL)
                 RETURN(rc);
 
+        printk("register %s ... ", name);
         OBD_ALLOC_PTR(type->typ_dt_ops);
         OBD_ALLOC_PTR(type->typ_md_ops);
         OBD_ALLOC(type->typ_name, strlen(name) + 1);
@@ -205,6 +206,7 @@ int class_register_type(struct obd_ops *dt_ops, struct md_ops *md_ops,
         cfs_spin_lock(&obd_types_lock);
         cfs_list_add(&type->typ_chain, &obd_types);
         cfs_spin_unlock(&obd_types_lock);
+        printk("OK\n");
 
         RETURN (0);
 
@@ -216,6 +218,7 @@ int class_register_type(struct obd_ops *dt_ops, struct md_ops *md_ops,
         if (type->typ_dt_ops != NULL)
                 OBD_FREE_PTR(type->typ_dt_ops);
         OBD_FREE(type, sizeof(*type));
+        printk("OK\n");
         RETURN(rc);
 }
 
