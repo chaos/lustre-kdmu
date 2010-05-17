@@ -247,6 +247,7 @@ static int osp_object_create(const struct lu_env *env,
          * update last_used object id for our OST
          * XXX: can we use 0-copy OSD methods to save memcpy()
          * which is going to be each creation * <# stripes>
+         * XXX: needs volatile
          */
         if (objid > d->opd_last_used_id) {
                 cfs_spin_lock(&d->opd_pre_lock);
@@ -269,6 +270,8 @@ static int osp_object_create(const struct lu_env *env,
                 lb.lb_buf = &objid;
                 lb.lb_len = sizeof(objid);
 
+                /* XXXXXXXXXXXXXXXXX: don't use local var, otherwise racy */
+                /* andreas asked more and more */
                 offset = d->opd_index * sizeof(objid);
                 rc = dt_record_write(env, d->opd_last_used_file, &lb,
                                      &offset, th);

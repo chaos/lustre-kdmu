@@ -802,7 +802,7 @@ static int lod_declare_object_create(const struct lu_env *env,
         if (dof->dof_type == DFT_REGULAR && d->lod_recovery_completed) {
                 /* callers don't want stripes */
                 /* XXX: all tricky interactions with ->ah_make_hint() decided
-                 * to use strping, then ->declare_create() behaving differently
+                 * to use striping, then ->declare_create() behaving differently
                  * should be cleaned */
                 if (dof->u.dof_reg.striped == 0)
                         mo->mbo_stripenr = 0;

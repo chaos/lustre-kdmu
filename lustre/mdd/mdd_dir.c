@@ -908,6 +908,7 @@ mdd_declare_and_start_unlink(const struct lu_env *env, struct md_object *pobj,
         rc = mdo_declare_destroy_obj(env, mdd_cobj, handle);
         if (rc)
                 GOTO(out, rc);
+        /* XXX: comment double ref_del */
         rc = mdo_declare_ref_del(env, mdd_cobj, handle);
         if (rc)
                 GOTO(out, rc);
