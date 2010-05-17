@@ -2306,7 +2306,8 @@ static int osd_get_bufs(const struct lu_env *env, struct dt_object *dt,
                 lb->len = plen;
                 lb->page = NULL;
                 lb->rc = 0;
-                lb->lnb_grant_used = 0;
+                /* XXX: replace with proper grants implementation */
+                lb->lnb_grant_used = 4096;
                 lb->obj = dt;
 
                 offset += plen;

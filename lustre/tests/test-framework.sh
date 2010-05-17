@@ -172,6 +172,11 @@ init_test_env() {
     export LUSTRE_RMMOD=${LUSTRE_RMMOD:-$LUSTRE/scripts/lustre_rmmod}
     [ ! -f "$LUSTRE_RMMOD" ] && export LUSTRE_RMMOD=$(which lustre_rmmod 2> /dev/null)
     export FSTYPE=${FSTYPE:-"ldiskfs"}
+
+    export MGSFSTYPE=ldiskfs
+    export MDSFSTYPE=${MDSFSTYPE:-$FSTYPE}
+    export OSTFSTYPE=${OSTFSTYPE:-$FSTYPE}
+
     export NAME=${NAME:-local}
     export LGSSD=${LGSSD:-"$LUSTRE/utils/gss/lgssd"}
     [ "$GSS_PIPEFS" = "true" ] && [ ! -f "$LGSSD" ] && \
@@ -256,6 +261,8 @@ load_module() {
     shift
     BASE=`basename $module $EXT | tr '-' '_'`
 
+    module_loaded ${BASE} && return
+
     # If no module arguments were passed, get them from $MODOPTS_<MODULE>, else from
     # modprobe.conf
     if [ $# -eq 0 ]; then
@@ -283,8 +290,6 @@ load_module() {
 
     [ $# -gt 0 ] && echo "${module} options: '$*'"
 
-    module_loaded ${BASE} && return
-
     # Note that insmod will ignore anything in modprobe.conf, which is why we're
     # passing options on the command-line.
     if [ "$BASE" == "lnet_selftest" ] && \
@@ -309,12 +314,6 @@ load_modules_local() {
         echo "Using modprobe to load modules"
         return 0
     fi
-    if [ "$HAVE_MODULES" = true ]; then
-        # we already loaded
-        echo "Modules already loaded"
-        return 0
-    fi
-    HAVE_MODULES=true
 
     echo Loading modules from $LUSTRE
     load_module ../libcfs/libcfs/libcfs
@@ -408,8 +407,6 @@ unload_modules() {
             do_rpc_nodes $list check_mem_leak
         fi
     fi
-
-    HAVE_MODULES=false
 
     check_mem_leak || return 254
 
@@ -531,15 +528,10 @@ cleanup_gss() {
 
 facet_fstype () {
     local facet=$1
-    local var
+    local tgt=$(echo $facet | tr -d [:digit:] | tr "[:lower:]" "[:upper:]")
 
-    case $facet in
-        mds* ) var=MDSFSTYPE ;;
-        ost* ) var=OSTFSTYPE ;;
-        mgs* ) echo $FSTYPE; return ;;
-        *) error "unknown facet!" ;;
-    esac
-   
+    local var=${tgt}FSTYPE
+
     [[ -n ${!var} ]] && echo ${!var} || echo $FSTYPE 
 }
 
@@ -596,6 +588,7 @@ mount_facet() {
         [ -z "$label" ] && echo no label for ${!dev} && exit 1
         eval export ${facet}_svc=${label}
         set +e
+        # FIXME. commented temporary because of bug 22725
 #        fstype=$(do_facet $facet lctl get_param -n *.${label}.fstype)
         set -e
         eval export ${facet}_fstype=${fstype}
@@ -1817,7 +1810,7 @@ combined_mgs_mds () {
 }
 
 zfs () {
-   [ "$MDSFSTYPE" = "zfs" ] || [ "$OSTFSTYPE" = "zfs" ]
+   [ "$MDSFSTYPE" = "zfs" ] || [ "$OSTFSTYPE" = "zfs" ] || [ "$MGSFSTYPE" = "zfs" ]
 }
 
 zfs_modules () {
@@ -1831,7 +1824,7 @@ zfs_create_pool () {
     local pool=$1
     local vdev=$2
 
-    $ZPOOL list | grep $pool && echo $pool exist, skip creation && return 0
+    $ZPOOL list | grep -w $pool && echo $pool exist, skip creation && return 0
 
     test -b $vdev || dd if=/dev/zero of=$vdev bs=1M count=256
     zfs_modules
@@ -2292,6 +2285,7 @@ check_timeout () {
 
 is_mounted () {
     local mntpt=$1
+    [ -z $mntpt ] && return 1
     local mounted=$(mounted_lustre_filesystems)
 
     echo $mounted' ' | grep -w -q $mntpt' '
@@ -4207,6 +4201,9 @@ run_llverdev()
         local dev=$1
         local devname=$(basename $1)
         local size=$(grep "$devname"$ /proc/partitions | awk '{print $3}')
+	# loop devices aren't in /proc/partitions
+	[ "x$size" == "x" ] && local size=$(ls -l $dev | awk '{print $5}')
+
         size=$(($size / 1024 / 1024)) # Gb
 
         local partial_arg=""

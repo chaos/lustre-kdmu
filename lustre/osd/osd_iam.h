@@ -94,7 +94,11 @@ enum {
 
 #ifdef __KERNEL__
 /* handle_t, journal_start(), journal_stop() */
-#include <linux/jbd.h>
+#ifdef HAVE_EXT4_LDISKFS
+#include <ldiskfs/ldiskfs_jbd2.h>
+#else
+#include <linux/ldiskfs_jbd.h>
+#endif
 
 /*
  * Debugging.
