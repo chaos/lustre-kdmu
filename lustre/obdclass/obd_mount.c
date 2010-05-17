@@ -2231,9 +2231,18 @@ struct file_system_type lustre_fs_type = {
 extern struct obd_ops mconf_obd_device_ops;
 extern struct lu_device_type mconf_device_type;
 
+static struct lprocfs_vars lprocfs_mconf_vars[] = {
+        { 0 }
+};
+
+
 int lustre_register_fs(void)
 {
         struct lprocfs_static_vars lvars;
+
+        lvars.module_vars = lprocfs_mconf_vars;
+        lvars.obd_vars = lprocfs_mconf_vars;
+
         class_register_type(&mconf_obd_device_ops, NULL, lvars.module_vars,
                             LUSTRE_MCF_NAME, &mconf_device_type);
 
