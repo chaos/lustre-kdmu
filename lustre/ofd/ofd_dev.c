@@ -694,8 +694,7 @@ static int filter_init0(const struct lu_env *env, struct filter_device *m,
         info = filter_info_init(env, NULL);
         LASSERT(info != NULL);
 
-        snprintf(info->fti_u.ns_name, sizeof info->fti_u.ns_name,
-                 LUSTRE_OST_NAME"-%p", m);
+        snprintf(info->fti_u.ns_name, sizeof(info->fti_u.ns_name), "filter-%p", m);
         m->ofd_namespace = ldlm_namespace_new(obd, info->fti_u.ns_name,
                                               LDLM_NAMESPACE_SERVER,
                                               LDLM_NAMESPACE_GREEDY);
