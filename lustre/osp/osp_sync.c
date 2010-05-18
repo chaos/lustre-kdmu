@@ -1006,7 +1006,7 @@ static int osp_sync_tracker_commit_cb(const struct lu_env *env,
 
 static int osp_sync_id_traction_init(struct osp_device *d)
 {
-        struct osp_id_tracker *tr, *found;
+        struct osp_id_tracker *tr, *found = NULL;
         int rc = 0;
 
         LASSERT(d);
@@ -1052,11 +1052,14 @@ static int osp_sync_id_traction_init(struct osp_device *d)
 static void osp_sync_id_traction_fini(struct osp_device *d)
 {
         struct osp_id_tracker *tr;
+        ENTRY;
 
         LASSERT(d);
         tr = d->opd_syn_tracker;
-        if (tr == NULL)
+        if (tr == NULL) {
+                EXIT;
                 return;
+        }
 
         osp_sync_remove_from_tracker(d);
 
@@ -1070,6 +1073,7 @@ static void osp_sync_id_traction_fini(struct osp_device *d)
         }
         cfs_mutex_unlock(&osp_id_tracker_sem);
 
+        EXIT;
 }
 
 /*
