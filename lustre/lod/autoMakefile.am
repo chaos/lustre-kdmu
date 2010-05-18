@@ -43,7 +43,7 @@ endif
 
 if MODULES
 if LINUX
-modulefs_DATA = lov$(KMODEXT)
+modulefs_DATA = lod$(KMODEXT)
 endif
 
 if DARWIN
@@ -85,3 +85,4 @@ endif # MODULES
 install-data-hook: $(install_data_hook)
 
 MOSTLYCLEANFILES := @MOSTLYCLEANFILES@ 
+DIST_SOURCES := $(lod-objs:%.o=%.c) lod_internal.h

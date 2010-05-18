@@ -85,3 +85,4 @@ endif # MODULES
 install-data-hook: $(install_data_hook)
 
 MOSTLYCLEANFILES := @MOSTLYCLEANFILES@ 
+DIST_SOURCES := $(osp-objs:%.o=%.c) osp_internal.h
