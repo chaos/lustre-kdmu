@@ -97,10 +97,10 @@ static int lprocfs_filter_rd_mntdev(char *page, char **start, off_t off,
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         LASSERT(obd != NULL);
-        LASSERT(obd->u.filter.fo_vfsmnt->mnt_devname);
+        LASSERT(obd->u.obt.obt_vfsmnt->mnt_devname);
 
         return libcfs_param_snprintf(page, count, data, LP_STR, "%s\n",
-                            obd->u.filter.fo_vfsmnt->mnt_devname);
+                                     obd->u.obt.obt_vfsmnt->mnt_devname);
 }
 
 static int lprocfs_filter_rd_last_id(char *page, char **start, off_t off,
@@ -461,10 +461,12 @@ static struct lprocfs_vars lprocfs_filter_obd_vars[] = {
         { "tot_pending",  lprocfs_filter_rd_tot_pending, 0, 0 },
         { "tot_granted",  lprocfs_filter_rd_tot_granted, 0, 0 },
         { "hash_stats",   lprocfs_obd_rd_hash,      0, 0 },
-        { "recovery_status", lprocfs_obd_rd_recovery_status, 0, 0 },
-        { "recovery_maxtime", lprocfs_obd_rd_recovery_maxtime,
-                              lprocfs_obd_wr_recovery_maxtime, 0},
-        { "evict_client", 0, lprocfs_wr_evict_client, 0, 0},
+        { "recovery_status",    lprocfs_obd_rd_recovery_status, 0, 0 },
+        { "recovery_time_soft", lprocfs_obd_rd_recovery_time_soft,
+                                lprocfs_obd_wr_recovery_time_soft, 0},
+        { "recovery_time_hard", lprocfs_obd_rd_recovery_time_hard,
+                                lprocfs_obd_wr_recovery_time_hard, 0},
+        { "evict_client", 0, lprocfs_wr_evict_client, 0,
                                 //&lprocfs_evict_client_fops},
         { "num_exports",  lprocfs_rd_num_exports,   0, 0 },
         { "readcache_max_filesize",

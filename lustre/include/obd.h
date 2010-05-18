@@ -354,12 +354,6 @@ struct filter_obd {
         int                      fo_sec_level;
 };
 
-#define fo_translock            fo_obt.obt_lut->lut_translock
-#define fo_last_rcvd_slots      fo_obt.obt_lut->lut_client_bitmap
-#define fo_mount_count          fo_obt.obt_lut->lut_mount_count
-#define fo_rcvd_filp            fo_obt.obt_rcvd_filp
-#define fo_vfsmnt               fo_obt.obt_vfsmnt
-
 struct timeout_item {
         enum timeout_event ti_event;
         cfs_time_t         ti_timeout;
@@ -537,7 +531,7 @@ struct mds_obd {
 
 
         struct lustre_quota_info         mds_quota_info;
-        cfs_semaphore_t                  mds_qonoff_sem;
+        cfs_rw_semaphore_t               mds_qonoff_sem;
         cfs_semaphore_t                  mds_health_sem;
         unsigned long                    mds_fl_user_xattr:1,
                                          mds_fl_acl:1,
@@ -557,14 +551,6 @@ struct mds_obd {
         struct dt_object                *mds_lov_objid_dt;
         struct dt_device                *mds_next_dev;
 };
-
-#define mds_transno_lock         mds_obt.obt_translock
-#define mds_rcvd_filp            mds_obt.obt_rcvd_filp
-#define mds_server_data          mds_obt.obt_lsd
-#define mds_client_bitmap        mds_obt.obt_client_bitmap
-#define mds_mount_count          mds_obt.obt_mount_count
-#define mds_last_transno         mds_obt.obt_last_transno
-#define mds_vfsmnt               mds_obt.obt_vfsmnt
 
 /* lov objid */
 extern __u32 mds_max_ost_index;
@@ -1087,7 +1073,7 @@ struct obd_device {
         cfs_timer_t                      obd_recovery_timer;
         time_t                           obd_recovery_start; /* seconds */
         time_t                           obd_recovery_end; /* seconds, for lprocfs_status */
-        time_t                           obd_recovery_max_time; /* seconds, bz13079 */
+        time_t                           obd_recovery_time_hard;
         int                              obd_recovery_timeout;
 
         /* new recovery stuff from CMD2 */

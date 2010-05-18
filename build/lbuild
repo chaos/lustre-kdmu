@@ -903,6 +903,20 @@ build_lustre() {
 
     pushd lustre >/dev/null
 
+    if ! ./configure $confoptions ${CONFIGURE_FLAGS} 2>&1; then
+        local saved_config="../config.log.$(date +%s)"
+        cp config.log $saved_config
+        chmod a+r $saved_config
+        echo "Saved config.log is at $saved_config"
+        cat /proc/mounts
+        ls -l /proc/$$
+        pwd
+        echo "config.log contents:"
+        cat config.log
+        popd
+        return 255
+    fi
+
     echo "Building Lustre RPMs for: $BUILD_ARCHS..."
 
     # convert the $PATCHLESS boolean to an empty/no-empty boolean

@@ -405,7 +405,7 @@ int mdd_changelog_write_header(struct mdd_device *mdd, int markerflags)
         rc = mdd_changelog_llog_write(mdd, rec, NULL);
 
         /* assume on or off event; reset repeat-access time */
-        mdd->mdd_cl.mc_starttime = rec->cr.cr_time;
+        mdd->mdd_cl.mc_starttime = cfs_time_current_64();
 
         OBD_FREE(rec, reclen);
         RETURN(rc);
@@ -735,7 +735,7 @@ static int obf_attr_get(const struct lu_env *env, struct md_object *obj,
 
                 if (ma->ma_need & MA_LOV_DEF) {
                         rc = mdd_get_default_md(mdd_obj, ma->ma_lmm,
-                                        &ma->ma_lmm_size);
+                                                &ma->ma_lmm_size);
                         if (rc > 0) {
                                 ma->ma_valid |= MA_LOV;
                                 rc = 0;

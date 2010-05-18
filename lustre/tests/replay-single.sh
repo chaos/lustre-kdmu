@@ -1092,6 +1092,7 @@ run_test 52 "time out lock replay (3764)"
 
 # bug 3462 - simultaneous MDC requests
 test_53a() {
+        cancel_lru_locks mdc    # cleanup locks from former test cases
         mkdir -p $DIR/${tdir}-1
         mkdir -p $DIR/${tdir}-2
         multiop $DIR/${tdir}-1/f O_c &
@@ -1121,6 +1122,7 @@ test_53a() {
 run_test 53a "|X| close request while two MDC requests in flight"
 
 test_53b() {
+        cancel_lru_locks mdc    # cleanup locks from former test cases
         rm -rf $DIR/${tdir}-1 $DIR/${tdir}-2
 
         mkdir -p $DIR/${tdir}-1
@@ -1152,6 +1154,7 @@ test_53b() {
 run_test 53b "|X| open request while two MDC requests in flight"
 
 test_53c() {
+        cancel_lru_locks mdc    # cleanup locks from former test cases
         rm -rf $DIR/${tdir}-1 $DIR/${tdir}-2
 
         mkdir -p $DIR/${tdir}-1
@@ -1217,6 +1220,7 @@ test_53d() {
 run_test 53d "|X| close reply while two MDC requests in flight"
 
 test_53e() {
+        cancel_lru_locks mdc    # cleanup locks from former test cases
         rm -rf $DIR/${tdir}-1 $DIR/${tdir}-2
 
         mkdir -p $DIR/${tdir}-1
@@ -1248,6 +1252,7 @@ test_53e() {
 run_test 53e "|X| open reply while two MDC requests in flight"
 
 test_53f() {
+        cancel_lru_locks mdc    # cleanup locks from former test cases
         rm -rf $DIR/${tdir}-1 $DIR/${tdir}-2
 
         mkdir -p $DIR/${tdir}-1
@@ -1284,6 +1289,7 @@ test_53f() {
 run_test 53f "|X| open reply and close reply while two MDC requests in flight"
 
 test_53g() {
+        cancel_lru_locks mdc    # cleanup locks from former test cases
         rm -rf $DIR/${tdir}-1 $DIR/${tdir}-2
 
         mkdir -p $DIR/${tdir}-1
@@ -1320,6 +1326,7 @@ test_53g() {
 run_test 53g "|X| drop open reply and close request while close and open are both in flight"
 
 test_53h() {
+        cancel_lru_locks mdc    # cleanup locks from former test cases
         rm -rf $DIR/${tdir}-1 $DIR/${tdir}-2
 
         mkdir -p $DIR/${tdir}-1
@@ -2042,6 +2049,19 @@ test_84a() {
     client_up || client_up || true    # reconnect
 }
 run_test 84a "stale open during export disconnect"
+
+test_85() { # bug 22190
+    local fail=0
+    do_facet ost1 "lctl set_param -n obdfilter.${ost1_svc}.sync_journal 1"
+
+    replay_barrier ost1
+    lfs setstripe -i 0 -c 1 $DIR/$tfile
+    dd oflag=dsync if=/dev/urandom of=$DIR/$tfile bs=4k count=100 || fail=1
+    fail_abort ost1
+    echo "FAIL $fail"
+    [ $fail -ne 0 ] || error "Write was successful"
+}
+run_test 85 "ensure there is no reply on bulk write if obd is in rdonly mode"
 
 equals_msg `basename $0`: test complete, cleaning up
 check_and_cleanup_lustre

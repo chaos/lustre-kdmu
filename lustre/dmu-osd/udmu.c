@@ -1,4 +1,3 @@
-#if 1
 /* -*- mode: c; c-basic-offset: 8; indent-tabs-mode: nil; -*-
  * vim:expandtab:shiftwidth=8:tabstop=8:
  *
@@ -93,22 +92,6 @@ static void udmu_gethrestime(struct timespec *tp)
         tp->tv_sec = time.tv_sec;
 }
 
-#if 0
-static void udmu_printf(int level, FILE *stream, char *message, ...)
-{
-        va_list args;
-
-        if (level <= debug_level) {
-                va_start(args, message);
-                (void) vfprintf(stream, message, args);
-                va_end(args);
-        }
-}
-#else
-#define udmu_printf(level,stream,msg, a...)      \
-        printk(msg, ## a)
-#endif
-
 void udmu_debug(int level)
 {
         debug_level = level;
@@ -131,8 +114,7 @@ int udmu_objset_open(char *osname, udmu_objset_t *uos)
         error = zap_lookup(uos->os, MASTER_NODE_OBJ, ZPL_VERSION_STR, 8, 1,
                            &version);
         if (error) {
-                udmu_printf(LEVEL_CRITICAL, stderr,
-                            "Error looking up ZPL VERSION");
+                CERROR("Error looking up ZPL VERSION\n");
                 /*
                  * We can't return ENOENT because that would mean the objset
                  * didn't exist.
@@ -141,11 +123,10 @@ int udmu_objset_open(char *osname, udmu_objset_t *uos)
                 goto out;
 #if 0
         } else if (version != LUSTRE_ZPL_VERSION) {
-                udmu_printf(LEVEL_CRITICAL, stderr,
-                            "Mismatched versions:  File system "
-                            "is version %lld on-disk format, which is "
-                            "incompatible with this software version %lld!",
-                            (u_longlong_t)version, LUSTRE_ZPL_VERSION);
+                CERROR("Mismatched versions:  File system "
+                       "is version %lld on-disk format, which is "
+                       "incompatible with this software version %lld!\n",
+                       (u_longlong_t)version, LUSTRE_ZPL_VERSION);
                 error = ENOTSUP;
                 goto out;
 #endif
@@ -154,13 +135,12 @@ int udmu_objset_open(char *osname, udmu_objset_t *uos)
         error = zap_lookup(uos->os, MASTER_NODE_OBJ, ZFS_ROOT_OBJ,
                            8, 1, &uos->root);
         if (error) {
-                udmu_printf(LEVEL_CRITICAL, stderr,
-                            "Error looking up ZFS root object.");
+                CERROR("Error looking up ZFS root object.\n");
                 error = EIO;
                 goto out;
         }
         ASSERT(uos->root != 0);
-      
+
         strncpy(uos->name, osname, sizeof(uos->name));
 
 out:
@@ -305,8 +285,7 @@ static int udmu_userprop_setup(udmu_objset_t *uos, const char *prop_name,
                         kmem_free(*os_name, MAXNAMELEN);
                 kmem_free(*real_prop, MAXNAMELEN);
 
-                udmu_printf(LEVEL_CRITICAL, stderr, "property name too long: "
-                            " %s\n", prop_name);
+                CERROR("property name too long: %s\n", prop_name);
                 return ENAMETOOLONG;
         }
 
@@ -382,9 +361,9 @@ int udmu_userprop_get_str(udmu_objset_t *uos, const char *prop_name, char *buf,
 
                 nvp_len = strlen(nvp_val);
                 if (buf_size < nvp_len + 1) {
-                        udmu_printf(LEVEL_INFO, stderr, "buffer too small (%d)"
-                                    " for string(%d): '%s'\n", buf_size,
-                                    nvp_len, nvp_val);
+                        CWARN("buffer too small (%llu) for string(%llu): '%s'"
+                              "\n", (u_longlong_t) buf_size,
+                              (u_longlong_t) nvp_len, nvp_val);
                         rc = EOVERFLOW;
                         goto out;
                 }
@@ -1189,7 +1168,7 @@ void udmu_xattr_declare_set(udmu_objset_t *uos, dmu_buf_t *db,
         znode_phys_t *zp = NULL;
         uint64_t      xa_data_obj;
         int           error;
-       
+
         if (db)
                 zp = db->db_data;
 
@@ -1411,5 +1390,3 @@ void udmu_freeze(udmu_objset_t *uos)
 {
         spa_freeze(uos->os->os->os_spa);
 }
-
-#endif

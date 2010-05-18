@@ -781,8 +781,9 @@ ksocknal_queue_tx_locked (ksock_tx_t *tx, ksock_conn_t *conn)
 ksock_route_t *
 ksocknal_find_connectable_route_locked (ksock_peer_t *peer)
 {
-        cfs_list_t        *tmp;
-        ksock_route_t     *route;
+        cfs_time_t     now = cfs_time_current();
+        cfs_list_t    *tmp;
+        ksock_route_t *route;
 
         cfs_list_for_each (tmp, &peer->ksnp_routes) {
                 route = cfs_list_entry (tmp, ksock_route_t, ksnr_list);
@@ -796,11 +797,17 @@ ksocknal_find_connectable_route_locked (ksock_peer_t *peer)
                 if ((ksocknal_route_mask() & ~route->ksnr_connected) == 0)
                         continue;
 
-                /* too soon to retry this guy? */
                 if (!(route->ksnr_retry_interval == 0 || /* first attempt */
-                      cfs_time_aftereq (cfs_time_current(),
-                                        route->ksnr_timeout)))
+                      cfs_time_aftereq(now, route->ksnr_timeout))) {
+                        CDEBUG(D_NET,
+                               "Too soon to retry route %u.%u.%u.%u "
+                               "(cnted %d, interval %ld, %ld secs later)\n",
+                               HIPQUAD(route->ksnr_ipaddr),
+                               route->ksnr_connected,
+                               route->ksnr_retry_interval,
+                               cfs_duration_sec(route->ksnr_timeout - now));
                         continue;
+                }
 
                 return (route);
         }
@@ -1271,8 +1278,9 @@ ksocknal_process_receive (ksock_conn_t *conn)
                         id   = &conn->ksnc_peer->ksnp_id;
 
                         rc = conn->ksnc_proto->pro_handle_zcreq(conn,
-                                               conn->ksnc_msg.ksm_zc_cookies[0],
-                                               le64_to_cpu(lhdr->src_nid) != id->nid);
+                                        conn->ksnc_msg.ksm_zc_cookies[0],
+                                        *ksocknal_tunables.ksnd_nonblk_zcack ||
+                                        le64_to_cpu(lhdr->src_nid) != id->nid);
                 }
 
                 lnet_finalize(conn->ksnc_peer->ksnp_ni, conn->ksnc_cookie, rc);
@@ -2302,6 +2310,7 @@ ksocknal_check_peer_timeouts (int idx)
         cfs_list_t       *peers = &ksocknal_data.ksnd_peers[idx];
         ksock_peer_t     *peer;
         ksock_conn_t     *conn;
+        ksock_tx_t       *tx;
 
  again:
         /* NB. We expect to have a look at all the peers and not find any
@@ -2310,6 +2319,10 @@ ksocknal_check_peer_timeouts (int idx)
         cfs_read_lock (&ksocknal_data.ksnd_global_lock);
 
         cfs_list_for_each_entry_typed(peer, peers, ksock_peer_t, ksnp_list) {
+                cfs_time_t  deadline = 0;
+                int         resid = 0;
+                int         n     = 0;
+
                 if (ksocknal_send_keepalive_locked(peer) != 0) {
                         cfs_read_unlock (&ksocknal_data.ksnd_global_lock);
                         goto again;
@@ -2348,30 +2361,47 @@ ksocknal_check_peer_timeouts (int idx)
                                 goto again;
                         }
                 }
-        }
 
-        /* print out warnings about stale ZC_REQs */
-        cfs_list_for_each_entry_typed(peer, peers, ksock_peer_t, ksnp_list) {
-                ksock_tx_t *tx;
-                int         n = 0;
+                if (cfs_list_empty(&peer->ksnp_zc_req_list))
+                        continue;
 
+                cfs_spin_lock(&peer->ksnp_lock);
                 cfs_list_for_each_entry_typed(tx, &peer->ksnp_zc_req_list,
                                               ksock_tx_t, tx_zc_list) {
                         if (!cfs_time_aftereq(cfs_time_current(),
                                               tx->tx_deadline))
                                 break;
+                        /* ignore the TX if connection is being closed */
+                        if (tx->tx_conn->ksnc_closing)
+                                continue;
                         n++;
                 }
 
-                if (n != 0) {
-                        tx = cfs_list_entry (peer->ksnp_zc_req_list.next,
-                                             ksock_tx_t, tx_zc_list);
-                        CWARN("Stale ZC_REQs for peer %s detected: %d; the "
-                              "oldest (%p) timed out %ld secs ago\n",
-                              libcfs_nid2str(peer->ksnp_id.nid), n, tx,
-                              cfs_duration_sec(cfs_time_current() -
-                                               tx->tx_deadline));
+                if (n == 0) {
+                        cfs_spin_unlock(&peer->ksnp_lock);
+                        continue;
                 }
+
+                tx = cfs_list_entry(peer->ksnp_zc_req_list.next,
+                                    ksock_tx_t, tx_zc_list);
+                deadline = tx->tx_deadline;
+                resid    = tx->tx_resid;
+                conn     = tx->tx_conn;
+                ksocknal_conn_addref(conn);
+
+                cfs_spin_unlock(&peer->ksnp_lock);
+                cfs_read_unlock (&ksocknal_data.ksnd_global_lock);
+
+                CERROR("Total %d stale ZC_REQs for peer %s detected; the "
+                       "oldest(%p) timed out %ld secs ago, "
+                       "resid: %d, wmem: %d\n",
+                       n, libcfs_nid2str(peer->ksnp_id.nid), tx,
+                       cfs_duration_sec(cfs_time_current() - deadline),
+                       resid, libcfs_sock_wmem_queued(conn->ksnc_sock));
+
+                ksocknal_close_conn_and_siblings (conn, -ETIMEDOUT);
+                ksocknal_conn_decref(conn);
+                goto again;
         }
 
         cfs_read_unlock (&ksocknal_data.ksnd_global_lock);

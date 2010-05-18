@@ -222,7 +222,7 @@ struct ptlrpc_request_set;
 typedef int (*set_interpreter_func)(struct ptlrpc_request_set *, void *, int);
 
 struct ptlrpc_request_set {
-        int                   set_remaining; /* # uncompleted requests */
+        cfs_atomic_t          set_remaining; /* # uncompleted requests */
         cfs_waitq_t           set_waitq;
         cfs_waitq_t          *set_wakeup_ptr;
         cfs_list_t            set_requests;
@@ -375,7 +375,9 @@ struct ptlrpc_request {
                 rq_hp:1,            /* high priority RPC */
                 rq_at_linked:1,     /* link into service's srv_at_array */
                 rq_reply_truncate:1,
-                rq_committed:1;
+                rq_committed:1,
+                /* whether the "rq_set" is a valid one */
+                rq_invalid_rqset:1;
 
         enum rq_phase rq_phase; /* one of RQ_PHASE_* */
         enum rq_phase rq_next_phase; /* one of RQ_PHASE_* to be used next */
@@ -492,7 +494,8 @@ struct ptlrpc_request {
         int    rq_timeout;               /* service time estimate (secs) */
 
         /* Multi-rpc bits */
-        cfs_list_t rq_set_chain;
+        cfs_list_t  rq_set_chain;
+        cfs_waitq_t rq_set_waitq;
         struct ptlrpc_request_set *rq_set;
         /** Async completion handler */
         ptlrpc_interpterer_t rq_interpret_reply;
@@ -592,9 +595,10 @@ ptlrpc_rqphase2str(struct ptlrpc_request *req)
         FLAG(req->rq_restart, "T"), FLAG(req->rq_replay, "P"),                  \
         FLAG(req->rq_no_resend, "N"),                                           \
         FLAG(req->rq_waiting, "W"),                                             \
-        FLAG(req->rq_wait_ctx, "C"), FLAG(req->rq_hp, "H")
+        FLAG(req->rq_wait_ctx, "C"), FLAG(req->rq_hp, "H"),                     \
+        FLAG(req->rq_committed, "M")
 
-#define REQ_FLAGS_FMT "%s:%s%s%s%s%s%s%s%s%s%s%s"
+#define REQ_FLAGS_FMT "%s:%s%s%s%s%s%s%s%s%s%s%s%s"
 
 void _debug_req(struct ptlrpc_request *req, __u32 mask,
                 struct libcfs_debug_msg_data *data, const char *fmt, ...)

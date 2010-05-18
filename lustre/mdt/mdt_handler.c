@@ -402,18 +402,23 @@ void mdt_pack_attr2body(struct mdt_thread_info *info, struct mdt_body *b,
 {
         struct md_attr          *ma  = &info->mti_attr;
 
+        LASSERT(ma->ma_valid & MA_INODE);
+
         /*XXX should pack the reply body according to lu_valid*/
         b->valid |= OBD_MD_FLCTIME | OBD_MD_FLUID   |
                     OBD_MD_FLGID   | OBD_MD_FLTYPE  |
                     OBD_MD_FLMODE  | OBD_MD_FLNLINK | OBD_MD_FLFLAGS |
                     OBD_MD_FLATIME | OBD_MD_FLMTIME ;
 
-        if (!S_ISREG(attr->la_mode))
+        if (!S_ISREG(attr->la_mode)) {
                 b->valid |= OBD_MD_FLSIZE | OBD_MD_FLBLOCKS | OBD_MD_FLRDEV;
-
-        /* if no object is allocated on osts, the size on mds is valid. b=22272 */
-        if (ma->ma_lmm_size == 0)
-                b->valid |= OBD_MD_FLSIZE;
+        } else if (ma->ma_need & MA_LOV && ma->ma_lmm_size == 0) {
+                /* means no objects are allocated on osts. */
+                LASSERT(!(ma->ma_valid & MA_LOV));
+                LASSERT(attr->la_blocks == 0);
+                /* if no object is allocated on osts, the size on mds is valid. b=22272 */
+                b->valid |= OBD_MD_FLSIZE | OBD_MD_FLBLOCKS;
+        }
 
         b->atime      = attr->la_atime;
         b->mtime      = attr->la_mtime;
@@ -2255,12 +2260,12 @@ int mdt_object_lock(struct mdt_thread_info *info, struct mdt_object *o,
                           res_id, LDLM_FL_LOCAL_ONLY | LDLM_FL_ATOMIC_CB,
                           &info->mti_exp->exp_handle.h_cookie);
         if (rc)
-                GOTO(out, rc);
-
-out:
-        if (rc)
                 mdt_object_unlock(info, o, lh, 1);
-
+        else if (unlikely(OBD_FAIL_PRECHECK(OBD_FAIL_MDS_PDO_LOCK)) &&
+                 lh->mlh_pdo_hash != 0 &&
+                 (lh->mlh_reg_mode == LCK_PW || lh->mlh_reg_mode == LCK_EX)) {
+                OBD_FAIL_TIMEOUT(OBD_FAIL_MDS_PDO_LOCK, 10);
+        }
 
         RETURN(rc);
 }
@@ -2625,7 +2630,7 @@ static int mdt_req_handle(struct mdt_thread_info *info,
         if (likely(rc == 0 && req->rq_export && h->mh_opc != MDS_DISCONNECT))
                 target_committed_to_req(req);
 
-        if (unlikely((lustre_msg_get_flags(req->rq_reqmsg) & MSG_REPLAY) &&
+        if (unlikely(req_is_replay(req) &&
                      lustre_msg_get_transno(req->rq_reqmsg) == 0)) {
                 DEBUG_REQ(D_ERROR, req, "transno is 0 during REPLAY");
                 LBUG();
@@ -2689,10 +2694,7 @@ static void mdt_thread_info_init(struct ptlrpc_request *req,
 
         info->mti_fail_id = OBD_FAIL_MDS_ALL_REPLY_NET;
         info->mti_transno = lustre_msg_get_transno(req->rq_reqmsg);
-        info->mti_mos[0] = NULL;
-        info->mti_mos[1] = NULL;
-        info->mti_mos[2] = NULL;
-        info->mti_mos[3] = NULL;
+        info->mti_mos = NULL;
 
         memset(&info->mti_attr, 0, sizeof(info->mti_attr));
         info->mti_body = NULL;
@@ -4537,6 +4539,14 @@ static int mdt_init0(const struct lu_env *env, struct mdt_device *m,
                         CERROR("CMD Operation not allowed in IOP mode\n");
                         GOTO(err_lmi, rc = -EINVAL);
                 }
+                /* Read recovery timeouts */
+                if (lsi->lsi_lmd && lsi->lsi_lmd->lmd_recovery_time_soft)
+                        obd->obd_recovery_timeout =
+                                lsi->lsi_lmd->lmd_recovery_time_soft;
+
+                if (lsi->lsi_lmd && lsi->lsi_lmd->lmd_recovery_time_hard)
+                        obd->obd_recovery_time_hard =
+                                lsi->lsi_lmd->lmd_recovery_time_hard;
         }
 
         cfs_rwlock_init(&m->mdt_sptlrpc_lock);
@@ -5038,7 +5048,7 @@ static int mdt_obd_connect(const struct lu_env *env,
                         LASSERT(mti != NULL);
                         mti->mti_exp = lexp;
                         memcpy(lcd->lcd_uuid, cluuid, sizeof lcd->lcd_uuid);
-                        lexp->exp_mdt_data.med_lcd = lcd;
+                        lexp->exp_target_data.ted_lcd = lcd;
                         rc = mdt_client_new(env, mdt);
                         if (rc == 0)
                                 mdt_export_stats_init(obd, lexp, localdata);
@@ -5266,7 +5276,7 @@ static int mdt_upcall(const struct lu_env *env, struct md_device *md,
                                      m->mdt_max_mdsize, m->mdt_max_cookiesize);
                         mdt_allow_cli(m, CONFIG_SYNC);
                         if (data)
-                                (*(__u64 *)data) = m->mdt_mount_count;
+                                (*(__u64 *)data) = m->mdt_lut.lut_mount_count;
                         break;
                 case MD_NO_TRANS:
                         mti = lu_context_key_get(&env->le_ctx, &mdt_thread_key);
@@ -5473,17 +5483,10 @@ static int mdt_ioc_version_get(struct mdt_thread_info *mti, void *karg)
                  * fid, this is error to find remote object here
                  */
                 CERROR("nonlocal object "DFID"\n", PFID(fid));
-        } else if (rc == 0) {
-                rc = -ENOENT;
-                CDEBUG(D_IOCTL, "no such object: "DFID"\n", PFID(fid));
         } else {
                 version = mo_version_get(mti->mti_env, mdt_object_child(obj));
-                if (version < 0) {
-                        rc = (int)version;
-                } else {
-                        *(__u64 *)data->ioc_inlbuf2 = version;
-                        rc = 0;
-                }
+               *(__u64 *)data->ioc_inlbuf2 = version;
+                rc = 0;
         }
         mdt_object_unlock_put(mti, obj, lh, 1);
         RETURN(rc);

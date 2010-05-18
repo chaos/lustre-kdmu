@@ -49,10 +49,10 @@ static int lprocfs_mds_rd_mntdev(char *page, char **start, off_t off, int count,
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         LASSERT(obd != NULL);
-        LASSERT(obd->u.mds.mds_vfsmnt->mnt_devname);
+        LASSERT(obd->u.obt.obt_vfsmnt->mnt_devname);
 
         return libcfs_param_snprintf(page, count, data, LP_STR, "%s\n",
-                                     obd->u.mds.mds_vfsmnt->mnt_devname);
+                                     obd->u.obt.obt_vfsmnt->mnt_devname);
 }
 
 static int lprocfs_mds_rd_evictostnids(char *page, char **start, off_t off,

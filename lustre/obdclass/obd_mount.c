@@ -608,21 +608,31 @@ static int lustre_start_mgc(struct super_block *sb)
         sprintf(niduuid, "%s_%x", mgcname, i);
         if (lsi->lsi_flags & LSI_SERVER) {
                 ptr = lsi->lsi_ldd->ldd_params;
-                if (IS_MGS(lsi->lsi_ldd)) {
+                /* Use mgsnode= nids */
+                if (class_find_param(ptr, PARAM_MGSNODE, &ptr) == 0) {
+                        while (class_parse_nid(ptr, &nid, &ptr) == 0) {
+                                rc = do_lcfg(mgcname, nid, LCFG_ADD_UUID,
+                                             niduuid, 0, 0, 0);
+                                i++;
+                                /* Stop at the first failover nid */
+                                if (*ptr == ':')
+                                        break;
+                        }
+                } else if (lsi->lsi_lmd->lmd_mgs) {
+                        ptr = lsi->lsi_lmd->lmd_mgs;
+                        while (class_parse_nid(ptr, &nid, &ptr) == 0) {
+                                rc = do_lcfg(mgcname, nid, LCFG_ADD_UUID,
+                                             niduuid, 0, 0, 0);
+                                i++;
+                                /* Stop at the first failover nid */
+                                if (*ptr == ':')
+                                        break;
+                        }
+                } else if (IS_MGS(lsi->lsi_ldd)) {
                         /* Use local nids (including LO) */
                         lnet_process_id_t id;
                         while ((rc = LNetGetId(i++, &id)) != -ENOENT) {
                                 rc = do_lcfg(mgcname, id.nid,
-                                             LCFG_ADD_UUID, niduuid, 0,0,0);
-                        }
-                } else {
-                        /* Use mgsnode= nids */
-                        if (class_find_param(ptr, PARAM_MGSNODE, &ptr) != 0) {
-                                CERROR("No MGS nids given.\n");
-                                GOTO(out_free, rc = -EINVAL);
-                        }
-                        while (class_parse_nid(ptr, &nid, &ptr) == 0) {
-                                rc = do_lcfg(mgcname, nid,
                                              LCFG_ADD_UUID, niduuid, 0,0,0);
                                 i++;
                         }
@@ -1360,6 +1370,8 @@ struct lustre_sb_info *lustre_init_lsi(struct super_block *sb)
         }
 
         lsi->lsi_lmd->lmd_exclude_count = 0;
+        lsi->lsi_lmd->lmd_recovery_time_soft = 0;
+        lsi->lsi_lmd->lmd_recovery_time_hard = 0;
         s2lsi_nocast(sb) = lsi;
         /* we take 1 extra ref for our setup */
         cfs_atomic_set(&lsi->lsi_mounts, 1);
@@ -2115,7 +2127,6 @@ int lustre_common_put_super(struct super_block *sb)
         RETURN(rc);
 }
 
-#if 0
 static void lmd_print(struct lustre_mount_data *lmd)
 {
         int i;
@@ -2125,14 +2136,23 @@ static void lmd_print(struct lustre_mount_data *lmd)
                 PRINT_CMD(PRINT_MASK, "profile: %s\n", lmd->lmd_profile);
         PRINT_CMD(PRINT_MASK, "device:  %s\n", lmd->lmd_dev);
         PRINT_CMD(PRINT_MASK, "flags:   %x\n", lmd->lmd_flags);
+
         if (lmd->lmd_opts)
                 PRINT_CMD(PRINT_MASK, "options: %s\n", lmd->lmd_opts);
+
+        if (lmd->lmd_recovery_time_soft)
+                PRINT_CMD(PRINT_MASK, "recovery time soft: %d\n",
+                          lmd->lmd_recovery_time_soft);
+
+        if (lmd->lmd_recovery_time_hard)
+                PRINT_CMD(PRINT_MASK, "recovery time hard: %d\n",
+                          lmd->lmd_recovery_time_hard);
+
         for (i = 0; i < lmd->lmd_exclude_count; i++) {
                 PRINT_CMD(PRINT_MASK, "exclude %d:  OST%04x\n", i,
                           lmd->lmd_exclude[i]);
         }
 }
-#endif
 
 /* Is this server on the exclusion list */
 int lustre_check_exclusion(struct super_block *sb, char *svname)
@@ -2294,6 +2314,9 @@ static int lmd_parse(char *options, struct lustre_mount_data *lmd)
         s1 = options;
         while (*s1) {
                 int clear = 0;
+                int time_min = 2 * (CONNECTION_SWITCH_MAX +
+                               2 * INITIAL_CONNECT_TIMEOUT);
+
                 /* Skip whitespace and extra commas */
                 while (*s1 == ' ' || *s1 == ',')
                         s1++;
@@ -2305,6 +2328,14 @@ static int lmd_parse(char *options, struct lustre_mount_data *lmd)
                    ldiskfs, we just zero these out here */
                 if (strncmp(s1, "abort_recov", 11) == 0) {
                         lmd->lmd_flags |= LMD_FLG_ABORT_RECOV;
+                        clear++;
+                } else if (strncmp(s1, "recovery_time_soft=", 19) == 0) {
+                        lmd->lmd_recovery_time_soft = max_t(int,
+                                simple_strtoul(s1 + 19, NULL, 10), time_min);
+                        clear++;
+                } else if (strncmp(s1, "recovery_time_hard=", 19) == 0) {
+                        lmd->lmd_recovery_time_hard = max_t(int,
+                                simple_strtoul(s1 + 19, NULL, 10), time_min);
                         clear++;
                 } else if (strncmp(s1, "nosvc", 5) == 0) {
                         lmd->lmd_flags |= LMD_FLG_NOSVC;
@@ -2390,6 +2421,7 @@ static int lmd_parse(char *options, struct lustre_mount_data *lmd)
                 strcpy(lmd->lmd_opts, options);
         }
 
+        lmd_print(lmd);
         lmd->lmd_magic = LMD_MAGIC;
 
         RETURN(rc);

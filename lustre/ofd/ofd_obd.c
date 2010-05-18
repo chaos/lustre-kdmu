@@ -49,20 +49,6 @@
 
 #include "ofd_internal.h"
 
-static inline void filter_oti2info(struct filter_thread_info *info,
-                                   struct obd_trans_info *oti)
-{
-        info->fti_xid = oti->oti_xid;
-        info->fti_transno = oti->oti_transno;
-}
-
-static inline void filter_info2oti(struct filter_thread_info *info,
-                                   struct obd_trans_info *oti)
-{
-        oti->oti_xid = info->fti_xid;
-        oti->oti_transno = info->fti_transno;
-}
-
 static int filter_obd_notify(struct obd_device *host,
                           struct obd_device *watched,
                           enum obd_notify_event ev, void *owner)
@@ -255,7 +241,7 @@ static int filter_obd_connect(const struct lu_env *env, struct obd_export **_exp
                         GOTO(out, rc = -ENOMEM);
 
                 memcpy(lcd->lcd_uuid, cluuid, sizeof(lcd->lcd_uuid));
-                fed->fed_lcd = lcd;
+                fed->fed_ted.ted_lcd = lcd;
 
                 rc = filter_client_new(env, ofd, &exp->exp_filter_data);
                 if (rc != 0)
@@ -280,7 +266,7 @@ out:
         if (rc != 0) {
                 if (lcd) {
                         OBD_FREE_PTR(lcd);
-                        fed->fed_lcd = NULL;
+                        fed->fed_ted.ted_lcd = NULL;
                 }
                 class_disconnect(exp);
         } else {

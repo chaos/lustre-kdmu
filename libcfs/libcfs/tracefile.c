@@ -262,10 +262,13 @@ int libcfs_debug_vmsg2(cfs_debug_limit_state_t *cdls, int subsys, int mask,
         if (strchr(file, '/'))
                 file = strrchr(file, '/') + 1;
 
+        tcd = cfs_trace_get_tcd();
 
+        /* cfs_trace_get_tcd() grabs a lock, which disables preemption and
+         * pins us to a particular CPU.  This avoids an smp_processor_id()
+         * warning on Linux when debugging is enabled. */
         cfs_set_ptldebug_header(&header, subsys, mask, line, CDEBUG_STACK());
 
-        tcd = cfs_trace_get_tcd();
         if (tcd == NULL)                /* arch may not log in IRQ context */
                 goto console;
 
@@ -912,7 +915,7 @@ int cfs_trace_set_debug_mb(int mb)
 
         if (mb < cfs_num_possible_cpus()) {
                 printk(KERN_ERR "Cannot set debug_mb to %d, the value should be >= %d\n",
-                       mb, num_possible_cpus());
+                       mb, cfs_num_possible_cpus());
                 return -EINVAL;
         }
 

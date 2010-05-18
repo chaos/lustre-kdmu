@@ -63,7 +63,7 @@ static void free_param(struct libcfs_param_entry *lpe)
                 /* seq params use orig data can't be freed */
                 LIBCFS_FREE_PARAMDATA(lpe->lpe_data);
         if (lpe->lpe_hash_t != NULL)
-                cfs_hash_destroy(lpe->lpe_hash_t);
+                cfs_hash_putref(lpe->lpe_hash_t);
         if (lpe->lpe_name != NULL)
                 LIBCFS_FREE(lpe, sizeof(*lpe) + lpe->lpe_name_len + 1);
         else
@@ -184,7 +184,7 @@ void libcfs_param_root_fini(void)
                  "params_root has %d refs\n",
                  cfs_atomic_read(&libcfs_param_root.lpe_refcount));
         if (libcfs_param_root.lpe_hash_t != NULL)
-                cfs_hash_destroy(libcfs_param_root.lpe_hash_t);
+                cfs_hash_putref(libcfs_param_root.lpe_hash_t);
 }
 
 struct libcfs_param_cb_data *

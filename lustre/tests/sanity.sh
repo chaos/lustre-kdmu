@@ -32,12 +32,13 @@ ALWAYS_EXCEPT="$ALWAYS_EXCEPT 76"
 # 180 -- ofd doesn't work with obdecho 
 ALWAYS_EXCEPT="$ALWAYS_EXCEPT 52 54c 56a 60 160 180"
 
+# 24v -- (bug 22803) space reservation for unlinks
 # 57a -- (bug 22607) can't determine dnode size in ZFS yet
 # 132 -- inode counting is different in zfs
 # 155 -- we don't control cache via ZFS OSD yet
 # 156 -- we don't control cache via ZFS OSD yet
 [ "$FSTYPE" = "zfs" -o "$OSTFSTYPE" = "zfs" -o "$MDSFSTYPE" = "zfs" ] && \
-	ALWAYS_EXCEPT="$ALWAYS_EXCEPT 57a 132 155 156"
+	ALWAYS_EXCEPT="$ALWAYS_EXCEPT 24v 57a 132 155 156"
 
 case `uname -r` in
 2.4*) FSTYPE=${FSTYPE:-ext3} ;;
@@ -2023,6 +2024,250 @@ test_39() {
 	fi
 }
 run_test 39 "mtime changed on create ==========================="
+
+test_39b() {
+	mkdir -p $DIR/$tdir
+	cp -p /etc/passwd $DIR/$tdir/fopen
+	cp -p /etc/passwd $DIR/$tdir/flink
+	cp -p /etc/passwd $DIR/$tdir/funlink
+	cp -p /etc/passwd $DIR/$tdir/frename
+	ln $DIR/$tdir/funlink $DIR/$tdir/funlink2
+
+	sleep 1
+	echo "aaaaaa" >> $DIR/$tdir/fopen
+	echo "aaaaaa" >> $DIR/$tdir/flink
+	echo "aaaaaa" >> $DIR/$tdir/funlink
+	echo "aaaaaa" >> $DIR/$tdir/frename
+
+	local open_new=`stat -c %Y $DIR/$tdir/fopen`
+	local link_new=`stat -c %Y $DIR/$tdir/flink`
+	local unlink_new=`stat -c %Y $DIR/$tdir/funlink`
+	local rename_new=`stat -c %Y $DIR/$tdir/frename`
+
+	cat $DIR/$tdir/fopen > /dev/null
+	ln $DIR/$tdir/flink $DIR/$tdir/flink2
+	rm -f $DIR/$tdir/funlink2
+	mv -f $DIR/$tdir/frename $DIR/$tdir/frename2
+
+	for (( i=0; i < 2; i++ )) ; do
+		local open_new2=`stat -c %Y $DIR/$tdir/fopen`
+		local link_new2=`stat -c %Y $DIR/$tdir/flink`
+		local unlink_new2=`stat -c %Y $DIR/$tdir/funlink`
+		local rename_new2=`stat -c %Y $DIR/$tdir/frename2`
+
+		[ $open_new2 -eq $open_new ] || error "open file reverses mtime"
+		[ $link_new2 -eq $link_new ] || error "link file reverses mtime"
+		[ $unlink_new2 -eq $unlink_new ] || error "unlink file reverses mtime"
+		[ $rename_new2 -eq $rename_new ] || error "rename file reverses mtime"
+
+		cancel_lru_locks osc
+		if [ $i = 0 ] ; then echo "repeat after cancel_lru_locks"; fi
+	done
+}
+run_test 39b "mtime change on open, link, unlink, rename  ======"
+
+# this should be set to past
+TEST_39_MTIME=`date -d "1 year ago" +%s`
+
+# bug 11063
+test_39c() {
+	touch $DIR1/$tfile
+	sleep 2
+	local mtime0=`stat -c %Y $DIR1/$tfile`
+
+	touch -m -d @$TEST_39_MTIME $DIR1/$tfile
+	local mtime1=`stat -c %Y $DIR1/$tfile`
+	[ "$mtime1" = $TEST_39_MTIME ] || \
+		error "mtime is not set to past: $mtime1, should be $TEST_39_MTIME"
+
+	local d1=`date +%s`
+	echo hello >> $DIR1/$tfile
+	local d2=`date +%s`
+	local mtime2=`stat -c %Y $DIR1/$tfile`
+	[ "$mtime2" -ge "$d1" ] && [ "$mtime2" -le "$d2" ] || \
+		error "mtime is not updated on write: $d1 <= $mtime2 <= $d2"
+
+	mv $DIR1/$tfile $DIR1/$tfile-1
+
+	for (( i=0; i < 2; i++ )) ; do
+		local mtime3=`stat -c %Y $DIR1/$tfile-1`
+		[ "$mtime2" = "$mtime3" ] || \
+			error "mtime ($mtime2) changed (to $mtime3) on rename"
+
+		cancel_lru_locks osc
+		if [ $i = 0 ] ; then echo "repeat after cancel_lru_locks"; fi
+	done
+}
+run_test 39c "mtime change on rename ==========================="
+
+# bug 21114
+test_39d() {
+	touch $DIR1/$tfile
+
+	touch -m -d @$TEST_39_MTIME $DIR1/$tfile
+
+	for (( i=0; i < 2; i++ )) ; do
+		local mtime=`stat -c %Y $DIR1/$tfile`
+		[ $mtime = $TEST_39_MTIME ] || \
+			error "mtime($mtime) is not set to $TEST_39_MTIME"
+
+		cancel_lru_locks osc
+		if [ $i = 0 ] ; then echo "repeat after cancel_lru_locks"; fi
+	done
+}
+run_test 39d "create, utime, stat =============================="
+
+# bug 21114
+test_39e() {
+	touch $DIR1/$tfile
+	local mtime1=`stat -c %Y $DIR1/$tfile`
+
+	touch -m -d @$TEST_39_MTIME $DIR1/$tfile
+	
+	for (( i=0; i < 2; i++ )) ; do
+		local mtime2=`stat -c %Y $DIR1/$tfile`
+		[ $mtime2 = $TEST_39_MTIME ] || \
+			error "mtime($mtime2) is not set to $TEST_39_MTIME"
+
+		cancel_lru_locks osc
+		if [ $i = 0 ] ; then echo "repeat after cancel_lru_locks"; fi
+	done
+}
+run_test 39e "create, stat, utime, stat ========================"
+
+# bug 21114
+test_39f() {
+	touch $DIR1/$tfile
+	mtime1=`stat -c %Y $DIR1/$tfile`
+
+	sleep 2
+	touch -m -d @$TEST_39_MTIME $DIR1/$tfile
+
+	for (( i=0; i < 2; i++ )) ; do
+		local mtime2=`stat -c %Y $DIR1/$tfile`
+		[ $mtime2 = $TEST_39_MTIME ] || \
+			error "mtime($mtime2) is not set to $TEST_39_MTIME"
+
+		cancel_lru_locks osc
+		if [ $i = 0 ] ; then echo "repeat after cancel_lru_locks"; fi
+	done
+}
+run_test 39f "create, stat, sleep, utime, stat ================="
+
+# bug 11063
+test_39g() {
+	echo hello >> $DIR1/$tfile
+	local mtime1=`stat -c %Y $DIR1/$tfile`
+
+	sleep 2
+	chmod o+r $DIR1/$tfile
+ 
+	for (( i=0; i < 2; i++ )) ; do
+		local mtime2=`stat -c %Y $DIR1/$tfile`
+		[ "$mtime1" = "$mtime2" ] || \
+			error "lost mtime: $mtime2, should be $mtime1"
+
+		cancel_lru_locks osc
+		if [ $i = 0 ] ; then echo "repeat after cancel_lru_locks"; fi
+	done
+}
+run_test 39g "write, chmod, stat ==============================="
+
+# bug 11063
+test_39h() {
+	touch $DIR1/$tfile
+	sleep 1
+
+	local d1=`date`
+	echo hello >> $DIR1/$tfile
+	local mtime1=`stat -c %Y $DIR1/$tfile`
+
+	touch -m -d @$TEST_39_MTIME $DIR1/$tfile
+	local d2=`date`
+	if [ "$d1" != "$d2" ]; then
+		echo "write and touch not within one second"
+	else
+		for (( i=0; i < 2; i++ )) ; do
+			local mtime2=`stat -c %Y $DIR1/$tfile`
+			[ "$mtime2" = $TEST_39_MTIME ] || \
+				error "lost mtime: $mtime2, should be $TEST_39_MTIME"
+
+			cancel_lru_locks osc
+			if [ $i = 0 ] ; then echo "repeat after cancel_lru_locks"; fi
+		done
+	fi
+}
+run_test 39h "write, utime within one second, stat ============="
+
+test_39i() {
+	touch $DIR1/$tfile
+	sleep 1
+
+	echo hello >> $DIR1/$tfile
+	local mtime1=`stat -c %Y $DIR1/$tfile`
+
+	mv $DIR1/$tfile $DIR1/$tfile-1
+
+	for (( i=0; i < 2; i++ )) ; do
+		local mtime2=`stat -c %Y $DIR1/$tfile-1`
+
+		[ "$mtime1" = "$mtime2" ] || \
+			error "lost mtime: $mtime2, should be $mtime1"
+
+		cancel_lru_locks osc
+		if [ $i = 0 ] ; then echo "repeat after cancel_lru_locks"; fi
+	done
+}
+run_test 39i "write, rename, stat =============================="
+
+test_39j() {
+	touch $DIR1/$tfile
+	sleep 1
+
+	multiop_bg_pause $DIR1/$tfile oO_RDWR:w2097152_c || error "multiop failed"
+	local multipid=$!
+	local mtime1=`stat -c %Y $DIR1/$tfile`
+
+	mv $DIR1/$tfile $DIR1/$tfile-1
+
+	kill -USR1 $multipid
+	wait $multipid || error "multiop close failed"
+
+	for (( i=0; i < 2; i++ )) ; do
+		local mtime2=`stat -c %Y $DIR1/$tfile-1`
+		[ "$mtime1" = "$mtime2" ] || \
+			error "mtime is lost on close: $mtime2, should be $mtime1"
+
+		cancel_lru_locks osc
+		if [ $i = 0 ] ; then echo "repeat after cancel_lru_locks"; fi
+	done
+}
+run_test 39j "write, rename, close, stat ======================="
+
+test_39k() {
+	touch $DIR1/$tfile
+	sleep 1
+
+	multiop_bg_pause $DIR1/$tfile oO_RDWR:w2097152_c || error "multiop failed"
+	local multipid=$!
+	local mtime1=`stat -c %Y $DIR1/$tfile`
+
+	touch -m -d @$TEST_39_MTIME $DIR1/$tfile
+
+	kill -USR1 $multipid
+	wait $multipid || error "multiop close failed"
+		
+	for (( i=0; i < 2; i++ )) ; do
+		local mtime2=`stat -c %Y $DIR1/$tfile`
+
+		[ "$mtime2" = $TEST_39_MTIME ] || \
+			error "mtime is lost on close: $mtime2, should be $TEST_39_MTIME"
+
+		cancel_lru_locks osc
+		if [ $i = 0 ] ; then echo "repeat after cancel_lru_locks"; fi
+	done
+}
+run_test 39k "write, utime, close, stat ========================"
 
 test_40() {
 	dd if=/dev/zero of=$DIR/f40 bs=4096 count=1
@@ -6662,7 +6907,7 @@ test_161() {
     rm $DIR/$tdir/$tfile
     # rename
     mv $DIR/$tdir/foo1/sofia $DIR/$tdir/foo2/maggie
-    if [ "$($LFS fid2path $DIR --link 1 $FID)" != "/$tdir/foo2/maggie" ]
+    if [ "$($LFS fid2path $FSNAME --link 1 $FID)" != "$tdir/foo2/maggie" ]
 	then
 	$LFS fid2path $DIR $FID
 	err17935 "bad link rename"
@@ -6709,20 +6954,20 @@ test_162() {
     mkdir -p $DIR/$tdir/d2/p/q/r
 	# regular file
     FID=$($LFS path2fid $DIR/$tdir/d2/$tfile | tr -d '[')
-    check_path "/$tdir/d2/$tfile" $DIR $FID --link 0
+    check_path "$tdir/d2/$tfile" $FSNAME $FID --link 0
 
 	# softlink
     ln -s $DIR/$tdir/d2/$tfile $DIR/$tdir/d2/p/q/r/slink
     FID=$($LFS path2fid $DIR/$tdir/d2/p/q/r/slink | tr -d '[')
-    check_path "/$tdir/d2/p/q/r/slink" $DIR $FID --link 0
+    check_path "$tdir/d2/p/q/r/slink" $FSNAME $FID --link 0
 
 	# hardlink
     ln $DIR/$tdir/d2/$tfile $DIR/$tdir/d2/p/q/r/hlink
     mv $DIR/$tdir/d2/$tfile $DIR/$tdir/d2/a/b/c/new_file
     FID=$($LFS path2fid $DIR/$tdir/d2/a/b/c/new_file | tr -d '[')
     # fid2path dir/fsname should both work
-    check_path "/$tdir/d2/a/b/c/new_file" $FSNAME $FID --link 1
-    check_path "/$tdir/d2/p/q/r/hlink" $DIR $FID --link 0
+    check_path "$tdir/d2/a/b/c/new_file" $FSNAME $FID --link 1
+    check_path "$DIR/$tdir/d2/p/q/r/hlink" $DIR $FID --link 0
 
     # hardlink count: check that there are 2 links
     # Doesnt work with CMD yet: 17935
@@ -6731,7 +6976,7 @@ test_162() {
 
 	# hardlink indexing: remove the first link
     rm $DIR/$tdir/d2/p/q/r/hlink
-    check_path "/$tdir/d2/a/b/c/new_file" $DIR $FID --link 0
+    check_path "$tdir/d2/a/b/c/new_file" $FSNAME $FID --link 0
 
 	return 0
 }
@@ -6838,6 +7083,7 @@ setup_obdecho_osc () {
         local rc=0
         local ost_nid=$1
         local obdfilter_name=$2
+        echo "Creating new osc for $obdfilter_name on $ost_nid"
         [ $rc -eq 0 ] && { $LCTL attach osc ${obdfilter_name}_osc     \
                            ${obdfilter_name}_osc_UUID || rc=2; }
         [ $rc -eq 0 ] && { $LCTL --device ${obdfilter_name}_osc setup \
@@ -6845,7 +7091,7 @@ setup_obdecho_osc () {
         return $rc
 }
 
-cleaup_obdecho_osc () {
+cleanup_obdecho_osc () {
         local obdfilter_name=$1
         $LCTL --device ${obdfilter_name}_osc cleanup >/dev/null
         $LCTL --device ${obdfilter_name}_osc detach  >/dev/null
@@ -6856,47 +7102,60 @@ obdecho_create_test() {
         local OBD=$1
         local node=$2
         local rc=0
+        local id
         do_facet $node "$LCTL attach echo_client ec ec_uuid" || rc=1
-        [ $rc -eq 0 ] && { do_facet $node "$LCTL --device ec setup $OBD" ||    \
+        [ $rc -eq 0 ] && { do_facet $node "$LCTL --device ec setup $OBD" ||
                            rc=2; }
-        [ $rc -eq 0 ] && { do_facet $node "$LCTL --device ec create 1" ||      \
-                           rc=3; }
-        [ $rc -eq 0 ] && { do_facet $node "$LCTL --device ec test_brw 0 w 1" ||\
+        if [ $rc -eq 0 ]; then
+            id=$(do_facet $node "$LCTL --device ec create 1"  | awk '/object id/ {print $6}')
+            [ ${PIPESTATUS[0]} -eq 0 -a -n "$id" ] || rc=3
+        fi
+        echo "New object id is $id"
+        [ $rc -eq 0 ] && { do_facet $node "$LCTL --device ec test_brw 10 w v 64 $id" ||
                            rc=4; }
         [ $rc -eq 0 -o $rc -gt 2 ] && { do_facet $node "$LCTL --device ec "    \
                                         "cleanup" || rc=5; }
         [ $rc -eq 0 -o $rc -gt 1 ] && { do_facet $node "$LCTL --device ec "    \
                                         "detach" || rc=6; }
+        [ $rc -ne 0 ] && echo "obecho_create_test failed: $rc"
         return $rc
 }
 
-test_180() {
+test_180a() {
         local rc=0
         local rmmod_local=0
-        local rmmod_remote=0
 
-        lsmod | grep -q obdecho || \
-                { load_module obdecho/obdecho && rmmod_local=1; }
-        OBD=$($LCTL dl | grep -v mdt | grep osc | awk '{print $4;exit}')
-        HOST=$($LCTL dl -t | grep -v mdt | grep osc | awk '{print $7;exit}')
-        OBD=`echo $OBD | sed 's/-osc-.*$//'`
-        [ "x$OBD" != "x" ] && { setup_obdecho_osc $HOST $OBD || rc=1; } || rc=1
-        [ $rc -eq 0 ] && { obdecho_create_test ${OBD}_osc client || rc=2; }
-        [ "x$OBD" != "x" ] && cleaup_obdecho_osc $OBD
+        if ! module_loaded obdecho; then
+            load_module obdecho/obdecho 
+            rmmod_local=1           
+        fi
+
+        local osc=$($LCTL dl | grep -v mdt | awk '$3 == "osc" {print $4; exit}')
+        local host=$(awk '/current_connection:/ {print $2}' /proc/fs/lustre/osc/$osc/import)
+        local target=$(awk '/target:/ {print $2}' /proc/fs/lustre/osc/$osc/import)
+        target=${target%_UUID}
+        
+        [[ -n $target ]]  && { setup_obdecho_osc $host $target || rc=1; } || rc=1
+        [ $rc -eq 0 ] && { obdecho_create_test ${target}_osc client || rc=2; }
+        [[ -n $target ]] && cleanup_obdecho_osc $target
         [ $rmmod_local -eq 1 ] && rmmod obdecho
-        [ $rc -eq 0 ] || return $rc
+        return $rc
+}
+run_test 180a "test obdecho on osc"
+
+test_180b() {
+        local rc=0
+        local rmmod_remote=0
 
         do_facet ost "lsmod | grep -q obdecho || "                      \
                      "{ insmod ${LUSTRE}/obdecho/obdecho.ko || "        \
                      "modprobe obdecho; }" && rmmod_remote=1
-        OBD=$(do_facet ost $LCTL dl | awk '/obdfilter/ {print $4;exit}')
-        [ "x$OBD" != "x" ] && { obdecho_create_test $OBD ost || rc=3; }
+        target=$(do_facet ost $LCTL dl | awk '/obdfilter/ {print $4;exit}')
+        [[ -n $target ]] && { obdecho_create_test $target ost || rc=1; }
         [ $rmmod_remote -eq 1 ] && do_facet ost "rmmod obdecho"
-        [ $rc -eq 0 ] || return $rc
-
-        true
+        return $rc
 }
-run_test 180 "test obdecho ============================================"
+run_test 180b "test obdecho directly on obdfilter"
 
 # OST pools tests
 POOL=${POOL:-cea1}
@@ -6906,7 +7165,8 @@ TGTPOOL_MAX=$(($TGT_COUNT - 1))
 TGTPOOL_STEP=2
 TGTPOOL_LIST=`seq $TGTPOOL_FIRST $TGTPOOL_STEP $TGTPOOL_MAX`
 POOL_ROOT=${POOL_ROOT:-$DIR/d200.pools}
-POOL_DIR=$POOL_ROOT/dir_tst
+POOL_DIR_NAME=dir_tst
+POOL_DIR=$POOL_ROOT/$POOL_DIR_NAME
 POOL_FILE=$POOL_ROOT/file_tst
 
 check_file_in_pool()
@@ -6956,6 +7216,18 @@ test_200c() {
 	mkdir -p $POOL_DIR
 	$SETSTRIPE -c 2 -p $POOL $POOL_DIR
 	[ $? = 0 ] || error "Cannot set pool $POOL to $POOL_DIR"
+	# b-19919 test relative path works well
+	mkdir -p $POOL_DIR/$POOL_DIR_NAME
+	cd $POOL_DIR
+	$SETSTRIPE -c 2 -p $POOL $POOL_DIR_NAME
+	[ $? = 0 ] || error "Cannot set pool $POOL to $POOL_DIR/$POOL_DIR_NAME"
+	$SETSTRIPE -c 2 -p $POOL ./$POOL_DIR_NAME
+	[ $? = 0 ] || error "Cannot set pool $POOL to $POOL_DIR/./$POOL_DIR_NAME"
+	$SETSTRIPE -c 2 -p $POOL ../$POOL_DIR_NAME
+	[ $? = 0 ] || error "Cannot set pool $POOL to $POOL_DIR/../$POOL_DIR_NAME"
+	$SETSTRIPE -c 2 -p $POOL ../$POOL_DIR_NAME/$POOL_DIR_NAME
+	[ $? = 0 ] || error "Cannot set pool $POOL to $POOL_DIR/../$POOL_DIR_NAME/$POOL_DIR_NAME"
+	rm -rf $POOL_DIR_NAME; cd -
 }
 run_test 200c "Set pool on a directory ================================="
 

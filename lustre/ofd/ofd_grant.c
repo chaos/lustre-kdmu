@@ -334,6 +334,9 @@ restat:
  * writeback of the dirty data that was already granted space can write
  * right on through.
  * Caller must hold ofd_grant_sem. 
+ *
+ * XXXXXX: currently lnb_grant_used is filled by OSD, but this should change
+ *         with proper grants implementation
  */
 int filter_grant_check(const struct lu_env *env, struct obd_export *exp, 
                        struct obdo *oa, struct niobuf_local *lnb, int nrpages,
@@ -361,9 +364,8 @@ int filter_grant_check(const struct lu_env *env, struct obd_export *exp,
                                        exp->exp_client_uuid.uuid, exp,
                                        *used, bytes, fed->fed_grant, i);
                         } else {
-                                *used += bytes;
+                                *used += lnb[i].lnb_grant_used;
                                 lnb[i].flags |= OBD_BRW_GRANTED;
-                                lnb[i].lnb_grant_used = bytes;
                                 CDEBUG(0, "idx %d used=%lu\n", i, *used);
 
                                 rc = 0;
@@ -372,9 +374,8 @@ int filter_grant_check(const struct lu_env *env, struct obd_export *exp,
                 }
                 if (*left > ungranted + bytes) {
                         /* if enough space, pretend it was granted */
-                        ungranted += bytes;
+                        ungranted += lnb[i].lnb_grant_used;
                         lnb[i].flags |= OBD_BRW_GRANTED;
-                        lnb[i].lnb_grant_used = bytes;
                         CDEBUG(0, "idx %d ungranted=%lu\n", i, ungranted);
                         rc = 0;
                         continue;
@@ -389,6 +390,7 @@ int filter_grant_check(const struct lu_env *env, struct obd_export *exp,
                  */
                 lnb[i].rc = -ENOSPC;
                 lnb[i].flags &= ~OBD_BRW_GRANTED;
+                lnb[i].lnb_grant_used = 0;
                 CDEBUG(D_CACHE,"%s: cli %s/%p idx %d no space for %d\n",
                                 exp->exp_obd->obd_name,
                                 exp->exp_client_uuid.uuid, exp, i, bytes);
@@ -468,7 +470,7 @@ long _filter_grant(const struct lu_env *env, struct obd_export *exp,
 #if 0
         grant = (min(want, fs_space_left >> 3) / frsize) * frsize;
 #else
-        grant = min(want, fs_space_left >> 3);
+        grant = (min(want, fs_space_left >> 3) >> 12) << 12;
 #endif
         if (grant) {
                 /* Allow >FILTER_GRANT_CHUNK size when clients

@@ -365,14 +365,14 @@ extern int  lwt_snapshot (cfs_cycles_t *now, int *ncpu, int *total_size,
 /*
  * long_ptr_t & ulong_ptr_t, same to "long" for gcc
  */
-# define LPLU "%lu"
-# define LPLD "%ld"
-# define LPLX "%#lx"
+#define LPLU "%lu"
+#define LPLD "%ld"
+#define LPLX "%#lx"
 
 /*
  * pid_t
  */
-# define LPPID "%d"
+#define LPPID "%d"
 
 #ifndef LPU64
 # error "No word size defined"

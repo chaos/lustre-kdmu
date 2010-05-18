@@ -112,9 +112,6 @@ struct dentry * osd_child_dentry_by_inode(const struct lu_env *env,
                                                  struct inode *inode,
                                                  const char *name,
                                                  const int namelen);
-extern struct buffer_head * ldiskfs_find_entry(struct dentry *dentry,
-                                               struct ldiskfs_dir_entry_2
-                                               ** res_dir);
 
 static int osd_oi_index_create_one(struct osd_thread_info *info,
                                    struct osd_device *osd, char *name,
@@ -126,12 +123,13 @@ static int osd_oi_index_create_one(struct osd_thread_info *info,
         struct inode *inode;
         struct ldiskfs_dir_entry_2 *de;
         struct dentry *dentry;
+        struct inode  *dir = osd_sb(osd)->s_root->d_inode;
         handle_t *jh;
         int rc;
 
         dentry = osd_child_dentry_by_inode(env, osd_sb(osd)->s_root->d_inode,
                                            name, strlen(name));
-        bh = ldiskfs_find_entry(dentry, &de);
+        bh = ll_ldiskfs_find_entry(dir, dentry, &de);
         if (bh) {
                 brelse(bh);
 
@@ -146,7 +144,7 @@ static int osd_oi_index_create_one(struct osd_thread_info *info,
                 RETURN(PTR_ERR(inode));
         }
 
-        jh = journal_start(osd_journal(osd), 100); 
+        jh = ldiskfs_journal_start_sb(osd_sb(osd), 100);
         LASSERT(!IS_ERR(jh));
 
         inode = ldiskfs_create_inode(jh, osd_sb(osd)->s_root->d_inode,
@@ -165,7 +163,7 @@ static int osd_oi_index_create_one(struct osd_thread_info *info,
         rc = ldiskfs_add_entry(jh, dentry, inode);
         LASSERT(rc == 0);
 
-        journal_stop(jh);
+        ldiskfs_journal_stop(jh);
         iput(inode);
 
         return rc;

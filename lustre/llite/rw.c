@@ -746,8 +746,22 @@ int ll_readahead(const struct lu_env *env, struct cl_io *io,
                 end = ras->ras_window_start + ras->ras_window_len - 1;
         }
         if (end != 0) {
+                unsigned long tmp_end;
+                /*
+                 * Align RA window to an optimal boundary.
+                 *
+                 * XXX This would be better to align to cl_max_pages_per_rpc
+                 * instead of PTLRPC_MAX_BRW_PAGES, because the RPC size may
+                 * be aligned to the RAID stripe size in the future and that
+                 * is more important than the RPC size.
+                 */
+                tmp_end = ((end + 1) & (~(PTLRPC_MAX_BRW_PAGES - 1))) - 1;
+                if (tmp_end > start)
+                        end = tmp_end;
+
                 /* Truncate RA window to end of file */
                 end = min(end, (unsigned long)((kms - 1) >> CFS_PAGE_SHIFT));
+
                 ras->ras_next_readahead = max(end, end + 1);
                 RAS_CDEBUG(ras);
         }
@@ -962,7 +976,6 @@ void ras_update(struct ll_sb_info *sbi, struct inode *inode,
         int zero = 0, stride_detect = 0, ra_miss = 0;
         ENTRY;
 
-        cfs_spin_lock(&sbi->ll_lock);
         cfs_spin_lock(&ras->ras_lock);
 
         ll_ra_stats_inc_sbi(sbi, hit ? RA_STAT_HIT : RA_STAT_MISS);
@@ -1103,7 +1116,6 @@ out_unlock:
         RAS_CDEBUG(ras);
         ras->ras_request_index++;
         cfs_spin_unlock(&ras->ras_lock);
-        cfs_spin_unlock(&sbi->ll_lock);
         return;
 }
 

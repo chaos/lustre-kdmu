@@ -139,7 +139,8 @@ struct obd_statfs {
 #define LL_IOC_LLOOP_INFO               _IOWR('f', 171, long)
 #define LL_IOC_LLOOP_DETACH_BYDEV       _IOWR('f', 172, long)
 #define LL_IOC_PATH2FID                 _IOR ('f', 173, long)
-#define LL_IOC_GET_MDTIDX               _IOR ('f', 174, int)
+#define LL_IOC_GET_CONNECT_FLAGS        _IOWR('f', 174, __u64 *)
+#define LL_IOC_GET_MDTIDX               _IOR ('f', 175, int)
 
 #define LL_IOC_HSM_CT_START             _IOW ('f', 178, struct lustre_kernelcomm *)
 
@@ -482,6 +483,7 @@ enum changelog_rec_type {
         CL_SETATTR  = 14,
         CL_XATTR    = 15,
         CL_HSM      = 16, /* HSM specific events, see flags */
+        CL_TIME     = 17, /* mtime, atime, ctime change only */
         CL_LAST
 };
 
@@ -489,7 +491,7 @@ static inline const char *changelog_type2str(int type) {
         static const char *changelog_str[] = {
                 "MARK",  "CREAT", "MKDIR", "HLINK", "SLINK", "MKNOD", "UNLNK",
                 "RMDIR", "RNMFM", "RNMTO", "OPEN",  "CLOSE", "IOCTL", "TRUNC",
-                "SATTR", "XATTR", "HSM"   };
+                "SATTR", "XATTR", "HSM",   "TIME"  };
         if (type >= 0 && type < CL_LAST)
                 return changelog_str[type];
         return NULL;

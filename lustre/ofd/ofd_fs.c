@@ -439,7 +439,7 @@ static inline int filter_clients_data_init(const struct lu_env *env,
                         }
                 } else {
                         fed = &exp->exp_filter_data;
-                        fed->fed_lcd = lcd;
+                        fed->fed_ted.ted_lcd = lcd;
 #if 0
                         fed->fed_group = lcd->lcd_group;
 #endif

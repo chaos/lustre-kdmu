@@ -48,15 +48,6 @@
 #include <linux/types.h>
 /* prerequisite for linux/xattr.h */
 #include <linux/fs.h>
-/*
- * XXX temporary stuff: direct access to ldiskfs/jdb. Interface between osd
- * and file system is not yet specified.
- */
-/* handle_t, journal_start(), journal_stop() */
-#include <linux/jbd.h>
-/* LDISKFS_SB() */
-#include <linux/ldiskfs_fs.h>
-#include <linux/ldiskfs_jbd.h>
 
 /*
  * struct OBD_{ALLOC,FREE}*()
@@ -359,9 +350,10 @@ static int osd_map_remote_to_local(loff_t offset, ssize_t len, int *nrpages,
                 lb->flags = 0;
                 lb->page = NULL;
                 lb->rc = 0;
-                lb->lnb_grant_used = 0;
+                lb->lnb_grant_used = 4096;
 
-                LASSERTF(plen <= len, "plen %u, len %u\n", plen, len);
+                LASSERTF(plen <= len, "plen %u, len %lld\n", plen,
+                         (long long) len);
                 offset += plen;
                 len -= plen;
                 lb++;
@@ -793,6 +785,7 @@ static int osd_ldiskfs_write_record(struct inode *inode, void *buf, int bufsize,
         int err = 0;
         int size;
         int boffs;
+        int dirty_inode = 0;
 
         while (bufsize > 0) {
                 if (bh != NULL)
@@ -837,9 +830,11 @@ static int osd_ldiskfs_write_record(struct inode *inode, void *buf, int bufsize,
                         i_size_write(inode, new_size);
                 if (i_size_read(inode) > LDISKFS_I(inode)->i_disksize) {
                         LDISKFS_I(inode)->i_disksize = i_size_read(inode);
-                        inode->i_sb->s_op->dirty_inode(inode);
+                        dirty_inode = 1;
                 }
                 spin_unlock(&inode->i_lock);
+                if (dirty_inode)
+                        inode->i_sb->s_op->dirty_inode(inode);
         }
 
         if (err == 0)

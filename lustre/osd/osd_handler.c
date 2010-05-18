@@ -885,7 +885,7 @@ static int osd_label_set(const struct lu_env *env, const struct dt_device *dt,
         int rc;
 
         journal = LDISKFS_SB(sb)->s_journal;
-        handle = journal_start(journal, 1);
+        handle = ldiskfs_journal_start_sb(sb, 1);
         if (IS_ERR(handle)) {
                 CERROR("can't start transaction\n");
                 return(PTR_ERR(handle));
@@ -901,7 +901,7 @@ static int osd_label_set(const struct lu_env *env, const struct dt_device *dt,
         rc = ldiskfs_journal_dirty_metadata(handle, LDISKFS_SB(sb)->s_sbh);
 
 out:
-        journal_stop(handle);
+        ldiskfs_journal_stop(handle);
 
         if (rc == 0) {
                 osd_procfs_fini(osd_dt_dev(dt));
@@ -1504,8 +1504,8 @@ static int osd_punch(const struct lu_env *env, struct dt_object *dt,
                        (unsigned long) tid,
                        (unsigned long) h->h_transaction->t_tid);
                 if (h->h_buffer_credits > oh->ot_credits) {
-                        if (journal_extend(h, oh->ot_credits))
-                                rc2 = journal_restart(h, oh->ot_credits);
+                        if (ldiskfs_journal_extend(h, oh->ot_credits))
+                                rc2 = ldiskfs_journal_restart(h, oh->ot_credits);
                 }
         }
 

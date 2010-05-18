@@ -75,7 +75,7 @@
 /* check if request's xid is equal to last one or not*/
 static inline int req_xid_is_last(struct ptlrpc_request *req)
 {
-        struct lsd_client_data *lcd = req->rq_export->exp_mdt_data.med_lcd;
+        struct lsd_client_data *lcd = req->rq_export->exp_target_data.ted_lcd;
         return (req->rq_xid == lcd->lcd_last_xid ||
                 req->rq_xid == lcd->lcd_last_close_xid);
 }
@@ -171,14 +171,6 @@ struct mdt_device {
         struct lprocfs_stats      *mdt_stats;
         int                        mdt_sec_level;
 };
-
-#define mdt_transno_lock        mdt_lut.lut_translock
-#define mdt_last_transno        mdt_lut.lut_last_transno
-#define mdt_last_rcvd           mdt_lut.lut_last_rcvd
-#define mdt_mount_count         mdt_lut.lut_mount_count
-#define mdt_lsd                 mdt_lut.lut_lsd
-#define mdt_client_bitmap_lock  mdt_lut.lut_client_bitmap_lock
-#define mdt_client_bitmap       mdt_lut.lut_client_bitmap
 
 #define MDT_SERVICE_WATCHDOG_FACTOR     (2)
 #define MDT_ROCOMPAT_SUPP       (OBD_ROCOMPAT_LOVOBJID)
@@ -346,8 +338,8 @@ struct mdt_thread_info {
         struct mdt_reint_record    mti_rr;
 
         /** md objects included in operation */
-        struct mdt_object         *mti_mos[PTLRPC_NUM_VERSIONS];
-
+        struct mdt_object         *mti_mos;
+        __u64                      mti_ver[PTLRPC_NUM_VERSIONS];
         /*
          * Operation specification (currently create and lookup)
          */
@@ -401,11 +393,6 @@ struct mdt_thread_info {
         struct md_attr             mti_tmp_attr;
 };
 
-#define mti_parent      mti_mos[0]
-#define mti_child       mti_mos[1]
-#define mti_parent1     mti_mos[2]
-#define mti_child1      mti_mos[3]
-
 typedef void (*mdt_cb_t)(const struct mdt_device *mdt, __u64 transno,
                          void *data, int err);
 struct mdt_commit_cb {
@@ -455,6 +442,12 @@ static inline struct md_object *mdt_object_child(struct mdt_object *o)
 static inline struct ptlrpc_request *mdt_info_req(struct mdt_thread_info *info)
 {
          return info->mti_pill ? info->mti_pill->rc_req : NULL;
+}
+
+static inline int req_is_replay(struct ptlrpc_request *req)
+{
+        LASSERT(req->rq_reqmsg);
+        return !!(lustre_msg_get_flags(req->rq_reqmsg) & MSG_REPLAY);
 }
 
 static inline __u64 mdt_conn_flags(struct mdt_thread_info *info)
@@ -650,7 +643,10 @@ int mdt_check_ucred(struct mdt_thread_info *);
 int mdt_init_ucred(struct mdt_thread_info *, struct mdt_body *);
 int mdt_init_ucred_reint(struct mdt_thread_info *);
 void mdt_exit_ucred(struct mdt_thread_info *);
-int mdt_version_get_check(struct mdt_thread_info *, int);
+int mdt_version_get_check(struct mdt_thread_info *, struct mdt_object *, int);
+void mdt_version_get_save(struct mdt_thread_info *, struct mdt_object *, int);
+int mdt_version_get_check_save(struct mdt_thread_info *, struct mdt_object *,
+                               int);
 
 /* mdt_idmap.c */
 int mdt_init_sec_level(struct mdt_thread_info *);
@@ -719,7 +715,7 @@ static inline int mdt_check_resent(struct mdt_thread_info *info,
                         RETURN(1);
                 }
                 DEBUG_REQ(D_HA, req, "no reply for RESENT req (have "LPD64")",
-                          req->rq_export->exp_mdt_data.med_lcd->lcd_last_xid);
+                          req->rq_export->exp_target_data.ted_lcd->lcd_last_xid);
         }
         RETURN(0);
 }
