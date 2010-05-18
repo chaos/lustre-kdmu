@@ -976,10 +976,10 @@ static int mdt_txn_commit_cb(const struct lu_env *env,
         LASSERT(mdt);
 
         txi = lu_context_key_get(&txn->th_ctx, &mdt_txn_key);
-        if (unlikely(txi == NULL)) {
-                CERROR("no mdt_txn_key\n");
+        /* there is a race window between creation of new context in tx handle
+         * and mdt registering commit context since OSD is started before MDT */
+        if (unlikely(txi == NULL))
                 return 0;
-        }
 
         /* iterate through all additional callbacks */
         for (i = 0; i < txi->txi_cb_count; i++) {
