@@ -1141,7 +1141,7 @@ static int lod_qos_parse_config(const struct lu_env *env, struct lod_object *lo,
         int                    rc;
         ENTRY;
 
-        if (buf == NULL || buf->lb_buf == NULL)
+        if (buf == NULL || buf->lb_buf == NULL || buf->lb_len == 0)
                 RETURN(0);
 
         v1 = buf->lb_buf;
