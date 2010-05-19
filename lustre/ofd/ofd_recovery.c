@@ -243,6 +243,12 @@ static int filter_txn_commit_cb(const struct lu_env *env,
 
         txi = lu_context_key_get(&txn->th_ctx, &filter_txn_thread_key);
 
+        /*
+         * thandle with context could be created before filter
+         */
+        if (unlikely(txi == NULL))
+                return 0;
+
         /* iterate through all additional callbacks */
         for (i = 0; i < txi->txi_cb_count; i++) {
                 txi->txi_cb[i].filter_cb_func(&ofd->ofd_lut, txi->txi_transno,
