@@ -1468,9 +1468,9 @@ int llog_get_cat_list(struct obd_device *disk_obd,
                         GOTO(out_trans, rc);
 
                 dt_write_lock(&env, o, 0);
-                LASSERT(!dt_object_exists(o));
 
-                rc = dt_create(&env, o, &attr, NULL, &dof, th);
+                if (!dt_object_exists(o))
+                        rc = dt_create(&env, o, &attr, NULL, &dof, th);
 
                 dt_write_unlock(&env, o);
 
