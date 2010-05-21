@@ -585,17 +585,16 @@ static void list_param_cb(void *obj, void *data)
         CDEBUG(D_INFO, "copy \"%s\" out, pos=%d\n", lpe->lpe_name, lpcb->pos);
 }
 
-static int list_param(struct libcfs_param_entry *parent, char *buf)
+static int list_param(struct libcfs_param_entry *parent, char *kern_buf)
 {
         struct list_param_cb_data lpcd;
         int rc = 0;
-        int pos = 0;
 
         if (parent == NULL)
                 return -EINVAL;
 
-        lpcd.buf = buf;
-        lpcd.pos = pos;
+        lpcd.buf = kern_buf;
+        lpcd.pos = 0;
         cfs_down_write(&parent->lpe_rw_sem);
         cfs_hash_for_each(parent->lpe_hash_t, list_param_cb, &lpcd);
         cfs_up_write(&parent->lpe_rw_sem);
@@ -603,16 +602,17 @@ static int list_param(struct libcfs_param_entry *parent, char *buf)
         return rc;
 }
 
-int libcfs_param_list(const char *parent_path, char *buf, int *buflen)
+int libcfs_param_list(const char *parent_path, char *user_buf, int *buflen)
 {
         /* In kernel space, do like readdir
          * In user space, match these entries pathname with the pattern */
         struct libcfs_param_entry *parent;
+        char *kern_buf = NULL;
         int datalen = 0;
         int num;
         int rc;
 
-        if (buf == NULL) {
+        if (user_buf == NULL) {
                 CERROR("The buffer is null.\n");
                 GOTO(out, rc = -ENOMEM);
         }
@@ -635,7 +635,16 @@ int libcfs_param_list(const char *parent_path, char *buf, int *buflen)
         if (datalen > *buflen)
                 GOTO(parent, rc = -ENOMEM);
         /* list the entries */
-        rc = list_param(parent, buf);
+        LIBCFS_ALLOC(kern_buf, datalen);
+        if (kern_buf == NULL) {
+                CERROR("kernel can't alloc %d bytes.\n", datalen);
+                *buflen = 0;
+                GOTO(parent, rc = -ENOMEM);
+        }
+        rc = list_param(parent, kern_buf);
+        if (cfs_copy_to_user(user_buf, kern_buf, datalen))
+                rc = -EFAULT;
+        LIBCFS_FREE(kern_buf, datalen);
 parent:
         libcfs_param_put(parent);
 out:

@@ -40,7 +40,7 @@
 /* To avoid the error "initializer element is not constant",
  * we use a function to initialize these elements.
  */
-static struct libcfs_param_ctl_table lp_ksocknal_ctl_table[29];
+static struct libcfs_param_ctl_table lp_ksocknal_ctl_table[30];
 static void libcfs_param_ksocknal_ctl_table_init(void)
 {
         int i = 0;
@@ -122,6 +122,16 @@ static void libcfs_param_ksocknal_ctl_table_init(void)
         {
                 .name     = "eager_ack",
                 .data     = ksocknal_tunables.ksnd_eager_ack,
+                .mode     = 0644,
+                .read     = libcfs_param_intvec_read,
+                .write    = libcfs_param_intvec_write
+        };
+        i++;
+
+        lp_ksocknal_ctl_table[i] = (struct libcfs_param_ctl_table)
+        {
+                .name     = "nonblk_zcack",
+                .data     = ksocknal_tunables.ksnd_nonblk_zcack,
                 .mode     = 0644,
                 .read     = libcfs_param_intvec_read,
                 .write    = libcfs_param_intvec_write

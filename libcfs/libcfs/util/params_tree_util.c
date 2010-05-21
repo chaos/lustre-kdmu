@@ -42,7 +42,7 @@
 #include <libcfs/libcfsutil.h>
 #include <lnet/lnetctl.h>
 
-#define MAX_PARAMS_BUFLEN       8192
+#define PARAMS_BUFLEN_DEFAULT       8192
 
 /* Parameters Tree Userspace APIs */
 /* Introduction to how to list/get/set_param from params_tree without glob.
@@ -189,8 +189,8 @@ out:
         return preg_head;
 }
 
-/* receive params from kernel by ioctl */
-static int params_recv(void *buf, struct params_entry_list **pel)
+/* fill entry list */
+static int params_fill_list(void *buf, struct params_entry_list **pel)
 {
         struct libcfs_param_info *lpi = buf;
         struct params_entry_list *temp = NULL;
@@ -230,15 +230,16 @@ static int send_req_to_kernel(char *path, char *list_buf, int *buflen)
         data.ioc_plen1 = *buflen;
         data.ioc_pbuf1 = list_buf;
 
-        /* if MAX_PARAMS_BUFLEN is not large enough,
+        /* if PARAMS_BUFLEN_DEFAULT is not large enough,
          * we should avoid buflen < packlen */
         ioc_data_buflen = libcfs_ioctl_packlen(&data);
-        if (ioc_data_buflen <= MAX_PARAMS_BUFLEN)
-                ioc_data_buflen = MAX_PARAMS_BUFLEN;
+        if (ioc_data_buflen <= PARAMS_BUFLEN_DEFAULT)
+                ioc_data_buflen = PARAMS_BUFLEN_DEFAULT;
         ioc_data_buf = malloc(ioc_data_buflen);
         if (ioc_data_buf == NULL) {
                 fprintf(stderr,
                         "error: %s: No memory for ioc_data.\n", __FUNCTION__);
+                *buflen = 0;
                 return -ENOMEM;
         }
         memset(ioc_data_buf, 0, ioc_data_buflen);
@@ -249,6 +250,7 @@ static int send_req_to_kernel(char *path, char *list_buf, int *buflen)
                 fprintf(stderr,
                         "error: %s: Failed to pack libcfs_ioctl data (%d).\n",
                         __FUNCTION__, rc);
+                GOTO(out, rc < 0 ? rc : -rc);
                 rc = -rc;
                 goto out;
         }
@@ -259,6 +261,8 @@ static int send_req_to_kernel(char *path, char *list_buf, int *buflen)
         if (rc) {
                 fprintf(stderr, "error: %s: IOC_LIBCFS_LIST_PARAM failed.\n",
                         __FUNCTION__);
+                *buflen = 0;
+                GOTO(out, rc < 0 ? rc : -rc);
                 goto out;
         }
         rc = ((struct libcfs_ioctl_data *)buf)->ioc_u32[0];
@@ -279,7 +283,7 @@ static int params_readdir(char *parent_path, struct params_entry_list **pel)
         struct params_entry_list *temp = NULL;
         char *list_buf = NULL;
         char *temp_buf = NULL;
-        int buflen = MAX_PARAMS_BUFLEN;
+        int buflen = PARAMS_BUFLEN_DEFAULT;
         int num;
         int len;
         int i;
@@ -306,7 +310,7 @@ static int params_readdir(char *parent_path, struct params_entry_list **pel)
         temp_buf = list_buf;
         num = rc;
         for (i = 0; i < num; i++) {
-                rc = params_recv(temp_buf, &temp);
+                rc = params_fill_list(temp_buf, &temp);
                 if (rc < 0) {
                         fprintf(stderr,
                                 "error: Message receive: %s\n", strerror(-rc));
@@ -477,8 +481,8 @@ int params_read(char *path, int path_len, char *read_buf,
         data.ioc_pbuf1 = read_buf;
         /* avoid buflen < packlen */
         ioc_data_buflen = libcfs_ioctl_packlen(&data);
-        if (ioc_data_buflen <= MAX_PARAMS_BUFLEN)
-                ioc_data_buflen = MAX_PARAMS_BUFLEN;
+        if (ioc_data_buflen <= PARAMS_BUFLEN_DEFAULT)
+                ioc_data_buflen = PARAMS_BUFLEN_DEFAULT;
         ioc_data_buf = malloc(ioc_data_buflen);
         if (ioc_data_buf == NULL) {
                 fprintf(stderr,
@@ -552,8 +556,8 @@ int params_write(char *path, int path_len, char *write_buf, int buf_len,
         data.ioc_inllen2 = buf_len + 1;
         /* avoid buflen < packlen */
         ioc_data_buflen = libcfs_ioctl_packlen(&data);
-        if (ioc_data_buflen <= MAX_PARAMS_BUFLEN)
-                ioc_data_buflen = MAX_PARAMS_BUFLEN;
+        if (ioc_data_buflen <= PARAMS_BUFLEN_DEFAULT)
+                ioc_data_buflen = PARAMS_BUFLEN_DEFAULT;
         ioc_data_buf = malloc(ioc_data_buflen);
         if (ioc_data_buf == NULL) {
                 fprintf(stderr,
