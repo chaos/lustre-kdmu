@@ -251,8 +251,6 @@ static int send_req_to_kernel(char *path, char *list_buf, int *buflen)
                         "error: %s: Failed to pack libcfs_ioctl data (%d).\n",
                         __FUNCTION__, rc);
                 GOTO(out, rc < 0 ? rc : -rc);
-                rc = -rc;
-                goto out;
         }
         /* XXX: lreplicate can't recognize LNET_DEV_ID */
         register_ioc_dev(LNET_DEV_ID, LNET_DEV_PATH,
@@ -263,7 +261,6 @@ static int send_req_to_kernel(char *path, char *list_buf, int *buflen)
                         __FUNCTION__);
                 *buflen = 0;
                 GOTO(out, rc < 0 ? rc : -rc);
-                goto out;
         }
         rc = ((struct libcfs_ioctl_data *)buf)->ioc_u32[0];
         if (rc < 0) {
