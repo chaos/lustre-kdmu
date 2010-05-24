@@ -2383,8 +2383,6 @@ static int osd_get_bufs(const struct lu_env *env, struct dt_object *dt,
         lb->bytes += tmp;
 #endif
 
-        lb->obj = dt;
-
         return npages;
 out_err:
         lb = _lb;
