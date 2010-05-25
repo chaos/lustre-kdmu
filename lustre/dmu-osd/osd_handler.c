@@ -1048,7 +1048,6 @@ static int osd_declare_object_create(const struct lu_env *env,
         char buf[64];
         ENTRY;
 
-        LASSERT(!dt_object_exists(dt));
         LASSERT(dof);
 
         switch (dof->dof_type) {
@@ -2337,8 +2336,6 @@ static int osd_get_bufs(const struct lu_env *env, struct dt_object *dt,
         udmu_indblk_overhead(osd_dt_obj(dt)->oo_db, &lb->bytes, &tmp);
         lb->bytes += tmp;
 #endif
-
-        lb->obj = dt;
 
         return npages;
 out_err:
