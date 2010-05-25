@@ -34,11 +34,12 @@ ALWAYS_EXCEPT="$ALWAYS_EXCEPT 52 54c 56a 60 160 180"
 
 # 24v -- (bug 22803) space reservation for unlinks
 # 57a -- (bug 22607) can't determine dnode size in ZFS yet
+# 66  -- blocks counting should be done properly with zfs
 # 132 -- inode counting is different in zfs
 # 155 -- we don't control cache via ZFS OSD yet
 # 156 -- we don't control cache via ZFS OSD yet
 [ "$FSTYPE" = "zfs" -o "$OSTFSTYPE" = "zfs" -o "$MDSFSTYPE" = "zfs" ] && \
-	ALWAYS_EXCEPT="$ALWAYS_EXCEPT 24v 57a 132 155 156"
+	ALWAYS_EXCEPT="$ALWAYS_EXCEPT 24v 57a 66 132 155 156"
 
 # LOD/OSP branch needs fixes:
 # 60  -- llog_osd_create()) ASSERTION(dt) failed
