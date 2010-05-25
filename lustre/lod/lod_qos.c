@@ -901,7 +901,7 @@ static int lod_alloc_qos(const struct lu_env *env, struct lod_object *lo,
         int nfound, good_osts, i, rc = 0;
         int stripe_cnt = lo->mbo_stripenr;
         int stripe_cnt_min = min_stripe_count(stripe_cnt, flags);
-        struct pool_desc *pool;
+        struct pool_desc *pool = NULL;
         struct ost_pool *osts;
         struct lov_qos_rr *lqr;
         cfs_kstatfs_t sfs;
@@ -935,7 +935,7 @@ static int lod_alloc_qos(const struct lu_env *env, struct lod_object *lo,
          * change.
          */
         if (!lod_qos_is_usable(m))
-                GOTO(out_nolock, rc = -EAGAIN);
+                GOTO(out, rc = -EAGAIN);
 
         rc = lod_qos_calc_ppo(lov);
         if (rc)
