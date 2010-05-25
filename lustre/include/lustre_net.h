@@ -64,6 +64,7 @@
 #include <lustre_req_layout.h>
 
 #include <obd_support.h>
+#include <lustre_ver.h>
 
 /* MD flags we _always_ use */
 #define PTLRPC_MD_OPTIONS  0
@@ -163,7 +164,8 @@
 /* SEQ_MAXREPSIZE == lustre_msg + ptlrpc_body + lu_range */
 #define SEQ_MAXREPSIZE  (152)
 
-#define MGS_THREADS_AUTO_MIN 2
+/* MGS threads must be >= 3, see bug 22458 comment #28 */
+#define MGS_THREADS_AUTO_MIN 3
 #define MGS_THREADS_AUTO_MAX 32
 #define MGS_NBUFS       (64 * cfs_num_online_cpus())
 #define MGS_BUFSIZE     (8 * 1024)
@@ -1174,7 +1176,12 @@ __u32 lustre_msg_get_magic(struct lustre_msg *msg);
 __u32 lustre_msg_get_timeout(struct lustre_msg *msg);
 __u32 lustre_msg_get_service_time(struct lustre_msg *msg);
 __u32 lustre_msg_get_cksum(struct lustre_msg *msg);
+#if LUSTRE_VERSION_CODE < OBD_OCD_VERSION(2, 9, 0, 0)
+__u32 lustre_msg_calc_cksum(struct lustre_msg *msg, int compat18);
+#else
+# warning "remove checksum compatibility support for b1_8"
 __u32 lustre_msg_calc_cksum(struct lustre_msg *msg);
+#endif
 void lustre_msg_set_handle(struct lustre_msg *msg,struct lustre_handle *handle);
 void lustre_msg_set_type(struct lustre_msg *msg, __u32 type);
 void lustre_msg_set_opc(struct lustre_msg *msg, __u32 opc);

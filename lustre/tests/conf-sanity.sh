@@ -929,6 +929,7 @@ run_test 29 "permanently remove an OST"
 test_30() {
 	setup
 
+	echo Big config llog
 	TEST="lctl get_param -n llite.$FSNAME-*.max_read_ahead_whole_mb"
 	ORIG=$($TEST)
 	LIST=(1 2 3 4 5 4 3 2 1 2 3 4 5 4 3 2 1 2 3 4 5)
@@ -939,10 +940,20 @@ test_30() {
  	umount_client $MOUNT
 	mount_client $MOUNT || return 4
 	[ "$($TEST)" -ne "$i" ] && return 5
-	set_and_check client "$TEST" "$FSNAME.llite.max_read_ahead_whole_mb" $ORIG || return 6
+	pass
+
+	echo Erase parameter setting
+	do_facet mgs "$LCTL conf_param -d $FSNAME.llite.max_read_ahead_whole_mb" || return 6
+	umount_client $MOUNT
+	mount_client $MOUNT || return 6
+	FINAL=$($TEST)
+	echo "deleted (default) value=$FINAL, orig=$ORIG"
+	# assumes this parameter started at the default value
+	[ "$FINAL" -eq "$ORIG" ] || fail "Deleted value=$FINAL, orig=$ORIG"
+
 	cleanup
 }
-run_test 30 "Big config llog"
+run_test 30 "Big config llog and conf_param deletion"
 
 test_31() { # bug 10734
         # ipaddr must not exist
@@ -2354,6 +2365,58 @@ test_54b() {
     cleanup
 }
 run_test 54b "llverfs"
+
+lov_objid_size()
+{
+	local max_ost_index=$1
+	echo -n $(((max_ost_index + 1) * 8))
+}
+
+test_55() {
+	local mdsdev=$(mdsdevname 1)
+	local ostdev=$(ostdevname 1)
+	local saved_opts=$OST_MKFS_OPTS
+
+	for i in 0 1023 2048
+	do
+		OST_MKFS_OPTS="$saved_opts --index $i"
+		reformat
+
+		setup_noconfig
+		stopall
+
+		setup
+		sync
+		echo checking size of lov_objid for ost index $i
+		LOV_OBJID_SIZE=$(do_facet mds1 "$DEBUGFS -R 'stat lov_objid' $mdsdev 2>/dev/null" | grep ^User | awk '{print $6}')
+		if [ "$LOV_OBJID_SIZE" != $(lov_objid_size $i) ]; then
+			error "lov_objid size has to be $(lov_objid_size $i), not $LOV_OBJID_SIZE"
+		else
+			echo ok, lov_objid size is correct: $LOV_OBJID_SIZE
+		fi
+		stopall
+	done
+
+	OST_MKFS_OPTS=$saved_opts
+	reformat
+}
+run_test 55 "check lov_objid size"
+
+test_56() {
+	add mds1 $MDS_MKFS_OPTS --mkfsoptions='\"-J size=16\"' --reformat $(mdsdevname 1)
+	add ost1 $OST_MKFS_OPTS --index=1000 --reformat $(ostdevname 1)
+	add ost2 $OST_MKFS_OPTS --index=10000 --reformat $(ostdevname 2)
+
+	start_mds
+	start_ost
+	start_ost2 || error "Unable to start second ost"
+	mount_client $MOUNT || error "Unable to mount client"
+	echo ok
+	$LFS osts
+	stopall
+	reformat
+}
+run_test 56 "check big indexes"
 
 cleanup_gss
 equals_msg `basename $0`: test complete
