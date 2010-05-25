@@ -1579,8 +1579,16 @@ static int mdd_create_data(const struct lu_env *env, struct md_object *pobj,
                spec->u.sp_ea.eadata, spec->u.sp_ea.eadatalen,
                spec->sp_cr_flags, spec->no_create);
 
-        buf.lb_buf = spec->u.sp_ea.eadata;
-        buf.lb_len = spec->u.sp_ea.eadatalen;
+        if (spec->sp_cr_flags & MDS_OPEN_HAS_EA) {
+                LASSERT(spec->u.sp_ea.eadata != NULL);
+                LASSERT(spec->u.sp_ea.eadatalen > 0);
+                buf.lb_buf = spec->u.sp_ea.eadata;
+                buf.lb_len = spec->u.sp_ea.eadatalen;
+        } else {
+                buf.lb_buf = NULL;
+                buf.lb_len = 0;
+        }
+
         rc = mdo_declare_xattr_set(env, son, &buf, XATTR_NAME_LOV, 0, handle);
         if (rc)
                 GOTO(out_stop, rc);
