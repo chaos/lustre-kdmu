@@ -379,6 +379,31 @@ struct page *osd_get_page(struct dt_object *dt, loff_t offset, int rw)
         return page;
 }
 
+/*
+ * there are following "locks":
+ * journal_start
+ * i_alloc_sem
+ * i_mutex
+ * page lock
+
+ * osd write path
+    * lock page(s)
+    * journal_start
+    * truncate_sem
+
+ * ext3 vmtruncate:
+    * lock page (all pages), unlock
+    * lock partial page
+    * journal_start
+    * truncate_mutex
+
+ * ext4 vmtruncate:
+    * lock pages, unlock
+    * journal_start
+    * lock partial page
+    * i_data_sem
+
+*/
 int osd_get_bufs(const struct lu_env *env, struct dt_object *d, loff_t pos,
                  ssize_t len, struct niobuf_local *l, int rw,
                  struct lustre_capa *capa)
