@@ -260,7 +260,7 @@ static int send_req_to_kernel(char *path, char *list_buf, int *buflen)
                 fprintf(stderr, "error: %s: IOC_LIBCFS_LIST_PARAM failed.\n",
                         __FUNCTION__);
                 *buflen = 0;
-                GOTO(out, rc < 0 ? rc : -rc);
+                GOTO(out, rc);
         }
         rc = ((struct libcfs_ioctl_data *)buf)->ioc_u32[0];
         if (rc < 0) {
