@@ -601,12 +601,13 @@ static int lod_alloc_rr(const struct lu_env *env, struct lod_object *lo,
         int stripe_idx = 0;
         int stripe_cnt = lo->mbo_stripenr;
         int stripe_cnt_min = min_stripe_count(stripe_cnt, flags);
-        struct pool_desc *pool;
+        struct pool_desc *pool = NULL;
         struct ost_pool *osts;
         struct lov_qos_rr *lqr;
         cfs_kstatfs_t sfs;
         ENTRY;
 
+        printk("%s:%d\n", __FILE__, __LINE__);
         if (lo->mbo_pool && (pool = lov_find_pool(lov, lo->mbo_pool))) {
                 cfs_down_read(&pool_tgt_rw_sem(pool));
                 osts = &(pool->pool_obds);
@@ -615,6 +616,7 @@ static int lod_alloc_rr(const struct lu_env *env, struct lod_object *lo,
                 osts = &(lov->lov_packed);
                 lqr = &(lov->lov_qos.lq_rr);
         }
+        printk("%s:%d\n", __FILE__, __LINE__);
 
         rc = lod_qos_calc_rr(lov, osts, lqr);
         if (rc)
@@ -634,7 +636,9 @@ static int lod_alloc_rr(const struct lu_env *env, struct lod_object *lo,
                 if (stripe_cnt > 1 && (osts->op_count % stripe_cnt) != 1)
                         ++lqr->lqr_offset_idx;
         }
+        printk("%s:%d\n", __FILE__, __LINE__);
         cfs_down_read(&lov->lov_qos.lq_rw_sem);
+        printk("%s:%d\n", __FILE__, __LINE__);
         ost_start_idx_temp = lqr->lqr_start_idx;
 
 repeat_find:
@@ -724,7 +728,9 @@ repeat_find:
                 goto repeat_find;
         }
 
+        printk("%s:%d\n", __FILE__, __LINE__);
         cfs_up_read(&lov->lov_qos.lq_rw_sem);
+        printk("%s:%d\n", __FILE__, __LINE__);
 
         if (stripe_idx) {
                 lo->mbo_stripenr = stripe_idx;
@@ -736,8 +742,11 @@ repeat_find:
         }
 
 out:
+        printk("%s:%d\n", __FILE__, __LINE__);
         if (pool != NULL) {
+        printk("%s:%d\n", __FILE__, __LINE__);
                 cfs_up_read(&pool_tgt_rw_sem(pool));
+        printk("%s:%d\n", __FILE__, __LINE__);
                 /* put back ref got by lov_find_pool() */
                 lov_pool_putref(pool);
         }
@@ -760,7 +769,9 @@ static int lod_alloc_specific(const struct lu_env *env, struct lod_object *lo,
         cfs_kstatfs_t sfs;
         ENTRY;
 
+        printk("%s:%d\n", __FILE__, __LINE__);
         if (lo->mbo_pool && (pool = lov_find_pool(lov, lo->mbo_pool))) {
+        printk("%s:%d\n", __FILE__, __LINE__);
                 cfs_down_read(&pool_tgt_rw_sem(pool));
                 osts = &(pool->pool_obds);
         } else {
@@ -859,8 +870,11 @@ repeat_find:
                lo->mbo_stripenr);
         rc = -EFBIG;
 out:
+        printk("%s:%d\n", __FILE__, __LINE__);
         if (pool != NULL) {
+        printk("%s:%d\n", __FILE__, __LINE__);
                 cfs_up_read(&pool_tgt_rw_sem(pool));
+        printk("%s:%d\n", __FILE__, __LINE__);
                 /* put back ref got by lov_find_pool() */
                 lov_pool_putref(pool);
         }
@@ -910,8 +924,11 @@ static int lod_alloc_qos(const struct lu_env *env, struct lod_object *lo,
         if (stripe_cnt_min < 1)
                 RETURN(-EINVAL);
 
+        printk("%s:%d\n", __FILE__, __LINE__);
         if (lo->mbo_pool && (pool = lov_find_pool(lov, lo->mbo_pool))) {
+        printk("%s:%d\n", __FILE__, __LINE__);
                 cfs_down_read(&pool_tgt_rw_sem(pool));
+        printk("%s:%d\n", __FILE__, __LINE__);
                 osts = &(pool->pool_obds);
                 lqr = &(pool->pool_rr);
         } else {
@@ -929,6 +946,7 @@ static int lod_alloc_qos(const struct lu_env *env, struct lod_object *lo,
 
         /* Do actual allocation, use write lock here. */
         cfs_down_write(&lov->lov_qos.lq_rw_sem);
+        printk("%s:%d\n", __FILE__, __LINE__);
 
         /*
          * Check again, while we were sleeping on @lq_rw_sem things could
@@ -1064,11 +1082,15 @@ static int lod_alloc_qos(const struct lu_env *env, struct lod_object *lo,
         LASSERT(nfound == stripe_cnt);
 
 out:
+        printk("%s:%d\n", __FILE__, __LINE__);
         cfs_up_write(&lov->lov_qos.lq_rw_sem);
 
 out_nolock:
+        printk("%s:%d\n", __FILE__, __LINE__);
         if (pool != NULL) {
+        printk("%s:%d\n", __FILE__, __LINE__);
                 cfs_up_read(&pool_tgt_rw_sem(pool));
+        printk("%s:%d\n", __FILE__, __LINE__);
                 /* put back ref got by lov_find_pool() */
                 lov_pool_putref(pool);
         }
