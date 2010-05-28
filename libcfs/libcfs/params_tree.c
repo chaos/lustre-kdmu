@@ -564,6 +564,7 @@ void libcfs_param_remove(const char *name, struct libcfs_param_entry *lpe)
 struct list_param_cb_data {
         char *buf;
         int pos;
+        int left;
 };
 
 static void list_param_cb(void *obj, void *data)
@@ -571,21 +572,28 @@ static void list_param_cb(void *obj, void *data)
         struct libcfs_param_entry *lpe = obj;
         struct list_param_cb_data *lpcb = data;
         struct libcfs_param_info *lpi;
+        int len = sizeof(struct libcfs_param_info);
 
         LASSERT(lpe != NULL);
 
+        if (lpcb->left < len) {
+                CERROR("Have no enough buffer for list_param.\n");
+                return;
+        }
         lpi = (struct libcfs_param_info *)(lpcb->buf + lpcb->pos);
         /* copy name_len, name, mode */
         lpi->lpi_name_len = lpe->lpe_name_len;
         lpi->lpi_mode = lpe->lpe_mode;
         strncpy(lpi->lpi_name, lpe->lpe_name, lpe->lpe_name_len);
         lpi->lpi_name[lpi->lpi_name_len] = '\0';
-        lpcb->pos += sizeof(struct libcfs_param_info);
+        lpcb->pos += len;
+        lpcb->left -= len;
 
         CDEBUG(D_INFO, "copy \"%s\" out, pos=%d\n", lpe->lpe_name, lpcb->pos);
 }
 
-static int list_param(struct libcfs_param_entry *parent, char *kern_buf)
+static int list_param(struct libcfs_param_entry *parent,
+                      char *kern_buf, int kern_buflen)
 {
         struct list_param_cb_data lpcd;
         int rc = 0;
@@ -595,6 +603,9 @@ static int list_param(struct libcfs_param_entry *parent, char *kern_buf)
 
         lpcd.buf = kern_buf;
         lpcd.pos = 0;
+        lpcd.left = kern_buflen;
+        /* we pass kern_buflen here, because we should avoid the real dir size
+         * is larger than we have. */
         cfs_down_write(&parent->lpe_rw_sem);
         cfs_hash_for_each(parent->lpe_hash_t, list_param_cb, &lpcd);
         cfs_up_write(&parent->lpe_rw_sem);
@@ -641,7 +652,7 @@ int libcfs_param_list(const char *parent_path, char *user_buf, int *buflen)
                 *buflen = 0;
                 GOTO(parent, rc = -ENOMEM);
         }
-        rc = list_param(parent, kern_buf);
+        rc = list_param(parent, kern_buf, datalen);
         if (cfs_copy_to_user(user_buf, kern_buf, datalen))
                 rc = -EFAULT;
         LIBCFS_FREE(kern_buf, datalen);
