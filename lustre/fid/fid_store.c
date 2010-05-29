@@ -74,7 +74,7 @@ static struct lu_buf *seq_store_buf(struct seq_thread_info *info)
 }
 
 struct thandle * seq_store_trans_create(struct lu_server_seq *seq,
-                                       const struct lu_env *env)
+                                        const struct lu_env *env)
 {
         struct dt_device *dt_dev;
         struct thandle *th;
@@ -85,9 +85,8 @@ struct thandle * seq_store_trans_create(struct lu_server_seq *seq,
         return th;
 }
 
-int seq_store_trans_start(struct lu_server_seq *seq,
-                                       const struct lu_env *env,
-                                       struct thandle *th)
+int seq_store_trans_start(struct lu_server_seq *seq, const struct lu_env *env,
+                          struct thandle *th)
 {
         struct dt_device *dt_dev;
         ENTRY;
@@ -155,6 +154,49 @@ int seq_store_write(struct lu_server_seq *seq,
 
 
         RETURN(rc);
+}
+
+int seq_store_update(const struct lu_env *env, struct lu_server_seq *seq,
+                     struct lu_seq_range *out, int sync)
+{
+        struct thandle *th;
+        int rc;
+
+        th = seq_store_trans_create(seq, env);
+        if (IS_ERR(th))
+                RETURN(PTR_ERR(th));
+
+        th->th_sync = sync;
+
+        rc = seq_declare_store_write(seq, env, th);
+        if (rc)
+                GOTO(out, rc);
+
+        if (out != NULL) {
+                rc = fld_declare_server_create(seq->lss_site->ms_server_fld,
+                                               env, th);
+                if (rc)
+                        GOTO(out, rc);
+        }
+
+        rc = seq_store_trans_start(seq, env, th);
+        if (rc)
+                GOTO(out, rc);
+
+        rc = seq_store_write(seq, env, th);
+        if (rc) {
+                CERROR("%s: Can't write space data, rc %d\n",
+                       seq->lss_name, rc);
+        } else if (out != NULL) {
+                rc = fld_server_create(seq->lss_site->ms_server_fld,
+                                       env, out, th);
+                if (rc)
+                        CERROR("%s: Can't Update fld database, rc %d\n",
+                               seq->lss_name, rc);
+        }
+out:
+        seq_store_trans_stop(seq, env, th);
+        return rc;
 }
 
 /*

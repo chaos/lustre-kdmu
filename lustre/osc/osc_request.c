@@ -3463,7 +3463,8 @@ static int osc_cancel(struct obd_export *exp, struct lov_stripe_md *md,
 }
 
 static int osc_cancel_unused(struct obd_export *exp,
-                             struct lov_stripe_md *lsm, int flags,
+                             struct lov_stripe_md *lsm,
+                             ldlm_cancel_flags_t flags,
                              void *opaque)
 {
         struct obd_device *obd = class_exp2obd(exp);
@@ -3973,18 +3974,6 @@ static int osc_set_info_async(struct obd_export *exp, obd_count keylen,
                        exp->exp_obd->obd_name,
                        obd->u.cli.cl_oscc.oscc_next_id);
 
-                RETURN(0);
-        }
-
-        if (KEY_IS(KEY_INIT_RECOV)) {
-                if (vallen != sizeof(int))
-                        RETURN(-EINVAL);
-                cfs_spin_lock(&imp->imp_lock);
-                imp->imp_initial_recov = *(int *)val;
-                cfs_spin_unlock(&imp->imp_lock);
-                CDEBUG(D_HA, "%s: set imp_initial_recov = %d\n",
-                       exp->exp_obd->obd_name,
-                       imp->imp_initial_recov);
                 RETURN(0);
         }
 

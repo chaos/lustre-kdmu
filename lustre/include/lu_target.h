@@ -76,5 +76,6 @@ int lut_init(const struct lu_env *, struct lu_target *,
 int lut_init2(const struct lu_env *, struct lu_target *,
              struct obd_device *, struct dt_device *, struct lu_fid *);
 void lut_fini(const struct lu_env *, struct lu_target *);
+int lut_client_alloc(struct obd_export *);
 void lut_client_free(struct obd_export *);
 #endif /* __LUSTRE_LU_TARGET_H */

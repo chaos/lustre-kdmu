@@ -255,12 +255,16 @@ static int mdt_clients_data_init(const struct lu_env *env,
                                  unsigned long last_size)
 {
         struct lr_server_data  *lsd = &mdt->mdt_lut.lut_lsd;
-        struct lsd_client_data *lcd = NULL;
+        struct lsd_client_data *lcd;
         struct obd_device      *obd = mdt2obd_dev(mdt);
         loff_t off;
         int cl_idx;
         int rc = 0;
         ENTRY;
+
+        OBD_ALLOC_PTR(lcd);
+        if (!lcd)
+                RETURN(-ENOMEM);
 
         /* When we do a clean MDS shutdown, we save the last_transno into
          * the header.  If we find clients with higher last_transno values
@@ -270,12 +274,7 @@ static int mdt_clients_data_init(const struct lu_env *env,
              off < last_size; cl_idx++) {
                 __u64 last_transno;
                 struct obd_export *exp;
-
-                if (!lcd) {
-                        OBD_ALLOC_PTR(lcd);
-                        if (!lcd)
-                                RETURN(-ENOMEM);
-                }
+                struct mdt_thread_info *mti;
 
                 off = lsd->lsd_client_start +
                         cl_idx * lsd->lsd_client_size;
@@ -309,29 +308,28 @@ static int mdt_clients_data_init(const struct lu_env *env,
                 if (IS_ERR(exp)) {
                         if (PTR_ERR(exp) == -EALREADY) {
                                 /* export already exists, zero out this one */
-                                lcd->lcd_uuid[0] = '\0';
-                        } else {
-                                GOTO(err_client, rc = PTR_ERR(exp));
+                                CERROR("Duplicate export %s!\n", lcd->lcd_uuid);
+                                continue;
                         }
-                } else {
-                        struct mdt_thread_info *mti;
-                        mti = lu_context_key_get(&env->le_ctx, &mdt_thread_key);
-                        LASSERT(mti != NULL);
-                        mti->mti_exp = exp;
-                        exp->exp_target_data.ted_lcd = lcd;
-                        rc = mdt_client_add(env, mdt, cl_idx);
-                        /* can't fail existing */
-                        LASSERTF(rc == 0, "rc = %d\n", rc);
-                        /* VBR: set export last committed version */
-                        exp->exp_last_committed = last_transno;
-                        lcd = NULL;
-                        cfs_spin_lock(&exp->exp_lock);
-                        exp->exp_connecting = 0;
-                        exp->exp_in_recovery = 0;
-                        cfs_spin_unlock(&exp->exp_lock);
-                        obd->obd_max_recoverable_clients++;
-                        class_export_put(exp);
+                        GOTO(err_client, rc = PTR_ERR(exp));
                 }
+
+                mti = lu_context_key_get(&env->le_ctx, &mdt_thread_key);
+                LASSERT(mti != NULL);
+                mti->mti_exp = exp;
+                /* copy on-disk lcd to the export */
+                *exp->exp_target_data.ted_lcd = *lcd;
+                rc = mdt_client_add(env, mdt, cl_idx);
+                /* can't fail existing */
+                LASSERTF(rc == 0, "rc = %d\n", rc);
+                /* VBR: set export last committed version */
+                exp->exp_last_committed = last_transno;
+                cfs_spin_lock(&exp->exp_lock);
+                exp->exp_connecting = 0;
+                exp->exp_in_recovery = 0;
+                cfs_spin_unlock(&exp->exp_lock);
+                obd->obd_max_recoverable_clients++;
+                class_export_put(exp);
 
                 CDEBUG(D_OTHER, "client at idx %d has last_transno="LPU64"\n",
                        cl_idx, last_transno);
@@ -343,8 +341,7 @@ static int mdt_clients_data_init(const struct lu_env *env,
         }
 
 err_client:
-        if (lcd)
-                OBD_FREE_PTR(lcd);
+        OBD_FREE_PTR(lcd);
         RETURN(rc);
 }
 
@@ -467,12 +464,16 @@ static int mdt_server_data_init(const struct lu_env *env,
         }
         /** Interop: evict all clients at first boot with 1.8 last_rcvd */
         if (!(lsd->lsd_feature_compat & OBD_COMPAT_20)) {
-                LCONSOLE_WARN("Mounting %s at first time on 1.8 FS, remove all"
-                              " clients for interop needs\n", obd->obd_name);
-                rc = mdt_truncate_last_rcvd(env, mdt, lsd->lsd_client_start);
-                if (rc)
-                        GOTO(out, rc);
-                last_rcvd_size = lsd->lsd_client_start;
+                if (last_rcvd_size > lsd->lsd_client_start) {
+                        LCONSOLE_WARN("Mounting %s at first time on 1.8 FS, "
+                                      "remove all clients for interop needs\n",
+                                      obd->obd_name);
+                        rc = mdt_truncate_last_rcvd(env, mdt,
+                                                    lsd->lsd_client_start);
+                        if (rc)
+                                GOTO(out, rc);
+                        last_rcvd_size = lsd->lsd_client_start;
+                }
                 /** set 2.0 flag to upgrade/downgrade between 1.8 and 2.0 */
                 lsd->lsd_feature_compat |= OBD_COMPAT_20;
         }

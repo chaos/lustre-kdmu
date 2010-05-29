@@ -82,6 +82,9 @@ UP_ARCHS=
 # not in the target file any more
 CONFIG=
 
+# build the lustre-tests rpm?
+LUSTRE_TESTS=true
+
 DATE=$(date)
 
 USE_DATESTAMP=1
@@ -509,7 +512,7 @@ download_ofed() {
         daily=${OFED_VERSION##$Mmv-}
         location="http://www.openfabrics.org/downloads/OFED/ofed-${Mmv}-daily/"
         # find the filename for the version for the date specified
-        OFED_VERSION=$(curl -s "$location" | sed -nre "/${daily}-/s/.*href=\"OFED-([0-9]+\.[0-9]+-${daily}-[0-9]{4,4}).tgz.*$/\1/p" | tail -1)
+        OFED_VERSION=$(curl -s "$location" | sed -nre "/${daily}-/s/.*href=\"OFED-(${Mmv//./\\.}-${daily}-[0-9]{4,4}).tgz.*$/\1/p" | tail -1)
         if [ -z "$OFED_VERSION" ]; then
             fatal 1 "Could not determine the filename of the OFED snapshot for ${daily}"
         fi
@@ -919,19 +922,24 @@ build_lustre() {
 
     echo "Building Lustre RPMs for: $BUILD_ARCHS..."
 
-    # convert the $PATCHLESS boolean to an empty/no-empty boolean
+    # convert the $PATCHLESS boolean to an empty/not-empty boolean
     # as silly as this seems, it makes the syntax of the rpmbuild command
     # simpler and not need an eval to deal with the quotes in the quotes
     local is_patchless=""
     if $PATCHLESS; then
         is_patchless="yes"
     fi
-    local linuxrelease=$(find_linux_release "$linux")
-    $RPMBUILD $targets $rpmbuildopt lustre.spec \
+
+    # ditto for the lustre-tests boolean
+    local lustre_tests=""
+    if ! $LUSTRE_TESTS; then
+        lustre_tests="no"
+    fi
+
+    $RPMBUILD $targets $rpmbuildopt ../lustre.spec \
         ${is_patchless:+--define "lustre_name lustre-client"} \
-        --define "configure_flags $confoptions ${CONFIGURE_FLAGS}" \
-        --define "kversion $linuxrelease" \
-        --define "release $(gen_lustre_version)" \
+        ${lustre_tests:+--define "build_lustre_tests 0"} \
+        --define "configure_args $confoptions ${CONFIGURE_FLAGS}" \
         --define "_tmppath $TMPDIR" \
         --define "_topdir $TOPDIR" 2>&1 || \
         fatal 1 "Error building rpms for $BUILD_ARCHS."
@@ -2002,6 +2010,12 @@ while [ "$1" ]; do
             ;;
         --)
             shift
+            # there are actually some lustre configure flags that we need to
+            # handle ourselves (but we still give them to configure)
+            if [[ \ $@\  == *\ --disable-tests\ * ]]; then
+                LUSTRE_TESTS=false
+            fi
+            CONFIGURE_FLAGS=$@
             CONFIGURE_FLAGS="$CONFIGURE_FLAGS --enable-liblustre --enable-liblustre-tests"
             CONFIGURE_FLAGS=$@
             break
