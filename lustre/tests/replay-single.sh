@@ -1655,6 +1655,8 @@ test_65b() #bug 3055
     $LCTL dk > /dev/null
     # Slow down a request to the current service time, this is critical
     # because previous tests may have caused this value to increase.
+    lfs setstripe $DIR/$tfile --index=0 --count=1
+    multiop $DIR/$tfile Ow1yc
     REQ_DELAY=`lctl get_param -n osc.${FSNAME}-OST0000-osc-*.timeouts |
                awk '/portal 6/ {print $5}'`
     REQ_DELAY=$((${REQ_DELAY} + ${REQ_DELAY} / 4 + 5))
@@ -1754,7 +1756,7 @@ test_67b() #bug 3055
     CONN1=$(lctl get_param -n osc.*.stats | awk '/_connect/ {total+=$2} END {print total}')
 
     # exhaust precreations on ost1
-    local OST=$(lfs osts | grep 0": " | awk '{print $2}' | sed -e 's/_UUID$//')
+    local OST=$(lfs osts | grep ^0": " | awk '{print $2}' | sed -e 's/_UUID$//')
     local mdtosc=$(get_mdtosc_proc_path $OST)
     local last_id=$(do_facet mds lctl get_param -n osc.$mdtosc.prealloc_last_id)
     local next_id=$(do_facet mds lctl get_param -n osc.$mdtosc.prealloc_next_id)
@@ -2062,6 +2064,13 @@ test_85() { # bug 22190
     [ $fail -ne 0 ] || error "Write was successful"
 }
 run_test 85 "ensure there is no reply on bulk write if obd is in rdonly mode"
+
+test_86() {
+        umount $MOUNT
+        do_facet $SINGLEMDS lctl set_param mdt.${FSNAME}-MDT*.exports.clear=0
+        remount_facet $SINGLEMDS
+}
+run_test 86 "umount server after clear nid_stats should not hit LBUG"
 
 equals_msg `basename $0`: test complete, cleaning up
 check_and_cleanup_lustre

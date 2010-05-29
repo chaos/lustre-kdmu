@@ -1776,12 +1776,10 @@ static inline void ldlm_callback_errmsg(struct ptlrpc_request *req,
                                         const char *msg, int rc,
                                         struct lustre_handle *handle)
 {
-        CWARN("%s: [pid %d] [xid x"LPU64"] [nid %s] [opc %d] [rc %d] "
-              "[lock "LPX64"].\n",
-              msg, lustre_msg_get_status(req->rq_reqmsg),
-              req->rq_xid, libcfs_id2str(req->rq_peer),
-              lustre_msg_get_opc(req->rq_reqmsg), rc,
-              handle ? handle->cookie : 0);
+        DEBUG_REQ((req->rq_no_reply || rc) ? D_WARNING : D_DLMTRACE, req,
+                  "%s: [nid %s] [rc %d] [lock "LPX64"]",
+                  msg, libcfs_id2str(req->rq_peer), rc,
+                  handle ? handle->cookie : 0);
         if (req->rq_no_reply)
                 CWARN("No reply was sent, maybe cause bug 21636.\n");
         else if (rc)
@@ -2222,10 +2220,8 @@ static int ldlm_bl_thread_main(void *arg)
                 if (blwi->blwi_count) {
                         /* The special case when we cancel locks in lru
                          * asynchronously, we pass the list of locks here.
-                         * Thus locks are marked LDLM_FL_CANCELING, but NOT
-                         * canceled locally yet. */
-                        ldlm_cli_cancel_list_local(&blwi->blwi_head,
-                                                   blwi->blwi_count, 0);
+                         * Thus lock is marked LDLM_FL_CANCELING, and already
+                         * canceled locally. */
                         ldlm_cli_cancel_list(&blwi->blwi_head,
                                              blwi->blwi_count, NULL, 0);
                 } else {
@@ -2656,7 +2652,6 @@ EXPORT_SYMBOL(ldlm_namespace_foreach);
 EXPORT_SYMBOL(ldlm_namespace_foreach_res);
 EXPORT_SYMBOL(ldlm_resource_iterate);
 EXPORT_SYMBOL(ldlm_cancel_resource_local);
-EXPORT_SYMBOL(ldlm_cli_cancel_list_local);
 EXPORT_SYMBOL(ldlm_cli_cancel_list);
 
 /* ldlm_lockd.c */

@@ -1,10 +1,10 @@
 #!/bin/bash
 # vim:expandtab:shiftwidth=4:softtabstop=4:tabstop=4:
 
-trap 'print_summary && echo "test-framework exiting on error"' ERR
+trap 'print_summary && touch $TF_FAIL && \
+    echo "test-framework exiting on error"' ERR
 set -e
 #set -x
-
 
 export REFORMAT=${REFORMAT:-""}
 export WRITECONF=${WRITECONF:-""}
@@ -876,6 +876,13 @@ shutdown_facet() {
     elif [ "$FAILURE_MODE" = SOFT ]; then
         stop $facet
     fi
+}
+
+remount_facet() {
+    local facet=$1
+
+    stop $facet
+    mount_facet $facet
 }
 
 reboot_facet() {
@@ -3920,6 +3927,10 @@ init_logging() {
 
 log_test() {
     yml_log_test $1 >> $YAML_LOG
+}
+
+log_test_status() {
+     yml_log_test_status $@ >> $YAML_LOG
 }
 
 log_sub_test_begin() {
