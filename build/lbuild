@@ -936,7 +936,7 @@ build_lustre() {
         lustre_tests="no"
     fi
 
-    $RPMBUILD $targets $rpmbuildopt ../lustre.spec \
+    $RPMBUILD $targets $rpmbuildopt lustre.spec \
         ${is_patchless:+--define "lustre_name lustre-client"} \
         ${lustre_tests:+--define "build_lustre_tests 0"} \
         --define "configure_args $confoptions ${CONFIGURE_FLAGS}" \
@@ -2017,7 +2017,6 @@ while [ "$1" ]; do
             fi
             CONFIGURE_FLAGS=$@
             CONFIGURE_FLAGS="$CONFIGURE_FLAGS --enable-liblustre --enable-liblustre-tests"
-            CONFIGURE_FLAGS=$@
             break
             ;;
         *)
