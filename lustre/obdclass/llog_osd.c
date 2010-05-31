@@ -1148,7 +1148,6 @@ static int llog_osd_declare_create_2(struct llog_handle *res,
         LASSERT(rc == 0);
 
         rc = dt_declare_record_write(&env, o, LLOG_CHUNK_SIZE, 0, th);
-        LASSERT(rc == 0);
 
         lu_env_fini(&env);
 
