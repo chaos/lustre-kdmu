@@ -813,6 +813,10 @@ static int osd_trans_stop(const struct lu_env *env, struct thandle *th)
         oh = container_of0(th, struct osd_thandle, ot_super);
 
         if (oh->ot_assigned == 0) {
+
+                LASSERT(oh->ot_tx);
+                udmu_tx_abort(oh->ot_tx);
+
                 lu_device_put(&th->th_dev->dd_lu_dev);
                 th->th_dev = NULL;
                 lu_context_exit(&th->th_ctx);
