@@ -231,6 +231,33 @@ static int lprocfs_osd_rd_mntdev(char *page, char **start, off_t off, int count,
         return snprintf(page, count, "%s\n", osd->od_objset.name);
 }
 
+int lprocfs_osd_rd_reserved(char *page, char **start, off_t off, int count,
+                                int *eof, void *data)
+{
+        struct osd_device *osd = data;
+        int rc;
+
+        rc = snprintf(page, count, "%u\n", osd->od_reserved_fraction);
+        return rc;
+}
+
+int lprocfs_osd_wr_reserved(struct file *file, const char *buffer,
+                                unsigned long count, void *data)
+{
+        struct osd_device *osd = data;
+        int                val, rc;
+
+        rc = lprocfs_write_helper(buffer, count, &val);
+        if (rc)
+                return rc;
+        if (val < 0)
+                return -EINVAL;
+
+        osd->od_reserved_fraction = val;
+        return count;
+}
+
+
 struct lprocfs_vars lprocfs_osd_obd_vars[] = {
         { "blocksize",       lprocfs_osd_rd_blksize,     0, 0 },
         { "kbytestotal",     lprocfs_osd_rd_kbytestotal, 0, 0 },
@@ -240,6 +267,8 @@ struct lprocfs_vars lprocfs_osd_obd_vars[] = {
         { "filesfree",       lprocfs_osd_rd_filesfree,   0, 0 },
         { "fstype",          lprocfs_osd_rd_fstype,      0, 0 },
         { "mntdev",          lprocfs_osd_rd_mntdev,      0, 0 },
+        { "reserved_space",  lprocfs_osd_rd_reserved,
+                             lprocfs_osd_wr_reserved,       0 },
         { 0 }
 };
 
