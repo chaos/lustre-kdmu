@@ -87,7 +87,7 @@ static int debug_level = LEVEL_CRITICAL;
 static void udmu_gethrestime(struct timespec *tp)
 {
         struct timeval time;
-        do_gettimeofday(&time);
+        cfs_gettimeofday(&time);
         tp->tv_nsec = 0;
         tp->tv_sec = time.tv_sec;
 }
@@ -467,7 +467,10 @@ static void udmu_object_create_impl(objset_t *os, dmu_buf_t **dbp, dmu_tx_t *tx,
         oid = dmu_object_alloc(os, DMU_OT_PLAIN_FILE_CONTENTS, 0, DMU_OT_ZNODE,
                                sizeof (znode_phys_t), tx);
 
+#if 0
+        /* XXX: do we really need 128K blocksize by default? even on OSS? */
         dmu_object_set_blocksize(os, oid, 128ULL << 10, 0, tx);
+#endif
 
         VERIFY(0 == dmu_bonus_hold(os, oid, tag, dbp));
 
