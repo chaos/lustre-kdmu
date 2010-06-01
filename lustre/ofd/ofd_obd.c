@@ -636,15 +636,14 @@ int filter_setattr(struct obd_export *exp,
         struct ldlm_resource      *res;
         struct filter_object      *fo;
         struct obdo               *oa = oinfo->oi_oa;
-        struct lu_env              env;
+        struct lu_env             *env = oti->oti_thread->t_env;
         int                        rc = 0;
         ENTRY;
 
-        rc = lu_env_init(&env, LCT_DT_THREAD);
-        if (rc)
-                RETURN(rc);
+        rc = lu_env_refill(env);
+        LASSERT(rc == 0);
 
-        info = filter_info_init(&env, exp);
+        info = filter_info_init(env, exp);
         info->fti_no_need_trans = 0;
         filter_oti2info(info, oti);
 
@@ -679,7 +678,7 @@ int filter_setattr(struct obd_export *exp,
         info->fti_attr.la_valid = LA_MODE;
         info->fti_attr.la_mode = S_IFREG | 0666;
 
-        fo = filter_object_find(&env, ofd, &info->fti_fid);
+        fo = filter_object_find(env, ofd, &info->fti_fid);
         if (IS_ERR(fo)) {
                 CERROR("can't find object %lu:%llu\n",
                        (long unsigned) info->fti_fid.f_oid,
@@ -695,7 +694,7 @@ int filter_setattr(struct obd_export *exp,
         info->fti_attr.la_valid &= ~LA_TYPE;
 
         /* setting objects attributes (including owner/group) */
-        rc = filter_attr_set(&env, fo, &info->fti_attr);
+        rc = filter_attr_set(env, fo, &info->fti_attr);
         if (rc) {
                 GOTO(out_unlock, rc);
         }
@@ -713,9 +712,8 @@ int filter_setattr(struct obd_export *exp,
                      FILTER_VALID_FLAGS | LA_UID | LA_GID);
         filter_info2oti(info, oti);
 out_unlock:
-        filter_object_put(&env, fo);
+        filter_object_put(env, fo);
 out:
-        lu_env_fini(&env);
         RETURN(rc);
 }
 
@@ -723,19 +721,19 @@ static int filter_punch(struct obd_export *exp, struct obd_info *oinfo,
                         struct obd_trans_info *oti, struct ptlrpc_request_set *rqset)
 {
         struct filter_device *ofd = filter_exp(exp);
+        struct lu_env *env = oti->oti_thread->t_env;
         struct filter_thread_info *info;
         struct ldlm_namespace *ns = ofd->ofd_namespace;
         struct ldlm_resource *res;
         struct filter_object *fo;
-        struct lu_env env;
         int rc = 0;
 
         ENTRY;
 
-        rc = lu_env_init(&env, LCT_DT_THREAD);
-        if (rc)
-                RETURN(rc);
-        info = filter_info_init(&env, exp);
+        rc = lu_env_refill(env);
+        LASSERT(rc == 0);
+
+        info = filter_info_init(env, exp);
         info->fti_no_need_trans = 0;
         filter_oti2info(info, oti);
 
@@ -755,7 +753,7 @@ static int filter_punch(struct obd_export *exp, struct obd_info *oinfo,
         info->fti_attr.la_valid = LA_MODE;
         info->fti_attr.la_mode = S_IFREG | 0666;
 
-        fo = filter_object_find(&env, ofd, &info->fti_fid);
+        fo = filter_object_find(env, ofd, &info->fti_fid);
         if (IS_ERR(fo)) {
                 CERROR("can't find object %lu:%llu\n",
                        (unsigned long) info->fti_fid.f_oid,
@@ -771,7 +769,7 @@ static int filter_punch(struct obd_export *exp, struct obd_info *oinfo,
                 oinfo->oi_oa->o_size = oinfo->oi_policy.l_extent.end;
         }
 
-        rc = filter_object_punch(&env, fo, oinfo->oi_policy.l_extent.start,
+        rc = filter_object_punch(env, fo, oinfo->oi_policy.l_extent.start,
                                  oinfo->oi_policy.l_extent.end, oinfo->oi_oa);
         if (rc)
                 GOTO(out, rc);
@@ -784,15 +782,14 @@ static int filter_punch(struct obd_export *exp, struct obd_info *oinfo,
 
         oinfo->oi_oa->o_valid = OBD_MD_FLID;
         /* Quota release needs uid/gid info */
-        rc = filter_attr_get(&env, fo, &info->fti_attr);
+        rc = filter_attr_get(env, fo, &info->fti_attr);
         obdo_from_la(oinfo->oi_oa, &info->fti_attr,
                      FILTER_VALID_FLAGS | LA_UID | LA_GID);
         filter_info2oti(info, oti);
 
 out:
-        filter_object_put(&env, fo);
+        filter_object_put(env, fo);
 out_env:
-        lu_env_fini(&env);
         RETURN(rc);
 }
 
@@ -837,17 +834,17 @@ int filter_destroy(struct obd_export *exp,
                    struct obdo *oa, struct lov_stripe_md *md,
                    struct obd_trans_info *oti, struct obd_export *md_exp, void *capa)
 {
-        struct lu_env env;
+        struct lu_env *env = oti->oti_thread->t_env;
         struct filter_device *ofd = filter_exp(exp);
         struct filter_thread_info *info;
         struct llog_cookie *fcc = NULL;
         int rc = 0;
         ENTRY;
 
-        rc = lu_env_init(&env, LCT_DT_THREAD);
-        if (rc)
-                RETURN(rc);
-        info = filter_info_init(&env, exp);
+        rc = lu_env_refill(env);
+        LASSERT(rc == 0);
+
+        info = filter_info_init(env, exp);
         info->fti_no_need_trans = 0;
         filter_oti2info(info, oti);
 
@@ -855,7 +852,7 @@ int filter_destroy(struct obd_export *exp,
                 oa->o_gr = 0;
 
         lu_idif_build(&info->fti_fid, oa->o_id, oa->o_gr);
-        rc = filter_destroy_by_fid(&env, ofd, &info->fti_fid);
+        rc = filter_destroy_by_fid(env, ofd, &info->fti_fid);
         if (rc == -ENOENT) {
                 CDEBUG(D_INODE, "destroying non-existent object "LPU64"\n",
                        oa->o_id);
@@ -892,7 +889,6 @@ int filter_destroy(struct obd_export *exp,
 
         filter_info2oti(info, oti);
 out:
-        lu_env_fini(&env);
         RETURN(rc);
 }
 
@@ -951,17 +947,16 @@ static int filter_create(struct obd_export *exp,
                          struct obd_trans_info *oti)
 {
         struct filter_device *ofd = filter_exp(exp);
+        struct lu_env *env = oti->oti_thread->t_env;
         struct filter_thread_info *info;
         int rc = 0, diff;
         obd_gr group = oa->o_gr;
-        struct lu_env env; 
         ENTRY;
 
-        rc = lu_env_init(&env, LCT_DT_THREAD);
-        if (rc)
-                RETURN(rc);
+        rc = lu_env_refill(env);
+        LASSERT(rc == 0);
 
-        info = filter_info_init(&env, exp);
+        info = filter_info_init(env, exp);
         info->fti_no_need_trans = 1;
         filter_oti2info(info, oti);
 
@@ -1006,7 +1001,7 @@ static int filter_create(struct obd_export *exp,
                         /* FIXME: should reset precreate_next_id on MDS */
                         rc = 0;
                 } else if (diff < 0) {
-                        rc = filter_orphans_destroy(&env, exp, ofd, oa);
+                        rc = filter_orphans_destroy(env, exp, ofd, oa);
                         cfs_clear_bit(group, &ofd->ofd_destroys_in_progress);
                 } else {
                         /* XXX: Used by MDS for the first time! */
@@ -1036,11 +1031,11 @@ static int filter_create(struct obd_export *exp,
                        "%s: reserve %d objects in group "LPU64" at "LPU64"\n",
                        filter_obd(ofd)->obd_name, diff, group, next_id - diff);
                 for (i = 0; i < diff; i++) {
-                        rc = filter_precreate_object(&env, ofd, next_id + i, group);
+                        rc = filter_precreate_object(env, ofd, next_id + i, group);
                         if (rc)
                                 break;
                 }
-                rc = filter_last_id_write(&env, ofd, group, 0);
+                rc = filter_last_id_write(env, ofd, group, 0);
                 if (i > 0) {
                         /* some objects got created, we can return
                          * them, even if last creation failed */
@@ -1056,7 +1051,6 @@ static int filter_create(struct obd_export *exp,
         filter_info2oti(info, oti);
 out:
         cfs_mutex_up(&ofd->ofd_create_locks[group]);
-        lu_env_fini(&env);
         return rc;
 }
 

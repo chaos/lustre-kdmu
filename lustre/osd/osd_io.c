@@ -416,14 +416,6 @@ int osd_get_bufs(const struct lu_env *env, struct dt_object *d, loff_t pos,
 
 	osd_map_remote_to_local(pos, len, &npages, l);
 
-        /* Filter truncate first locks i_mutex then partally truncated
-         * page, filter write code first locks pages then take
-         * i_mutex.  To avoid a deadlock in case of concurrent
-         * punch/write requests from one client, filter writes and
-         * filter truncates are serialized by i_alloc_sem, allowing
-         * multiple writes or single truncate. */
-        cfs_down_read(&obj->oo_inode->i_alloc_sem);
-
         for (i = 0, lb = l; i < npages; i++, lb++) {
 
                 /* We still set up for ungranted pages so that granted pages
@@ -450,12 +442,10 @@ int osd_get_bufs(const struct lu_env *env, struct dt_object *d, loff_t pos,
                 BUG_ON(PageWriteback(lb->page));
 
                 lu_object_get(&d->do_lu);
-                cfs_down_read(&obj->oo_inode->i_alloc_sem);
         }
         rc = i;
 
 cleanup:
-        cfs_up_read(&obj->oo_inode->i_alloc_sem);
         RETURN(rc);
 }
 
@@ -473,7 +463,6 @@ static int osd_put_bufs(const struct lu_env *env, struct dt_object *dt,
                 page_cache_release(lb[i].page);
                 lu_object_put(env, &dt->do_lu);
                 lb[i].page = NULL;
-                cfs_up_read(&obj->oo_inode->i_alloc_sem);
         }
         RETURN(0);
 }

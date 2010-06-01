@@ -581,8 +581,22 @@ int osd_trans_start(const struct lu_env *env,
                 lu_context_enter(&th->th_ctx);
                 oh->ot_handle = jh;
                 LASSERT(oti->oti_txns == 0);
-                LASSERT(oti->oti_r_locks == 0);
-                LASSERT(oti->oti_w_locks == 0);
+
+                /*
+                 * XXX: current rule is that we first start tx,
+                 *      then lock object(s), but we can't use
+                 *      this rule for data (due to locking specifics
+                 *      in ldiskfs). also in long-term we'd like to
+                 *      use usually-used (locks;tx) ordering. so,
+                 *      UGLY thing is that we'll use one ordering for
+                 *      data (ofd) and reverse ordering for metadata
+                 *      (mdd). then at some point we'll fid the latter
+                 */
+                if (lu_device_is_md(&d->dd_lu_dev)) {
+                        LASSERT(oti->oti_r_locks == 0);
+                        LASSERT(oti->oti_w_locks == 0);
+                }
+
                 oti->oti_txns++;
                 hook_res = 0;
         } else {
@@ -613,13 +627,6 @@ static int osd_trans_stop(const struct lu_env *env, struct thandle *th)
 
         oh = container_of0(th, struct osd_thandle, ot_super);
 
-        /* see comments in osd_declare_punch() */
-        if (oh->ot_alloc_sem_obj) {
-                /* XXX: we don't grab reference on the object - hope it's OK */
-                cfs_up_write(&oh->ot_alloc_sem_obj->oo_inode->i_alloc_sem);
-                oh->ot_alloc_sem_obj = NULL;
-        }
-
         if (oh->ot_handle != NULL) {
                 handle_t *hdl = oh->ot_handle;
 
@@ -635,8 +642,20 @@ static int osd_trans_stop(const struct lu_env *env, struct thandle *th)
 
                 LASSERT(oti->oti_txns == 1);
                 oti->oti_txns--;
-                LASSERT(oti->oti_r_locks == 0);
-                LASSERT(oti->oti_w_locks == 0);
+                /*
+                 * XXX: current rule is that we first start tx,
+                 *      then lock object(s), but we can't use
+                 *      this rule for data (due to locking specifics
+                 *      in ldiskfs). also in long-term we'd like to
+                 *      use usually-used (locks;tx) ordering. so,
+                 *      UGLY thing is that we'll use one ordering for
+                 *      data (ofd) and reverse ordering for metadata
+                 *      (mdd). then at some point we'll fid the latter
+                 */
+                if (lu_device_is_md(&th->th_dev->dd_lu_dev)) {
+                        LASSERT(oti->oti_r_locks == 0);
+                        LASSERT(oti->oti_w_locks == 0);
+                }
                 result = dt_txn_hook_stop(env, th);
                 if (result != 0)
                         CERROR("Failure in transaction hook: %d\n", result);
@@ -1430,7 +1449,6 @@ static int osd_attr_set(const struct lu_env *env,
 static int osd_declare_punch(const struct lu_env *env, struct dt_object *dt,
                              __u64 start, __u64 end, struct thandle *th)
 {
-        struct osd_object  *oo = osd_dt_obj(dt);
         struct osd_thandle *oh;
         ENTRY;
 
@@ -1449,18 +1467,6 @@ static int osd_declare_punch(const struct lu_env *env, struct dt_object *dt,
          */
         oh->ot_credits += osd_dto_credits_noquota[DTO_ATTR_SET_BASE];
         oh->ot_credits += 3;
-
-        /*
-         * write path uses the following locking order:
-         *   i_alloc_sem, lockpage, journal_start
-         * we have to do same. IOW, we have to grab i_alloc_sem before
-         * transaction is started, thus we grab it here
-         */
-        LASSERT(oh->ot_alloc_sem_obj == NULL);
-        oh->ot_alloc_sem_obj = oo;
-
-        LASSERT(oo->oo_inode != NULL);
-        cfs_down_write(&oo->oo_inode->i_alloc_sem);
 
         RETURN(0);
 }
