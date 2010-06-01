@@ -34,12 +34,13 @@ ALWAYS_EXCEPT="$ALWAYS_EXCEPT 52 54c 56a 60 160 180"
 
 # 24v -- (bug 22803) space reservation for unlinks
 # 57a -- (bug 22607) can't determine dnode size in ZFS yet
+# 57b -- large inodes are specific to ldiskfs
 # 66  -- blocks counting should be done properly with zfs
 # 132 -- inode counting is different in zfs
 # 155 -- we don't control cache via ZFS OSD yet
 # 156 -- we don't control cache via ZFS OSD yet
 [ "$FSTYPE" = "zfs" -o "$OSTFSTYPE" = "zfs" -o "$MDSFSTYPE" = "zfs" ] && \
-	ALWAYS_EXCEPT="$ALWAYS_EXCEPT 24v 57a 66 132 155 156"
+	ALWAYS_EXCEPT="$ALWAYS_EXCEPT 24v 57 66 132 155 156"
 
 case `uname -r` in
 2.4*) FSTYPE=${FSTYPE:-ext3} ;;
