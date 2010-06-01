@@ -467,7 +467,10 @@ static void udmu_object_create_impl(objset_t *os, dmu_buf_t **dbp, dmu_tx_t *tx,
         oid = dmu_object_alloc(os, DMU_OT_PLAIN_FILE_CONTENTS, 0, DMU_OT_ZNODE,
                                sizeof (znode_phys_t), tx);
 
+#if 0
+        /* XXX: do we really need 128K blocksize by default? even on OSS? */
         dmu_object_set_blocksize(os, oid, 128ULL << 10, 0, tx);
+#endif
 
         VERIFY(0 == dmu_bonus_hold(os, oid, tag, dbp));
 
