@@ -99,6 +99,7 @@ void udmu_debug(int level)
 
 int udmu_objset_open(char *osname, udmu_objset_t *uos)
 {
+        uint64_t refdbytes, availbytes, usedobjs, availobjs;
         uint64_t version = ZPL_VERSION;
         int      error;
 
@@ -142,6 +143,17 @@ int udmu_objset_open(char *osname, udmu_objset_t *uos)
         ASSERT(uos->root != 0);
 
         strncpy(uos->name, osname, sizeof(uos->name));
+
+        /*
+         * as DMU doesn't maintain f_files absolutely actual (it's updated
+         * at flush, not when object is create/destroed) we've implemented
+         * own counter which is initialized from on-disk at mount, then is
+         * being maintained by DMU OSD
+         */
+        dmu_objset_space(uos->os, &refdbytes, &availbytes, &usedobjs,
+                         &availobjs);
+        uos->objects = usedobjs;
+        cfs_spin_lock_init(&uos->lock);
 
 out:
         if (error && uos->os != NULL)
@@ -243,7 +255,7 @@ int udmu_objset_statfs(udmu_objset_t *uos, struct statfs64 *statp)
          */
         statp->f_ffree = MIN(availobjs, statp->f_bfree);
         //statp->f_favail = statp->f_ffree; /* no "root reservation" */
-        statp->f_files = statp->f_ffree + usedobjs;
+        statp->f_files = statp->f_ffree + uos->objects;
 
         /* ZFSFUSE: not necessary? see 'man statfs' */
         /*(void) cmpldev(&d32, vfsp->vfs_dev);
@@ -477,7 +489,9 @@ static void udmu_object_create_impl(objset_t *os, dmu_buf_t **dbp, dmu_tx_t *tx,
 void udmu_object_create(udmu_objset_t *uos, dmu_buf_t **dbp, dmu_tx_t *tx,
                         void *tag)
 {
-        uos->creates++;
+        cfs_spin_lock(&uos->lock);
+        uos->objects++;
+        cfs_spin_unlock(&uos->lock);
         udmu_object_create_impl(uos->os, dbp, tx, tag);
 }
 
@@ -527,6 +541,9 @@ static void udmu_zap_create_impl(objset_t *os, dmu_buf_t **zap_dbp,
 void udmu_zap_create(udmu_objset_t *uos, dmu_buf_t **zap_dbp, dmu_tx_t *tx,
                      void *tag)
 {
+        cfs_spin_lock(&uos->lock);
+        uos->objects++;
+        cfs_spin_unlock(&uos->lock);
         udmu_zap_create_impl(uos->os, zap_dbp, tx, tag);
 }
 
@@ -913,6 +930,16 @@ void udmu_declare_object_delete(udmu_objset_t *uos, dmu_tx_t *tx, dmu_buf_t *db)
         }
 }
 
+static int udmu_object_free(udmu_objset_t *uos, uint64_t oid, dmu_tx_t *tx)
+{
+        ASSERT(uos->objects != 0);
+        cfs_spin_lock(&uos->lock);
+        uos->objects--;
+        cfs_spin_unlock(&uos->lock);
+
+        return dmu_object_free(uos->os, oid, tx);
+}
+
 /*
  * Delete a DMU object
  *
@@ -951,21 +978,18 @@ static int udmu_object_delete_impl(udmu_objset_t *uos, dmu_buf_t **db, dmu_tx_t 
                                 printk("error during xattr lookup: %d\n", rc);
                                 break;
                         }
-                        uos->deletes++;
-                        dmu_object_free(uos->os, xid, tx);
+                        udmu_object_free(uos, xid, tx);
 
                         zap_cursor_advance(zc);
                 }
                 udmu_zap_cursor_fini(zc);
 
-                uos->deletes++;
-                dmu_object_free(uos->os, zp->zp_xattr, tx);
+                udmu_object_free(uos, zp->zp_xattr, tx);
         }
 
         oid = (*db)->db_object;
 
-        uos->deletes++;
-        return dmu_object_free(uos->os, oid, tx);
+        return udmu_object_free(uos, oid, tx);
 }
 
 int udmu_object_delete(udmu_objset_t *uos, dmu_buf_t **db, dmu_tx_t *tx,
@@ -1230,7 +1254,7 @@ int udmu_xattr_set(udmu_objset_t *uos, dmu_buf_t *db, void *val,
         int           error;
 
         if (zp->zp_xattr == 0) {
-                udmu_zap_create_impl(uos->os, &xa_zap_db, tx, FTAG);
+                udmu_zap_create(uos, &xa_zap_db, tx, FTAG);
 
                 zp->zp_xattr = xa_zap_db->db_object;
                 dmu_buf_will_dirty(db, tx);
@@ -1255,8 +1279,7 @@ int udmu_xattr_set(udmu_objset_t *uos, dmu_buf_t *db, void *val,
                  * Entry doesn't exist, we need to create a new one and a new
                  * object to store the value.
                  */
-                uos->creates++;
-                udmu_object_create_impl(uos->os, &xa_data_db, tx, FTAG);
+                udmu_object_create(uos, &xa_data_db, tx, FTAG);
                 xa_data_obj = xa_data_db->db_object;
                 error = zap_add(uos->os, zp->zp_xattr, name, sizeof(uint64_t), 1,
                                 &xa_data_obj, tx);
@@ -1340,8 +1363,7 @@ int udmu_xattr_del(udmu_objset_t *uos, dmu_buf_t *db,
                  * Entry exists.
                  * We'll delete the existing object and ZAP entry.
                  */
-                uos->deletes++;
-                error = dmu_object_free(uos->os, xa_data_obj, tx);
+                error = udmu_object_free(uos, xa_data_obj, tx);
                 if (error)
                         goto out;
 

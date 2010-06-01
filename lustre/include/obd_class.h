@@ -374,6 +374,19 @@ do {                                                            \
 #define EXP_MD_COUNTER_INCREMENT(exp, op)
 #endif /* __KERNEL__ */
 
+static inline int lprocfs_nid_ldlm_stats_init(struct nid_stat* tmp) {
+        /* Always add in ldlm_stats */
+        tmp->nid_ldlm_stats = lprocfs_alloc_stats(LDLM_LAST_OPC - LDLM_FIRST_OPC
+                                                  ,LPROCFS_STATS_FLAG_NOPERCPU);
+        if (tmp->nid_ldlm_stats == NULL)
+                return -ENOMEM;
+
+        lprocfs_init_ldlm_stats(tmp->nid_ldlm_stats);
+
+        return lprocfs_register_stats(tmp->nid_proc, "ldlm_stats",
+                                      tmp->nid_ldlm_stats);
+}
+
 #define OBD_CHECK_MD_OP(obd, op, err)                           \
 do {                                                            \
         if (!OBT(obd) || !MDP((obd), op)) {                     \
@@ -1445,7 +1458,8 @@ static inline int obd_cancel(struct obd_export *exp,
 
 static inline int obd_cancel_unused(struct obd_export *exp,
                                     struct lov_stripe_md *ea,
-                                    int flags, void *opaque)
+                                    ldlm_cancel_flags_t flags,
+                                    void *opaque)
 {
         int rc;
         ENTRY;
@@ -2047,7 +2061,9 @@ static inline int md_set_lock_data(struct obd_export *exp,
 static inline int md_cancel_unused(struct obd_export *exp,
                                    const struct lu_fid *fid,
                                    ldlm_policy_data_t *policy,
-                                   ldlm_mode_t mode, int flags, void *opaque)
+                                   ldlm_mode_t mode,
+                                   ldlm_cancel_flags_t flags,
+                                   void *opaque)
 {
         int rc;
         ENTRY;

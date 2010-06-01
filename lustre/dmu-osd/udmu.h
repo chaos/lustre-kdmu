@@ -47,6 +47,8 @@
 extern "C" {
 #endif
 
+#include <libcfs/libcfs.h>
+
 #define LUSTRE_ZPL_VERSION 1ULL
 
 #ifndef DMU_AT_TYPE
@@ -133,7 +135,8 @@ typedef struct udmu_objset {
         struct zilog *zilog;
         uint64_t root;  /* id of root znode */
         uint64_t unlinkedobj;
-        int creates, deletes;
+        cfs_spinlock_t  lock;
+        uint64_t objects; /* in-core counter of objects, protected by lock */
         char name[128];
 } udmu_objset_t;
 

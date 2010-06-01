@@ -71,29 +71,12 @@ int seq_client_replay_super(struct lu_client_seq *seq,
 int seq_store_init(struct lu_server_seq *seq,
                    const struct lu_env *env,
                    struct dt_device *dt);
-
 void seq_store_fini(struct lu_server_seq *seq,
                     const struct lu_env *env);
-
-int seq_declare_store_write(struct lu_server_seq *seq,
-                            const struct lu_env *env,
-                            struct thandle *th);
-
-int seq_store_write(struct lu_server_seq *seq,
-                    const struct lu_env *env,
-                    struct thandle *th);
-
 int seq_store_read(struct lu_server_seq *seq,
                    const struct lu_env *env);
-
-struct thandle * seq_store_trans_create(struct lu_server_seq *seq,
-                                       const struct lu_env *env);
-int seq_store_trans_start(struct lu_server_seq *seq,
-                                       const struct lu_env *env,
-                                       struct thandle *th);
-void seq_store_trans_stop(struct lu_server_seq *seq,
-                          const struct lu_env *env,
-                          struct thandle *th);
+int seq_store_update(const struct lu_env *env, struct lu_server_seq *seq,
+                     struct lu_seq_range *out, int sync);
 
 extern struct lprocfs_vars seq_server_proc_list[];
 extern struct lprocfs_vars seq_client_proc_list[];

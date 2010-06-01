@@ -1918,7 +1918,7 @@ static int lmv_early_cancel_slaves(struct obd_export *exp,
                         CDEBUG(D_INODE, "EARLY_CANCEL slave "DFID" -> mds #%d\n",
                                PFID(st_fid), tgt->ltd_idx);
                         rc = md_cancel_unused(tgt->ltd_exp, st_fid, &policy,
-                                              mode, LDLM_FL_ASYNC, NULL);
+                                              mode, LCF_ASYNC, NULL);
                         if (rc)
                                 GOTO(out_put_obj, rc);
                 } else {
@@ -1969,7 +1969,7 @@ static int lmv_early_cancel(struct obd_export *exp, struct md_op_data *op_data,
                         CDEBUG(D_INODE, "EARLY_CANCEL on "DFID"\n", PFID(fid));
                         policy.l_inodebits.bits = bits;
                         rc = md_cancel_unused(tgt->ltd_exp, fid, &policy,
-                                              mode, LDLM_FL_ASYNC, NULL);
+                                              mode, LCF_ASYNC, NULL);
                 } else {
                         CDEBUG(D_INODE,
                                "EARLY_CANCEL skip operation target %d on "DFID"\n",
@@ -2655,8 +2655,7 @@ int lmv_set_info_async(struct obd_export *exp, obd_count keylen,
         }
         lmv = &obd->u.lmv;
 
-        if (KEY_IS(KEY_READ_ONLY) || KEY_IS(KEY_FLUSH_CTX) ||
-            KEY_IS(KEY_INIT_RECOV_BACKUP)) {
+        if (KEY_IS(KEY_READ_ONLY) || KEY_IS(KEY_FLUSH_CTX)) {
                 int i, err = 0;
 
                 for (i = 0; i < lmv->desc.ld_tgt_count; i++) {
@@ -2783,7 +2782,7 @@ int lmv_unpackmd(struct obd_export *exp, struct lov_stripe_md **lsmp,
 
 static int lmv_cancel_unused(struct obd_export *exp, const struct lu_fid *fid,
                              ldlm_policy_data_t *policy, ldlm_mode_t mode,
-                             int flags, void *opaque)
+                             ldlm_cancel_flags_t flags, void *opaque)
 {
         struct obd_device       *obd = exp->exp_obd;
         struct lmv_obd          *lmv = &obd->u.lmv;
