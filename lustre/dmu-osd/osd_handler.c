@@ -103,7 +103,6 @@ struct osd_object {
 
         uint64_t                oo_mode;
         uint64_t                oo_type;
-        uint64_t                oo_exist;
 };
 
 enum {
@@ -441,11 +440,15 @@ static void osd_object_init0(struct osd_object *obj)
                 udmu_object_getattr(obj->oo_db, &va);
                 obj->oo_mode = va.va_mode;
                 obj->oo_dt.do_body_ops = &osd_body_ops;
-                obj->oo_dt.do_lu.lo_header->loh_attr |=
-                        (LOHA_EXISTS | (obj->oo_mode & S_IFMT));
                 /* add type infor to attr */
                 obj->oo_dt.do_lu.lo_header->loh_attr |=
                         vtype2lu_mode(va.va_type);
+                /*
+                 * initialize object before marking it existing
+                 */
+                mb();
+                obj->oo_dt.do_lu.lo_header->loh_attr |=
+                        (LOHA_EXISTS | (obj->oo_mode & S_IFMT));
         } else {
                 CDEBUG(D_OTHER, "object %llu:%lu does not exist\n",
                         fid->f_seq, (unsigned long) fid->f_oid);
@@ -1139,7 +1142,6 @@ static int osd_punch(const struct lu_env *env, struct dt_object *dt,
 static int osd_create_post(struct osd_thread_info *info, struct osd_object *obj,
                            struct lu_attr *attr, struct thandle *th)
 {
-        obj->oo_exist = 1;
         osd_object_init0(obj);
         return 0;
 }
