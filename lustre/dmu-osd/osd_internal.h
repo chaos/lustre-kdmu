@@ -34,7 +34,7 @@
  * Lustre is a trademark of Sun Microsystems, Inc.
  *
  * lustre/osd/osd_internal.h
- * Shared definitions and declarations for osd module
+ * Shared definitions and declarations for zfs/dmu osd
  *
  * Author: Nikita Danilov <nikita@clusterfs.com>
  */

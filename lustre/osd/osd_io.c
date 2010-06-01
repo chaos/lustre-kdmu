@@ -710,10 +710,10 @@ static int osd_ldiskfs_read(struct inode *inode, void *buf, int size,
         int err;
 
         /* prevent reading after eof */
-        spin_lock(&inode->i_lock);
+        cfs_spin_lock(&inode->i_lock);
         if (i_size_read(inode) < *offs + size) {
                 size = i_size_read(inode) - *offs;
-                spin_unlock(&inode->i_lock);
+                cfs_spin_unlock(&inode->i_lock);
                 if (size < 0) {
                         CDEBUG(D_EXT2, "size %llu is too short to read @%llu\n",
                                i_size_read(inode), *offs);
@@ -722,7 +722,7 @@ static int osd_ldiskfs_read(struct inode *inode, void *buf, int size,
                         return 0;
                 }
         } else {
-                spin_unlock(&inode->i_lock);
+                cfs_spin_unlock(&inode->i_lock);
         }
 
         blocksize = 1 << inode->i_blkbits;
@@ -850,14 +850,14 @@ static int osd_ldiskfs_write_record(struct inode *inode, void *buf, int bufsize,
 
         /* correct in-core and on-disk sizes */
         if (new_size > i_size_read(inode)) {
-                spin_lock(&inode->i_lock);
+                cfs_spin_lock(&inode->i_lock);
                 if (new_size > i_size_read(inode))
                         i_size_write(inode, new_size);
                 if (i_size_read(inode) > LDISKFS_I(inode)->i_disksize) {
                         LDISKFS_I(inode)->i_disksize = i_size_read(inode);
                         dirty_inode = 1;
                 }
-                spin_unlock(&inode->i_lock);
+                cfs_spin_unlock(&inode->i_lock);
                 if (dirty_inode)
                         inode->i_sb->s_op->dirty_inode(inode);
         }

@@ -1787,18 +1787,18 @@ static void server_wait_finished(struct lustre_sb_info *lsi)
 
        cfs_waitq_init(&waitq);
 
-       while (atomic_read(&lsi->lsi_mounts) > 1) {
+       while (cfs_atomic_read(&lsi->lsi_mounts) > 1) {
                if (waited && (waited % 30 == 0))
                        LCONSOLE_WARN("Mount still busy with %d refs after "
                                       "%d secs.\n",
-                                      atomic_read(&lsi->lsi_mounts),
+                                      cfs_atomic_read(&lsi->lsi_mounts),
                                       waited);
                /* Cannot use l_event_wait() for an interruptible sleep. */
                waited += 3;
                blocked = l_w_e_set_sigs(sigmask(SIGKILL));
                cfs_waitq_wait_event_interruptible_timeout(
                        waitq,
-                       (atomic_read(&lsi->lsi_mounts) == 1),
+                       (cfs_atomic_read(&lsi->lsi_mounts) == 1),
                        cfs_time_seconds(3),
                        rc);
                cfs_block_sigs(blocked);
@@ -1806,7 +1806,7 @@ static void server_wait_finished(struct lustre_sb_info *lsi)
                        LCONSOLE_EMERG("Danger: interrupted umount %s with "
                                       "%d refs!\n",
                                       "FIXME(devname)",
-                                      atomic_read(&lsi->lsi_mounts));
+                                      cfs_atomic_read(&lsi->lsi_mounts));
                        break;
                }
        }

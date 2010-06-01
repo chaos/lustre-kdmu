@@ -87,7 +87,7 @@ static int debug_level = LEVEL_CRITICAL;
 static void udmu_gethrestime(struct timespec *tp)
 {
         struct timeval time;
-        do_gettimeofday(&time);
+        cfs_gettimeofday(&time);
         tp->tv_nsec = 0;
         tp->tv_sec = time.tv_sec;
 }
