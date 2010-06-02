@@ -205,7 +205,6 @@ int class_register_type(struct obd_ops *dt_ops, struct md_ops *md_ops,
         cfs_spin_lock(&obd_types_lock);
         cfs_list_add(&type->typ_chain, &obd_types);
         cfs_spin_unlock(&obd_types_lock);
-        printk("OK\n");
 
         RETURN (0);
 
