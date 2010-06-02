@@ -170,7 +170,6 @@ int class_register_type(struct obd_ops *dt_ops, struct md_ops *md_ops,
         if (type == NULL)
                 RETURN(rc);
 
-        printk("register %s ... ", name);
         OBD_ALLOC_PTR(type->typ_dt_ops);
         OBD_ALLOC_PTR(type->typ_md_ops);
         OBD_ALLOC(type->typ_name, strlen(name) + 1);
