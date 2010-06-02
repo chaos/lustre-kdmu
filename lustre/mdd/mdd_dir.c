@@ -1575,7 +1575,7 @@ static int mdd_create_data(const struct lu_env *env, struct md_object *pobj,
         if (IS_ERR(handle))
                 RETURN(PTR_ERR(handle));
 
-        CDEBUG(D_OTHER | D_ERROR, "ea %p/%u, cr_flags %x, no_create %u\n",
+        CDEBUG(D_OTHER, "ea %p/%u, cr_flags %x, no_create %u\n",
                spec->u.sp_ea.eadata, spec->u.sp_ea.eadatalen,
                spec->sp_cr_flags, spec->no_create);
 
