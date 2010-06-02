@@ -768,11 +768,11 @@ int llog_osd_record_read(const struct lu_env *env, struct dt_object *dt,
         struct lu_buf lb;
         int rc;
 
-        lb.lb_buf = &buf;
+        lb.lb_buf = buf;
         lb.lb_len = len;
         lb.lb_vmalloc = 0;
 
-        rc = dt->do_body_ops->dbo_read(env, dt, buf, pos, BYPASS_CAPA);
+        rc = dt->do_body_ops->dbo_read(env, dt, &lb, pos, BYPASS_CAPA);
 
         return (rc >= 0 ? 0 : rc);
 }
@@ -841,7 +841,7 @@ static int llog_osd_next_block(struct llog_handle *loghandle, int *cur_idx,
 
                 ppos = *cur_offset;
                 
-                rc = llog_osd_record_read(&env, o, &buf, len, &ppos);
+                rc = llog_osd_record_read(&env, o, buf, len, &ppos);
                 if (rc) {
                         CERROR("Cant read llog block at log id "LPU64
                                "/%u offset "LPU64"\n",
@@ -951,7 +951,7 @@ static int llog_osd_prev_block(struct llog_handle *loghandle,
 
                 ppos = cur_offset;
 
-                rc = llog_osd_record_read(&env, o, &buf, len, &ppos);
+                rc = llog_osd_record_read(&env, o, buf, len, &ppos);
                 if (rc) {
                         CERROR("Cant read llog block at log id "LPU64
                                "/%u offset "LPU64"\n",
