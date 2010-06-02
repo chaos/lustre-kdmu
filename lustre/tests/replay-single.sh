@@ -724,30 +724,30 @@ test_32() {
 }
 run_test 32 "close() notices client eviction; close() after client eviction"
 
-# Abort recovery before client complete
-test_33a() {	# was test_33
-    replay_barrier $SINGLEMDS
-    createmany -o $DIR/$tfile-%d 100
-    fail_abort $SINGLEMDS
-    # this file should be gone, because the replay was aborted
-    $CHECKSTAT -t file $DIR/$tfile-* && return 3
-    unlinkmany $DIR/$tfile-%d 0 100
-    return 0
-}
-run_test 33a "abort recovery before client does replay"
-
-# Stale FID sequence bug 15962
-test_33b() {	# was test_33a
-    replay_barrier $SINGLEMDS
+test_33a() {
     createmany -o $DIR/$tfile-%d 10
+    replay_barrier_nosync $SINGLEMDS
     fail_abort $SINGLEMDS
-    unlinkmany $DIR/$tfile-%d 0 10
     # recreate shouldn't fail
-    createmany -o $DIR/$tfile-%d 10 || return 3
-    unlinkmany $DIR/$tfile-%d 0 10
+    createmany -o $DIR/$tfile--%d 10 || return 1
+    rm $DIR/$tfile-* -f
     return 0
 }
-run_test 33b "fid shouldn't be reused after abort recovery"
+run_test 33a "fid seq shouldn't be reused after abort recovery"
+
+test_33b() {
+    #define OBD_FAIL_SEQ_ALLOC                          0x1311
+    do_facet $SINGLEMDS "lctl set_param fail_loc=0x1311"
+
+    createmany -o $DIR/$tfile-%d 10
+    replay_barrier_nosync $SINGLEMDS
+    fail_abort $SINGLEMDS
+    # recreate shouldn't fail
+    createmany -o $DIR/$tfile--%d 10 || return 1
+    rm $DIR/$tfile-* -f
+    return 0
+}
+run_test 33b "test fid seq allocation"
 
 test_34() {
     multiop_bg_pause $DIR/$tfile O_c || return 2
@@ -1661,6 +1661,8 @@ test_65b() #bug 3055
     $LCTL dk > /dev/null
     # Slow down a request to the current service time, this is critical
     # because previous tests may have caused this value to increase.
+    lfs setstripe $DIR/$tfile --index=0 --count=1
+    multiop $DIR/$tfile Ow1yc
     REQ_DELAY=`lctl get_param -n os[cp].${FSNAME}-OST0000-os[cp]-*.timeouts |
                awk '/portal 6/ {print $5}'`
     REQ_DELAY=$((${REQ_DELAY} + ${REQ_DELAY} / 4 + 5))
@@ -1760,7 +1762,7 @@ test_67b() #bug 3055
     CONN1=$(lctl get_param -n os[cp].*.stats | awk '/_connect/ {total+=$2} END {print total}')
 
     # exhaust precreations on ost1
-    local OST=$(lfs osts | grep 0": " | awk '{print $2}' | sed -e 's/_UUID$//')
+    local OST=$(lfs osts | grep ^0": " | awk '{print $2}' | sed -e 's/_UUID$//')
     local mdtosc=$(get_mdtosc_proc_path $OST)
     local last_id=$(do_facet mds lctl get_param -n os[cp].$mdtosc.prealloc_last_id)
     local next_id=$(do_facet mds lctl get_param -n os[cp].$mdtosc.prealloc_next_id)
@@ -2068,6 +2070,13 @@ test_85() { # bug 22190
     [ $fail -ne 0 ] || error "Write was successful"
 }
 run_test 85 "ensure there is no reply on bulk write if obd is in rdonly mode"
+
+test_86() {
+        umount $MOUNT
+        do_facet $SINGLEMDS lctl set_param mdt.${FSNAME}-MDT*.exports.clear=0
+        remount_facet $SINGLEMDS
+}
+run_test 86 "umount server after clear nid_stats should not hit LBUG"
 
 equals_msg `basename $0`: test complete, cleaning up
 check_and_cleanup_lustre

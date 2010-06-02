@@ -400,25 +400,9 @@ static void mdt_pack_size2body(struct mdt_thread_info *info,
 void mdt_pack_attr2body(struct mdt_thread_info *info, struct mdt_body *b,
                         const struct lu_attr *attr, const struct lu_fid *fid)
 {
-        struct md_attr          *ma  = &info->mti_attr;
+        struct md_attr *ma = &info->mti_attr;
 
         LASSERT(ma->ma_valid & MA_INODE);
-
-        /*XXX should pack the reply body according to lu_valid*/
-        b->valid |= OBD_MD_FLCTIME | OBD_MD_FLUID   |
-                    OBD_MD_FLGID   | OBD_MD_FLTYPE  |
-                    OBD_MD_FLMODE  | OBD_MD_FLNLINK | OBD_MD_FLFLAGS |
-                    OBD_MD_FLATIME | OBD_MD_FLMTIME ;
-
-        if (!S_ISREG(attr->la_mode)) {
-                b->valid |= OBD_MD_FLSIZE | OBD_MD_FLBLOCKS | OBD_MD_FLRDEV;
-        } else if (ma->ma_need & MA_LOV && ma->ma_lmm_size == 0) {
-                /* means no objects are allocated on osts. */
-                LASSERT(!(ma->ma_valid & MA_LOV));
-                LASSERT(attr->la_blocks == 0);
-                /* if no object is allocated on osts, the size on mds is valid. b=22272 */
-                b->valid |= OBD_MD_FLSIZE | OBD_MD_FLBLOCKS;
-        }
 
         b->atime      = attr->la_atime;
         b->mtime      = attr->la_mtime;
@@ -431,6 +415,23 @@ void mdt_pack_attr2body(struct mdt_thread_info *info, struct mdt_body *b,
         b->flags      = attr->la_flags;
         b->nlink      = attr->la_nlink;
         b->rdev       = attr->la_rdev;
+
+        /*XXX should pack the reply body according to lu_valid*/
+        b->valid |= OBD_MD_FLCTIME | OBD_MD_FLUID   |
+                    OBD_MD_FLGID   | OBD_MD_FLTYPE  |
+                    OBD_MD_FLMODE  | OBD_MD_FLNLINK | OBD_MD_FLFLAGS |
+                    OBD_MD_FLATIME | OBD_MD_FLMTIME ;
+
+        if (!S_ISREG(attr->la_mode)) {
+                b->valid |= OBD_MD_FLSIZE | OBD_MD_FLBLOCKS | OBD_MD_FLRDEV;
+        } else if (ma->ma_need & MA_LOV && ma->ma_lmm_size == 0) {
+                /* means no objects are allocated on osts. */
+                LASSERT(!(ma->ma_valid & MA_LOV));
+                /* just ignore blocks occupied by extend attributes on MDS */
+                b->blocks = 0;
+                /* if no object is allocated on osts, the size on mds is valid. b=22272 */
+                b->valid |= OBD_MD_FLSIZE | OBD_MD_FLBLOCKS;
+        }
 
         if (fid) {
                 b->fid1 = *fid;
@@ -538,9 +539,6 @@ static int mdt_getattr_internal(struct mdt_thread_info *info,
                         LASSERT(S_ISDIR(la->la_mode));
                         repbody->eadatasize = ma->ma_lmv_size;
                         repbody->valid |= (OBD_MD_FLDIREA|OBD_MD_MEA);
-                }
-                if (!(ma->ma_valid & MA_LOV) && !(ma->ma_valid & MA_LMV)) {
-                        repbody->valid |= OBD_MD_FLSIZE | OBD_MD_FLBLOCKS;
                 }
         } else if (S_ISLNK(la->la_mode) &&
                    reqbody->valid & OBD_MD_LINKNAME) {
@@ -1981,7 +1979,6 @@ static struct ldlm_callback_suite cbs = {
 static int mdt_enqueue(struct mdt_thread_info *info)
 {
         struct ptlrpc_request *req;
-        __u64 req_bits;
         int rc;
 
         /*
@@ -1991,17 +1988,6 @@ static int mdt_enqueue(struct mdt_thread_info *info)
         LASSERT(info->mti_dlm_req != NULL);
 
         req = mdt_info_req(info);
-
-        /*
-         * Lock without inodebits makes no sense and will oops later in
-         * ldlm. Let's check it now to see if we have wrong lock from client or
-         * bits get corrupted somewhere in mdt_intent_policy().
-         */
-        req_bits = info->mti_dlm_req->lock_desc.l_policy_data.l_inodebits.bits;
-        /* This is disabled because we need to support liblustre flock.
-         * LASSERT(req_bits != 0);
-         */
-
         rc = ldlm_handle_enqueue0(info->mti_mdt->mdt_namespace,
                                   req, info->mti_dlm_req, &cbs);
         info->mti_fail_id = OBD_FAIL_LDLM_REPLY;
@@ -2571,10 +2557,25 @@ static int mdt_req_handle(struct mdt_thread_info *info,
 
                 dlm_req = req_capsule_client_get(info->mti_pill, &RMF_DLM_REQ);
                 if (dlm_req != NULL) {
-                        if (info->mti_mdt->mdt_opts.mo_compat_resname)
-                                rc = mdt_lock_resname_compat(info->mti_mdt,
-                                                             dlm_req);
-                        info->mti_dlm_req = dlm_req;
+                        if (unlikely(dlm_req->lock_desc.l_resource.lr_type ==
+                                        LDLM_IBITS &&
+                                     dlm_req->lock_desc.l_policy_data.\
+                                        l_inodebits.bits == 0)) {
+                                /*
+                                 * Lock without inodebits makes no sense and
+                                 * will oops later in ldlm. If client miss to
+                                 * set such bits, do not trigger ASSERTION.
+                                 *
+                                 * For liblustre flock case, it maybe zero.
+                                 */
+                                rc = -EPROTO;
+                        } else {
+                                if (info->mti_mdt->mdt_opts.mo_compat_resname)
+                                        rc = mdt_lock_resname_compat(
+                                                                info->mti_mdt,
+                                                                dlm_req);
+                                info->mti_dlm_req = dlm_req;
+                        }
                 } else {
                         rc = -EFAULT;
                 }
@@ -3520,23 +3521,19 @@ static int mdt_intent_policy(struct ldlm_namespace *ns,
                 req_capsule_extend(pill, &RQF_LDLM_INTENT);
                 it = req_capsule_client_get(pill, &RMF_LDLM_INTENT);
                 if (it != NULL) {
-                        const struct ldlm_request *dlmreq;
-                        __u64 req_bits;
-
                         rc = mdt_intent_opc(it->opc, info, lockp, flags);
                         if (rc == 0)
                                 rc = ELDLM_OK;
 
-                        /*
-                         * Lock without inodebits makes no sense and will oops
+                        /* Lock without inodebits makes no sense and will oops
                          * later in ldlm. Let's check it now to see if we have
-                         * wrong lock from client or bits get corrupted
-                         * somewhere in mdt_intent_opc().
-                         */
-                        dlmreq = info->mti_dlm_req;
-                        req_bits = dlmreq->lock_desc.l_policy_data.l_inodebits.bits;
-                        LASSERT(req_bits != 0);
-
+                         * ibits corrupted somewhere in mdt_intent_opc().
+                         * The case for client miss to set ibits has been
+                         * processed by others. */
+                        LASSERT(ergo(info->mti_dlm_req->lock_desc.l_resource.\
+                                        lr_type == LDLM_IBITS,
+                                     info->mti_dlm_req->lock_desc.\
+                                        l_policy_data.l_inodebits.bits != 0));
                 } else
                         rc = err_serious(-EFAULT);
         } else {
@@ -3547,25 +3544,6 @@ static int mdt_intent_policy(struct ldlm_namespace *ns,
                         rc = err_serious(rc);
         }
         RETURN(rc);
-}
-
-/*
- * Seq wrappers
- */
-static void mdt_seq_adjust(const struct lu_env *env,
-                          struct mdt_device *m, int lost)
-{
-        struct md_site *ms = mdt_md_site(m);
-        struct lu_seq_range out;
-        ENTRY;
-
-        LASSERT(ms && ms->ms_server_seq);
-        LASSERT(lost >= 0);
-        /* get extra seq from seq_server, moving it's range up */
-        while (lost-- > 0) {
-                seq_server_alloc_meta(ms->ms_server_seq, NULL, &out, env);
-        }
-        EXIT;
 }
 
 static int mdt_seq_fini(const struct lu_env *env,
@@ -5042,7 +5020,6 @@ static int mdt_obd_connect(const struct lu_env *env,
                            void *localdata)
 {
         struct mdt_thread_info *info;
-        struct lsd_client_data *lcd;
         struct obd_export      *lexp;
         struct lustre_handle    conn = { 0 };
         struct mdt_device      *mdt;
@@ -5071,28 +5048,25 @@ static int mdt_obd_connect(const struct lu_env *env,
 
         rc = mdt_connect_internal(lexp, mdt, data);
         if (rc == 0) {
-                OBD_ALLOC_PTR(lcd);
-                if (lcd != NULL) {
-                        struct mdt_thread_info *mti;
-                        mti = lu_context_key_get(&env->le_ctx,
-                                                 &mdt_thread_key);
-                        LASSERT(mti != NULL);
-                        mti->mti_exp = lexp;
-                        memcpy(lcd->lcd_uuid, cluuid, sizeof lcd->lcd_uuid);
-                        lexp->exp_target_data.ted_lcd = lcd;
-                        rc = mdt_client_new(env, mdt);
-                        if (rc == 0)
-                                mdt_export_stats_init(obd, lexp, localdata);
-                } else {
-                        rc = -ENOMEM;
-                }
+                struct mdt_thread_info *mti;
+                struct lsd_client_data *lcd = lexp->exp_target_data.ted_lcd;
+                LASSERT(lcd);
+                mti = lu_context_key_get(&env->le_ctx, &mdt_thread_key);
+                LASSERT(mti != NULL);
+                mti->mti_exp = lexp;
+                memcpy(lcd->lcd_uuid, cluuid, sizeof lcd->lcd_uuid);
+                rc = mdt_client_new(env, mdt);
+                if (rc == 0)
+                        mdt_export_stats_init(obd, lexp, localdata);
         }
 
 out:
-        if (rc != 0)
+        if (rc != 0) {
                 class_disconnect(lexp);
-        else
+                *exp = NULL;
+        } else {
                 *exp = lexp;
+        }
 
         RETURN(rc);
 }
@@ -5239,7 +5213,10 @@ static int mdt_init_export(struct obd_export *exp)
         cfs_spin_lock(&exp->exp_lock);
         exp->exp_connecting = 1;
         cfs_spin_unlock(&exp->exp_lock);
-        rc = ldlm_init_export(exp);
+        rc = lut_client_alloc(exp);
+        if (rc == 0)
+                rc = ldlm_init_export(exp);
+
         if (rc)
                 CERROR("Error %d while initializing export\n", rc);
         RETURN(rc);
@@ -5257,13 +5234,13 @@ static int mdt_destroy_export(struct obd_export *exp)
 
         target_destroy_export(exp);
         ldlm_destroy_export(exp);
+        lut_client_free(exp);
 
         LASSERT(cfs_list_empty(&exp->exp_outstanding_replies));
         LASSERT(cfs_list_empty(&exp->exp_mdt_data.med_open_head));
         if (obd_uuid_equals(&exp->exp_client_uuid, &exp->exp_obd->obd_uuid))
                 RETURN(0);
 
-        lut_client_free(exp);
         RETURN(rc);
 }
 
@@ -5584,12 +5561,8 @@ int mdt_postrecov(const struct lu_env *env, struct mdt_device *mdt)
 #ifdef HAVE_QUOTA_SUPPORT
         struct md_device *next = mdt->mdt_child;
 #endif
-        int rc, lost;
+        int rc;
         ENTRY;
-        /* if some clients didn't participate in recovery then we can possibly
-         * lost sequence. Now we should increase sequence for safe value */
-        lost = obd->obd_max_recoverable_clients - obd->obd_connected_clients;
-        mdt_seq_adjust(env, mdt, lost);
 
         rc = ld->ld_ops->ldo_recovery_complete(env, ld);
 #ifdef HAVE_QUOTA_SUPPORT

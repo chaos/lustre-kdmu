@@ -476,6 +476,8 @@ int dt_record_write(const struct lu_env *env, struct dt_object *dt,
 
         LASSERTF(dt != NULL, "dt is NULL when we want to write record\n");
         LASSERT(th != NULL);
+        LASSERT(dt->do_body_ops);
+        LASSERT(dt->do_body_ops->dbo_write);
         rc = dt->do_body_ops->dbo_write(env, dt, buf, pos, th, BYPASS_CAPA, 1);
         if (rc == buf->lb_len)
                 rc = 0;

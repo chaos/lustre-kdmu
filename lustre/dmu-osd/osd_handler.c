@@ -103,7 +103,6 @@ struct osd_object {
 
         uint64_t                oo_mode;
         uint64_t                oo_type;
-        uint64_t                oo_exist;
 };
 
 enum {
@@ -441,11 +440,15 @@ static void osd_object_init0(struct osd_object *obj)
                 udmu_object_getattr(obj->oo_db, &va);
                 obj->oo_mode = va.va_mode;
                 obj->oo_dt.do_body_ops = &osd_body_ops;
-                obj->oo_dt.do_lu.lo_header->loh_attr |=
-                        (LOHA_EXISTS | (obj->oo_mode & S_IFMT));
                 /* add type infor to attr */
                 obj->oo_dt.do_lu.lo_header->loh_attr |=
                         vtype2lu_mode(va.va_type);
+                /*
+                 * initialize object before marking it existing
+                 */
+                mb();
+                obj->oo_dt.do_lu.lo_header->loh_attr |=
+                        (LOHA_EXISTS | (obj->oo_mode & S_IFMT));
         } else {
                 CDEBUG(D_OTHER, "object %llu:%lu does not exist\n",
                         fid->f_seq, (unsigned long) fid->f_oid);
@@ -694,12 +697,14 @@ static int osd_trans_stop(const struct lu_env *env, struct thandle *th)
         oh = container_of0(th, struct osd_thandle, ot_super);
 
         if (oh->ot_assigned == 0) {
-                if (th->th_dev) {
-                        lu_device_put(&th->th_dev->dd_lu_dev);
-                        th->th_dev = NULL;
-                        lu_context_exit(&th->th_ctx);
-                        lu_context_fini(&th->th_ctx);
-                }
+
+                LASSERT(oh->ot_tx);
+                udmu_tx_abort(oh->ot_tx);
+
+                lu_device_put(&th->th_dev->dd_lu_dev);
+                th->th_dev = NULL;
+                lu_context_exit(&th->th_ctx);
+                lu_context_fini(&th->th_ctx);
                 OBD_FREE_PTR(oh);
 
                 RETURN(0);
@@ -1018,7 +1023,6 @@ static int osd_punch(const struct lu_env *env, struct dt_object *dt,
 static int osd_create_post(struct osd_thread_info *info, struct osd_object *obj,
                            struct lu_attr *attr, struct thandle *th)
 {
-        obj->oo_exist = 1;
         osd_object_init0(obj);
         return 0;
 }
@@ -1033,6 +1037,23 @@ static void osd_ah_init(const struct lu_env *env, struct dt_allocation_hint *ah,
         ah->dah_mode = child_mode;
 }
 
+static int osd_check_for_reserved_space(struct osd_device *osd)
+{
+        cfs_kstatfs_t kfs;
+        int           rc;
+
+        if (osd->od_reserved_fraction == 0)
+                return 0;
+
+        rc = udmu_objset_statfs(&osd->od_objset, (struct statfs64 *) &kfs);
+        if (rc == 0) {
+                kfs.f_blocks = kfs.f_blocks / osd->od_reserved_fraction;
+                if (kfs.f_bavail < kfs.f_blocks)
+                        rc = -ENOSPC;
+        }
+        return rc;
+}
+
 static int osd_declare_object_create(const struct lu_env *env,
                                      struct dt_object *dt,
                                      struct lu_attr *attr,
@@ -1040,15 +1061,26 @@ static int osd_declare_object_create(const struct lu_env *env,
                                      struct dt_object_format *dof,
                                      struct thandle *handle)
 {
-        const struct lu_fid *fid  = lu_object_fid(&dt->do_lu);
-        struct osd_object *obj  = osd_dt_obj(dt);
-        struct osd_device *osd = osd_obj2dev(obj);
-        struct osd_thandle *oh;
-        uint64_t zapid;
-        char buf[64];
+        const struct lu_fid *fid = lu_object_fid(&dt->do_lu);
+        struct osd_object   *obj = osd_dt_obj(dt);
+        struct osd_device   *osd = osd_obj2dev(obj);
+        struct osd_thandle  *oh;
+        uint64_t             zapid;
+        char                 buf[64];
+        int                  rc;
         ENTRY;
 
         LASSERT(dof);
+
+        /*
+         * XXX: this is a very short-term solution to reserve space
+         * for unlinks. by default 1/25 of space is reserved.
+         */
+        if (fid->f_seq != LU_LLOG_LUSTRE_SEQ) {
+                rc = osd_check_for_reserved_space(osd);
+                if (rc)
+                        RETURN(rc);
+        }
 
         switch (dof->dof_type) {
                 case DFT_REGULAR:
@@ -1635,9 +1667,10 @@ static int osd_declare_index_insert(const struct lu_env *env,
                                     const struct dt_key *key,
                                     struct thandle *th)
 {
-        struct osd_object *obj = osd_dt_obj(dt);
-        uint64_t zapid;
+        struct osd_object  *obj = osd_dt_obj(dt);
         struct osd_thandle *oh;
+        uint64_t            zapid;
+        int                 rc;
         ENTRY;
 
         LASSERT(th != NULL);
@@ -1645,6 +1678,10 @@ static int osd_declare_index_insert(const struct lu_env *env,
 
         LASSERT(obj->oo_db);
         LASSERT(udmu_object_is_zap(obj->oo_db));
+
+        rc = osd_check_for_reserved_space(osd_obj2dev(obj));
+        if (rc)
+                RETURN(rc);
 
         zapid = udmu_object_get_id(obj->oo_db);
 
@@ -2697,6 +2734,7 @@ static struct lu_device *osd_device_alloc(const struct lu_env *env,
                         o->od_dt_dev.dd_ops = &osd_dt_ops;
                         cfs_spin_lock_init(&o->od_osfs_lock);
                         o->od_osfs_age = cfs_time_shift_64(-1000);
+                        o->od_reserved_fraction = DMU_RESERVED_FRACTION;
                         /* XXX: mount here */
                         /* XXX: relocate osd_device_init() here */
                         LBUG();

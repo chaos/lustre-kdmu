@@ -34,12 +34,13 @@ ALWAYS_EXCEPT="$ALWAYS_EXCEPT 52 54c 56a 60 160 180"
 
 # 24v -- (bug 22803) space reservation for unlinks
 # 57a -- (bug 22607) can't determine dnode size in ZFS yet
+# 57b -- large inodes are specific to ldiskfs
 # 66  -- blocks counting should be done properly with zfs
 # 132 -- inode counting is different in zfs
 # 155 -- we don't control cache via ZFS OSD yet
 # 156 -- we don't control cache via ZFS OSD yet
 [ "$FSTYPE" = "zfs" -o "$OSTFSTYPE" = "zfs" -o "$MDSFSTYPE" = "zfs" ] && \
-	ALWAYS_EXCEPT="$ALWAYS_EXCEPT 24v 57a 66 132 155 156"
+	ALWAYS_EXCEPT="$ALWAYS_EXCEPT 24v 57 66 132 155 156"
 
 # LOD/OSP branch needs fixes:
 # 60  -- llog_osd_create()) ASSERTION(dt) failed
@@ -5051,7 +5052,7 @@ test_116() {
 	[ $MINC -gt 0 ] && echo "Wrote $(($MAXC * 100 / $MINC - 100))% more files to larger OST $MAXI1"
 	[ $MAXC -gt $MINC ] || error_ignore "stripe QOS didn't balance free space"
 
-	rm -rf $DIR/$tdir/OST${MINI}
+	rm -rf $DIR/$tdir
 }
 run_test 116 "stripe QOS: free space balance ==================="
 
@@ -5409,16 +5410,17 @@ test_118k()
 	set_nodes_failloc "$(osts_nodes)" 0x20e
 	mkdir -p $DIR/$tdir
 
-        for ((i=0;i<10;i++)); do
-                (dd if=/dev/zero of=$DIR/$tdir/$tfile-$i bs=1M count=10 || \
+	for ((i=0;i<10;i++)); do
+		(dd if=/dev/zero of=$DIR/$tdir/$tfile-$i bs=1M count=10 || \
 			error "dd to $DIR/$tdir/$tfile-$i failed" )&
-	        SLEEPPID=$!
-                sleep 0.500s
-	        kill $SLEEPPID
-	        wait $SLEEPPID
-        done
+		SLEEPPID=$!
+		sleep 0.500s
+		kill $SLEEPPID
+		wait $SLEEPPID
+	done
 
-        set_nodes_failloc "$(osts_nodes)" 0
+	set_nodes_failloc "$(osts_nodes)" 0
+	rm -rf $DIR/$tdir
 }
 run_test 118k "bio alloc -ENOMEM and IO TERM handling ========="
 

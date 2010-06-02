@@ -34,7 +34,7 @@
  * Lustre is a trademark of Sun Microsystems, Inc.
  *
  * lustre/osd/osd_internal.h
- * Shared definitions and declarations for osd module
+ * Shared definitions and declarations for zfs/dmu osd
  *
  * Author: Nikita Danilov <nikita@clusterfs.com>
  */
@@ -50,6 +50,7 @@ struct inode;
 #define DMU_RESERVED_MIN (1<<20)
 #define DMU_RESERVED_MAX (64ULL * DMU_RESERVED_MIN)
 
+#define DMU_RESERVED_FRACTION   25      /* default reserved fraction 1/25 = 4% */
 /**
  * Storage representation for fids.
  *
@@ -119,6 +120,8 @@ struct osd_device {
         int                       od_connects;
         unsigned int              od_rdonly:1;
         char                      od_label[MAXNAMELEN];
+
+        int                       od_reserved_fraction;
 };
 
 int osd_statfs(const struct lu_env *env, struct dt_device *d, cfs_kstatfs_t *sfs);

@@ -240,11 +240,25 @@ struct lustre_capa *filter_object_capa(const struct lu_env *env,
         return BYPASS_CAPA;
 }
 
-static inline void filter_write_lock(const struct lu_env *env,
-                                     struct filter_object *fo, int role)
+static inline void filter_read_lock(const struct lu_env *env,
+                                     struct filter_object *fo)
 {
         struct dt_object  *next = filter_object_child(fo);
-        next->do_ops->do_write_lock(env, next, role);
+        next->do_ops->do_read_lock(env, next, 0);
+}
+
+static inline void filter_read_unlock(const struct lu_env *env,
+                                       struct filter_object *fo)
+{
+        struct dt_object  *next = filter_object_child(fo);
+        next->do_ops->do_read_unlock(env, next);
+}
+
+static inline void filter_write_lock(const struct lu_env *env,
+                                     struct filter_object *fo)
+{
+        struct dt_object  *next = filter_object_child(fo);
+        next->do_ops->do_write_lock(env, next, 0);
 }
 
 static inline void filter_write_unlock(const struct lu_env *env,
