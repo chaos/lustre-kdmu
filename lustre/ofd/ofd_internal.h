@@ -330,6 +330,7 @@ struct filter_thread_info * filter_info_init(const struct lu_env *env,
 
         info->fti_env = env;
         info->fti_exp = exp;
+        info->fti_has_trans = 0;
         return info;
 }
 
