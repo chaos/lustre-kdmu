@@ -400,7 +400,7 @@ static int osp_sync_send_new_rpc(struct osp_device *d, struct ptlrpc_request *re
         int rc;
         ENTRY;
 
-        LASSERT(d->opd_syn_rpc_in_flight < d->opd_syn_max_rpc_in_flight);
+        LASSERT(d->opd_syn_rpc_in_flight <= d->opd_syn_max_rpc_in_flight);
         LASSERT(req->rq_svc_thread == (void *) OSP_JOB_MAGIC);
 
         rc = ptlrpcd_add_req(req, PSCOPE_OTHER);
@@ -549,6 +549,13 @@ static int osp_sync_process_record(struct osp_device *d,
          * and fire after next commit callback
          */
        
+        /* notice we increment counters before sending RPC, to be consistent
+         * in RPC interpret callback which may happen very quickly */
+        cfs_spin_lock(&d->opd_syn_lock);
+        d->opd_syn_rpc_in_flight++;
+        d->opd_syn_rpc_in_progress++;
+        cfs_spin_unlock(&d->opd_syn_lock);
+
         switch (rec->lrh_type) {
                 case MDS_UNLINK_REC:
                         rc = osp_sync_new_unlink_job(d, llh, rec);
@@ -578,11 +585,14 @@ static int osp_sync_process_record(struct osp_device *d,
 
                         d->opd_syn_changes--;
                 }
-                d->opd_syn_rpc_in_flight++;
-                d->opd_syn_rpc_in_progress++;
                 CDEBUG(D_OTHER, "%s: %d in flight, %d in progress\n",
                        d->opd_obd->obd_name, d->opd_syn_rpc_in_flight,
                        d->opd_syn_rpc_in_progress);
+                cfs_spin_unlock(&d->opd_syn_lock);
+        } else {
+                cfs_spin_lock(&d->opd_syn_lock);
+                d->opd_syn_rpc_in_flight--;
+                d->opd_syn_rpc_in_progress--;
                 cfs_spin_unlock(&d->opd_syn_lock);
         }
 
