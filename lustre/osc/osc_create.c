@@ -349,6 +349,7 @@ int osc_precreate(struct obd_export *exp)
             oscc->oscc_flags & OSCC_FLAG_RDONLY ||
             oscc->oscc_flags & OSCC_FLAG_EXITING) {
                 cfs_spin_unlock(&oscc->oscc_lock);
+                CDEBUG(D_OTHER, "flags %x\n", oscc->oscc_flags);
                 RETURN(1000);
         }
 

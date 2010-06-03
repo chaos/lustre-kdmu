@@ -602,6 +602,10 @@ static int filter_statfs(struct obd_device *obd,
         osfs->os_bavail -= min(osfs->os_bavail, GRANT_FOR_LLOG +
                         ((ofd->ofd_tot_dirty + ofd->ofd_tot_pending +
                           osfs->os_bsize - 1) >> blockbits));
+        CDEBUG(D_CACHE,
+               "%Lu blocks: %Lu free, %Lu avail; %Lu objects: %Lu free; state %lx\n",
+               osfs->os_blocks, osfs->os_bfree, osfs->os_bavail,
+               osfs->os_files, osfs->os_ffree, osfs->os_state);
 
         if (OBD_FAIL_CHECK(OBD_FAIL_OST_ENOSPC)) {
                 struct lr_server_data *lsd = &ofd->ofd_fsd;
