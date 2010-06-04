@@ -63,6 +63,9 @@ static int filter_preprw_read(const struct lu_env *env,
         if (filter_object_exists(fo)) {
                 /* parse remote buffers to local buffers 
                    and prepare the latter */
+
+                filter_read_lock(env, fo);
+
                 for (i = 0, j = 0; i < niocount; i++) {
                         rc = dt_bufs_get(env, filter_object_child(fo),
                                          nb + i, res + j, 0,
@@ -83,9 +86,13 @@ static int filter_preprw_read(const struct lu_env *env,
                                   *nr_local);
                 lprocfs_counter_add(filter_obd(ofd)->obd_stats,
                                     LPROC_FILTER_READ_BYTES, tot_bytes);
+
+                if (unlikely(rc))
+                        filter_read_unlock(env, fo);
         }
 
         filter_object_put(env, fo);
+
         RETURN(rc);
 }
 
@@ -112,6 +119,8 @@ static int filter_preprw_write(const struct lu_env *env, struct obd_export *exp,
 
         if (!filter_object_exists(fo))
                 GOTO(out2, rc = -ENOENT);
+
+        filter_read_lock(env, fo);
 
         /* parse remote buffers to local buffers and prepare the latter */
         for (i = 0, j = 0; i < obj->ioo_bufcnt; i++) {
@@ -150,10 +159,11 @@ static int filter_preprw_write(const struct lu_env *env, struct obd_export *exp,
                                     LPROC_FILTER_WRITE_BYTES, tot_bytes);
                 rc = dt_write_prep(env, filter_object_child(fo), res,
                                    *nr_local, &used);
+        } else {
+                dt_bufs_put(env, filter_object_child(fo), res, *nr_local);
+                filter_read_unlock(env, fo);
         }
 
-        if (rc)
-                dt_bufs_put(env, filter_object_child(fo), res, *nr_local);
 out2:
         filter_object_put(env, fo);
         RETURN(rc);
@@ -164,7 +174,7 @@ int filter_preprw(int cmd, struct obd_export *exp, struct obdo *oa, int objcount
                   int *nr_local, struct niobuf_local *res,
                   struct obd_trans_info *oti, struct lustre_capa *capa)
 {
-        struct lu_env env;
+        struct lu_env *env = oti->oti_thread->t_env;
         struct filter_device *ofd = filter_exp(exp);
         struct filter_thread_info *info;
         int rc = 0;
@@ -177,10 +187,10 @@ int filter_preprw(int cmd, struct obd_export *exp, struct obdo *oa, int objcount
                 RETURN(-ENOENT);
         }
 
-        rc = lu_env_init(&env, LCT_DT_THREAD);
-        if (rc)
-                RETURN(rc);
-        info = filter_info_init(&env, exp);
+        rc = lu_env_refill(env);
+        LASSERT(rc == 0);
+
+        info = filter_info_init(env, exp);
 
         LASSERT(objcount == 1);
         LASSERT(obj->ioo_bufcnt > 0);
@@ -197,7 +207,7 @@ int filter_preprw(int cmd, struct obd_export *exp, struct obdo *oa, int objcount
                         info->fti_attr.la_valid = LA_TYPE|LA_MODE;
                         info->fti_attr.la_mode = S_IFREG | 0666;
 
-                        rc = filter_preprw_write(&env, exp, ofd, &info->fti_fid,
+                        rc = filter_preprw_write(env, exp, ofd, &info->fti_fid,
                                                  &info->fti_attr, oa, objcount,
                                                  obj, nb, nr_local,
                                                  res);
@@ -208,12 +218,12 @@ int filter_preprw(int cmd, struct obd_export *exp, struct obdo *oa, int objcount
                 if (rc == 0) {
                         if (oa && oa->o_valid & OBD_MD_FLGRANT) {
                                 cfs_mutex_down(&ofd->ofd_grant_sem);
-                                filter_grant_incoming(&env, exp, oa);
+                                filter_grant_incoming(env, exp, oa);
                                 if (!(oa->o_flags & OBD_FL_SHRINK_GRANT))
                                         oa->o_grant = 0;
                                 cfs_mutex_up(&ofd->ofd_grant_sem);
                         }
-                        rc = filter_preprw_read(&env, ofd, &info->fti_fid,
+                        rc = filter_preprw_read(env, ofd, &info->fti_fid,
                                                 &info->fti_attr, obj->ioo_bufcnt,
                                                 nb, nr_local, res);
                         obdo_from_la(oa, &info->fti_attr, LA_ATIME);
@@ -222,7 +232,6 @@ int filter_preprw(int cmd, struct obd_export *exp, struct obdo *oa, int objcount
                 LBUG();
                 rc = -EPROTO;
         }
-        lu_env_fini(&env);
         RETURN(rc);
 }
 
@@ -246,7 +255,9 @@ filter_commitrw_read(const struct lu_env *env, struct filter_device *ofd,
                 /* CROW object, do nothing */
         }
 
+        filter_read_unlock(env, fo);
         filter_object_put(env, fo);
+
         RETURN(0);
 }
 
@@ -309,6 +320,7 @@ filter_commitrw_write(const struct lu_env *env, struct filter_device *ofd,
 out:
         filter_grant_commit(info->fti_exp, niocount, res);
         dt_bufs_put(env, filter_object_child(fo), res, niocount);
+        filter_read_unlock(env, fo);
         filter_object_put(env, fo);
 
         RETURN(rc);
@@ -320,15 +332,12 @@ int filter_commitrw(int cmd, struct obd_export *exp,
                     struct obd_trans_info *oti, int old_rc)
 {
         struct filter_device *ofd = filter_exp(exp);
+        struct lu_env *env = oti->oti_thread->t_env;
         struct filter_thread_info *info;
         struct filter_mod_data *fmd;
-        struct lu_env env;
         int rc = 0;
 
-        rc = lu_env_init(&env, LCT_DT_THREAD);
-        if (rc)
-                RETURN(rc);
-        info = filter_info_init(&env, exp);
+        info = filter_info_init(env, exp);
         filter_oti2info(info, oti);
 
         LASSERT(npages > 0);
@@ -352,7 +361,7 @@ int filter_commitrw(int cmd, struct obd_export *exp,
                 }
                 filter_fmd_put(exp, fmd);
 
-                rc = filter_commitrw_write(&env, ofd, &info->fti_fid,
+                rc = filter_commitrw_write(env, ofd, &info->fti_fid,
                                            &info->fti_attr, objcount,
                                            npages, res, old_rc);
                 if (rc == 0)
@@ -390,12 +399,12 @@ int filter_commitrw(int cmd, struct obd_export *exp,
                                 ldlm_resource_putref(rs);
                         }
                 }
-                rc = filter_commitrw_read(&env, ofd, &info->fti_fid, objcount,
+                rc = filter_commitrw_read(env, ofd, &info->fti_fid, objcount,
                                           npages, res);
         } else {
                 LBUG();
                 rc = -EPROTO;
         }
-        lu_env_fini(&env);
+
         RETURN(rc);
 }
