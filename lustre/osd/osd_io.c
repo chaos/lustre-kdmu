@@ -523,7 +523,8 @@ static int osd_write_prep(const struct lu_env *env, struct dt_object *dt,
         rc = osd->od_fsops->fs_map_inode_pages(inode, iobuf->dr_pages,
                         iobuf->dr_npages, iobuf->dr_blocks,
                         NULL, 0, NULL);
-        rc = osd_do_bio(inode, iobuf, OBD_BRW_READ);
+        if (likely(rc == 0))
+                rc = osd_do_bio(inode, iobuf, OBD_BRW_READ);
         RETURN(rc);
 }
 
