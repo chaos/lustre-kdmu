@@ -452,7 +452,6 @@ cleanup:
 static int osd_put_bufs(const struct lu_env *env, struct dt_object *dt,
                 struct niobuf_local *lb, int npages)
 {
-        struct osd_object *obj    = osd_dt_obj(dt);
         int                i;
 
         for (i = 0; i < npages; i++) {
@@ -531,25 +530,58 @@ static int osd_write_prep(const struct lu_env *env, struct dt_object *dt,
 static int osd_declare_write_commit(const struct lu_env *env, struct dt_object *dt,
                 struct niobuf_local *lb, int npages, struct thandle *handle)
 {
-        struct osd_thandle  *oh;
-        int                  extents = 1;
-        int                  i;
+        const struct osd_device *osd = osd_obj2dev(osd_dt_obj(dt));
+        struct inode            *inode = osd_dt_obj(dt)->oo_inode;
+        struct osd_thandle      *oh;
+        int                      extents = 1, depth, i, newblocks, maxleaves, sp;
+        int                      old;
 
         LASSERT(handle != NULL);
         oh = container_of0(handle, struct osd_thandle, ot_super);
         LASSERT(oh->ot_handle == NULL);
 
-        /* allocate each block in different group (bitmap + gd) */
-        oh->ot_credits += npages * 2;
+        old = oh->ot_credits;
+        newblocks = npages;
 
         /* calculate number of extents (probably better to pass nb) */
         for (i = 1; i < npages; i++)
                 if (lb[i].file_offset != lb[i-1].file_offset + lb[i-1].len)
                         extents++;
 
-        /* each extent can go into new leaf causing a split */
-        /* 5 is max tree depth, 2 is bitmap + gd */
-        oh->ot_credits += (5 * (2 + 1)) * extents;
+        /*
+         * each extent can go into new leaf causing a split
+         * 5 is max tree depth: inode + 4 index blocks
+         * with blockmaps, depth is 3 at most
+         */
+	if (LDISKFS_I(inode)->i_flags & LDISKFS_EXTENTS_FL) {
+                /*
+                 * many concurrent threads may grow tree by the time
+                 * our transaction starts. so, consider 2 is a min depth
+                 */
+                depth == max(ext_depth(inode), 1) + 1;
+                newblocks += depth;
+                oh->ot_credits++; /* inode */
+                oh->ot_credits += depth * 2 * extents;
+        } else {
+                depth = 3;
+                newblocks += depth;
+                oh->ot_credits++; /* inode */
+                oh->ot_credits += depth * extents;
+        }
+
+        /* each new block can go in different group (bitmap + gd) */
+
+        /* we can't dirt more bitmap blocks than exist */
+        if (newblocks > LDISKFS_SB(osd_sb(osd))->s_groups_count)
+                oh->ot_credits += LDISKFS_SB(osd_sb(osd))->s_groups_count;
+        else
+                oh->ot_credits += newblocks;
+
+        /* we can't dirt more gd blocks than exist */
+        if (newblocks > LDISKFS_SB(osd_sb(osd))->s_gdb_count)
+                oh->ot_credits += LDISKFS_SB(osd_sb(osd))->s_gdb_count;
+        else
+                oh->ot_credits += newblocks;
         
         RETURN(0);
 }
