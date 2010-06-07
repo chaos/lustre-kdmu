@@ -251,9 +251,8 @@ static int filter_txn_commit_cb(const struct lu_env *env,
 
         /* iterate through all additional callbacks */
         for (i = 0; i < txi->txi_cb_count; i++) {
-                txi->txi_cb[i].filter_cb_func(&ofd->ofd_lut, txi->txi_transno,
-                                              txi->txi_cb[i].filter_cb_data,
-                                              0);
+                txi->txi_cb[i].lut_cb_func(&ofd->ofd_lut, txi->txi_transno,
+                                           txi->txi_cb[i].lut_cb_data, 0);
         }
         return 0;
 }
@@ -269,10 +268,6 @@ int filter_fs_setup(const struct lu_env *env, struct filter_device *ofd,
 
         if (OBD_FAIL_CHECK(OBD_FAIL_MDS_FS_SETUP))
                 RETURN (-ENOENT);
-
-        OBD_ALLOC(ofd->ofd_last_rcvd_slots, LR_MAX_CLIENTS / 8);
-        if (ofd->ofd_last_rcvd_slots == NULL)
-                RETURN(-ENOMEM);
 
         /* prepare transactions callbacks */
         ofd->ofd_txn_cb.dtc_txn_start = filter_txn_start_cb;
@@ -291,15 +286,14 @@ int filter_fs_setup(const struct lu_env *env, struct filter_device *ofd,
 
         fo = filter_object_find_or_create(env, ofd, &fid, &attr);
         LASSERT(!IS_ERR(fo));
-        ofd->ofd_last_rcvd = filter_object_child(fo);
-        rc = filter_server_data_init(env, ofd);
-        LASSERT(rc == 0);
-        lu_object_put(env, &ofd->ofd_last_rcvd->do_lu);
-        ofd->ofd_last_rcvd = NULL;
 
         LASSERT(ofd->ofd_osd);
         rc = lut_init2(env, &ofd->ofd_lut, obd, ofd->ofd_osd, &fid);
         LASSERT(rc == 0);
+
+        rc = filter_server_data_init(env, ofd);
+        LASSERT(rc == 0);
+        lu_object_put(env, &ofd->ofd_last_rcvd->do_lu);
 
         lu_local_obj_fid(&fid, OFD_LAST_GROUP_OID);
         memset(&attr, 0, sizeof(attr));
@@ -316,10 +310,6 @@ int filter_fs_setup(const struct lu_env *env, struct filter_device *ofd,
 
 //stop_recov:
         target_recovery_fini(obd);
-//put_last_rcvd:
-        OBD_FREE(ofd->ofd_last_rcvd_slots, LR_MAX_CLIENTS / 8);
-        lu_object_put(env, &ofd->ofd_last_rcvd->do_lu);
-        ofd->ofd_last_rcvd = NULL;
         return rc;
 }
 
@@ -330,8 +320,6 @@ void filter_fs_cleanup(const struct lu_env *env, struct filter_device *ofd)
         ENTRY;
 
         info->fti_no_need_trans = 1;
-
-        filter_server_data_update(env, ofd);
 
         for (i = 0; i <= ofd->ofd_max_group; i++) {
                 filter_last_id_write(env, ofd, i, NULL);
@@ -350,8 +338,6 @@ void filter_fs_cleanup(const struct lu_env *env, struct filter_device *ofd)
                 lu_object_put(env, &ofd->ofd_last_group_file->do_lu);
 
         ofd->ofd_last_group_file = NULL;
-
-        OBD_FREE(ofd->ofd_last_rcvd_slots, LR_MAX_CLIENTS / 8);
 
         filter_free_capa_keys(ofd);
         cleanup_capa_hash(ofd->ofd_capa_hash);

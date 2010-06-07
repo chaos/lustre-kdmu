@@ -80,11 +80,6 @@ struct oi_descr {
         __u32 oid;
 };
 
-static struct super_block *osd_sb(const struct osd_device *dev)
-{
-        return dev->od_mnt->mnt_sb;
-}
-
 static journal_t *osd_journal(const struct osd_device *dev)
 {
         return LDISKFS_SB(osd_sb(dev))->s_journal;

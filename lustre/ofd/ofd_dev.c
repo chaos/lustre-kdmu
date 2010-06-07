@@ -651,8 +651,6 @@ static int filter_init0(const struct lu_env *env, struct filter_device *m,
         }
 #endif
 
-        cfs_spin_lock_init(&m->ofd_transno_lock);
-
         m->ofd_fmd_max_num = FILTER_FMD_MAX_NUM_DEFAULT;
         m->ofd_fmd_max_age = FILTER_FMD_MAX_AGE_DEFAULT;
 

@@ -55,11 +55,13 @@
 #ifdef HAVE_EXT4_LDISKFS
 #include <ldiskfs/ldiskfs.h>
 #include <ldiskfs/ldiskfs_jbd2.h>
+#include <ldiskfs/ldiskfs_extents.h>
 #define osd_journal_callback_set(handle, func, jcb) jbd2_journal_callback_set(handle, func, jcb)
 #else
 #include <linux/jbd.h>
 #include <linux/ldiskfs_fs.h>
 #include <linux/ldiskfs_jbd.h>
+#include <linux/ldiskfs_extents.h>
 #define osd_journal_callback_set(handle, func, jcb) journal_callback_set(handle, func, jcb)
 #endif
 
@@ -468,6 +470,11 @@ static inline int osd_invariant(const struct osd_object *obj)
 #else
 #define osd_invariant(obj) (1)
 #endif
+
+static struct super_block *osd_sb(const struct osd_device *dev)
+{
+        return dev->od_mnt->mnt_sb;
+}
 
 enum {
         LPROC_OSD_READ_BYTES = 0,

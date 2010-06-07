@@ -535,9 +535,14 @@ int osd_statfs(const struct lu_env *env, struct dt_device *d,
         cfs_kstatfs_t *kfs = &osd->od_kstatfs;
         int rc = 0;
 
+        /* XXX: do we really need a cache here? -bzzz */
+        kfs = sfs;
+#if 0
+        /* XXX: we can't use spinlock here as DMU uses semaphores inside */
         cfs_spin_lock(&osd->od_osfs_lock);
         /* cache 1 second */
         if (cfs_time_before_64(osd->od_osfs_age, cfs_time_shift_64(-1))) {
+#endif
                 rc = udmu_objset_statfs(&osd->od_objset, (struct statfs64 *) kfs);
 
                /* Reserve 64MB for ZFS COW symantics so that grants won't
@@ -554,9 +559,11 @@ int osd_statfs(const struct lu_env *env, struct dt_device *d,
                 } else {
                         kfs->f_blocks -= (DMU_RESERVED_MIN/kfs->f_bsize);
                 }
+#if 0
         }
         *sfs = *kfs;
         cfs_spin_unlock(&osd->od_osfs_lock);
+#endif
 
         RETURN (rc);
 }

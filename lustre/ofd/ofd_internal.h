@@ -39,15 +39,6 @@
 
 extern struct file_operations filter_per_export_stats_fops;
 
-/* Data stored per client in the last_rcvd file.  In le32 order. */
-struct filter_client_data {
-        __u8  fcd_uuid[40];        /* client UUID */
-        __u64 fcd_last_rcvd;       /* last completed transaction ID */
-        __u64 fcd_last_xid;        /* client RPC xid for the last transaction */
-        __u32 fcd_group;           /* mds group */
-        __u8  fcd_padding[LR_CLIENT_SIZE - 60];
-};
-
 /* Limit the returned fields marked valid to those that we actually might set */
 #define FILTER_VALID_FLAGS (LA_TYPE | LA_MODE | LA_SIZE | LA_BLOCKS | \
                             LA_BLKSIZE | LA_ATIME | LA_MTIME | LA_CTIME)
@@ -134,13 +125,10 @@ struct filter_device {
 
         /* transaction callbacks */
         struct dt_txn_callback   ofd_txn_cb;
-        cfs_spinlock_t           ofd_transno_lock;
-        __u64                    ofd_last_transno;
 
         /* last_rcvd file */
         struct lu_target         ofd_lut;
         struct dt_object        *ofd_last_group_file;
-        unsigned long           *ofd_last_rcvd_slots;
 
         int                      ofd_subdir_count;
 
@@ -180,8 +168,10 @@ struct filter_device {
         int                      ofd_raid_degraded;
 };
 
-#define ofd_last_rcvd ofd_lut.lut_last_rcvd
-#define ofd_fsd       ofd_lut.lut_lsd
+#define ofd_last_rcvd    ofd_lut.lut_last_rcvd
+#define ofd_fsd          ofd_lut.lut_lsd
+#define ofd_last_transno ofd_lut.lut_last_transno
+#define ofd_transno_lock ofd_lut.lut_translock
 
 static inline struct filter_device *filter_dev(struct lu_device *d)
 {
@@ -334,13 +324,6 @@ struct filter_thread_info * filter_info_init(const struct lu_env *env,
         return info;
 }
 
-typedef void (*filter_cb_t)(const struct filter_device *mdt, __u64 transno,
-                         void *data, int err);
-struct filter_commit_cb {
-        lut_cb_t  filter_cb_func;
-        void     *filter_cb_data;
-};
-
 /*
  * Info allocated per-transaction.
  */
@@ -348,7 +331,7 @@ struct filter_commit_cb {
 struct filter_txn_info {
         __u64                 txi_transno;
         unsigned int          txi_cb_count;
-        struct filter_commit_cb  txi_cb[OFD_MAX_COMMIT_CB];
+        struct lut_commit_cb  txi_cb[OFD_MAX_COMMIT_CB];
 };
 
 static inline void filter_trans_add_cb(const struct thandle *th,
@@ -360,8 +343,8 @@ static inline void filter_trans_add_cb(const struct thandle *th,
         LASSERT(txi->txi_cb_count < ARRAY_SIZE(txi->txi_cb));
 
         /* add new callback */
-        txi->txi_cb[txi->txi_cb_count].filter_cb_func = cb_func;
-        txi->txi_cb[txi->txi_cb_count].filter_cb_data = cb_data;
+        txi->txi_cb[txi->txi_cb_count].lut_cb_func = cb_func;
+        txi->txi_cb[txi->txi_cb_count].lut_cb_data = cb_data;
         txi->txi_cb_count++;
 }
 
