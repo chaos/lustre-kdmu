@@ -755,7 +755,7 @@ static int lod_alloc_specific(const struct lu_env *env, struct lod_object *lo,
         unsigned ost_idx, array_idx, ost_count;
         int i, rc, stripe_num = 0;
         int speed = 0;
-        struct pool_desc *pool;
+        struct pool_desc *pool = NULL;
         struct ost_pool *osts;
         cfs_kstatfs_t sfs;
         ENTRY;
