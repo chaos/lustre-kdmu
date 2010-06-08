@@ -670,6 +670,7 @@ int osd_statfs(const struct lu_env *env, struct dt_device *d,
                 * 128MB but more than 64MB, we try to reserve 8MB,
                 * otherwise we reserve 1MB. 
                 */
+#if 0
                 if ((kfs->f_blocks * kfs->f_frsize) >= (2*DMU_RESERVED_MAX)) {
                         kfs->f_blocks -= (DMU_RESERVED_MAX/kfs->f_bsize);
                 } else if ((kfs->f_bsize * kfs->f_frsize) > DMU_RESERVED_MAX) {
@@ -677,6 +678,7 @@ int osd_statfs(const struct lu_env *env, struct dt_device *d,
                 } else {
                         kfs->f_blocks -= (DMU_RESERVED_MIN/kfs->f_bsize);
                 }
+#endif
 #if 0
         }
         *sfs = *kfs;
