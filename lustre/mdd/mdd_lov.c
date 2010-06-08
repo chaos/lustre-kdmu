@@ -218,6 +218,7 @@ int mdd_get_md(const struct lu_env *env, struct mdd_object *obj,
                 rc = 0;
         } else if (rc < 0) {
                 CERROR("Error %d reading eadata - %d\n", rc, *md_size);
+                dump_stack();
         } else {
                 /* XXX: Convert lov EA but fixed after verification test. */
                 *md_size = rc;
