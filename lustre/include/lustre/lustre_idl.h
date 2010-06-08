@@ -999,7 +999,8 @@ struct lov_mds_md_v1 {            /* LOV EA mds/wire data (little-endian) */
 
 /* extern void lustre_swab_lov_mds_md(struct lov_mds_md *llm); */
 
-#define MAX_MD_SIZE (sizeof(struct lov_mds_md) + 4 * sizeof(struct lov_ost_data))
+/* XXX: s/4/6/ is a temp. hack for 22994. correct solution to be designed ASAP */
+#define MAX_MD_SIZE (sizeof(struct lov_mds_md) + 6 * sizeof(struct lov_ost_data))
 #define MIN_MD_SIZE (sizeof(struct lov_mds_md) + 1 * sizeof(struct lov_ost_data))
 
 #define XATTR_NAME_ACL_ACCESS   "system.posix_acl_access"
