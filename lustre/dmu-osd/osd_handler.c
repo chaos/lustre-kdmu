@@ -800,10 +800,9 @@ static int osd_trans_start(const struct lu_env *env, struct dt_device *d,
         /* TODO: hook_start shoud be here, so upper layers will be able to
          * declare own transaction usage */
         rc = udmu_tx_assign(oh->ot_tx, TXG_WAIT);
-        if (rc != 0) {
+        if (unlikely(rc != 0)) {
                 /* dmu will call commit callback with error code during abort */
                 CERROR("can't assign tx: %d\n", rc);
-                udmu_tx_abort(oh->ot_tx);
         } else {
                 /* add commit callback */
                 udmu_tx_cb_register(oh->ot_tx, osd_trans_commit_cb, (void *)oh);
