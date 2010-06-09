@@ -651,6 +651,7 @@ int osd_statfs(const struct lu_env *env, struct dt_device *d,
         struct osd_device *osd = osd_dt_dev(d);
         cfs_kstatfs_t *kfs = &osd->od_kstatfs;
         int rc = 0;
+        __u64 reserve;
 
         /* XXX: do we really need a cache here? -bzzz */
         kfs = sfs;
@@ -662,22 +663,24 @@ int osd_statfs(const struct lu_env *env, struct dt_device *d,
 #endif
                 rc = udmu_objset_statfs(&osd->od_objset, (struct statfs64 *) kfs);
 
-               /* Reserve 64MB for ZFS COW symantics so that grants won't
-                * consume all available space. COW needs space to duplicate
-                * the block tree even just to delete a file. If filesystem
-                * size is  greater than 128MB, we reserve 64MB, if less than
-                * 128MB but more than 64MB, we try to reserve 8MB,
-                * otherwise we reserve 1MB. 
-                */
-#if 0
-                if ((kfs->f_blocks * kfs->f_frsize) >= (2*DMU_RESERVED_MAX)) {
-                        kfs->f_blocks -= (DMU_RESERVED_MAX/kfs->f_bsize);
-                } else if ((kfs->f_bsize * kfs->f_frsize) > DMU_RESERVED_MAX) {
-                        kfs->f_blocks -= ((8 * DMU_RESERVED_MIN)/kfs->f_bsize);
-                } else {
-                        kfs->f_blocks -= (DMU_RESERVED_MIN/kfs->f_bsize);
-                }
-#endif
+                /* Reserve same space so we don't run into ENOSPC due to grants
+                 * not accounting for metadata overhead in ZFS.  This is just a
+                 * short-term fix for testing and it can go away once we fix
+                 * grants to account for metadata overhead.
+                 *
+                 * This is what we do here: if the filesystem size is greater
+                 * than 1GB, we reserve 64MB, if less than 1GB we reserve
+                 * proportionately less. */
+                if (likely((kfs->f_blocks * kfs->f_frsize) >= 1ULL << 30))
+                        reserve = DMU_RESERVED_MAX / kfs->f_frsize;
+                else
+                        reserve = (DMU_RESERVED_MAX * kfs->f_blocks) >> 30;
+
+                LASSERT(reserve < kfs->f_blocks);
+
+                kfs->f_blocks -= reserve;
+                kfs->f_bfree  -= min(reserve, kfs->f_bfree);
+                kfs->f_bavail -= min(reserve, kfs->f_bavail);
 #if 0
         }
         *sfs = *kfs;
