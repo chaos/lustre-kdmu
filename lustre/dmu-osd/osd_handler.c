@@ -186,7 +186,6 @@ static struct lu_device_operations      osd_lu_ops;
 static struct lu_context_key            osd_key;
 static struct dt_object_operations      osd_obj_ops;
 static struct dt_body_operations        osd_body_ops;
-const static struct dt_body_operations  osd_body_ops_new;
 
 static char *osd_object_tag = "osd_object";
 static char *root_tag = "osd_mount, rootdb";
@@ -1214,7 +1213,8 @@ static int osd_declare_object_create(const struct lu_env *env,
                 case DFT_REGULAR:
                 case DFT_SYM:
                 case DFT_NODE:
-                        obj->oo_dt.do_body_ops = &osd_body_ops_new;
+                        if (obj->oo_dt.do_body_ops == NULL)
+                                obj->oo_dt.do_body_ops = &osd_body_ops;
                         break;
                 default:
                         break;
@@ -2311,6 +2311,9 @@ static ssize_t osd_read(const struct lu_env *env, struct dt_object *dt,
         //loff_t offset = *pos;
         int rc;
 
+        LASSERT(dt_object_exists(dt));
+        LASSERT(obj->oo_db);
+
         rc = udmu_object_read(&osd->od_objset, obj->oo_db, (uint64_t)(*pos),
                               (uint64_t)buf->lb_len, buf->lb_buf);
         if (rc > 0)
@@ -2336,11 +2339,15 @@ static ssize_t osd_declare_write(const struct lu_env *env, struct dt_object *dt,
         oh = container_of0(th, struct osd_thandle, ot_super);
 
         if (obj->oo_db) {
+                LASSERT(dt_object_exists(dt));
+
                 oid = udmu_object_get_id(obj->oo_db);
                 udmu_object_getattr(obj->oo_db, &va);
                 if (va.va_size < pos + size)
                         udmu_tx_hold_bonus(oh->ot_tx, oid);
         } else {
+                LASSERT(!dt_object_exists(dt));
+
                 oid = DMU_NEW_OBJECT;
         }
 
@@ -2361,6 +2368,9 @@ static ssize_t osd_write(const struct lu_env *env, struct dt_object *dt,
         vnattr_t va;
         int rc;
         ENTRY;
+
+        LASSERT(dt_object_exists(dt));
+        LASSERT(obj->oo_db);
 
         LASSERT(th != NULL);
         oh = container_of0(th, struct osd_thandle, ot_super);
@@ -2384,10 +2394,14 @@ static int osd_get_bufs(const struct lu_env *env, struct dt_object *dt,
                         loff_t offset, ssize_t len, struct niobuf_local *_lb,
                         int rw, struct lustre_capa *capa)
 {
+        struct osd_object   *obj  = osd_dt_obj(dt);
         struct niobuf_local *lb = _lb;
         //long blocksize;
         //unsigned long tmp;
         int i, plen, npages = 0;
+
+        LASSERT(dt_object_exists(dt));
+        LASSERT(obj->oo_db);
 
         while (len > 0) {
                 plen = len;
@@ -2446,7 +2460,11 @@ out_err:
 static int osd_put_bufs(const struct lu_env *env, struct dt_object *dt,
                         struct niobuf_local *lb, int npages)
 {
-        int i;
+        struct osd_object *obj  = osd_dt_obj(dt);
+        int                i;
+
+        LASSERT(dt_object_exists(dt));
+        LASSERT(obj->oo_db);
 
         for (i = 0; i < npages; i++, lb++) {
                 LASSERT(lb->obj == dt);
@@ -2464,6 +2482,11 @@ static int osd_write_prep(const struct lu_env *env, struct dt_object *dt,
                           struct niobuf_local *lb, int nr,
                           unsigned long *used)
 {
+        struct osd_object *obj = osd_dt_obj(dt);
+
+        LASSERT(dt_object_exists(dt));
+        LASSERT(obj->oo_db);
+
         return 0;
 }
 
@@ -2479,6 +2502,9 @@ static int osd_declare_write_commit(const struct lu_env *env,
         uint64_t            oid;
         int                 i;
         ENTRY;
+
+        LASSERT(dt_object_exists(dt));
+        LASSERT(obj->oo_db);
 
         LASSERT(lb);
         LASSERT(nr > 0);
@@ -2524,6 +2550,9 @@ static int osd_write_commit(const struct lu_env *env, struct dt_object *dt,
         int                 i;
         ENTRY;
 
+        LASSERT(dt_object_exists(dt));
+        LASSERT(obj->oo_db);
+
         LASSERT(th != NULL);
         oh = container_of0(th, struct osd_thandle, ot_super);
         
@@ -2553,9 +2582,13 @@ static int osd_write_commit(const struct lu_env *env, struct dt_object *dt,
 static int osd_read_prep(const struct lu_env *env, struct dt_object *dt,
                           struct niobuf_local *lb, int nr)
 {
-        struct lu_buf buf;
-        loff_t offset;
-        int i;
+        struct osd_object *obj  = osd_dt_obj(dt);
+        struct lu_buf      buf;
+        loff_t             offset;
+        int                i;
+
+        LASSERT(dt_object_exists(dt));
+        LASSERT(obj->oo_db);
 
         for (i = 0; i < nr; i++, lb++) {
                 buf.lb_buf = kmap(lb->page);
@@ -2579,10 +2612,6 @@ static int osd_read_prep(const struct lu_env *env, struct dt_object *dt,
 
         return 0;
 }
-
-const static struct dt_body_operations osd_body_ops_new = {
-        .dbo_declare_write = osd_declare_write,
-};
 
 static struct dt_body_operations osd_body_ops = {
         .dbo_read                 = osd_read,
