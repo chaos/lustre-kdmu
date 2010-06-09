@@ -562,10 +562,8 @@ int osc_create(struct obd_export *exp, struct obdo *oa,
                 if (rc == 0 || rc == -ENOSPC) {
                         struct obd_connect_data *ocd;
 
-                        if (rc == -ENOSPC) {
-                                CDEBUG(D_OTHER, "set NOSPC\n");
+                        if (rc == -ENOSPC)
                                 oscc->oscc_flags |= OSCC_FLAG_NOSPC;
-                        }
 
                         oscc->oscc_flags &= ~OSCC_FLAG_RECOVERING;
 

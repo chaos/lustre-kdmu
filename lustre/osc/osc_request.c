@@ -3536,13 +3536,10 @@ static int osc_statfs_interpret(const struct lu_env *env,
          * lose that amount of space so in those cases we report no space left
          * if their is less than 1 GB left.                             */
         used = min_t(__u64,(msfs->os_blocks - msfs->os_bfree) >> 10, 1 << 30);
-        CDEBUG(D_OTHER, "blocks %Lu, free %Lu, avail %Lu, used %Lu, ffree %Lu\n",
-               msfs->os_blocks, msfs->os_bfree, msfs->os_bavail, used, msfs->os_ffree);
         if (unlikely(((cli->cl_oscc.oscc_flags & OSCC_FLAG_NOSPC) == 0) &&
-                     ((msfs->os_ffree < 32) || (msfs->os_bavail < used)))) {
-                                CDEBUG(D_OTHER, "set NOSPC\n");
+                     ((msfs->os_ffree < 32) || (msfs->os_bavail < used))))
                 cli->cl_oscc.oscc_flags |= OSCC_FLAG_NOSPC;
-        } else if (unlikely(((cli->cl_oscc.oscc_flags & OSCC_FLAG_NOSPC) != 0) &&
+        else if (unlikely(((cli->cl_oscc.oscc_flags & OSCC_FLAG_NOSPC) != 0) &&
                 (msfs->os_ffree > 64) && (msfs->os_bavail > (used << 1))))
                         cli->cl_oscc.oscc_flags &= ~OSCC_FLAG_NOSPC;
 
