@@ -349,7 +349,6 @@ int osc_precreate(struct obd_export *exp)
             oscc->oscc_flags & OSCC_FLAG_RDONLY ||
             oscc->oscc_flags & OSCC_FLAG_EXITING) {
                 cfs_spin_unlock(&oscc->oscc_lock);
-                CDEBUG(D_OTHER, "flags %x\n", oscc->oscc_flags);
                 RETURN(1000);
         }
 
@@ -564,6 +563,7 @@ int osc_create(struct obd_export *exp, struct obdo *oa,
 
                         if (rc == -ENOSPC)
                                 oscc->oscc_flags |= OSCC_FLAG_NOSPC;
+
                         oscc->oscc_flags &= ~OSCC_FLAG_RECOVERING;
 
                         oscc->oscc_last_id = oa->o_id;

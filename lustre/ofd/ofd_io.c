@@ -302,7 +302,7 @@ filter_commitrw_write(const struct lu_env *env, struct filter_device *ofd,
 
         rc = filter_trans_start(env, ofd, th);
         if (rc)
-                GOTO(out, rc);
+                GOTO(out_stop, rc);
 
         rc = dt_write_commit(env, filter_object_child(fo), res, niocount, th);
 
@@ -312,11 +312,13 @@ filter_commitrw_write(const struct lu_env *env, struct filter_device *ofd,
                 LASSERT(rc == 0);
         }
 
-        filter_trans_stop(env, ofd, th);
-
         /* get attr to return */
         dt_attr_get(env, filter_object_child(fo), la,
                          filter_object_capa(env, fo));
+
+out_stop:
+        filter_trans_stop(env, ofd, th);
+
 out:
         filter_grant_commit(info->fti_exp, niocount, res);
         dt_bufs_put(env, filter_object_child(fo), res, niocount);

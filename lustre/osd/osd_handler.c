@@ -116,11 +116,6 @@ static struct osd_device *osd_obj2dev(const struct osd_object *o)
         return osd_dev(o->oo_dt.do_lu.lo_dev);
 }
 
-static struct super_block *osd_sb(const struct osd_device *dev)
-{
-        return dev->od_mnt->mnt_sb;
-}
-
 static int osd_object_is_root(const struct osd_object *obj)
 {
         return osd_sb(osd_obj2dev(obj))->s_root->d_inode == obj->oo_inode;

@@ -233,7 +233,11 @@ int udmu_objset_statfs(udmu_objset_t *uos, struct statfs64 *statp)
          * and we report our blocksize as the filesystem's maximum blocksize.
          */
         statp->f_frsize = 1ULL << SPA_MINBLOCKSHIFT;
-        statp->f_bsize = 1ULL << SPA_MAXBLOCKSHIFT;
+
+        /* XXX temporary fix until bug 22246 is fixed - in Linux, bsize is
+         * interpreted as frsize.
+        statp->f_bsize = 1ULL << SPA_MAXBLOCKSHIFT;*/
+        statp->f_bsize = 1ULL << SPA_MINBLOCKSHIFT;
 
         /*
          * The following report "total" blocks of various kinds in the

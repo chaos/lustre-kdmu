@@ -79,11 +79,6 @@ struct osd_compat_objid {
 
 
 
-static struct super_block *osd_sb(const struct osd_device *dev)
-{
-        return dev->od_mnt->mnt_sb;
-}
-
 static void osd_push_ctxt(const struct osd_device *dev,
                           struct lvfs_run_ctxt *newctxt,
                           struct lvfs_run_ctxt *save)

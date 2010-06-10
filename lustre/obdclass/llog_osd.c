@@ -562,7 +562,7 @@ static int llog_osd_declare_write_rec_2(struct llog_handle *loghandle,
 
         /* each time we update header */
         rc = dt_declare_record_write(&env, o,
-                                     sizeof(struct llog_rec_hdr), 0, th);
+                                     sizeof(struct llog_log_hdr), 0, th);
 
 out:
         lu_env_fini(&env);

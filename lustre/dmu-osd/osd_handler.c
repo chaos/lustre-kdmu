@@ -186,7 +186,6 @@ static struct lu_device_operations      osd_lu_ops;
 static struct lu_context_key            osd_key;
 static struct dt_object_operations      osd_obj_ops;
 static struct dt_body_operations        osd_body_ops;
-const static struct dt_body_operations  osd_body_ops_new;
 
 static char *osd_object_tag = "osd_object";
 static char *root_tag = "osd_mount, rootdb";
@@ -652,29 +651,41 @@ int osd_statfs(const struct lu_env *env, struct dt_device *d,
         struct osd_device *osd = osd_dt_dev(d);
         cfs_kstatfs_t *kfs = &osd->od_kstatfs;
         int rc = 0;
+        __u64 reserve;
 
+        /* XXX: do we really need a cache here? -bzzz */
+        kfs = sfs;
+#if 0
+        /* XXX: we can't use spinlock here as DMU uses semaphores inside */
         cfs_spin_lock(&osd->od_osfs_lock);
         /* cache 1 second */
         if (cfs_time_before_64(osd->od_osfs_age, cfs_time_shift_64(-1))) {
+#endif
                 rc = udmu_objset_statfs(&osd->od_objset, (struct statfs64 *) kfs);
 
-               /* Reserve 64MB for ZFS COW symantics so that grants won't
-                * consume all available space. COW needs space to duplicate
-                * the block tree even just to delete a file. If filesystem
-                * size is  greater than 128MB, we reserve 64MB, if less than
-                * 128MB but more than 64MB, we try to reserve 8MB,
-                * otherwise we reserve 1MB. 
-                */
-                if ((kfs->f_blocks * kfs->f_frsize) >= (2*DMU_RESERVED_MAX)) {
-                        kfs->f_blocks -= (DMU_RESERVED_MAX/kfs->f_bsize);
-                } else if ((kfs->f_bsize * kfs->f_frsize) > DMU_RESERVED_MAX) {
-                        kfs->f_blocks -= ((8 * DMU_RESERVED_MIN)/kfs->f_bsize);
-                } else {
-                        kfs->f_blocks -= (DMU_RESERVED_MIN/kfs->f_bsize);
-                }
+                /* Reserve same space so we don't run into ENOSPC due to grants
+                 * not accounting for metadata overhead in ZFS.  This is just a
+                 * short-term fix for testing and it can go away once we fix
+                 * grants to account for metadata overhead.
+                 *
+                 * This is what we do here: if the filesystem size is greater
+                 * than 1GB, we reserve 64MB, if less than 1GB we reserve
+                 * proportionately less. */
+                if (likely((kfs->f_blocks * kfs->f_frsize) >= 1ULL << 30))
+                        reserve = DMU_RESERVED_MAX / kfs->f_frsize;
+                else
+                        reserve = (DMU_RESERVED_MAX * kfs->f_blocks) >> 30;
+
+                LASSERT(reserve < kfs->f_blocks);
+
+                kfs->f_blocks -= reserve;
+                kfs->f_bfree  -= min(reserve, kfs->f_bfree);
+                kfs->f_bavail -= min(reserve, kfs->f_bavail);
+#if 0
         }
         *sfs = *kfs;
         cfs_spin_unlock(&osd->od_osfs_lock);
+#endif
 
         RETURN (rc);
 }
@@ -789,10 +800,9 @@ static int osd_trans_start(const struct lu_env *env, struct dt_device *d,
         /* TODO: hook_start shoud be here, so upper layers will be able to
          * declare own transaction usage */
         rc = udmu_tx_assign(oh->ot_tx, TXG_WAIT);
-        if (rc != 0) {
+        if (unlikely(rc != 0)) {
                 /* dmu will call commit callback with error code during abort */
                 CERROR("can't assign tx: %d\n", rc);
-                udmu_tx_abort(oh->ot_tx);
         } else {
                 /* add commit callback */
                 udmu_tx_cb_register(oh->ot_tx, osd_trans_commit_cb, (void *)oh);
@@ -1205,7 +1215,8 @@ static int osd_declare_object_create(const struct lu_env *env,
                 case DFT_REGULAR:
                 case DFT_SYM:
                 case DFT_NODE:
-                        obj->oo_dt.do_body_ops = &osd_body_ops_new;
+                        if (obj->oo_dt.do_body_ops == NULL)
+                                obj->oo_dt.do_body_ops = &osd_body_ops;
                         break;
                 default:
                         break;
@@ -2302,6 +2313,9 @@ static ssize_t osd_read(const struct lu_env *env, struct dt_object *dt,
         //loff_t offset = *pos;
         int rc;
 
+        LASSERT(dt_object_exists(dt));
+        LASSERT(obj->oo_db);
+
         rc = udmu_object_read(&osd->od_objset, obj->oo_db, (uint64_t)(*pos),
                               (uint64_t)buf->lb_len, buf->lb_buf);
         if (rc > 0)
@@ -2327,11 +2341,15 @@ static ssize_t osd_declare_write(const struct lu_env *env, struct dt_object *dt,
         oh = container_of0(th, struct osd_thandle, ot_super);
 
         if (obj->oo_db) {
+                LASSERT(dt_object_exists(dt));
+
                 oid = udmu_object_get_id(obj->oo_db);
                 udmu_object_getattr(obj->oo_db, &va);
                 if (va.va_size < pos + size)
                         udmu_tx_hold_bonus(oh->ot_tx, oid);
         } else {
+                LASSERT(!dt_object_exists(dt));
+
                 oid = DMU_NEW_OBJECT;
         }
 
@@ -2352,6 +2370,9 @@ static ssize_t osd_write(const struct lu_env *env, struct dt_object *dt,
         vnattr_t va;
         int rc;
         ENTRY;
+
+        LASSERT(dt_object_exists(dt));
+        LASSERT(obj->oo_db);
 
         LASSERT(th != NULL);
         oh = container_of0(th, struct osd_thandle, ot_super);
@@ -2375,10 +2396,14 @@ static int osd_get_bufs(const struct lu_env *env, struct dt_object *dt,
                         loff_t offset, ssize_t len, struct niobuf_local *_lb,
                         int rw, struct lustre_capa *capa)
 {
+        struct osd_object   *obj  = osd_dt_obj(dt);
         struct niobuf_local *lb = _lb;
         //long blocksize;
         //unsigned long tmp;
         int i, plen, npages = 0;
+
+        LASSERT(dt_object_exists(dt));
+        LASSERT(obj->oo_db);
 
         while (len > 0) {
                 plen = len;
@@ -2437,7 +2462,11 @@ out_err:
 static int osd_put_bufs(const struct lu_env *env, struct dt_object *dt,
                         struct niobuf_local *lb, int npages)
 {
-        int i;
+        struct osd_object *obj  = osd_dt_obj(dt);
+        int                i;
+
+        LASSERT(dt_object_exists(dt));
+        LASSERT(obj->oo_db);
 
         for (i = 0; i < npages; i++, lb++) {
                 LASSERT(lb->obj == dt);
@@ -2455,6 +2484,11 @@ static int osd_write_prep(const struct lu_env *env, struct dt_object *dt,
                           struct niobuf_local *lb, int nr,
                           unsigned long *used)
 {
+        struct osd_object *obj = osd_dt_obj(dt);
+
+        LASSERT(dt_object_exists(dt));
+        LASSERT(obj->oo_db);
+
         return 0;
 }
 
@@ -2470,6 +2504,9 @@ static int osd_declare_write_commit(const struct lu_env *env,
         uint64_t            oid;
         int                 i;
         ENTRY;
+
+        LASSERT(dt_object_exists(dt));
+        LASSERT(obj->oo_db);
 
         LASSERT(lb);
         LASSERT(nr > 0);
@@ -2515,6 +2552,9 @@ static int osd_write_commit(const struct lu_env *env, struct dt_object *dt,
         int                 i;
         ENTRY;
 
+        LASSERT(dt_object_exists(dt));
+        LASSERT(obj->oo_db);
+
         LASSERT(th != NULL);
         oh = container_of0(th, struct osd_thandle, ot_super);
         
@@ -2544,9 +2584,13 @@ static int osd_write_commit(const struct lu_env *env, struct dt_object *dt,
 static int osd_read_prep(const struct lu_env *env, struct dt_object *dt,
                           struct niobuf_local *lb, int nr)
 {
-        struct lu_buf buf;
-        loff_t offset;
-        int i;
+        struct osd_object *obj  = osd_dt_obj(dt);
+        struct lu_buf      buf;
+        loff_t             offset;
+        int                i;
+
+        LASSERT(dt_object_exists(dt));
+        LASSERT(obj->oo_db);
 
         for (i = 0; i < nr; i++, lb++) {
                 buf.lb_buf = kmap(lb->page);
@@ -2570,10 +2614,6 @@ static int osd_read_prep(const struct lu_env *env, struct dt_object *dt,
 
         return 0;
 }
-
-const static struct dt_body_operations osd_body_ops_new = {
-        .dbo_declare_write = osd_declare_write,
-};
 
 static struct dt_body_operations osd_body_ops = {
         .dbo_read                 = osd_read,
