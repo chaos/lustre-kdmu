@@ -215,19 +215,6 @@ struct lustre_mount_info *server_get_mount_2(const char *name)
         RETURN(lmi);
 }
 
-#if 0
-static void unlock_mntput(struct vfsmount *mnt)
-{
-        if (kernel_locked()) {
-                cfs_unlock_kernel();
-                mntput(mnt);
-                cfs_lock_kernel();
-        } else {
-                mntput(mnt);
-        }
-}
-#endif
-
 static int lustre_put_lsi(struct super_block *sb);
 
 /* to be called from obd_cleanup methods */
@@ -248,6 +235,7 @@ int server_put_mount(const char *name)
 
         CDEBUG(D_MOUNT, "%p/%p from %s, refs=%d\n",
                lmi->lmi_sb, lsi, name, cfs_atomic_read(&lsi->lsi_mounts));
+
 
         if (lustre_put_lsi(lmi->lmi_sb)) {
                 CDEBUG(D_MOUNT, "Last put from %s\n", name);
@@ -620,21 +608,31 @@ static int lustre_start_mgc(struct super_block *sb)
         sprintf(niduuid, "%s_%x", mgcname, i);
         if (lsi->lsi_flags & LSI_SERVER) {
                 ptr = lsi->lsi_ldd->ldd_params;
-                if (IS_MGS(lsi->lsi_ldd)) {
+                /* Use mgsnode= nids */
+                if (class_find_param(ptr, PARAM_MGSNODE, &ptr) == 0) {
+                        while (class_parse_nid(ptr, &nid, &ptr) == 0) {
+                                rc = do_lcfg(mgcname, nid, LCFG_ADD_UUID,
+                                             niduuid, 0, 0, 0);
+                                i++;
+                                /* Stop at the first failover nid */
+                                if (*ptr == ':')
+                                        break;
+                        }
+                } else if (lsi->lsi_lmd->lmd_mgs) {
+                        ptr = lsi->lsi_lmd->lmd_mgs;
+                        while (class_parse_nid(ptr, &nid, &ptr) == 0) {
+                                rc = do_lcfg(mgcname, nid, LCFG_ADD_UUID,
+                                             niduuid, 0, 0, 0);
+                                i++;
+                                /* Stop at the first failover nid */
+                                if (*ptr == ':')
+                                        break;
+                        }
+                } else if (IS_MGS(lsi->lsi_ldd)) {
                         /* Use local nids (including LO) */
                         lnet_process_id_t id;
                         while ((rc = LNetGetId(i++, &id)) != -ENOENT) {
                                 rc = do_lcfg(mgcname, id.nid,
-                                             LCFG_ADD_UUID, niduuid, 0,0,0);
-                        }
-                } else {
-                        /* Use mgsnode= nids */
-                        if (class_find_param(ptr, PARAM_MGSNODE, &ptr) != 0) {
-                                CERROR("No MGS nids given.\n");
-                                GOTO(out_free, rc = -EINVAL);
-                        }
-                        while (class_parse_nid(ptr, &nid, &ptr) == 0) {
-                                rc = do_lcfg(mgcname, nid,
                                              LCFG_ADD_UUID, niduuid, 0,0,0);
                                 i++;
                         }
@@ -725,7 +723,7 @@ static int lustre_start_mgc(struct super_block *sb)
         if (data == NULL)
                 GOTO(out, rc = -ENOMEM);
         data->ocd_connect_flags = OBD_CONNECT_VERSION | OBD_CONNECT_FID |
-                                  OBD_CONNECT_AT;
+                                  OBD_CONNECT_AT | OBD_CONNECT_FULL20;
         data->ocd_version = LUSTRE_VERSION_CODE;
         rc = obd_connect(NULL, &exp, obd, &(obd->obd_uuid), data, NULL);
         OBD_FREE_PTR(data);
@@ -1372,6 +1370,8 @@ struct lustre_sb_info *lustre_init_lsi(struct super_block *sb)
         }
 
         lsi->lsi_lmd->lmd_exclude_count = 0;
+        lsi->lsi_lmd->lmd_recovery_time_soft = 0;
+        lsi->lsi_lmd->lmd_recovery_time_hard = 0;
         s2lsi_nocast(sb) = lsi;
         /* we take 1 extra ref for our setup */
         cfs_atomic_set(&lsi->lsi_mounts, 1);
@@ -1779,37 +1779,34 @@ static struct dt_device *server_kernel_mount(struct super_block *sb)
  * else we risk dereferencing a null pointer.
  * LNET may take e.g. 165s before killing zombies.
  */
-static void server_wait_finished(struct vfsmount *mnt)
+static void server_wait_finished(struct lustre_sb_info *lsi)
 {
        cfs_waitq_t             waitq;
        int                     rc, waited = 0;
        cfs_sigset_t            blocked;
 
-       /* XXX XXX: disabled in b_hd_kdmu */
-       return;
-
        cfs_waitq_init(&waitq);
 
-       while (atomic_read(&mnt->mnt_count) > 1) {
+       while (cfs_atomic_read(&lsi->lsi_mounts) > 1) {
                if (waited && (waited % 30 == 0))
                        LCONSOLE_WARN("Mount still busy with %d refs after "
                                       "%d secs.\n",
-                                      atomic_read(&mnt->mnt_count),
+                                      cfs_atomic_read(&lsi->lsi_mounts),
                                       waited);
                /* Cannot use l_event_wait() for an interruptible sleep. */
                waited += 3;
                blocked = l_w_e_set_sigs(sigmask(SIGKILL));
                cfs_waitq_wait_event_interruptible_timeout(
                        waitq,
-                       (atomic_read(&mnt->mnt_count) == 1),
+                       (cfs_atomic_read(&lsi->lsi_mounts) == 1),
                        cfs_time_seconds(3),
                        rc);
                cfs_block_sigs(blocked);
                if (rc < 0) {
                        LCONSOLE_EMERG("Danger: interrupted umount %s with "
                                       "%d refs!\n",
-                                      mnt->mnt_devname,
-                                      atomic_read(&mnt->mnt_count));
+                                      "FIXME(devname)",
+                                      cfs_atomic_read(&lsi->lsi_mounts));
                        break;
                }
        }
@@ -1819,7 +1816,6 @@ static void server_put_super(struct super_block *sb)
 {
         struct lustre_sb_info *lsi = s2lsi(sb);
         struct obd_device     *obd;
-        struct vfsmount       *mnt = NULL; /* XXX: */
         char *tmpname, *extraname = NULL;
         int tmpname_sz;
         int lddflags = lsi->lsi_ldd->ldd_flags;
@@ -1883,12 +1879,12 @@ static void server_put_super(struct super_block *sb)
                 }
         }
 
-        /* Clean the mgc and sb */
-        lustre_common_put_super(sb);
-
         /* Wait for the targets to really clean up - can't exit (and let the
            sb get destroyed) while the mount is still in use */
-        server_wait_finished(mnt);
+        server_wait_finished(lsi);
+
+        /* Clean the mgc and sb */
+        lustre_common_put_super(sb);
 
         /* Stop the servers (MDS, OSS) if no longer needed.  We must wait
            until the target is really gone so that our type refcount check
@@ -2095,11 +2091,6 @@ static int server_fill_super(struct super_block *sb)
         if (rc)
                 GOTO(out_mnt, rc);
 
-        LCONSOLE_WARN("Server %s on device %s has started\n",
-                      ((lsi->lsi_lmd->lmd_flags & LMD_FLG_NOSVC) &&
-                       (IS_MDT(lsi->lsi_ldd))) ? "MGS" : lsi->lsi_ldd->ldd_svname,
-                      lsi->lsi_lmd->lmd_dev);
-
         RETURN(0);
 out_mnt:
         /* We jump here in case of failure while starting targets or MGS.
@@ -2136,7 +2127,6 @@ int lustre_common_put_super(struct super_block *sb)
         RETURN(rc);
 }
 
-#if 0
 static void lmd_print(struct lustre_mount_data *lmd)
 {
         int i;
@@ -2146,14 +2136,23 @@ static void lmd_print(struct lustre_mount_data *lmd)
                 PRINT_CMD(PRINT_MASK, "profile: %s\n", lmd->lmd_profile);
         PRINT_CMD(PRINT_MASK, "device:  %s\n", lmd->lmd_dev);
         PRINT_CMD(PRINT_MASK, "flags:   %x\n", lmd->lmd_flags);
+
         if (lmd->lmd_opts)
                 PRINT_CMD(PRINT_MASK, "options: %s\n", lmd->lmd_opts);
+
+        if (lmd->lmd_recovery_time_soft)
+                PRINT_CMD(PRINT_MASK, "recovery time soft: %d\n",
+                          lmd->lmd_recovery_time_soft);
+
+        if (lmd->lmd_recovery_time_hard)
+                PRINT_CMD(PRINT_MASK, "recovery time hard: %d\n",
+                          lmd->lmd_recovery_time_hard);
+
         for (i = 0; i < lmd->lmd_exclude_count; i++) {
                 PRINT_CMD(PRINT_MASK, "exclude %d:  OST%04x\n", i,
                           lmd->lmd_exclude[i]);
         }
 }
-#endif
 
 /* Is this server on the exclusion list */
 int lustre_check_exclusion(struct super_block *sb, char *svname)
@@ -2315,6 +2314,9 @@ static int lmd_parse(char *options, struct lustre_mount_data *lmd)
         s1 = options;
         while (*s1) {
                 int clear = 0;
+                int time_min = 2 * (CONNECTION_SWITCH_MAX +
+                               2 * INITIAL_CONNECT_TIMEOUT);
+
                 /* Skip whitespace and extra commas */
                 while (*s1 == ' ' || *s1 == ',')
                         s1++;
@@ -2326,6 +2328,14 @@ static int lmd_parse(char *options, struct lustre_mount_data *lmd)
                    ldiskfs, we just zero these out here */
                 if (strncmp(s1, "abort_recov", 11) == 0) {
                         lmd->lmd_flags |= LMD_FLG_ABORT_RECOV;
+                        clear++;
+                } else if (strncmp(s1, "recovery_time_soft=", 19) == 0) {
+                        lmd->lmd_recovery_time_soft = max_t(int,
+                                simple_strtoul(s1 + 19, NULL, 10), time_min);
+                        clear++;
+                } else if (strncmp(s1, "recovery_time_hard=", 19) == 0) {
+                        lmd->lmd_recovery_time_hard = max_t(int,
+                                simple_strtoul(s1 + 19, NULL, 10), time_min);
                         clear++;
                 } else if (strncmp(s1, "nosvc", 5) == 0) {
                         lmd->lmd_flags |= LMD_FLG_NOSVC;
@@ -2411,6 +2421,7 @@ static int lmd_parse(char *options, struct lustre_mount_data *lmd)
                 strcpy(lmd->lmd_opts, options);
         }
 
+        lmd_print(lmd);
         lmd->lmd_magic = LMD_MAGIC;
 
         RETURN(rc);

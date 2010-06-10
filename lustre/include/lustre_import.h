@@ -37,6 +37,11 @@
 #ifndef __IMPORT_H
 #define __IMPORT_H
 
+/** \defgroup export export
+ *
+ * @{
+ */
+
 #include <lustre_handles.h>
 #include <lustre/lustre_idl.h>
 
@@ -172,16 +177,12 @@ struct obd_import {
                                   imp_replayable:1,       /* try to recover the import */
                                   imp_dlm_fake:1,         /* don't run recovery (timeout instead) */
                                   imp_server_timeout:1,   /* use 1/2 timeout on MDS' OSCs */
-                                  imp_initial_recov:1,    /* retry the initial connection */
-                                  imp_initial_recov_bk:1, /* turn off init_recov after trying all failover nids */
                                   imp_delayed_recovery:1, /* VBR: imp in delayed recovery */
                                   imp_no_lock_replay:1,   /* VBR: if gap was found then no lock replays */
                                   imp_vbr_failed:1,       /* recovery by versions was failed */
                                   imp_force_verify:1,     /* force an immidiate ping */
                                   imp_pingable:1,         /* pingable */
                                   imp_resend_replay:1,    /* resend for replay */
-                                  imp_recon_bk:1,         /* turn off reconnect if all failovers fail */
-                                  imp_last_recon:1,       /* internally used by above */
                                   imp_force_reconnect:1;  /* import must be reconnected instead of chouse new connection */
         __u32                     imp_connect_op;
         struct obd_connect_data   imp_connect_data;
@@ -238,7 +239,7 @@ static inline void at_init(struct adaptive_timeout *at, int val, int flags) {
 static inline int at_get(struct adaptive_timeout *at) {
         return at->at_current;
 }
-int at_add(struct adaptive_timeout *at, unsigned int val);
+int at_measured(struct adaptive_timeout *at, unsigned int val);
 int import_at_get_index(struct obd_import *imp, int portal);
 extern unsigned int at_max;
 #define AT_OFF (at_max == 0)
@@ -247,5 +248,7 @@ extern unsigned int at_max;
 struct obd_export;
 extern struct obd_import *class_exp2cliimp(struct obd_export *);
 extern struct obd_import *class_conn2cliimp(struct lustre_handle *);
+
+/** @} import */
 
 #endif /* __IMPORT_H */

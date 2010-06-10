@@ -45,6 +45,8 @@ build_test_filter
 check_and_setup_lustre
 rm -rf $DIR/[df][0-9]*
 
+max_recov_time=$(max_recovery_time)
+
 # the test node needs to be insulated from a lustre failure as much as possible,
 # so not even loading the lustre modules is ideal.
 # -- umount lustre
@@ -80,15 +82,20 @@ rm -f $END_RUN_FILE
 vmstatLOG=${TESTSUITELOG}_$(basename $0 .sh).vmstat
 
 server_numfailovers () {
+    local facet=$1
+    local var=${facet}_numfailovers
+    local val=0
+
+    [[ ${!var} ]] && val=${!var}
+    echo $val
+}
+
+servers_numfailovers () {
     local facet
     local var
 
-    for facet in $MDTS ${OSTS//,/ }; do
-        var=${facet}_nums
-        val=${!var}
-        if [ "$val" ] ; then
-            echo "$facet failed  over  $val times"
-        fi
+    for facet in ${MDTS//,/ } ${OSTS//,/ }; do
+        echo "$facet: $(server_numfailovers $facet) times"
     done
 }
 
@@ -125,11 +132,11 @@ summary_and_cleanup () {
     local result=PASS
     [ $rc -eq 0 ] || result=FAIL
 
-    log "Duraion:                $DURATION
+    log "Duration:                $DURATION
 Server failover period: $SERVER_FAILOVER_PERIOD seconds
 Exited after:           $ELAPSED seconds
 Number of failovers before exit:
-$(server_numfailovers)
+$(servers_numfailovers)
 Status: $result: rc=$rc"
 
     # stop the vmstats on the OSTs
@@ -171,7 +178,6 @@ log "-----============= $0 starting =============-----"
 trap summary_and_cleanup EXIT INT
 
 ELAPSED=0
-NUM_FAILOVERS=0
 
 # vmstat the osts
 if [ "$VMSTAT" ]; then
@@ -182,22 +188,19 @@ fi
 start_client_loads $NODES_TO_USE
 
 echo clients load pids:
-if ! do_nodes $NODES_TO_USE "set -x; echo \$(hostname): && cat $LOAD_PID_FILE"; then
-    if [ -e $DEBUGLOG ]; then
-        exec 2<&-
-        cat $DEBUGLOG
+if ! do_nodesv $NODES_TO_USE "cat $LOAD_PID_FILE"; then
         exit 3
-    fi
 fi
-
-START_TS=$(date +%s)
-CURRENT_TS=$START_TS
 
 MINSLEEP=${MINSLEEP:-120}
 REQFAIL_PERCENT=${REQFAIL_PERCENT:-3}	# bug17839 comment 62
 REQFAIL=${REQFAIL:-$(( DURATION / SERVER_FAILOVER_PERIOD * REQFAIL_PERCENT / 100))}
 reqfail=0
 sleep=0
+
+START_TS=$(date +%s)
+CURRENT_TS=$START_TS
+
 while [ $ELAPSED -lt $DURATION -a ! -e $END_RUN_FILE ]; do
 
     # In order to perform the 
@@ -208,7 +211,7 @@ while [ $ELAPSED -lt $DURATION -a ! -e $END_RUN_FILE ]; do
     it_time_start=$(date +%s)
     
     SERVERFACET=$(get_random_entry $SERVERS)
-    var=${SERVERFACET}_nums
+    var=${SERVERFACET}_numfailovers
 
     # Check that our client loads are still running. If any have died, 
     # that means they have died outside of recovery, which is unacceptable.    
@@ -221,7 +224,7 @@ while [ $ELAPSED -lt $DURATION -a ! -e $END_RUN_FILE ]; do
     fi
 
     log "Wait $SERVERFACET recovery complete before doing next failover ...."
-    if [[ $NUM_FAILOVERS != 0 ]]; then
+    if [[ $(server_numfailovers $SERVERFACET) != 0 ]]; then
         if ! wait_recovery_complete $SERVERFACET ; then
             echo "$SERVERFACET recovery is not completed!"
             exit 7
@@ -247,7 +250,6 @@ while [ $ELAPSED -lt $DURATION -a ! -e $END_RUN_FILE ]; do
     fi
 
     # Increment the number of failovers
-    NUM_FAILOVERS=$((NUM_FAILOVERS+1))
     val=$((${!var} + 1))
     eval $var=$val
  
@@ -264,6 +266,7 @@ while [ $ELAPSED -lt $DURATION -a ! -e $END_RUN_FILE ]; do
         log "WARNING: failover and two check_client_loads time exceeded SERVER_FAILOVER_PERIOD - MINSLEEP !
 Failed to load the filesystem with I/O for a minimum period of $MINSLEEP $reqfail times ( REQFAIL=$REQFAIL ).
 This iteration, the load was only applied for sleep=$sleep seconds.
+Estimated max recovery time : $max_recov_time
 Probably the hardware is taking excessively long to boot.
 Try to increase SERVER_FAILOVER_PERIOD (current is $SERVER_FAILOVER_PERIOD), bug 20918"
         [ $reqfail -gt $REQFAIL ] && exit 6 

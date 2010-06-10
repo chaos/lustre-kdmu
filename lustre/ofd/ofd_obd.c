@@ -49,20 +49,6 @@
 
 #include "ofd_internal.h"
 
-static inline void filter_oti2info(struct filter_thread_info *info,
-                                   struct obd_trans_info *oti)
-{
-        info->fti_xid = oti->oti_xid;
-        info->fti_transno = oti->oti_transno;
-}
-
-static inline void filter_info2oti(struct filter_thread_info *info,
-                                   struct obd_trans_info *oti)
-{
-        oti->oti_xid = info->fti_xid;
-        oti->oti_transno = info->fti_transno;
-}
-
 static int filter_obd_notify(struct obd_device *host,
                           struct obd_device *watched,
                           enum obd_notify_event ev, void *owner)
@@ -214,6 +200,7 @@ static int filter_obd_connect(const struct lu_env *env, struct obd_export **_exp
                               struct obd_connect_data *data, void *localdata)
 {
         struct lsd_client_data    *lcd = NULL;
+        struct filter_thread_info *info;
         struct filter_export_data *fed;
         struct obd_export         *exp;
         struct filter_device      *ofd;
@@ -239,7 +226,8 @@ static int filter_obd_connect(const struct lu_env *env, struct obd_export **_exp
                 CERROR("Failure to refill session: '%d'\n", rc);
                 GOTO(out, rc);
         }
-        filter_info_init(env, exp);
+        info = filter_info_init(env, exp);
+        info->fti_no_need_trans = 1;
 
         rc = filter_parse_connect_data(env, exp, data);
         if (rc)
@@ -253,7 +241,7 @@ static int filter_obd_connect(const struct lu_env *env, struct obd_export **_exp
                         GOTO(out, rc = -ENOMEM);
 
                 memcpy(lcd->lcd_uuid, cluuid, sizeof(lcd->lcd_uuid));
-                fed->fed_lcd = lcd;
+                fed->fed_ted.ted_lcd = lcd;
 
                 rc = filter_client_new(env, ofd, &exp->exp_filter_data);
                 if (rc != 0)
@@ -278,7 +266,7 @@ out:
         if (rc != 0) {
                 if (lcd) {
                         OBD_FREE_PTR(lcd);
-                        fed->fed_lcd = NULL;
+                        fed->fed_ted.ted_lcd = NULL;
                 }
                 class_disconnect(exp);
         } else {
@@ -614,6 +602,20 @@ static int filter_statfs(struct obd_device *obd,
         osfs->os_bavail -= min(osfs->os_bavail, GRANT_FOR_LLOG +
                         ((ofd->ofd_tot_dirty + ofd->ofd_tot_pending +
                           osfs->os_bsize - 1) >> blockbits));
+
+        if (OBD_FAIL_CHECK(OBD_FAIL_OST_ENOSPC)) {
+                struct lr_server_data *lsd = &ofd->ofd_fsd;
+                int index = lsd->lsd_ost_index;
+
+                if (obd_fail_val == -1 ||
+                    index == obd_fail_val)
+                        osfs->os_bfree = osfs->os_bavail = 2;
+                else if (obd_fail_loc & OBD_FAIL_ONCE)
+                        obd_fail_loc &= ~OBD_FAILED; /* reset flag */
+        }
+
+        if (ofd->ofd_raid_degraded)
+                osfs->os_state |= OS_STATE_DEGRADED;
 #if 0
         /* set EROFS to state field if FS is mounted as RDONLY. The goal is to
          * stop creating files on MDS if OST is not good shape to create
@@ -643,6 +645,7 @@ int filter_setattr(struct obd_export *exp,
                 RETURN(rc);
 
         info = filter_info_init(&env, exp);
+        info->fti_no_need_trans = 0;
         filter_oti2info(info, oti);
 
         lu_idif_build(&info->fti_fid, oinfo->oi_oa->o_id, oinfo->oi_oa->o_gr);
@@ -682,6 +685,10 @@ int filter_setattr(struct obd_export *exp,
                        (long unsigned) info->fti_fid.f_oid,
                        info->fti_fid.f_seq);
                 GOTO(out, rc = PTR_ERR(fo));
+        }
+        if (!filter_object_exists(fo)) {
+                CERROR("can't find object "DFID"\n", PFID(&info->fti_fid));
+                GOTO(out_unlock, rc = -ENOENT);
         }
 
         la_from_obdo(&info->fti_attr, oinfo->oi_oa, oinfo->oi_oa->o_valid);
@@ -729,7 +736,8 @@ static int filter_punch(struct obd_export *exp, struct obd_info *oinfo,
         if (rc)
                 RETURN(rc);
         info = filter_info_init(&env, exp);
-        filter_info2oti(info, oti);
+        info->fti_no_need_trans = 0;
+        filter_oti2info(info, oti);
 
         lu_idif_build(&info->fti_fid, oinfo->oi_oa->o_id, oinfo->oi_oa->o_gr);
         lu_idif_resid(&info->fti_fid, &info->fti_resid);
@@ -840,7 +848,7 @@ int filter_destroy(struct obd_export *exp,
         if (rc)
                 RETURN(rc);
         info = filter_info_init(&env, exp);
-
+        info->fti_no_need_trans = 0;
         filter_oti2info(info, oti);
 
         if (!(oa->o_valid & OBD_MD_FLGROUP))
@@ -901,6 +909,7 @@ static int filter_orphans_destroy(const struct lu_env *env,
         obd_gr                     gr = oa->o_gr;
         ENTRY;
 
+        info->fti_no_need_trans = 1;
         LASSERT(exp != NULL);
         skip_orphan = !!(exp->exp_connect_flags & OBD_CONNECT_SKIP_ORPHAN);
 
@@ -953,6 +962,7 @@ static int filter_create(struct obd_export *exp,
                 RETURN(rc);
 
         info = filter_info_init(&env, exp);
+        info->fti_no_need_trans = 1;
         filter_oti2info(info, oti);
 
         LASSERT(ea == NULL);

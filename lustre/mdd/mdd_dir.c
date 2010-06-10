@@ -46,21 +46,11 @@
 #define DEBUG_SUBSYSTEM S_MDS
 
 #include <linux/module.h>
-#ifdef HAVE_EXT4_LDISKFS
-#include <ldiskfs/ldiskfs_jbd2.h>
-#else
-#include <linux/jbd.h>
-#endif
 #include <obd.h>
 #include <obd_class.h>
 #include <lustre_ver.h>
 #include <obd_support.h>
 #include <lprocfs_status.h>
-#ifdef HAVE_EXT4_LDISKFS
-#include <ldiskfs/ldiskfs.h>
-#else
-#include <linux/ldiskfs_fs.h>
-#endif
 #include <lustre_mds.h>
 #include <lustre/lustre_idl.h>
 #include <lustre_fid.h>
@@ -1859,6 +1849,7 @@ mdd_start_and_declare_create(const struct lu_env *env,
         const struct dt_index_features *feat = spec->sp_feat;
         struct mdd_object *mdd_pobj = md2mdd_obj(pobj);
         struct mdd_device *mdd = mdo2mdd(pobj);
+        struct md_attr    *ma_acl = &mdd_env_info(env)->mti_ma;
         struct thandle    *handle;
         int                rc;
 
@@ -1896,7 +1887,13 @@ mdd_start_and_declare_create(const struct lu_env *env,
                 rc = dt->do_body_ops->dbo_declare_write(env, dt,
                                                         strlen(spec->u.sp_symname),
                                                         0, handle);
+        } else if (ma_acl->ma_valid & MA_ACL_DEF) {
+                rc = mdo_declare_xattr_set(env, son, ma_acl->ma_acl_size,
+                                           XATTR_NAME_ACL_DEFAULT, 0, handle );
+                rc = mdo_declare_xattr_set(env, son, ma_acl->ma_acl_size,
+                                           XATTR_NAME_ACL_ACCESS, 0, handle );
         }
+
         if (rc)
                 GOTO(cleanup, rc);
         rc = mdo_declare_attr_set(env, mdd_pobj, NULL, handle);
@@ -2704,8 +2701,7 @@ struct lu_buf *mdd_links_get(const struct lu_env *env,
         rc = mdo_xattr_get(env, mdd_obj, buf, XATTR_NAME_LINK, capa);
         if (rc == -ERANGE) {
                 /* Buf was too small, figure out what we need. */
-                buf->lb_buf = NULL;
-                buf->lb_len = 0;
+                mdd_buf_put(buf);
                 rc = mdo_xattr_get(env, mdd_obj, buf, XATTR_NAME_LINK, capa);
                 if (rc < 0)
                         return ERR_PTR(rc);
@@ -2740,10 +2736,12 @@ struct lu_buf *mdd_links_get(const struct lu_env *env,
 static int mdd_lee_pack(struct link_ea_entry *lee, const struct lu_name *lname,
                         const struct lu_fid *pfid)
 {
-        int reclen;
+        struct lu_fid   tmpfid;
+        int             reclen;
 
-        fid_cpu_to_be(&lee->lee_parent_fid, pfid);
-        strncpy(lee->lee_name, lname->ln_name, lname->ln_namelen);
+        fid_cpu_to_be(&tmpfid, pfid);
+        memcpy(&lee->lee_parent_fid, &tmpfid, sizeof(tmpfid));
+        memcpy(lee->lee_name, lname->ln_name, lname->ln_namelen);
         reclen = sizeof(struct link_ea_entry) + lname->ln_namelen;
 
         lee->lee_reclen[0] = (reclen >> 8) & 0xff;
@@ -2755,7 +2753,8 @@ void mdd_lee_unpack(const struct link_ea_entry *lee, int *reclen,
                     struct lu_name *lname, struct lu_fid *pfid)
 {
         *reclen = (lee->lee_reclen[0] << 8) | lee->lee_reclen[1];
-        fid_be_to_cpu(pfid, &lee->lee_parent_fid);
+        memcpy(pfid, &lee->lee_parent_fid, sizeof(*pfid));
+        fid_be_to_cpu(pfid, pfid);
         lname->ln_name = lee->lee_name;
         lname->ln_namelen = *reclen - sizeof(struct link_ea_entry);
 }
@@ -2838,9 +2837,14 @@ static int mdd_links_add(const struct lu_env *env,
         rc = __mdd_xattr_set(env, mdd_obj,
                              mdd_buf_get_const(env, buf->lb_buf, leh->leh_len),
                              XATTR_NAME_LINK, 0, handle);
-        if (rc)
-                CERROR("link_ea add failed %d "DFID"\n", rc,
-                       PFID(mdd_object_fid(mdd_obj)));
+        if (rc) {
+                if (rc == -ENOSPC)
+                        CDEBUG(D_INODE, "link_ea add failed %d "DFID"\n", rc,
+                               PFID(mdd_object_fid(mdd_obj)));
+                else
+                        CERROR("link_ea add failed %d "DFID"\n", rc,
+                               PFID(mdd_object_fid(mdd_obj)));
+        }
 
         if (buf->lb_vmalloc)
                 /* if we vmalloced a large buffer drop it */
@@ -2877,8 +2881,12 @@ static int mdd_links_rename(const struct lu_env *env,
         buf = mdd_links_get(env, mdd_obj);
         if (IS_ERR(buf)) {
                 rc = PTR_ERR(buf);
-                CERROR("link_ea read failed %d "DFID"\n",
-                       rc, PFID(mdd_object_fid(mdd_obj)));
+                if (rc == -ENODATA)
+                        CDEBUG(D_INODE, "link_ea read failed %d "DFID"\n",
+                               rc, PFID(mdd_object_fid(mdd_obj)));
+                else
+                        CERROR("link_ea read failed %d "DFID"\n",
+                               rc, PFID(mdd_object_fid(mdd_obj)));
                 RETURN(rc);
         }
         leh = buf->lb_buf;

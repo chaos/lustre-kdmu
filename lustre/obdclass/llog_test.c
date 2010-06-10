@@ -527,6 +527,8 @@ static int llog_test_5(struct obd_device *obd)
         RETURN(rc);
 }
 
+/* XXX: enable back when MGS uses new llog api */
+#if  0
 /* Test client api; open log by name and process */
 static int llog_test_6(struct obd_device *obd, char *name)
 {
@@ -589,6 +591,7 @@ ctxt_release:
         llog_ctxt_put(ctxt);
         RETURN(rc);
 }
+#endif
 
 static int llog_test_7(struct obd_device *obd)
 {

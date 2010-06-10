@@ -55,7 +55,7 @@ extern cfs_duration_t libcfs_console_max_delay;
 extern cfs_duration_t libcfs_console_min_delay;
 extern unsigned int libcfs_console_backoff;
 extern unsigned int libcfs_debug_binary;
-extern char libcfs_debug_file_path_arr[1024];
+extern char libcfs_debug_file_path_arr[PATH_MAX];
 
 int libcfs_debug_mask2str(char *str, int size, int mask, int is_subsys);
 int libcfs_debug_str2mask(int *mask, const char *str, int is_subsys);
@@ -72,7 +72,8 @@ struct ptldebug_header {
         __u32 ph_flags;
         __u32 ph_subsys;
         __u32 ph_mask;
-        __u32 ph_cpu_id;
+        __u16 ph_cpu_id;
+        __u16 ph_type;
         __u32 ph_sec;
         __u64 ph_usec;
         __u32 ph_stack;
@@ -151,6 +152,8 @@ struct ptldebug_header {
 #define D_QUOTA       0x04000000
 #define D_SEC         0x08000000
 /* keep these in sync with lnet/{utils,libcfs}/debug.c */
+
+#define D_HSM         D_TRACE
 
 #define D_CANTMASK   (D_ERROR | D_EMERG | D_WARNING | D_CONSOLE)
 

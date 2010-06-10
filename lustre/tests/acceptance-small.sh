@@ -13,7 +13,8 @@ DEFAULT_SUITES="runtests sanity sanity-benchmark sanityn lfsck liblustre
                 replay-ost-single replay-dual insanity sanity-quota sanity-sec
                 sanity-gss performance-sanity large-scale recovery-mds-scale 
                 recovery-double-scale recovery-random-scale parallel-scale 
-                lustre_rsync-test metadata-updates ost-pools lnet-selftest"
+                lustre_rsync-test metadata-updates ost-pools lnet-selftest
+                mmp"
 
 if [[ -n $@ ]]; then
     ACC_SM_ONLY="${ACC_SM_ONLY} $@"
@@ -30,6 +31,8 @@ fi
 [ "$DEBUG_OFF" ] || DEBUG_OFF="eval lctl set_param debug=\"$DEBUG_LVL\""
 [ "$DEBUG_ON" ] || DEBUG_ON="eval lctl set_param debug=0x33f0484"
 
+export TF_FAIL=$TMP/tf.fail
+
 if [ "$ACC_SM_ONLY" ]; then
     for O in $DEFAULT_SUITES; do
         O=$(echo $O | tr "-" "_" | tr "[:lower:]" "[:upper:]")
@@ -41,7 +44,6 @@ if [ "$ACC_SM_ONLY" ]; then
         export ${O}="yes"
     done
 fi
-LFSCK="no" # bug 13698
 
 STARTTIME=`date +%s`
 
@@ -104,7 +106,7 @@ title() {
             esac
         fi
     fi 
-    log "-----============= acceptance-small: "$*" ============----- `date`"
+    log "-----============= acceptance-small: "$*" ============----- $(date)"
 }
 
 is_sanity_benchmark() {
@@ -141,9 +143,24 @@ run_suite() {
 
     echo "$suite_script located."
     if [[ ${!suite} != no ]]; then
+        local rc
+        local status
+        local duration
+        local start_ts=$(date +%s)
+        rm -rf $TF_FAIL
         title $suite_name
         log_test $suite_name
         bash $suite_script ${!suite_only}
+        rc=$?
+        duration=$(($(date +%s) - $start_ts))
+        if [ -f $TF_FAIL -o $rc -ne 0 ]; then
+            status="FAIL"
+        else
+            status="PASS"
+        fi
+        echo "Script: $status"
+        log_test_status $duration $status
+
         $CLEANUP
         $SETUP
         eval ${suite}="done"

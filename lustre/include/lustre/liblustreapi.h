@@ -37,6 +37,11 @@
 #ifndef _LIBLUSTREAPI_H_
 #define _LIBLUSTREAPI_H_
 
+/** \defgroup llapi llapi
+ *
+ * @{
+ */
+
 #include <lustre/lustre_user.h>
 
 /* Initially allocate for these many OSTs, realloc if needed */
@@ -120,13 +125,15 @@ struct find_param {
                         obds_printed:1,
                         exclude_pattern:1,
                         exclude_type:1,
+                        exclude_obd:1,
                         have_fileinfo:1,
                         exclude_gid:1,
                         exclude_uid:1,
                         check_gid:1,
                         check_uid:1,
                         check_pool:1,
-                        exclude_pool:1;
+                        exclude_pool:1,
+                        get_mdt_index:1;
 
         int     verbose;
         int     quiet;
@@ -157,6 +164,7 @@ extern int llapi_uuid_match(char *real_uuid, char *search_uuid);
 extern int llapi_getstripe(char *path, struct find_param *param);
 extern int llapi_find(char *path, struct find_param *param);
 
+extern int llapi_file_fget_mdtidx(int fd, int *mdtidx);
 extern int llapi_obd_statfs(char *path, __u32 type, __u32 index,
                      struct obd_statfs *stat_buf,
                      struct obd_uuid *uuid_buf);
@@ -186,6 +194,7 @@ extern int llapi_quotacheck(char *mnt, int check_type);
 extern int llapi_poll_quotacheck(char *mnt, struct if_quotacheck *qchk);
 extern int llapi_quotactl(char *mnt, struct if_quotactl *qctl);
 extern int llapi_target_iterate(int type_num, char **obd_type, void *args, llapi_cb_t cb);
+extern int llapi_get_connect_flags(const char *mnt, __u64 *flags);
 extern int llapi_lsetfacl(int argc, char *argv[]);
 extern int llapi_lgetfacl(int argc, char *argv[]);
 extern int llapi_rsetfacl(int argc, char *argv[]);
@@ -214,12 +223,14 @@ extern int llapi_changelog_clear(const char *mdtname, const char *idstr,
 
 /* HSM copytool interface.  priv is private state, managed internally
    by these functions */
-extern int llapi_copytool_start(void **priv, int flags, int archive_num_count,
-                                int *archive_nums);
+extern int llapi_copytool_start(void **priv, char *fsname, int flags,
+                                int archive_count, int *archives);
 extern int llapi_copytool_fini(void **priv);
 extern int llapi_copytool_recv(void *priv, struct hsm_action_list **hal,
                                int *msgsize);
 extern int llapi_copytool_free(struct hsm_action_list **hal);
+
+/** @} llapi */
 
 #endif
 

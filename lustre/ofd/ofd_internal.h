@@ -175,6 +175,8 @@ struct filter_device {
         unsigned int             ofd_fl_oss_capa;
         cfs_list_t               ofd_capa_keys;
         cfs_hlist_head_t        *ofd_capa_hash;
+
+        int                      ofd_raid_degraded;
 };
 
 #define ofd_last_rcvd ofd_lut.lut_last_rcvd
@@ -319,7 +321,7 @@ struct filter_thread_info * filter_info_init(const struct lu_env *env,
 typedef void (*filter_cb_t)(const struct filter_device *mdt, __u64 transno,
                          void *data, int err);
 struct filter_commit_cb {
-        filter_cb_t  filter_cb_func;
+        lut_cb_t  filter_cb_func;
         void     *filter_cb_data;
 };
 
@@ -334,7 +336,7 @@ struct filter_txn_info {
 };
 
 static inline void filter_trans_add_cb(const struct thandle *th,
-                                       filter_cb_t cb_func, void *cb_data)
+                                       lut_cb_t cb_func, void *cb_data)
 {
         struct filter_txn_info *txi;
 
@@ -499,7 +501,7 @@ int filter_grant_client_calc(struct obd_export *exp, obd_size *left,
                              unsigned long *used, unsigned long *ungranted);
 int filter_grant_check(const struct lu_env *env, struct obd_export *exp, 
                        struct obdo *oa, struct niobuf_local *lnb, int nrpages,
-                       obd_size *left, unsigned long *used, unsigned long *ungranted);
+                       obd_size *left, unsigned long *used);
 long filter_grant(const struct lu_env *env, struct obd_export *exp,
                   obd_size current_grant, obd_size want,
                   obd_size fs_space_left);
@@ -542,5 +544,20 @@ static inline void lu_idif_from_resid(struct lu_fid *fid,
         lu_idif_build(fid, name->name[LUSTRE_RES_ID_SEQ_OFF],
                       name->name[LUSTRE_RES_ID_VER_OFF]);
 }
+
+static inline void filter_oti2info(struct filter_thread_info *info,
+                                   struct obd_trans_info *oti)
+{
+        info->fti_xid = oti->oti_xid;
+        info->fti_transno = oti->oti_transno;
+}
+
+static inline void filter_info2oti(struct filter_thread_info *info,
+                                   struct obd_trans_info *oti)
+{
+        oti->oti_xid = info->fti_xid;
+        oti->oti_transno = info->fti_transno;
+}
+
 
 #endif /* _FILTER_INTERNAL_H */

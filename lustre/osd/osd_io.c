@@ -48,15 +48,6 @@
 #include <linux/types.h>
 /* prerequisite for linux/xattr.h */
 #include <linux/fs.h>
-/*
- * XXX temporary stuff: direct access to ldiskfs/jdb. Interface between osd
- * and file system is not yet specified.
- */
-/* handle_t, journal_start(), journal_stop() */
-#include <linux/jbd.h>
-/* LDISKFS_SB() */
-#include <linux/ldiskfs_fs.h>
-#include <linux/ldiskfs_jbd.h>
 
 /*
  * struct OBD_{ALLOC,FREE}*()
@@ -160,7 +151,7 @@ static int dio_complete_routine(struct bio *bio, unsigned int done, int error)
                         LASSERT(PageLocked(bvl->bv_page));
                         ClearPageConstant(bvl->bv_page);
                 }
-        } else {
+        } else if (iobuf->dr_pages[0]->mapping) {
                 if (mapping_cap_page_constant_write(iobuf->dr_pages[0]->mapping)){
                         bio_for_each_segment(bvl, bio, i) {
                                 ClearPageConstant(bvl->bv_page);
@@ -359,9 +350,10 @@ static int osd_map_remote_to_local(loff_t offset, ssize_t len, int *nrpages,
                 lb->flags = 0;
                 lb->page = NULL;
                 lb->rc = 0;
-                lb->lnb_grant_used = 0;
+                lb->lnb_grant_used = 4096;
 
-                LASSERTF(plen <= len, "plen %u, len %u\n", plen, len);
+                LASSERTF(plen <= len, "plen %u, len %lld\n", plen,
+                         (long long) len);
                 offset += plen;
                 len -= plen;
                 lb++;
@@ -371,6 +363,47 @@ static int osd_map_remote_to_local(loff_t offset, ssize_t len, int *nrpages,
         RETURN(0);
 }
 
+struct page *osd_get_page(struct dt_object *dt, loff_t offset, int rw)
+{
+        struct inode      *inode = osd_dt_obj(dt)->oo_inode;
+        struct osd_device *d = osd_obj2dev(osd_dt_obj(dt));
+        struct page       *page;
+
+        LASSERT(inode);
+
+        page = find_or_create_page(inode->i_mapping, offset >> CFS_PAGE_SHIFT,
+                                   GFP_NOFS | __GFP_HIGHMEM);
+        if (unlikely(page == NULL))
+                lprocfs_counter_add(d->od_stats, LPROC_OSD_NO_PAGE, 1);
+
+        return page;
+}
+
+/*
+ * there are following "locks":
+ * journal_start
+ * i_alloc_sem
+ * i_mutex
+ * page lock
+
+ * osd write path
+    * lock page(s)
+    * journal_start
+    * truncate_sem
+
+ * ext3 vmtruncate:
+    * lock page (all pages), unlock
+    * lock partial page
+    * journal_start
+    * truncate_mutex
+
+ * ext4 vmtruncate:
+    * lock pages, unlock
+    * journal_start
+    * lock partial page
+    * i_data_sem
+
+*/
 int osd_get_bufs(const struct lu_env *env, struct dt_object *d, loff_t pos,
                  ssize_t len, struct niobuf_local *l, int rw,
                  struct lustre_capa *capa)
@@ -383,6 +416,14 @@ int osd_get_bufs(const struct lu_env *env, struct dt_object *d, loff_t pos,
 
 	osd_map_remote_to_local(pos, len, &npages, l);
 
+        /* Filter truncate first locks i_mutex then partally truncated
+         * page, filter write code first locks pages then take
+         * i_mutex.  To avoid a deadlock in case of concurrent
+         * punch/write requests from one client, filter writes and
+         * filter truncates are serialized by i_alloc_sem, allowing
+         * multiple writes or single truncate. */
+        cfs_down_read(&obj->oo_inode->i_alloc_sem);
+
         for (i = 0, lb = l; i < npages; i++, lb++) {
 
                 /* We still set up for ungranted pages so that granted pages
@@ -390,9 +431,7 @@ int osd_get_bufs(const struct lu_env *env, struct dt_object *d, loff_t pos,
                  * needs to keep the pages all aligned properly. */
                 lb->obj = obj;
         
-                lb->page = find_or_create_page(obj->oo_inode->i_mapping,
-                                                lb->file_offset >> CFS_PAGE_SHIFT,
-                                                GFP_NOFS | __GFP_HIGHMEM);
+                lb->page = osd_get_page(d, lb->file_offset, rw);
                 if (lb->page == NULL)
                         GOTO(cleanup, rc = -ENOMEM);
 
@@ -411,18 +450,12 @@ int osd_get_bufs(const struct lu_env *env, struct dt_object *d, loff_t pos,
                 BUG_ON(PageWriteback(lb->page));
 
                 lu_object_get(&d->do_lu);
+                cfs_down_read(&obj->oo_inode->i_alloc_sem);
         }
         rc = i;
 
-        /* Filter truncate first locks i_mutex then partally truncated
-         * page, filter write code first locks pages then take
-         * i_mutex.  To avoid a deadlock in case of concurrent
-         * punch/write requests from one client, filter writes and
-         * filter truncates are serialized by i_alloc_sem, allowing
-         * multiple writes or single truncate. */
-        cfs_down_read(&obj->oo_inode->i_alloc_sem);
-
 cleanup:
+        cfs_up_read(&obj->oo_inode->i_alloc_sem);
         RETURN(rc);
 }
 
@@ -432,8 +465,6 @@ static int osd_put_bufs(const struct lu_env *env, struct dt_object *dt,
         struct osd_object *obj    = osd_dt_obj(dt);
         int                i;
 
-        cfs_up_read(&obj->oo_inode->i_alloc_sem);
-
         for (i = 0; i < npages; i++) {
                 if (lb[i].page == NULL)
                         continue;
@@ -442,6 +473,7 @@ static int osd_put_bufs(const struct lu_env *env, struct dt_object *dt,
                 page_cache_release(lb[i].page);
                 lu_object_put(env, &dt->do_lu);
                 lb[i].page = NULL;
+                cfs_up_read(&obj->oo_inode->i_alloc_sem);
         }
         RETURN(0);
 }
@@ -453,9 +485,11 @@ static int osd_write_prep(const struct lu_env *env, struct dt_object *dt,
         struct filter_iobuf *iobuf = &oti->oti_iobuf;
         struct inode *inode = osd_dt_obj(dt)->oo_inode;
         struct osd_device  *osd = osd_obj2dev(osd_dt_obj(dt));
+        struct timeval start, end;
+        unsigned long timediff;
         ssize_t isize;
         __s64 maxidx;
-        int rc, i;
+        int rc, i, cache = 0;
 
         LASSERT(inode);
 
@@ -464,7 +498,17 @@ static int osd_write_prep(const struct lu_env *env, struct dt_object *dt,
         isize = i_size_read(inode);
         maxidx = ((isize + CFS_PAGE_SIZE - 1) >> CFS_PAGE_SHIFT) - 1;
 
+        if (osd->od_writethrough_cache)
+                cache = 1;
+        if (isize > osd->od_readcache_max_filesize)
+                cache = 0;
+
+        cfs_gettimeofday(&start);
         for (i = 0; i < npages; i++) {
+
+                if (cache == 0)
+                        truncate_complete_page(inode->i_mapping, lb[i].page);
+
                 if (lb[i].len == CFS_PAGE_SIZE)
                         continue;
 
@@ -483,6 +527,10 @@ static int osd_write_prep(const struct lu_env *env, struct dt_object *dt,
                         kunmap(lb[i].page);
                 }
         }
+        cfs_gettimeofday(&end);
+        timediff = cfs_timeval_sub(&end, &start, NULL);
+        lprocfs_counter_add(osd->od_stats, LPROC_OSD_GET_PAGE, timediff);
+
         rc = osd->od_fsops->fs_map_inode_pages(inode, iobuf->dr_pages,
                         iobuf->dr_npages, iobuf->dr_blocks,
                         NULL, 0, NULL);
@@ -564,6 +612,8 @@ static int osd_write_commit(const struct lu_env *env, struct dt_object *dt,
         }
                 
         rc = osd_do_bio(inode, iobuf, OBD_BRW_WRITE);
+        /* XXX: if write fails, we should drop pages from the cache */
+
         RETURN(0);
 }
 
@@ -574,12 +624,20 @@ static int osd_read_prep(const struct lu_env *env, struct dt_object *dt,
         struct filter_iobuf *iobuf = &oti->oti_iobuf;
         struct inode *inode = osd_dt_obj(dt)->oo_inode;
         struct osd_device  *osd = osd_obj2dev(osd_dt_obj(dt));
-        int rc = 0, i, m = 0;
+        struct timeval start, end;
+        unsigned long timediff;
+        int rc = 0, i, m = 0, cache = 0;
 
         LASSERT(inode);
 
         filter_init_iobuf(iobuf);
 
+        if (osd->od_read_cache)
+                cache = 1;
+        if (i_size_read(inode) > osd->od_readcache_max_filesize)
+                cache = 0;
+
+        cfs_gettimeofday(&start);
         for (i = 0; i < npages; i++) {
 
                 if (i_size_read(inode) <= lb[i].file_offset)
@@ -593,11 +651,22 @@ static int osd_read_prep(const struct lu_env *env, struct dt_object *dt,
                         lb[i].rc = lb[i].len;
                 m += lb[i].len;
 
-                if (PageUptodate(lb[i].page))
-                        continue;
-
-                filter_iobuf_add_page(iobuf, lb[i].page);
+                lprocfs_counter_add(osd->od_stats, LPROC_OSD_CACHE_ACCESS, 1);
+                if (PageUptodate(lb[i].page)) {
+                        lprocfs_counter_add(osd->od_stats,
+                                            LPROC_OSD_CACHE_HIT, 1);
+                } else {
+                        lprocfs_counter_add(osd->od_stats,
+                                            LPROC_OSD_CACHE_MISS, 1);
+                        filter_iobuf_add_page(iobuf, lb[i].page);
+                }
+                if (cache == 0)
+                        truncate_complete_page(inode->i_mapping, lb[i].page);
         }
+        cfs_gettimeofday(&end);
+        timediff = cfs_timeval_sub(&end, &start, NULL);
+        lprocfs_counter_add(osd->od_stats, LPROC_OSD_GET_PAGE, timediff);
+
         if (iobuf->dr_npages) {
                 rc = osd->od_fsops->fs_map_inode_pages(inode, iobuf->dr_pages,
                                 iobuf->dr_npages,
@@ -620,20 +689,85 @@ static int osd_read_prep(const struct lu_env *env, struct dt_object *dt,
  *
  * which doesn't work for globally shared files like /last-received.
  */
-int fsfilt_ldiskfs_read(struct inode *inode, void *buf, int size, loff_t *offs);
-int fsfilt_ldiskfs_write_handle(struct inode *inode, void *buf, int bufsize,
-                                loff_t *offs, handle_t *handle);
+static int osd_ldiskfs_readlink(struct inode *inode, char *buffer, int buflen)
+{
+        struct ldiskfs_inode_info *ei = LDISKFS_I(inode);
+
+        memcpy(buffer, (char*)ei->i_data, buflen);
+
+        return  buflen;
+}
+
+static int osd_ldiskfs_read(struct inode *inode, void *buf, int size,
+                            loff_t *offs)
+{
+        struct buffer_head *bh;
+        unsigned long block;
+        int osize = size;
+        int blocksize;
+        int csize;
+        int boffs;
+        int err;
+
+        /* prevent reading after eof */
+        cfs_spin_lock(&inode->i_lock);
+        if (i_size_read(inode) < *offs + size) {
+                size = i_size_read(inode) - *offs;
+                cfs_spin_unlock(&inode->i_lock);
+                if (size < 0) {
+                        CDEBUG(D_EXT2, "size %llu is too short to read @%llu\n",
+                               i_size_read(inode), *offs);
+                        return -EBADR;
+                } else if (size == 0) {
+                        return 0;
+                }
+        } else {
+                cfs_spin_unlock(&inode->i_lock);
+        }
+
+        blocksize = 1 << inode->i_blkbits;
+
+        while (size > 0) {
+                block = *offs >> inode->i_blkbits;
+                boffs = *offs & (blocksize - 1);
+                csize = min(blocksize - boffs, size);
+                bh = ldiskfs_bread(NULL, inode, block, 0, &err);
+                if (!bh) {
+                        CERROR("can't read block: %d\n", err);
+                        return err;
+                }
+
+                memcpy(buf, bh->b_data + boffs, csize);
+                brelse(bh);
+
+                *offs += csize;
+                buf += csize;
+                size -= csize;
+        }
+        return osize;
+}
+
 
 static ssize_t osd_read(const struct lu_env *env, struct dt_object *dt,
                         struct lu_buf *buf, loff_t *pos,
                         struct lustre_capa *capa)
 {
         struct inode *inode = osd_dt_obj(dt)->oo_inode;
+        int           rc;
 
         if (osd_object_auth(env, dt, capa, CAPA_OPC_BODY_READ))
                 RETURN(-EACCES);
 
-        return fsfilt_ldiskfs_read(inode, buf->lb_buf, buf->lb_len, pos);
+        /* Read small symlink from inode body as we need to maintain correct
+         * on-disk symlinks for ldiskfs.
+         */
+        if (S_ISLNK(dt->do_lu.lo_header->loh_attr) &&
+            (buf->lb_len <= sizeof (LDISKFS_I(inode)->i_data)))
+                rc = osd_ldiskfs_readlink(inode, buf->lb_buf, buf->lb_len);
+        else
+                rc = osd_ldiskfs_read(inode, buf->lb_buf, buf->lb_len, pos);
+
+        return rc;
 }
 
 static ssize_t osd_declare_write(const struct lu_env *env, struct dt_object *dt,
@@ -653,6 +787,86 @@ static ssize_t osd_declare_write(const struct lu_env *env, struct dt_object *dt,
         return 0;
 }
 
+static int osd_ldiskfs_writelink(struct inode *inode, char *buffer, int buflen)
+{
+
+        memcpy((char*)&LDISKFS_I(inode)->i_data, (char *)buffer,
+               buflen);
+        LDISKFS_I(inode)->i_disksize = buflen;
+        i_size_write(inode, buflen);
+        inode->i_sb->s_op->dirty_inode(inode);
+
+        return 0;
+}
+
+static int osd_ldiskfs_write_record(struct inode *inode, void *buf, int bufsize,
+                                    loff_t *offs, handle_t *handle)
+{
+        struct buffer_head *bh = NULL;
+        loff_t offset = *offs;
+        loff_t new_size = i_size_read(inode);
+        unsigned long block;
+        int blocksize = 1 << inode->i_blkbits;
+        int err = 0;
+        int size;
+        int boffs;
+        int dirty_inode = 0;
+
+        while (bufsize > 0) {
+                if (bh != NULL)
+                        brelse(bh);
+
+                block = offset >> inode->i_blkbits;
+                boffs = offset & (blocksize - 1);
+                size = min(blocksize - boffs, bufsize);
+                bh = ldiskfs_bread(handle, inode, block, 1, &err);
+                if (!bh) {
+                        CERROR("can't read/create block: %d\n", err);
+                        break;
+                }
+
+                err = ldiskfs_journal_get_write_access(handle, bh);
+                if (err) {
+                        CERROR("journal_get_write_access() returned error %d\n",
+                               err);
+                        break;
+                }
+                LASSERTF(boffs + size <= bh->b_size,
+                         "boffs %d size %d bh->b_size %lu",
+                         boffs, size, (unsigned long)bh->b_size);
+                memcpy(bh->b_data + boffs, buf, size);
+                err = ldiskfs_journal_dirty_metadata(handle, bh);
+                if (err)
+                        break;
+
+                if (offset + size > new_size)
+                        new_size = offset + size;
+                offset += size;
+                bufsize -= size;
+                buf += size;
+        }
+        if (bh)
+                brelse(bh);
+
+        /* correct in-core and on-disk sizes */
+        if (new_size > i_size_read(inode)) {
+                cfs_spin_lock(&inode->i_lock);
+                if (new_size > i_size_read(inode))
+                        i_size_write(inode, new_size);
+                if (i_size_read(inode) > LDISKFS_I(inode)->i_disksize) {
+                        LDISKFS_I(inode)->i_disksize = i_size_read(inode);
+                        dirty_inode = 1;
+                }
+                cfs_spin_unlock(&inode->i_lock);
+                if (dirty_inode)
+                        inode->i_sb->s_op->dirty_inode(inode);
+        }
+
+        if (err == 0)
+                *offs = offset;
+        return err;
+}
+
 static ssize_t osd_write(const struct lu_env *env, struct dt_object *dt,
                          const struct lu_buf *buf, loff_t *pos,
                          struct thandle *handle, struct lustre_capa *capa,
@@ -664,6 +878,8 @@ static ssize_t osd_write(const struct lu_env *env, struct dt_object *dt,
 #ifdef HAVE_QUOTA_SUPPORT
         cfs_cap_t           save = current->cap_effective;
 #endif
+
+        LASSERT(dt_object_exists(dt));
 
         if (osd_object_auth(env, dt, capa, CAPA_OPC_BODY_WRITE))
                 return -EACCES;
@@ -681,8 +897,16 @@ static ssize_t osd_write(const struct lu_env *env, struct dt_object *dt,
         else
                 current->cap_effective &= ~CFS_CAP_SYS_RESOURCE_MASK;
 #endif
-        result = fsfilt_ldiskfs_write_handle(inode, buf->lb_buf, buf->lb_len,
-                                             pos, oh->ot_handle);
+        /* Write small symlink to inode body as we need to maintain correct
+         * on-disk symlinks for ldiskfs.
+         */
+        if(S_ISLNK(dt->do_lu.lo_header->loh_attr) &&
+           (buf->lb_len < sizeof (LDISKFS_I(inode)->i_data)))
+                result = osd_ldiskfs_writelink(inode, buf->lb_buf, buf->lb_len);
+        else
+                result = osd_ldiskfs_write_record(inode, buf->lb_buf,
+                                                  buf->lb_len, pos,
+                                                  oh->ot_handle);
 #ifdef HAVE_QUOTA_SUPPORT
         current->cap_effective = save;
 #endif

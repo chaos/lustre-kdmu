@@ -146,6 +146,7 @@ int mds_get_obd_quota(struct obd_device *obd, struct obd_quotactl *oqctl);
 int dquot_create_oqaq(struct lustre_quota_ctxt *qctxt, struct lustre_dquot
                       *dquot, __u32 ost_num, __u32 mdt_num, int type,
                       struct quota_adjust_qunit *oqaq);
+int generic_quota_on(struct obd_device *, struct obd_quotactl *, int);
 #endif
 
 /* quota_ctl.c */
@@ -211,16 +212,5 @@ int lmv_quota_check(struct obd_device *unused, struct obd_export *exp,
 int lov_quota_check(struct obd_device *unused, struct obd_export *exp,
                     struct obd_quotactl *oqctl);
 int client_quota_poll_check(struct obd_export *exp, struct if_quotacheck *qchk);
-
-static inline int client_quota_recoverable_error(int rc)
-{
-        return (rc == -ETIMEDOUT || rc == -EAGAIN);
-}
-
-static inline int client_quota_should_resend(int resend, struct client_obd *cli)
-{
-        return (cfs_atomic_read(&cli->cl_quota_resends) >= 0) ?
-                cfs_atomic_read(&cli->cl_quota_resends) > resend : 1;
-}
 
 #endif

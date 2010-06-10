@@ -53,5 +53,9 @@
 #include <libcfs/util/libcfsutil_ioctl.h>
 #include <libcfs/util/params_tree_util.h>
 
+/*
+ * Defined by libcfs/libcfs/util/util.c
+ */
+int libcfs_tcd_type_max(void);
 
 #endif	/* __LIBCFSUTIL_H__ */

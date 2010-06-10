@@ -118,29 +118,20 @@ typedef struct {
 # define LPU64 "%Lu"
 # define LPD64 "%Ld"
 # define LPX64 "%#Lx"
+# define LPX64i "%Lx"
 # define LPF64 "L"
 #elif (BITS_PER_LONG == 32)
 # define LPU64 "%Lu"
 # define LPD64 "%Ld"
 # define LPX64 "%#Lx"
+# define LPX64i "%Lx"
 # define LPF64 "L"
 #elif (BITS_PER_LONG == 64)
 # define LPU64 "%lu"
 # define LPD64 "%ld"
 # define LPX64 "%#lx"
+# define LPX64i "%lx"
 # define LPF64 "l"
-#endif
-
-#ifdef HAVE_SIZE_T_LONG
-# define LPSZ  "%lu"
-#else
-# define LPSZ  "%u"
-#endif
-
-#ifdef HAVE_SSIZE_T_LONG
-# define LPSSZ "%ld"
-#else
-# define LPSSZ "%d"
 #endif
 
 #ifndef LPU64

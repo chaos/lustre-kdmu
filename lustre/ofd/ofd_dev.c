@@ -639,7 +639,6 @@ static int filter_init0(const struct lu_env *env, struct filter_device *m,
         cfs_rwlock_init(&filter->fo_sptlrpc_lock);
         sptlrpc_rule_set_init(&filter->fo_sptlrpc_rset);
 #endif
-        cfs_spin_lock_init(&filter->fo_obt.obt_translock);
 
         m->ofd_fl_oss_capa = 0;
         CFS_INIT_LIST_HEAD(&m->ofd_capa_keys);
@@ -700,8 +699,7 @@ static int filter_init0(const struct lu_env *env, struct filter_device *m,
         info = filter_info_init(env, NULL);
         LASSERT(info != NULL);
 
-        snprintf(info->fti_u.ns_name, sizeof info->fti_u.ns_name,
-                 LUSTRE_OST_NAME"-%p", m);
+        snprintf(info->fti_u.ns_name, sizeof(info->fti_u.ns_name), "filter-%p", m);
         m->ofd_namespace = ldlm_namespace_new(obd, info->fti_u.ns_name,
                                               LDLM_NAMESPACE_SERVER,
                                               LDLM_NAMESPACE_GREEDY);
@@ -777,7 +775,9 @@ static void filter_fini(const struct lu_env *env, struct filter_device *m)
         struct obd_device *obd = filter_obd(m);
         struct lu_device  *d = &m->ofd_dt_dev.dd_lu_dev;
         struct lu_site    *ls = d->ld_site;
+#if 0
         int                waited = 0;
+#endif
 
         /* At this point, obd exports might still be on the "obd_zombie_exports"
          * list, and obd_zombie_impexp_thread() is trying to destroy them.
@@ -807,6 +807,7 @@ static void filter_fini(const struct lu_env *env, struct filter_device *m)
 #if 0
         filter_obd_llog_cleanup(obd);
 #endif
+        obd_exports_barrier(obd);
         obd_zombie_barrier();
 
         lut_fini(env, &m->ofd_lut);

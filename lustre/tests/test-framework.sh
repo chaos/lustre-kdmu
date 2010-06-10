@@ -1,10 +1,10 @@
 #!/bin/bash
 # vim:expandtab:shiftwidth=4:softtabstop=4:tabstop=4:
 
-trap 'print_summary && echo "test-framework exiting on error"' ERR
+trap 'print_summary && touch $TF_FAIL && \
+    echo "test-framework exiting on error"' ERR
 set -e
 #set -x
-
 
 export REFORMAT=${REFORMAT:-""}
 export WRITECONF=${WRITECONF:-""}
@@ -33,6 +33,9 @@ if [ -f "$EXCEPT_LIST_FILE" ]; then
     cat $EXCEPT_LIST_FILE
     . $EXCEPT_LIST_FILE
 fi
+
+[ -z "$MODPROBECONF" -a -f /etc/modprobe.conf ] && MODPROBECONF=/etc/modprobe.conf
+[ -z "$MODPROBECONF" -a -f /etc/modprobe.d/Lustre ] && MODPROBECONF=/etc/modprobe.d/Lustre
 
 assert_DIR () {
     local failed=""
@@ -137,6 +140,15 @@ init_test_env() {
     if ! echo $PATH | grep -q $LUSTRE/../zfs/cmd/zfs; then
         export PATH=$PATH:$LUSTRE/../zfs/cmd/zfs:$LUSTRE/../zfs/cmd/zpool
     fi
+
+    # default zfs-test location
+    if ! echo $PATH | grep -q /usr/libexec/zfs/; then
+        export PATH=$PATH:/usr/libexec/zfs/
+    fi
+
+    export ZFS_SH=${ZFS_SH:-`which zfs.sh`}
+    export ZPOOL=${ZPOOL:-`which zpool`}
+
     if ! echo $PATH | grep -q $LUSTRE/tests/mpi; then
         export PATH=$PATH:$LUSTRE/tests/mpi
     fi
@@ -160,6 +172,11 @@ init_test_env() {
     export LUSTRE_RMMOD=${LUSTRE_RMMOD:-$LUSTRE/scripts/lustre_rmmod}
     [ ! -f "$LUSTRE_RMMOD" ] && export LUSTRE_RMMOD=$(which lustre_rmmod 2> /dev/null)
     export FSTYPE=${FSTYPE:-"ldiskfs"}
+
+    export MGSFSTYPE=ldiskfs
+    export MDSFSTYPE=${MDSFSTYPE:-$FSTYPE}
+    export OSTFSTYPE=${OSTFSTYPE:-$FSTYPE}
+
     export NAME=${NAME:-local}
     export LGSSD=${LGSSD:-"$LUSTRE/utils/gss/lgssd"}
     [ "$GSS_PIPEFS" = "true" ] && [ ! -f "$LGSSD" ] && \
@@ -194,6 +211,8 @@ init_test_env() {
             ;;
     esac
     export LOAD_MODULES_REMOTE=${LOAD_MODULES_REMOTE:-false}
+    export USE_QUOTA=${USE_QUOTA:-no}
+    zfs && USE_QUOTA=no
 
     # Paths on remote nodes, if different
     export RLUSTRE=${RLUSTRE:-$LUSTRE}
@@ -223,17 +242,20 @@ init_test_env() {
     rm -f $TMP/*active
 }
 
-case `uname -r` in
-2.4.*) EXT=".o"; USE_QUOTA=no; [ ! "$CLIENTONLY" ] && FSTYPE=ext3;;
-    *) EXT=".ko"; USE_QUOTA=yes;;
-esac
-
-
 module_loaded () {
    /sbin/lsmod | grep -q "^$1"
 }
 
+# Load a module on the system where this is running.
+#
+# Synopsis: load_module module_name [module arguments for insmod/modprobe]
+#
+# If module arguments are not given but MODOPTS_<MODULE> is set, then its value
+# will be used as the arguments.  Otherwise arguments will be obtained from
+# /etc/modprobe.conf, from /etc/modprobe.d/Lustre, or else none will be used.
+#
 load_module() {
+    local optvar
     EXT=".ko"
     module=$1
     shift
@@ -241,19 +263,47 @@ load_module() {
 
     module_loaded ${BASE} && return
 
+    # If no module arguments were passed, get them from $MODOPTS_<MODULE>, else from
+    # modprobe.conf
+    if [ $# -eq 0 ]; then
+        # $MODOPTS_<MODULE>; we could use associative arrays, but that's not in
+        # Bash until 4.x, so we resort to eval.
+        optvar="MODOPTS_$(basename $module | tr a-z A-Z)"
+        eval set -- \$$optvar
+        if [ $# -eq 0 -a -n "$MODPROBECONF" ]; then
+            # Nothing in $MODOPTS_<MODULE>; try modprobe.conf
+            set -- $(grep "^options\\s*\<${module}\>" $MODPROBECONF)
+            # Get rid of "options $module"
+	    (($# > 0)) && shift 2
+
+            # Ensure we have accept=all for lnet
+            if [ $(basename $module) = lnet ]; then
+                # OK, this is a bit wordy...
+                local arg accept_all_present=false
+                for arg in "$@"; do
+                    [ "$arg" = accept=all ] && accept_all_present=true
+                done
+                $accept_all_present || set -- "$@" accept=all
+            fi
+        fi
+    fi
+
+    [ $# -gt 0 ] && echo "${module} options: '$*'"
+
+    # Note that insmod will ignore anything in modprobe.conf, which is why we're
+    # passing options on the command-line.
     if [ "$BASE" == "lnet_selftest" ] && \
             [ -f ${LUSTRE}/../lnet/selftest/${module}${EXT} ]; then
         insmod ${LUSTRE}/../lnet/selftest/${module}${EXT}
-
     elif [ -f ${LUSTRE}/${module}${EXT} ]; then
-        insmod ${LUSTRE}/${module}${EXT} $@
+        insmod ${LUSTRE}/${module}${EXT} "$@"
     else
         # must be testing a "make install" or "rpm" installation
         # note failed to load ptlrpc_gss is considered not fatal
         if [ "$BASE" == "ptlrpc_gss" ]; then
-            modprobe $BASE $@ 2>/dev/null || echo "gss/krb5 is not supported"
+            modprobe $BASE "$@" 2>/dev/null || echo "gss/krb5 is not supported"
         else
-            modprobe $BASE $@
+            modprobe $BASE "$@"
         fi
     fi
 }
@@ -261,27 +311,15 @@ load_module() {
 load_modules_local() {
     if [ -n "$MODPROBE" ]; then
         # use modprobe
-    return 0
-    fi
-    if [ "$HAVE_MODULES" = true ]; then
-    # we already loaded
+        echo "Using modprobe to load modules"
         return 0
     fi
-    HAVE_MODULES=true
 
     echo Loading modules from $LUSTRE
     load_module ../libcfs/libcfs/libcfs
     [ "$PTLDEBUG" ] && lctl set_param debug="$PTLDEBUG"
     [ "$SUBSYSTEM" ] && lctl set_param subsystem_debug="${SUBSYSTEM# }"
-    local MODPROBECONF=
-    [ -f /etc/modprobe.conf ] && MODPROBECONF=/etc/modprobe.conf
-    [ ! "$MODPROBECONF" -a -d /etc/modprobe.d ] && MODPROBECONF=/etc/modprobe.d/Lustre
-    [ -z "$LNETOPTS" -a "$MODPROBECONF" ] && \
-        LNETOPTS=$(awk '/^options lnet/ { print $0}' $MODPROBECONF | sed 's/^options lnet //g')
-    echo $LNETOPTS | grep -q "accept=all"  || LNETOPTS="$LNETOPTS accept=all";
-    echo "lnet options: '$LNETOPTS'"
-    # note that insmod will ignore anything in modprobe.conf
-    load_module ../lnet/lnet/lnet $LNETOPTS
+    load_module ../lnet/lnet/lnet
     LNETLND=${LNETLND:-"socklnd/ksocklnd"}
     load_module ../lnet/klnds/$LNETLND
     load_module lvfs/lvfs
@@ -302,17 +340,17 @@ load_modules_local() {
         [ "$FSTYPE" = "ldiskfs" ] && load_module ../ldiskfs/ldiskfs/ldiskfs
         [ "$OSTFSTYPE" = "ldiskfs" ] && load_module ../ldiskfs/ldiskfs/ldiskfs
         [ "$MDSFSTYPE" = "ldiskfs" ] && load_module ../ldiskfs/ldiskfs/ldiskfs
-        [ "$OSTFSTYPE" = "zfs" ] && load_module "dmu-osd/osd-zfs"
-        [ "$MDSFSTYPE" = "zfs" ] && load_module "dmu-osd/osd-zfs"
+        [ "$OSTFSTYPE" = "zfs" ] && load_module "dmu-osd/osd_zfs"
+        [ "$MDSFSTYPE" = "zfs" ] && load_module "dmu-osd/osd_zfs"
         load_module mgs/mgs
         load_module mds/mds
         load_module mdd/mdd
         load_module mdt/mdt
         load_module lvfs/fsfilt_$FSTYPE
         load_module cmm/cmm
-        load_module osd/osd-ldiskfs
+        load_module osd/osd_ldiskfs
         load_module ost/ost
-        load_module ofd/ofd
+        load_module ofd/obdfilter
     fi
 
     load_module llite/lustre
@@ -323,7 +361,10 @@ load_modules_local() {
     $LCTL modules > $OGDB/ogdb-$HOSTNAME
 
     # 'mount' doesn't look in $PATH, just sbin
-    [ -f $LUSTRE/utils/mount.lustre ] && cp $LUSTRE/utils/mount.lustre /sbin/. || true
+    if [ -f $LUSTRE/utils/mount.lustre ] ; then
+        cp $LUSTRE/utils/mount.lustre /sbin/. ||
+            cp $LUSTRE/utils/mount.lustre /rw/sbin/.
+    fi
 }
 
 load_modules () {
@@ -365,8 +406,6 @@ unload_modules() {
         fi
     fi
 
-    HAVE_MODULES=false
-
     check_mem_leak || return 254
 
     echo "modules unloaded."
@@ -377,7 +416,7 @@ check_gss_daemon_nodes() {
     local list=$1
     dname=$2
 
-    do_nodes --verbose $list "num=\\\$(ps -o cmd -C $dname | grep $dname | wc -l);
+    do_nodesv $list "num=\\\$(ps -o cmd -C $dname | grep $dname | wc -l);
 if [ \\\"\\\$num\\\" -ne 1 ]; then
     echo \\\$num instance of $dname;
     exit 1;
@@ -485,27 +524,29 @@ cleanup_gss() {
     fi
 }
 
+facet_fstype () {
+    local facet=$1
+    local tgt=$(echo $facet | tr -d [:digit:] | tr "[:lower:]" "[:upper:]")
+
+    local var=${tgt}FSTYPE
+
+    [[ -n ${!var} ]] && echo ${!var} || echo $FSTYPE 
+}
+
 devicelabel() {
     local facet=$1
     local dev=$2
     local label
 
-    set +e
-    label=$(do_facet ${facet} "$E2LABEL ${dev} 2>/dev/null")
-    if [ $? == 0 ]; then
-        set -e
-        echo $label
-        return 0
-    fi
-    set -e
+    local fstype=$(facet_fstype $facet)
 
-    label=$(do_facet ${facet} "$ZFSLABEL ${dev}")
-    if [ $? == 0 ]; then
-        echo $label
-        return 0
-    fi
+    case $fstype in
+        ldiskfs ) label=$(do_facet ${facet} "$E2LABEL ${dev} 2>/dev/null");;
+        zfs ) label=$(do_facet ${facet} "$ZFSLABEL ${dev}");;
+        * ) error "unknown fstype!";;
+    esac
 
-    echo ""
+    echo $label
 }
 
 mdsdevlabel() {
@@ -545,10 +586,11 @@ mount_facet() {
         [ -z "$label" ] && echo no label for ${!dev} && exit 1
         eval export ${facet}_svc=${label}
         set +e
-        fstype=$(do_facet $facet lctl get_param -n osd\*.${label}.fstype)
+        # FIXME. commented temporary because of bug 22725
+#        fstype=$(do_facet $facet lctl get_param -n *.${label}.fstype)
         set -e
         eval export ${facet}_fstype=${fstype}
-        echo Started ${label}
+        echo Started ${label} fstype $fstype
     fi
     return $RC
 }
@@ -906,6 +948,13 @@ shutdown_facet() {
     fi
 }
 
+remount_facet() {
+    local facet=$1
+
+    stop $facet
+    mount_facet $facet
+}
+
 reboot_facet() {
     facet=$1
     if [ "$FAILURE_MODE" = HARD ]; then
@@ -971,6 +1020,8 @@ start_client_loads () {
         testnum=$((nodenum % numloads))
         start_client_load ${clients[nodenum]} ${CLIENT_LOADS[testnum]}
     done
+    # bug 22169: wait the background threads to start
+    sleep 2
 }
 
 # only for remote client 
@@ -1156,10 +1207,7 @@ wait_recovery_complete () {
     local facet=$1
 
     # Use default policy if $2 is not passed by caller.
-    #define OBD_RECOVERY_TIMEOUT (obd_timeout * 5 / 2)
-    # as we are in process of changing obd_timeout in different ways
-    # let's set MAX longer than that
-    local MAX=${2:-$(( TIMEOUT * 4 ))}
+    local MAX=${2:-$(max_recovery_time)}
 
     local var_svc=${facet}_svc
     local procfile="*.${!var_svc}.recovery_status"
@@ -1557,8 +1605,23 @@ do_node() {
     return ${PIPESTATUS[0]}
 }
 
+do_nodev() {
+    do_node --verbose "$@"
+}
+
 single_local_node () {
    [ "$1" = "$HOSTNAME" ]
+}
+
+# Outputs environment variable assignments that should be passed to remote nodes
+get_env_vars() {
+    local var
+    local value
+
+    for var in ${!MODOPTS_*}; do
+        value=${!var}
+        echo "${var}=\"$value\""
+    done
 }
 
 do_nodes() {
@@ -1574,9 +1637,9 @@ do_nodes() {
 
     if single_local_node $rnodes; then
         if $verbose; then
-           do_node --verbose $rnodes $@
+           do_nodev $rnodes "$@"
         else
-           do_node $rnodes $@
+           do_node $rnodes "$@"
         fi
         return $?
     fi
@@ -1593,9 +1656,9 @@ do_nodes() {
     fi
 
     if $verbose ; then
-        $myPDSH $rnodes "(PATH=\$PATH:$RLUSTRE/utils:$RLUSTRE/tests:/sbin:/usr/sbin; cd $RPWD; LUSTRE=\"$RLUSTRE\" sh -c \"$@\")"
+        $myPDSH $rnodes "(PATH=\$PATH:$RLUSTRE/utils:$RLUSTRE/tests:/sbin:/usr/sbin; cd $RPWD; LUSTRE=\"$RLUSTRE\" $(get_env_vars) sh -c \"$@\")"
     else
-        $myPDSH $rnodes "(PATH=\$PATH:$RLUSTRE/utils:$RLUSTRE/tests:/sbin:/usr/sbin; cd $RPWD; LUSTRE=\"$RLUSTRE\" sh -c \"$@\")" | sed -re "s/\w+:\s//g"
+        $myPDSH $rnodes "(PATH=\$PATH:$RLUSTRE/utils:$RLUSTRE/tests:/sbin:/usr/sbin; cd $RPWD; LUSTRE=\"$RLUSTRE\" $(get_env_vars) sh -c \"$@\")" | sed -re "s/\w+:\s//g"
     fi
     return ${PIPESTATUS[0]}
 }
@@ -1608,6 +1671,10 @@ do_facet() {
     do_node $HOST "$@"
 }
 
+do_nodesv() {
+    do_nodes --verbose "$@"
+}
+
 add() {
     local facet=$1
     shift
@@ -1617,19 +1684,67 @@ add() {
     do_facet ${facet} $MKFS $*
 }
 
+facet_zvdev () {
+    local facet=$1
+    local var=${facet}_ZDEV
+
+    local vdev=${!var}
+    if [ -z "$vdev" ]; then
+        vdev=${ZVDEVBASE}-${facet}
+    fi
+
+    echo -n $vdev
+}
+
+facetdevname () {
+    local facet=$1
+
+    # no init_facet_vars yet; ~sigh; will be simplified after 20850 fixed
+    local base=$(echo $facet | tr -d [:digit:])
+    local num=$(echo $facet | tr -d [:alpha:])
+
+    local dev=$(${base}devname $num)
+    echo $dev
+}
+
 ostdevname() {
-    num=$1
-    DEVNAME=OSTDEV$num
-    #if $OSTDEVn isn't defined, default is $OSTDEVBASE + num
-    eval DEVPTR=${!DEVNAME:=${OSTDEVBASE}${num}}
+    local num=$1
+    local DEVNAME=OSTDEV$num
+
+    #if $OSTDEVn isn't defined, default is
+    # ldiskfs:  $OSTDEVBASE + num
+    # zfs: ${ZPOOLBASE}ost${num}/ost${num}
+
+    # ldiskfs
+    local var=${OSTDEVBASE}${num}
+
+    # zfs
+    # default: own pool for each ost
+    # tankost1/ost1,
+    # tankost2/ost2
+    # ZPOOLBASE=tank
+
+    if [ "$OSTFSTYPE" = "zfs" ]; then
+        var=${ZPOOLBASE}ost${num}/ost${num}
+    fi 
+    eval DEVPTR=${!DEVNAME:=${var}}
     echo -n $DEVPTR
 }
 
 mdsdevname() {
-    num=$1
-    DEVNAME=MDSDEV$num
+    local num=$1
+    local DEVNAME=MDSDEV$num
     #if $MDSDEVn isn't defined, default is $MDSDEVBASE + num
-    eval DEVPTR=${!DEVNAME:=${MDSDEVBASE}${num}}
+
+    # ldiskfs
+    local var=${MDSDEVBASE}${num}
+
+    # zfs
+    if [ "$MDSFSTYPE" = "zfs" ]; then
+        var=${ZPOOLBASE}mds${num}/mds${num}
+    fi
+
+    eval DEVPTR=${!DEVNAME:=${var}}
     echo -n $DEVPTR
 }
 
@@ -1661,10 +1776,6 @@ stopall() {
     # The add fn does rm ${facet}active file, this would be enough
     # if we use do_facet <facet> only after the facet added, but
     # currently we use do_facet mds in local.sh
-    if [ ! -z $MGSDEV ]; then
-        stop mgs
-        rm -f ${TMP}/mgsactive
-    fi
     for num in `seq $MDSCOUNT`; do
         stop mds$num -f
         rm -f ${TMP}/mds${num}active
@@ -1675,6 +1786,10 @@ stopall() {
         rm -f $TMP/ost${num}active
     done
 
+    if ! combined_mgs_mds ; then
+        stop mgs
+    fi
+
     return 0
 }
 
@@ -1684,6 +1799,9 @@ cleanupall() {
     stopall $*
     unload_modules
     cleanup_gss
+
+    [ -z $ZCLEANUP ] || \
+        { echo ZFS cleanup ... && zfs_cleanup_all; }
 }
 
 mdsmkfsopts()
@@ -1692,11 +1810,118 @@ mdsmkfsopts()
     test $nr = 1 && echo -n $MDS_MKFS_OPTS || echo -n $MDSn_MKFS_OPTS
 }
 
+combined_mgs_mds () {
+    [[ $MDSDEV1 = $MGSDEV ]] && [[ $mds1_HOST = $mgs_HOST ]]
+}
+
+zfs () {
+   [ "$MDSFSTYPE" = "zfs" ] || [ "$OSTFSTYPE" = "zfs" ] || [ "$MGSFSTYPE" = "zfs" ]
+}
+
+zfs_modules () {
+    # FIXME: actually we need to check all modules,
+    # like it is done by zfs/common.sh: check_modules ()
+    # but lets just check zfs for meantime
+    lsmod | grep -q ^zfs || sh $ZFS_SH $1
+}
+
+zfs_create_pool () {
+    local pool=$1
+    local vdev=$2
+
+    $ZPOOL list | grep -w $pool && echo $pool exist, skip creation && return 0
+
+    test -b $vdev || dd if=/dev/zero of=$vdev bs=1M count=256
+    zfs_modules
+    $ZPOOL create -f $pool $vdev
+}
+
+zfs_destroy_pool () {
+    local pool=$1
+
+    if $ZPOOL list | grep -w $pool; then
+        # destroy only
+        $ZPOOL destroy -f $pool
+    fi
+
+}
+
+zfs_init () {
+    zfs || return 0
+
+    if [ "$MDSFSTYPE" = "zfs" ] && combined_mgs_mds; then
+        echo combined mgs/mds is not supported for fstype $MDSFSTYPE, please set MGSDEV correctly
+        return 1
+    fi
+
+    local facet
+    local facets=$(get_facets MDS),$(get_facets OST)
+
+    for facet in ${facets//,/ }; do
+        zfs_create_pool_facet $facet
+    done
+}
+
+# pool name is set in MDSDEV1, OSTDEV1,
+# OSTDEV1=tank1/ost1
+# OSTDEV2=tank2/ost2, etc.
+# FIXME: not sure how many levels the device name cound have
+facet_pool () {
+    local facet=$1
+
+    local dev=$(facetdevname $facet)
+    echo ${dev//\/$facet}
+}
+
+zfs_create_pool_facet () {
+    local facet=$1
+
+    [[ $(facet_fstype $facet) = zfs ]] || return 0
+
+    # we just ignore the user errors like :
+    # ost1_ZDEV=<dev1>
+    # ost2_ZDEV=<dev2>
+    # OSTDEV1=tank1/ost1
+    # OSTDEV2=tank1/ost2
+    # in this case ost2_ZDEV will be ignored by zfs_create_pool,
+    # because of tank1 already exists
+    local dev=$(facet_zvdev $facet)
+
+    local pool=$(facet_pool $facet)
+    local host=$(facet_host $facet)
+    do_rpc_nodes $host zfs_create_pool $pool $dev
+    add_pool_to_list ${host}.${pool}
+}
+
+zfs_cleanup () {
+    # cleanup all pools we have created on this host 
+    local host=$(hostname)
+    local list=${host}_CREATED_POOLS
+    echo the list of created pools: ${!list}
+
+    # this list could be empty in case if we run on existing pools
+    # The possible solution is:
+    #    cleanup all exiting pools if ZCLEANUP=yes
+    #    (to provide the cleanup by llmount.sh)
+    for pool in ${!list//,/ }; do
+        echo DESTROY $pool on $host
+        zfs_destroy_pool $pool
+        remove_pool_from_list ${hostname}.$pool
+        zfs_modules -u
+    done
+}
+
+zfs_cleanup_all () {
+    do_rpc_nodes $(servers_list) zfs_cleanup
+}
+
 formatall() {
     if [ "$IAMDIR" == "yes" ]; then
         MDS_MKFS_OPTS="$MDS_MKFS_OPTS --iam-dir"
         MDSn_MKFS_OPTS="$MDSn_MKFS_OPTS --iam-dir"
     fi
+
+    zfs_init
 
     [ "$FSTYPE" ] && FSTYPE_OPT="--backfstype $FSTYPE"
 
@@ -1719,8 +1944,8 @@ formatall() {
     [ "$MDSFSTYPE" ] && MDSFSTYPE_OPT="--backfstype $MDSFSTYPE"
     [ "$OSTFSTYPE" ] && OSTFSTYPE_OPT="--backfstype $OSTFSTYPE"
 
-    if [[ $MDSDEV1 != $MGSDEV ]] || [[ $mds1_HOST != $mgs_HOST ]]; then
-        add mgs $mgs_MKFS_OPTS $MGSFSTYPE_OPT --reformat $MGSDEV || exit 10
+    if ! combined_mgs_mds ; then
+        add mgs $mgs_MKFS_OPTS $FSTYPE_OPT --reformat $MGSDEV || exit 10
     fi
 
     for num in `seq $MDSCOUNT`; do
@@ -1772,7 +1997,7 @@ switch_identity() {
         do_facet mds$num "lctl set_param -n mdt.$MDT.identity_upcall \"NONE\""
     fi
 
-    do_facet mds$num "lctl set_param -n mdt/$MDT/identity_flush \"-1\""
+    do_facet mds$num "lctl set_param -n mdt/$MDT/identity_flush=-1"
 
     if [ $old = "NONE" ]; then
         return 1
@@ -1818,7 +2043,7 @@ setupall() {
         echo Setup mgs, mdt, osts
         echo $WRITECONF | grep -q "writeconf" && \
             writeconf_all
-        if [[ $mds1_HOST != $mgs_HOST ]] || [[ $MDSDEV1 != $MGSDEV ]]; then
+        if ! combined_mgs_mds ; then
             start mgs $MGSDEV $mgs_MOUNT_OPTS
         fi
 
@@ -1957,11 +2182,6 @@ osc_ensure_active () {
     [ $period -lt $timeout ] || log "$count OST are inactive after $timeout seconds, give up"
 }
 
-som_check() {
-    SOM_ENABLED=$(do_facet $SINGLEMDS "$LCTL get_param mdt.*.som" | awk -F= ' {print $2}' | head -n 1)
-    echo $SOM_ENABLED
-}
-
 init_param_vars () {
     if ! remote_ost_nodsh && ! remote_mds_nodsh; then
         export MDSVER=$(do_facet $SINGLEMDS "lctl get_param version" | cut -d. -f1,2)
@@ -1977,10 +2197,6 @@ init_param_vars () {
     osc_ensure_active $SINGLEMDS M $TIMEOUT
     osc_ensure_active client c $TIMEOUT
 
-    if [ x"$(som_check)" = x"enabled" ]; then
-        ENABLE_QUOTA=""
-        echo "disable quota temporary when SOM enabled"
-    fi
     if [ $QUOTA_AUTO -ne 0 ]; then
         if [ "$ENABLE_QUOTA" ]; then
             echo "enable quota as required"
@@ -2009,9 +2225,7 @@ nfs_client_mode () {
     return 1
 }
 
-check_config () {
-    nfs_client_mode && return
-
+check_config_client () {
     local mntpt=$1
 
     local mounted=$(mount | grep " $mntpt ")
@@ -2046,10 +2260,20 @@ check_config () {
     local mgshost=$(mount | grep " $mntpt " | awk -F@ '{print $1}')
     mgshost=$(echo $mgshost | awk -F: '{print $1}')
 
-    if [ "$mgshost" != "$myMGS_host" ]; then
-            log "Bad config file: lustre is mounted with mgs $mgshost, but mgs_HOST=$mgs_HOST, NETTYPE=$NETTYPE
-                   Please use correct config or set mds_HOST correctly!"
-    fi
+#    if [ "$mgshost" != "$myMGS_host" ]; then
+#            log "Bad config file: lustre is mounted with mgs $mgshost, but mgs_HOST=$mgs_HOST, NETTYPE=$NETTYPE
+#                   Please use correct config or set mds_HOST correctly!"
+#    fi
+
+}
+
+check_config_clients () {
+    local clients=${CLIENTS:-$HOSTNAME}
+    local mntpt=$1
+
+    nfs_client_mode && return
+
+    do_rpc_nodes $clients check_config_client $mntpt
 
     sanity_mount_check ||
         error "environments are insane!"
@@ -2064,37 +2288,66 @@ check_timeout () {
     fi
 }
 
+is_mounted () {
+    local mntpt=$1
+    [ -z $mntpt ] && return 1
+    local mounted=$(mounted_lustre_filesystems)
+
+    echo $mounted' ' | grep -w -q $mntpt' '
+}
+
 check_and_setup_lustre() {
     nfs_client_mode && return
 
     local MOUNTED=$(mounted_lustre_filesystems)
 
     local do_check=true
-    # MOUNT is not mounted
-    if [ -z "$MOUNTED" ] || ! $(echo $MOUNTED | grep -w -q $MOUNT); then
+    # 1.
+    # both MOUNT and MOUNT2 are not mounted
+    if ! is_mounted $MOUNT && ! is_mounted $MOUNT2; then
         [ "$REFORMAT" ] && formatall
+        # setupall mounts both MOUNT and MOUNT2 (if MOUNT_2 is set)
         setupall
-        MOUNTED=$(mounted_lustre_filesystems | head -1)
-        [ -z "$MOUNTED" ] && error "NAME=$NAME not mounted"
+        is_mounted $MOUNT || error "NAME=$NAME not mounted"
         export I_MOUNTED=yes
         do_check=false
+    # 2.
+    # MOUNT2 is mounted
+    elif is_mounted $MOUNT2; then
+            # 3.
+            # MOUNT2 is mounted, while MOUNT_2 is not set
+            if ! [ "$MOUNT_2" ]; then
+                cleanup_mount $MOUNT2
+                export I_UMOUNTED2=yes
 
-    # MOUNT and MOUNT2 are mounted
-    elif $(echo $MOUNTED | grep -w -q $MOUNT2); then
+            # 4.
+            # MOUNT2 is mounted, MOUNT_2 is set
+            else
+                # FIXME: what to do if check_config failed?
+                # i.e. if:
+                # 1) remote client has mounted other Lustre fs ?
+                # 2) it has insane env ?
+                # let's try umount MOUNT2 on all clients and mount it again:
+                if ! check_config_clients $MOUNT2; then
+                    cleanup_mount $MOUNT2
+                    restore_mount $MOUNT2
+                    export I_MOUNTED2=yes
+                fi
+            fi 
 
-        # MOUNT2 is mounted,  MOUNT_2 is not set
-        if ! [ "$MOUNT_2" ]; then
-            zconf_umount `hostname` $MOUNT2
-            export I_UMOUNTED2=yes
-
-        # MOUNT2 is mounted, MOUNT_2 is set
-        else
-            check_config $MOUNT2
-        fi 
+    # 5.
+    # MOUNT is mounted MOUNT2 is not mounted
+    elif [ "$MOUNT_2" ]; then
+        restore_mount $MOUNT2
+        export I_MOUNTED2=yes
     fi
 
     if $do_check; then
-        check_config $MOUNT
+        # FIXME: what to do if check_config failed?
+        # i.e. if:
+        # 1) remote client has mounted other Lustre fs?
+        # 2) lustre is mounted on remote_clients atall ?
+        check_config_clients $MOUNT
         init_facets_vars
         init_param_vars
 
@@ -2112,6 +2365,20 @@ check_and_setup_lustre() {
     fi
 }
 
+restore_mount () {
+   local clients=${CLIENTS:-$HOSTNAME}
+   local mntpt=$1
+
+   zconf_mount_clients $clients $mntpt
+}
+
+cleanup_mount () {
+    local clients=${CLIENTS:-$HOSTNAME}
+    local mntpt=$1
+
+    zconf_umount_clients $clients $mntpt    
+}
+
 cleanup_and_setup_lustre() {
     if [ "$ONLY" == "cleanup" -o "`mount | grep $MOUNT`" ]; then
         lctl set_param debug=0 || true
@@ -2124,18 +2391,23 @@ cleanup_and_setup_lustre() {
 }
 
 check_and_cleanup_lustre() {
-    if [ "`mount | grep $MOUNT`" ]; then
+    if is_mounted $MOUNT; then
         [ -n "$DIR" ] && rm -rf $DIR/[Rdfs][0-9]*
         [ "$ENABLE_QUOTA" ] && restore_quota_type || true
     fi
+
     if [ "$I_UMOUNTED2" = "yes" ]; then
-        mount_client $MOUNT2 || error "restore $MOUNT2 failed"
+        restore_mount $MOUNT2 || error "restore $MOUNT2 failed"
+    fi
+
+    if [ "$I_MOUNTED2" = "yes" ]; then
+        cleanup_mount $MOUNT2
     fi
 
     if [ "$I_MOUNTED" = "yes" ]; then
         cleanupall -f || error "cleanup failed"
+        unset I_MOUNTED
     fi
-    unset I_MOUNTED
 }
 
 #######
@@ -2394,10 +2666,6 @@ pgcache_empty() {
             return 1
         fi
     done
-    if [[ $MDSDEV1 != $MGSDEV ]]; then
-        stop mgs 
-    fi
-
     return 0
 }
 
@@ -2465,15 +2733,11 @@ error_noexit() {
 
 error() {
     error_noexit "$@"
-    if $FAIL_ON_ERROR; then
-        reset_fail_loc
-        exit 1
-    fi
+    exit 1
 }
 
 error_exit() {
-    error_noexit "$@"
-    exit 1
+    error "$@"
 }
 
 # use only if we are ignoring failures for this test, bugno required.
@@ -2528,6 +2792,14 @@ basetest() {
 
 # print a newline if the last test was skipped
 export LAST_SKIPPED=
+#
+# Main entry into test-framework. This is called with the name and
+# description of a test. The name is used to find the function to run
+# the test using "test_$name".
+#
+# This supports a variety of methods of specifying specific test to
+# run or not run.  These need to be documented...
+#
 run_test() {
     assert_DIR
 
@@ -2580,13 +2852,8 @@ run_test() {
     return $?
 }
 
-EQUALS="======================================================================"
 equals_msg() {
-    msg="$@"
-
-    local suffixlen=$((${#EQUALS} - ${#msg}))
-    [ $suffixlen -lt 5 ] && suffixlen=5
-    log `echo $(printf '===== %s %.*s\n' "$msg" $suffixlen $EQUALS)`
+    banner "$*"
 }
 
 log() {
@@ -2625,8 +2892,8 @@ pass() {
 }
 
 check_mds() {
-    FFREE=$(do_node $SINGLEMDS lctl get_param -n osd.*MDT*.filesfree | awk 'BEGIN{avail=0}; {avail+=$1}; END{print avail}')
-    FTOTAL=$(do_node $SINGLEMDS lctl get_param -n osd.*MDT*.filestotal | awk 'BEGIN{avail=0}; {avail+=$1}; END{print avail}')
+    FFREE=$(do_node $SINGLEMDS lctl get_param -n osd*.*MDT*.filesfree | awk 'BEGIN{avail=0}; {avail+=$1}; END{print avail}')
+    FTOTAL=$(do_node $SINGLEMDS lctl get_param -n osd*.*MDT*.filestotal | awk 'BEGIN{avail=0}; {avail+=$1}; END{print avail}')
     [ $FFREE -ge $FTOTAL ] && error "files free $FFREE > total $FTOTAL" || true
 }
 
@@ -2636,17 +2903,38 @@ reset_fail_loc () {
     echo done.
 }
 
+
+#
+# Log a message (on all nodes) padded with "=" before and after. 
+# Also appends a timestamp and prepends the testsuite name.
+# 
+
+EQUALS="===================================================================================================="
+banner() {
+    msg="== ${TESTSUITE} $*"
+    last=${msg: -1:1}
+    [[ $last != "=" && $last != " " ]] && msg="$msg "
+    msg=$(printf '%s%.*s'  "$msg"  $((${#EQUALS} - ${#msg})) $EQUALS )
+    # always include at least == after the message
+    log "$msg== $(date +"%H:%M:%S (%s)")"
+}
+
+#
+# Run a single test function and cleanup after it.  
+#
+# This function should be run in a subshell so the test func can
+# exit() without stopping the whole script.
+#
 run_one() {
-    testnum=$1
-    message=$2
+    local testnum=$1
+    local message=$2
     tfile=f${testnum}
     export tdir=d0.${TESTSUITE}/d${base}
     export TESTNAME=test_$testnum
     local SAVE_UMASK=`umask`
     umask 0022
 
-    echo
-    log "== test $testnum: $message == `date +%H:%M:%S`"
+    banner "test $testnum: $message"
     test_${testnum} || error "test_$testnum failed with $?"
     cd $SAVE_PWD
     reset_fail_loc
@@ -2659,6 +2947,12 @@ run_one() {
     return 0
 }
 
+#
+# Wrapper around run_one to ensure:
+#  - test runs in subshell
+#  - output of test is saved to separate log file for error reporting
+#  - test result is saved to data file
+#
 run_one_logged() {
     local BEFORE=`date +%s`
     local TEST_ERROR
@@ -2666,7 +2960,9 @@ run_one_logged() {
     local test_log=$LOGDIR/$name
     rm -rf $LOGDIR/err
 
-    run_one $1 "$2" 2>&1 | tee $test_log
+    echo
+    log_sub_test_begin test_${1}
+    (run_one $1 "$2") 2>&1 | tee $test_log
     local RC=${PIPESTATUS[0]}
 
     [ $RC -ne 0 ] && [ ! -f $LOGDIR/err ] && \
@@ -2675,7 +2971,7 @@ run_one_logged() {
     duration=$((`date +%s` - $BEFORE))
     pass "(${duration}s)"
     [ -f $LOGDIR/err ] && TEST_ERROR=$(cat $LOGDIR/err)
-    log_sub_test test_${1} $TEST_STATUS $duration "$RC" "$TEST_ERROR"
+    log_sub_test_end $TEST_STATUS $duration "$RC" "$TEST_ERROR"
 
     if [ -f $LOGDIR/err ]; then
         $FAIL_ON_ERROR && exit $RC
@@ -2863,6 +3159,10 @@ remote_nodes_list () {
     echo $rnodes
 }
 
+servers_list () {
+    echo $(comma_list $(osts_nodes) $(mdts_nodes))
+}
+
 init_clients_lists () {
     # Sanity check: exclude the local client from RCLIENTS
     local rclients=$(echo " $RCLIENTS " | sed -re "s/\s+$HOSTNAME\s+/ /g")
@@ -2931,9 +3231,10 @@ mixed_mdt_devs () {
 generate_machine_file() {
     local nodes=${1//,/ }
     local machinefile=$2
-    rm -f $machinefile || error "can't rm $machinefile"
+    rm -f $machinefile
     for node in $nodes; do
-        echo $node >>$machinefile
+        echo $node >>$machinefile || \
+            { echo "can not generate machinefile $machinefile" && return 1; }
     done
 }
 
@@ -2942,6 +3243,17 @@ get_stripe () {
     touch $file
     $LFS getstripe -v $file || error
     rm -f $file
+}
+
+setstripe_nfsserver () {
+    local dir=$1
+
+    local nfsserver=$(awk '"'$dir'" ~ $2 && $3 ~ "nfs" && $2 != "/" \
+                { print $1 }' /proc/mounts | cut -f 1 -d : | head -1)
+
+    [ -z $nfsserver ] && echo "$dir is not nfs mounted" && return 1
+
+    do_nodev $nfsserver lfs setstripe "$@"
 }
 
 check_runas_id_ret() {
@@ -3052,6 +3364,10 @@ inodes_available () {
     echo $IFree
 }
 
+mdsrate_inodes_available () {
+    echo $(($(inodes_available) - 1))
+}
+
 # reset llite stat counters
 clear_llite_stats(){
         lctl set_param -n llite.*.stats 0
@@ -3089,7 +3405,7 @@ calc_osc_kbytes () {
 # generate a stream of formatted strings (<node> <param name>=<param value>)
 save_lustre_params() {
         local s
-        do_nodes --verbose $1 "lctl get_param $2 | while read s; do echo \\\$s; done"
+        do_nodesv $1 "lctl get_param $2 | while read s; do echo \\\$s; done"
 }
 
 # restore lustre parameters from input stream, produces by save_lustre_params
@@ -3303,7 +3619,7 @@ do_rpc_nodes () {
 
     # Add paths to lustre tests for 32 and 64 bit systems.
     local RPATH="$RLUSTRE/tests:/usr/lib/lustre/tests:/usr/lib64/lustre/tests:$PATH"
-    do_nodes --verbose $list "PATH=$RPATH sh rpc.sh $@ "
+    do_nodesv $list "PATH=$RPATH sh rpc.sh $@ "
 }
 
 wait_clients_import_state () {
@@ -3464,7 +3780,7 @@ gather_logs () {
         return
     fi
 
-    do_nodes --verbose $list \
+    do_nodesv $list \
         "$LCTL dk > ${prefix}.debug_log.\\\$(hostname).${suffix};
          dmesg > ${prefix}.dmesg.\\\$(hostname).${suffix}"
     if [ ! -f $LOGDIR/shared ]; then
@@ -3504,6 +3820,24 @@ do_ls () {
     done
 
     return $rc
+}
+
+# target_start_and_reset_recovery_timer()
+#        service_time = at_est2timeout(service_time);
+#        service_time += 2 * (CONNECTION_SWITCH_MAX + CONNECTION_SWITCH_INC +
+#                             INITIAL_CONNECT_TIMEOUT);
+# CONNECTION_SWITCH_MAX : min(25U, max(CONNECTION_SWITCH_MIN,obd_timeout))
+#define CONNECTION_SWITCH_INC 1
+#define INITIAL_CONNECT_TIMEOUT max(CONNECTION_SWITCH_MIN,obd_timeout/20)
+#define CONNECTION_SWITCH_MIN 5U
+
+max_recovery_time () {
+    local init_connect_timeout=$(( TIMEOUT / 20 ))
+    [[ $init_connect_timeout > 5 ]] || init_connect_timeout=5 
+
+    local service_time=$(( $(at_max_get client) + $(( 2 * $(( 25 + 1  + init_connect_timeout)) )) ))
+
+    echo $service_time 
 }
 
 get_clients_mount_count () {
@@ -3847,7 +4181,32 @@ log_test() {
     yml_log_test $1 >> $YAML_LOG
 }
 
-log_sub_test() {
-    yml_log_sub_test $@ >> $YAML_LOG
+log_test_status() {
+     yml_log_test_status $@ >> $YAML_LOG
 }
 
+log_sub_test_begin() {
+    yml_log_sub_test_begin $@ >> $YAML_LOG
+}
+
+log_sub_test_end() {
+    yml_log_sub_test_end $@ >> $YAML_LOG
+}
+
+run_llverdev()
+{
+        local dev=$1
+        local devname=$(basename $1)
+        local size=$(grep "$devname"$ /proc/partitions | awk '{print $3}')
+	# loop devices aren't in /proc/partitions
+	[ "x$size" == "x" ] && local size=$(ls -l $dev | awk '{print $5}')
+
+        size=$(($size / 1024 / 1024)) # Gb
+
+        local partial_arg=""
+        # Run in partial (fast) mode if the size
+        # of a partition > 10 GB
+        [ $size -gt 10 ] && partial_arg="-p"
+
+        llverdev --force $partial_arg $dev
+}

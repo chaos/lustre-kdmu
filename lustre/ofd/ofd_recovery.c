@@ -58,6 +58,7 @@ struct thandle *filter_trans_create(const struct lu_env *env,
         struct filter_thread_info *info;
         struct thandle *th;
         struct filter_export_data *fed;
+        struct tg_export_data *ted;
         int rc;
 
         info = lu_context_key_get(&env->le_ctx, &filter_thread_key);
@@ -79,9 +80,10 @@ struct thandle *filter_trans_create(const struct lu_env *env,
 
         /* declare last_rcvd update */
         fed = &info->fti_exp->exp_filter_data;
+        ted = &fed->fed_ted;
         rc = dt_declare_record_write(env, ofd->ofd_last_rcvd,
-                                     sizeof(*fed->fed_lcd),
-                                     fed->fed_lr_off, th);
+                                     sizeof(*ted->ted_lcd),
+                                     ted->ted_lr_off, th);
         /* declare last_rcvd header update */
         rc = dt_declare_record_write(env, ofd->ofd_last_rcvd,
                                      sizeof(ofd->ofd_fsd), 0, th);
@@ -128,7 +130,7 @@ static int filter_last_rcvd_update(struct filter_thread_info *info,
 
         fed = &info->fti_exp->exp_filter_data;
         LASSERT(fed);
-        lcd = fed->fed_lcd;
+        lcd = fed->fed_ted.ted_lcd;
 
         /* if the export has already been failed, we have no last_rcvd slot */
         if (info->fti_exp->exp_failed) {
@@ -139,7 +141,7 @@ static int filter_last_rcvd_update(struct filter_thread_info *info,
                 RETURN(rc);
         }
         LASSERT(lcd);
-        off = fed->fed_lr_off;
+        off = fed->fed_ted.ted_lr_off;
 
         transno_p = &lcd->lcd_last_transno;
         lcd->lcd_last_xid = info->fti_xid;
@@ -159,7 +161,7 @@ static int filter_last_rcvd_update(struct filter_thread_info *info,
         }
 
         *transno_p = info->fti_transno;
-        LASSERT(fed->fed_lr_off > 0);
+        LASSERT(fed->fed_ted.ted_lr_off > 0);
         err = filter_last_rcvd_write(info->fti_env, ofd, lcd, &off, th);
 
         RETURN(err);
@@ -187,9 +189,8 @@ static int filter_txn_stop_cb(const struct lu_env *env,
         info = lu_context_key_get(&env->le_ctx, &filter_thread_key);
 
         if (info->fti_exp == NULL || info->fti_no_need_trans ||
-            info->fti_exp->exp_filter_data.fed_lcd == NULL) {
+            info->fti_exp->exp_filter_data.fed_ted.ted_lcd == NULL) {
                 txi->txi_transno = 0;
-                info->fti_no_need_trans = 0;
                 RETURN(0);
         }
 
@@ -226,6 +227,9 @@ static int filter_txn_stop_cb(const struct lu_env *env,
         txi->txi_transno = info->fti_transno;
         cfs_spin_unlock(&ofd->ofd_transno_lock);
 
+        filter_trans_add_cb(txn, lut_cb_last_committed,
+                         class_export_cb_get(info->fti_exp));
+
         return filter_last_rcvd_update(info, txn);
 }
 
@@ -241,7 +245,7 @@ static int filter_txn_commit_cb(const struct lu_env *env,
 
         /* iterate through all additional callbacks */
         for (i = 0; i < txi->txi_cb_count; i++) {
-                txi->txi_cb[i].filter_cb_func(ofd, txi->txi_transno,
+                txi->txi_cb[i].filter_cb_func(&ofd->ofd_lut, txi->txi_transno,
                                               txi->txi_cb[i].filter_cb_data,
                                               0);
         }
@@ -269,6 +273,7 @@ int filter_fs_setup(const struct lu_env *env, struct filter_device *ofd,
         ofd->ofd_txn_cb.dtc_txn_stop = filter_txn_stop_cb;
         ofd->ofd_txn_cb.dtc_txn_commit = filter_txn_commit_cb;
         ofd->ofd_txn_cb.dtc_cookie = ofd;
+        ofd->ofd_txn_cb.dtc_tag = LCT_DT_THREAD;
         CFS_INIT_LIST_HEAD(&ofd->ofd_txn_cb.dtc_linkage);
 
         dt_txn_callback_add(ofd->ofd_osd, &ofd->ofd_txn_cb);
@@ -327,6 +332,10 @@ void filter_fs_cleanup(const struct lu_env *env, struct filter_device *ofd)
                 if (ofd->ofd_lastid_obj[i])
                         lu_object_put(env, &ofd->ofd_lastid_obj[i]->do_lu);
         }
+
+        i = dt_sync(env, ofd->ofd_osd);
+        if (i)
+                CERROR("can't sync: %d\n", i);
 
         /* Remove transaction callback */
         dt_txn_callback_del(ofd->ofd_osd, &ofd->ofd_txn_cb);

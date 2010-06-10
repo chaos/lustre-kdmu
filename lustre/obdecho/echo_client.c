@@ -998,7 +998,7 @@ static int cl_echo_enqueue0(struct lu_env *env, struct echo_object *eco,
         descr->cld_start = cl_index(obj, start);
         descr->cld_end   = cl_index(obj, end);
         descr->cld_mode  = mode == LCK_PW ? CLM_WRITE : CLM_READ;
-        descr->cld_enq_flags = CEF_ASYNC | enqflags;
+        descr->cld_enq_flags = enqflags;
         io->ci_obj = obj;
 
         lck = cl_lock_request(env, io, descr, "ec enqueue", eco);
@@ -1067,7 +1067,7 @@ static int cl_echo_cancel0(struct lu_env *env, struct echo_device *ed,
         cfs_spin_lock (&ec->ec_lock);
         cfs_list_for_each (el, &ec->ec_locks) {
                 ecl = cfs_list_entry (el, struct echo_lock, el_chain);
-                CDEBUG(D_INFO, "ecl: %p, cookie: %llx\n", ecl, ecl->el_cookie);
+                CDEBUG(D_INFO, "ecl: %p, cookie: "LPX64"\n", ecl, ecl->el_cookie);
                 found = (ecl->el_cookie == cookie);
                 if (found) {
                         if (cfs_atomic_dec_and_test(&ecl->el_refcount))
@@ -1157,8 +1157,8 @@ static int cl_echo_object_brw(struct echo_object *eco, int rw, obd_off offset,
 
         rc = cl_echo_enqueue0(env, eco, offset,
                               offset + npages * CFS_PAGE_SIZE - 1,
-                              rw == READ ? LCK_PW : LCK_PW, &lh.cookie,
-                              CILR_NEVER);
+                              rw == READ ? LCK_PR : LCK_PW, &lh.cookie,
+                              CEF_NEVER);
         if (rc < 0)
                 GOTO(error_lock, rc);
 
@@ -1757,7 +1757,7 @@ echo_client_enqueue(struct obd_export *exp, struct obdo *oa,
         rc = cl_echo_enqueue(eco, offset, end, mode, &ulh->cookie);
         if (rc == 0) {
                 oa->o_valid |= OBD_MD_FLHANDLE;
-                CDEBUG(D_INFO, "Cookie is %llx\n", ulh->cookie);
+                CDEBUG(D_INFO, "Cookie is "LPX64"\n", ulh->cookie);
         }
         echo_put_object(eco);
         RETURN(rc);
@@ -1772,7 +1772,7 @@ echo_client_cancel(struct obd_export *exp, struct obdo *oa)
         if ((oa->o_valid & OBD_MD_FLHANDLE) == 0)
                 return -EINVAL;
 
-        CDEBUG(D_INFO, "Cookie is %llx\n", cookie);
+        CDEBUG(D_INFO, "Cookie is "LPX64"\n", cookie);
         return cl_echo_cancel(ed, cookie);
 }
 
@@ -1961,7 +1961,7 @@ static int echo_client_setup(struct obd_device *obddev, struct lustre_cfg *lcfg)
         }
 
         ocd->ocd_connect_flags = OBD_CONNECT_VERSION | OBD_CONNECT_REQPORTAL |
-                                 OBD_CONNECT_GRANT;
+                                 OBD_CONNECT_GRANT | OBD_CONNECT_FULL20;
         ocd->ocd_version = LUSTRE_VERSION_CODE;
         ocd->ocd_group = FILTER_GROUP_ECHO;
 

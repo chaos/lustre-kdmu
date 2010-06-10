@@ -273,13 +273,6 @@ void ptlrpc_invalidate_import(struct obd_import *imp)
 
         cfs_atomic_inc(&imp->imp_inval_count);
 
-        /*
-         * If this is an invalid MGC connection, then don't bother
-         * waiting for imp_inflight to drop to 0.
-         */
-        if (imp->imp_invalid && imp->imp_recon_bk &&!imp->imp_obd->obd_no_recov)
-                goto out;
-
         if (!imp->imp_invalid || imp->imp_obd->obd_no_recov)
                 ptlrpc_deactivate_import(imp);
 
@@ -375,7 +368,6 @@ void ptlrpc_invalidate_import(struct obd_import *imp)
          * "invalidate" state.
          */
         LASSERT(cfs_atomic_read(&imp->imp_inflight) == 0);
-out:
         obd_import_event(imp->imp_obd, imp, IMP_EVENT_INVALIDATE);
         sptlrpc_import_flush_all_ctx(imp);
 
@@ -514,13 +506,12 @@ static int import_select_connection(struct obd_import *imp)
            we do finally connect. (FIXME: really we should wait for all network
            state associated with the last connection attempt to drain before
            trying to reconnect on it.) */
-        if (tried_all && (imp->imp_conn_list.next == &imp_conn->oic_item) &&
-            !imp->imp_recon_bk /* not retrying */) {
+        if (tried_all && (imp->imp_conn_list.next == &imp_conn->oic_item)) {
                 if (at_get(&imp->imp_at.iat_net_latency) <
                     CONNECTION_SWITCH_MAX) {
-                        at_add(&imp->imp_at.iat_net_latency,
-                               at_get(&imp->imp_at.iat_net_latency) +
-                               CONNECTION_SWITCH_INC);
+                        at_measured(&imp->imp_at.iat_net_latency,
+                                    at_get(&imp->imp_at.iat_net_latency) +
+                                    CONNECTION_SWITCH_INC);
                 }
                 LASSERT(imp_conn->oic_last_attempt);
                 CWARN("%s: tried all connections, increasing latency to %ds\n",
@@ -638,27 +629,6 @@ int ptlrpc_connect_import(struct obd_import *imp, char *new_uuid)
         if (rc)
                 GOTO(out, rc);
 
-        /* last in connection list */
-        if (imp->imp_conn_current->oic_item.next == &imp->imp_conn_list) {
-                if (imp->imp_initial_recov_bk && initial_connect) {
-                        CDEBUG(D_HA, "Last connection attempt (%d) for %s\n",
-                               imp->imp_conn_cnt, obd2cli_tgt(imp->imp_obd));
-                        /* Don't retry if connect fails */
-                        rc = 0;
-                        obd_set_info_async(obd->obd_self_export,
-                                           sizeof(KEY_INIT_RECOV),
-                                           KEY_INIT_RECOV,
-                                           sizeof(rc), &rc, NULL);
-                }
-                if (imp->imp_recon_bk) {
-                        CDEBUG(D_HA, "Last reconnection attempt (%d) for %s\n",
-                               imp->imp_conn_cnt, obd2cli_tgt(imp->imp_obd));
-                        cfs_spin_lock(&imp->imp_lock);
-                        imp->imp_last_recon = 1;
-                        cfs_spin_unlock(&imp->imp_lock);
-                }
-        }
-
         rc = sptlrpc_import_sec_adapt(imp, NULL, 0);
         if (rc)
                 GOTO(out, rc);
@@ -667,6 +637,7 @@ int ptlrpc_connect_import(struct obd_import *imp, char *new_uuid)
          * the server is updated on-the-fly we will get the new features. */
         imp->imp_connect_data.ocd_connect_flags = imp->imp_connect_flags_orig;
         imp->imp_msghdr_flags &= ~MSGHDR_AT_SUPPORT;
+        imp->imp_msghdr_flags &= ~MSGHDR_CKSUM_INCOMPAT18;
 
         rc = obd_reconnect(NULL, imp->imp_obd->obd_self_export, obd,
                            &obd->obd_uuid, &imp->imp_connect_data, NULL);
@@ -943,7 +914,8 @@ static int ptlrpc_connect_interpret(const struct lu_env *env,
                        "after reconnect. We should LBUG right here.\n");
         }
 
-        if (lustre_msg_get_last_committed(request->rq_repmsg) <
+        if (lustre_msg_get_last_committed(request->rq_repmsg) > 0 &&
+            lustre_msg_get_last_committed(request->rq_repmsg) <
             aa->pcaa_peer_committed) {
                 CERROR("%s went back in time (transno "LPD64
                        " was previously committed, server now claims "LPD64
@@ -1112,6 +1084,12 @@ finish:
                 else
                         imp->imp_msghdr_flags &= ~MSGHDR_AT_SUPPORT;
 
+                if ((ocd->ocd_connect_flags & OBD_CONNECT_FULL20) &&
+                    (imp->imp_msg_magic == LUSTRE_MSG_MAGIC_V2))
+                        imp->imp_msghdr_flags |= MSGHDR_CKSUM_INCOMPAT18;
+                else
+                        imp->imp_msghdr_flags &= ~MSGHDR_CKSUM_INCOMPAT18;
+
                 LASSERT((cli->cl_max_pages_per_rpc <= PTLRPC_MAX_BRW_PAGES) &&
                         (cli->cl_max_pages_per_rpc > 0));
         }
@@ -1119,15 +1097,7 @@ finish:
 out:
         if (rc != 0) {
                 IMPORT_SET_STATE(imp, LUSTRE_IMP_DISCON);
-                cfs_spin_lock(&imp->imp_lock);
-                if (aa->pcaa_initial_connect && !imp->imp_initial_recov &&
-                    (request->rq_import_generation == imp->imp_generation))
-                        ptlrpc_deactivate_and_unlock_import(imp);
-                else
-                        cfs_spin_unlock(&imp->imp_lock);
-
-                if ((imp->imp_recon_bk && imp->imp_last_recon) ||
-                    (rc == -EACCES)) {
+                if (rc == -EACCES) {
                         /*
                          * Give up trying to reconnect
                          * EACCES means client has no permission for connection
@@ -1175,10 +1145,6 @@ out:
                        (char *)imp->imp_connection->c_remote_uuid.uuid, rc);
         }
 
-        cfs_spin_lock(&imp->imp_lock);
-        imp->imp_last_recon = 0;
-        cfs_spin_unlock(&imp->imp_lock);
-
         cfs_waitq_broadcast(&imp->imp_recovery_waitq);
         RETURN(rc);
 }
@@ -1197,9 +1163,6 @@ static int completed_replay_interpret(const struct lu_env *env,
                         CDEBUG(D_WARNING,
                                "%s: version recovery fails, reconnecting\n",
                                req->rq_import->imp_obd->obd_name);
-                        cfs_spin_lock(&req->rq_import->imp_lock);
-                        req->rq_import->imp_vbr_failed = 0;
-                        cfs_spin_unlock(&req->rq_import->imp_lock);
                 } else {
                         CDEBUG(D_HA, "%s: LAST_REPLAY message error: %d, "
                                      "reconnecting\n",
@@ -1289,6 +1252,10 @@ int ptlrpc_import_recovery_state_machine(struct obd_import *imp)
                 CDEBUG(D_HA, "evicted from %s@%s; invalidating\n",
                        obd2cli_tgt(imp->imp_obd),
                        imp->imp_connection->c_remote_uuid.uuid);
+                /* reset vbr_failed flag upon eviction */
+                cfs_spin_lock(&imp->imp_lock);
+                imp->imp_vbr_failed = 0;
+                cfs_spin_unlock(&imp->imp_lock);
 
 #ifdef __KERNEL__
                 /* bug 17802:  XXX client_disconnect_export vs connect request
@@ -1368,11 +1335,6 @@ int ptlrpc_import_recovery_state_machine(struct obd_import *imp)
 
 out:
         RETURN(rc);
-}
-
-static int back_to_sleep(void *unused)
-{
-        return 0;
 }
 
 int ptlrpc_disconnect_import(struct obd_import *imp, int noclose)
@@ -1460,8 +1422,6 @@ out:
         else
                 IMPORT_SET_STATE_NOLOCK(imp, LUSTRE_IMP_CLOSED);
         memset(&imp->imp_remote_handle, 0, sizeof(imp->imp_remote_handle));
-        /* Try all connections in the future - bz 12758 */
-        imp->imp_last_recon = 0;
         cfs_spin_unlock(&imp->imp_lock);
 
         RETURN(rc);
@@ -1487,7 +1447,7 @@ extern unsigned int at_min, at_max, at_history;
    This gives us a max of the last binlimit*AT_BINS secs without the storage,
    but still smoothing out a return to normalcy from a slow response.
    (E.g. remember the maximum latency in each minute of the last 4 minutes.) */
-int at_add(struct adaptive_timeout *at, unsigned int val)
+int at_measured(struct adaptive_timeout *at, unsigned int val)
 {
         unsigned int old = at->at_current;
         time_t now = cfs_time_current_sec();

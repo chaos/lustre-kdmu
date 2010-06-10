@@ -189,7 +189,7 @@ static int llu_glimpse_callback(struct ldlm_lock *lock, void *reqp)
         lvb = req_capsule_server_get(&req->rq_pill, &RMF_DLM_LVB);
         lvb->lvb_size = lli->lli_smd->lsm_oinfo[stripe]->loi_kms;
 
-        LDLM_DEBUG(lock, "i_size: %llu -> stripe number %u -> kms "LPU64,
+        LDLM_DEBUG(lock, "i_size: "LPU64" -> stripe number %u -> kms "LPU64,
                    (__u64)llu_i2stat(inode)->st_size, stripe,lvb->lvb_size);
  iput:
         I_RELE(inode);
@@ -212,7 +212,13 @@ int llu_merge_lvb(struct inode *inode)
         int rc;
         ENTRY;
 
+        lov_stripe_lock(lli->lli_smd);
         inode_init_lvb(inode, &lvb);
+        /* merge timestamps the most resently obtained from mds with
+           timestamps obtained from osts */
+        lvb.lvb_atime = lli->lli_lvb.lvb_atime;
+        lvb.lvb_mtime = lli->lli_lvb.lvb_mtime;
+        lvb.lvb_ctime = lli->lli_lvb.lvb_ctime;
         rc = obd_merge_lvb(sbi->ll_dt_exp, lli->lli_smd, &lvb, 0);
         st->st_size = lvb.lvb_size;
         st->st_blocks = lvb.lvb_blocks;
@@ -222,6 +228,7 @@ int llu_merge_lvb(struct inode *inode)
         st->st_mtime = lvb.lvb_mtime;
         st->st_atime = lvb.lvb_atime;
         st->st_ctime = lvb.lvb_ctime;
+        lov_stripe_unlock(lli->lli_smd);
 
         RETURN(rc);
 }
@@ -247,7 +254,7 @@ int llu_extent_lock(struct ll_file_data *fd, struct inode *inode,
             (sbi->ll_flags & LL_SBI_NOLCK) || mode == LCK_NL)
                 RETURN(0);
 
-        CDEBUG(D_DLMTRACE, "Locking inode %llu, start "LPU64" end "LPU64"\n",
+        CDEBUG(D_DLMTRACE, "Locking inode "LPU64", start "LPU64" end "LPU64"\n",
                (__u64)st->st_ino, policy->l_extent.start,
                policy->l_extent.end);
 
@@ -344,6 +351,7 @@ ssize_t llu_file_prwv(const struct iovec *iovec, int iovlen,
                 /* XXX this is not right: cio->cui_iov can be modified. */
                 cio->cui_iov = (struct iovec *)iovec;
                 cio->cui_nrsegs = iovlen;
+                cio->cui_tot_nrsegs = iovlen;
                 sio->sio_session = session;
                 err = cl_io_loop(env, io);
         } else {

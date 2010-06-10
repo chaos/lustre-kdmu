@@ -52,6 +52,7 @@
 
 #define SOCKNAL_PEER_HASH_SIZE  101             /* # peer lists */
 #define SOCKNAL_RESCHED         100             /* # scheduler loops before reschedule */
+#define SOCKNAL_INSANITY_RECONN 5000            /* connd is trying on reconn infinitely */
 #define SOCKNAL_ENOMEM_RETRY    CFS_TICK        /* jiffies between retries */
 
 #define SOCKNAL_SINGLE_FRAG_TX      0           /* disable multi-fragment sends */
@@ -122,6 +123,7 @@ typedef struct
         int              *ksnd_peertimeout;     /* seconds to consider peer dead */
         int              *ksnd_enable_csum;     /* enable check sum */
         int              *ksnd_inject_csum_error; /* set non-zero to inject checksum error */
+        int              *ksnd_nonblk_zcack;    /* always send zc-ack on non-blocking connection */
         unsigned int     *ksnd_zc_min_payload;  /* minimum zero copy payload size */
         int              *ksnd_zc_recv;         /* enable ZC receive (for Chelsio TOE) */
         int              *ksnd_zc_recv_min_nfrags; /* minimum # of fragments to enable ZC receive */

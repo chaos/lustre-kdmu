@@ -52,7 +52,7 @@ static int filter_preprw_read(const struct lu_env *env,
                               struct niobuf_local *res)
 {
         struct filter_object *fo;
-        int i, j, rc = -ENOENT;
+        int i, j, rc = -ENOENT, tot_bytes = 0;
         LASSERT(env != NULL);
 
         fo = filter_object_find(env, ofd, fid);
@@ -72,6 +72,7 @@ static int filter_preprw_read(const struct lu_env *env,
                         /* correct index for local buffers to continue with */
                         j += rc;
                         LASSERT(j <= PTLRPC_MAX_BRW_PAGES);
+                        tot_bytes += nb[i].len;
                 }
                 *nr_local = j;
                 LASSERT(*nr_local > 0 && *nr_local <= PTLRPC_MAX_BRW_PAGES);
@@ -80,6 +81,8 @@ static int filter_preprw_read(const struct lu_env *env,
                 LASSERT(rc == 0);
                 rc = dt_read_prep(env, filter_object_child(fo), res,
                                   *nr_local);
+                lprocfs_counter_add(filter_obd(ofd)->obd_stats,
+                                    LPROC_FILTER_READ_BYTES, tot_bytes);
         }
 
         filter_object_put(env, fo);
@@ -93,10 +96,10 @@ static int filter_preprw_write(const struct lu_env *env, struct obd_export *exp,
                                struct niobuf_remote *nb, int *nr_local,
                                struct niobuf_local *res)
 {
-        unsigned long used = 0, ungranted = 0;
+        unsigned long used = 0;
         obd_size left;
         struct filter_object *fo;
-        int i, j, k, rc = 0;
+        int i, j, k, rc = 0, tot_bytes = 0;
 
         ENTRY;
         LASSERT(env != NULL);
@@ -108,7 +111,7 @@ static int filter_preprw_write(const struct lu_env *env, struct obd_export *exp,
         LASSERT(fo != NULL);
 
         if (!filter_object_exists(fo))
-                GOTO(out, rc = -ENOENT);
+                GOTO(out2, rc = -ENOENT);
 
         /* parse remote buffers to local buffers and prepare the latter */
         for (i = 0, j = 0; i < obj->ioo_bufcnt; i++) {
@@ -122,6 +125,7 @@ static int filter_preprw_write(const struct lu_env *env, struct obd_export *exp,
                         res[j+k].flags = nb[i].flags;
                 j += rc;
                 LASSERT(j <= PTLRPC_MAX_BRW_PAGES);
+                tot_bytes += nb[i].len;
         }
         *nr_local = j;
         LASSERT(*nr_local > 0 && *nr_local <= PTLRPC_MAX_BRW_PAGES);
@@ -130,12 +134,9 @@ static int filter_preprw_write(const struct lu_env *env, struct obd_export *exp,
         filter_grant_incoming(env, exp, oa);
         left = filter_grant_space_left(env, exp);
 
-        rc = filter_grant_check(env, exp, oa, res, *nr_local,
-                                &left, &used, &ungranted);
+        rc = filter_grant_check(env, exp, oa, res, *nr_local, &left, &used);
 
         /* XXX: how do we calculate used ? */
-
-        rc = filter_grant_client_calc(exp, &left, &used, &ungranted);
 
         /* do not zero out oa->o_valid as it is used in
          * * filter_commitrw_write() for setting UID/GID and
@@ -144,10 +145,16 @@ static int filter_preprw_write(const struct lu_env *env, struct obd_export *exp,
                 oa->o_grant = filter_grant(env, exp, oa->o_grant,
                                            oa->o_undirty, left);
         cfs_mutex_up(&ofd->ofd_grant_sem);
+        if (rc == 0) {
+                lprocfs_counter_add(filter_obd(ofd)->obd_stats,
+                                    LPROC_FILTER_WRITE_BYTES, tot_bytes);
+                rc = dt_write_prep(env, filter_object_child(fo), res,
+                                   *nr_local, &used);
+        }
 
-        rc = dt_write_prep(env, filter_object_child(fo), res, *nr_local, &used);
-
-out:
+        if (rc)
+                dt_bufs_put(env, filter_object_child(fo), res, *nr_local);
+out2:
         filter_object_put(env, fo);
         RETURN(rc);
 }
@@ -287,9 +294,8 @@ filter_commitrw_write(const struct lu_env *env, struct filter_device *ofd,
                 GOTO(out, rc);
 
         rc = dt_write_commit(env, filter_object_child(fo), res, niocount, th);
-        LASSERT(rc == 0);
 
-        if (la->la_valid) {
+        if (rc == 0 && la->la_valid) {
                 rc = dt_attr_set(env, filter_object_child(fo), la, th,
                                  filter_object_capa(env, fo));
                 LASSERT(rc == 0);
@@ -323,6 +329,7 @@ int filter_commitrw(int cmd, struct obd_export *exp,
         if (rc)
                 RETURN(rc);
         info = filter_info_init(&env, exp);
+        filter_oti2info(info, oti);
 
         LASSERT(npages > 0);
 

@@ -41,6 +41,11 @@
 #ifndef __LINUX_FID_H
 #define __LINUX_FID_H
 
+/** \defgroup fid fid
+ *
+ * @{
+ */
+
 /*
  * struct lu_fid
  */
@@ -74,11 +79,16 @@ enum {
         /* changed to 16 to avoid overflow in test11 */
         LUSTRE_SEQ_META_WIDTH = 0x0000000000000010ULL,
 
+         /*
+          * seq allocation pool size.
+          */
+        LUSTRE_SEQ_BATCH_WIDTH = LUSTRE_SEQ_META_WIDTH * 1000,
+
         /*
          * This is how many sequences may be in one super-sequence allocated to
          * MDTs.
          */
-        LUSTRE_SEQ_SUPER_WIDTH = (LUSTRE_SEQ_META_WIDTH * LUSTRE_SEQ_META_WIDTH)
+        LUSTRE_SEQ_SUPER_WIDTH = ((1ULL << 30ULL) * LUSTRE_SEQ_META_WIDTH)
 };
 
 /** special fid seq: used for local object create. */
@@ -94,6 +104,8 @@ enum {
 
 /** special fid seq: used for llog objects. */
 #define LU_LLOG_LUSTRE_SEQ       (FID_SEQ_START + 0x03ULL)
+/** fid sequence for distributed fs objects */
+#define FID_SEQ_DISTRIBUTED_START     (FID_SEQ_START + 0x400ULL)
 
 /** special OID for local objects */
 enum {
@@ -183,6 +195,10 @@ struct lu_server_seq {
         /* Available sequences space */
         struct lu_seq_range         lss_space;
 
+        /* keeps highwater in lsr_end for seq allocation algorithm */
+        struct lu_seq_range         lss_lowater_set;
+        struct lu_seq_range         lss_hiwater_set;
+
         /*
          * Device for server side seq manager needs (saving sequences to backing
          * store).
@@ -216,6 +232,14 @@ struct lu_server_seq {
          */
         __u64                   lss_width;
 
+        /*
+         * minimum lss_alloc_set size that should be allocated from
+         * lss_space
+         */
+        __u64                   lss_set_width;
+
+        /* transaction no of seq update write operation */
+        __u64                   lss_set_transno;
         /**
          * Pointer to site object, required to access site fld.
          */
@@ -236,12 +260,10 @@ void seq_server_fini(struct lu_server_seq *seq,
                      const struct lu_env *env);
 
 int seq_server_alloc_super(struct lu_server_seq *seq,
-                           struct lu_seq_range *in,
                            struct lu_seq_range *out,
                            const struct lu_env *env);
 
 int seq_server_alloc_meta(struct lu_server_seq *seq,
-                          struct lu_seq_range *in,
                           struct lu_seq_range *out,
                           const struct lu_env *env);
 
@@ -351,5 +373,7 @@ static inline void range_be_to_cpu(struct lu_seq_range *dst, const struct lu_seq
         dst->lsr_end = be64_to_cpu(src->lsr_end);
         dst->lsr_mdt = be32_to_cpu(src->lsr_mdt);
 }
+
+/** @} fid */
 
 #endif /* __LINUX_FID_H */

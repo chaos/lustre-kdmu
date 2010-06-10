@@ -169,7 +169,9 @@ ldlm_mode_t mdc_lock_match(struct obd_export *exp, int flags,
 int mdc_cancel_unused(struct obd_export *exp,
                       const struct lu_fid *fid,
                       ldlm_policy_data_t *policy,
-                      ldlm_mode_t mode, int flags, void *opaque)
+                      ldlm_mode_t mode,
+                      ldlm_cancel_flags_t flags,
+                      void *opaque)
 {
         struct ldlm_res_id res_id;
         struct obd_device *obd = class_exp2obd(exp);
@@ -196,6 +198,28 @@ int mdc_change_cbdata(struct obd_export *exp,
 
         EXIT;
         return 0;
+}
+
+/* find any ldlm lock of the inode in mdc
+ * return 0    not find
+ *        1    find one
+ *      < 0    error */
+int mdc_find_cbdata(struct obd_export *exp,
+                    const struct lu_fid *fid,
+                    ldlm_iterator_t it, void *data)
+{
+        struct ldlm_res_id res_id;
+        int rc = 0;
+        ENTRY;
+
+        fid_build_reg_res_name((struct lu_fid*)fid, &res_id);
+        rc = ldlm_resource_iterate(class_exp2obd(exp)->obd_namespace, &res_id,
+                                   it, data);
+        if (rc == LDLM_ITER_STOP)
+                RETURN(1);
+        else if (rc == LDLM_ITER_CONTINUE)
+                RETURN(0);
+        RETURN(rc);
 }
 
 static inline void mdc_clear_replay_flag(struct ptlrpc_request *req, int rc)
@@ -809,6 +833,44 @@ static int mdc_finish_intent_lock(struct obd_export *exp,
         RETURN(rc);
 }
 
+int mdc_revalidate_lock(struct obd_export *exp, struct lookup_intent *it,
+                        struct lu_fid *fid, __u32 *bits)
+{
+        /* We could just return 1 immediately, but since we should only
+         * be called in revalidate_it if we already have a lock, let's
+         * verify that. */
+        struct ldlm_res_id res_id;
+        struct lustre_handle lockh;
+        ldlm_policy_data_t policy;
+        ldlm_mode_t mode;
+        ENTRY;
+
+        fid_build_reg_res_name(fid, &res_id);
+        /* Firstly consider the bits */
+        if (bits && *bits)
+                policy.l_inodebits.bits = *bits;
+        else
+                policy.l_inodebits.bits = (it->it_op == IT_GETATTR) ?
+                        MDS_INODELOCK_UPDATE : MDS_INODELOCK_LOOKUP;
+
+        mode = ldlm_lock_match(exp->exp_obd->obd_namespace,
+                               LDLM_FL_BLOCK_GRANTED, &res_id, LDLM_IBITS,
+                               &policy, LCK_CR|LCK_CW|LCK_PR|LCK_PW, &lockh, 0);
+        if (mode) {
+                it->d.lustre.it_lock_handle = lockh.cookie;
+                it->d.lustre.it_lock_mode = mode;
+                if (bits) {
+                        struct ldlm_lock *lock = ldlm_handle2lock(&lockh);
+
+                        LASSERT(lock != NULL);
+                        *bits = lock->l_policy_data.l_inodebits.bits; 
+                        LDLM_LOCK_PUT(lock);
+                }
+        }
+
+        RETURN(!!mode);
+}
+
 /*
  * This long block is all about fixing up the lock and request state
  * so that it is correct as of the moment _before_ the operation was
@@ -859,32 +921,11 @@ int mdc_intent_lock(struct obd_export *exp, struct md_op_data *op_data,
                 /* We could just return 1 immediately, but since we should only
                  * be called in revalidate_it if we already have a lock, let's
                  * verify that. */
-                ldlm_policy_data_t policy;
-                ldlm_mode_t mode;
-
-                /* As not all attributes are kept under update lock, e.g.
-                   owner/group/acls are under lookup lock, we need both
-                   ibits for GETATTR. */
-
-                /* For CMD, UPDATE lock and LOOKUP lock can not be got
-                 * at the same for cross-object, so we can not match
-                 * the 2 lock at the same time FIXME: but how to handle
-                 * the above situation */
-                policy.l_inodebits.bits = (it->it_op == IT_GETATTR) ?
-                        MDS_INODELOCK_UPDATE : MDS_INODELOCK_LOOKUP;
-
-                mode = mdc_lock_match(exp, LDLM_FL_BLOCK_GRANTED,
-                                      &op_data->op_fid2, LDLM_IBITS, &policy,
-                                      LCK_CR|LCK_CW|LCK_PR|LCK_PW, &lockh);
-                if (mode) {
-                        it->d.lustre.it_lock_handle = lockh.cookie;
-                        it->d.lustre.it_lock_mode = mode;
-                }
-
+                rc = mdc_revalidate_lock(exp, it, &op_data->op_fid2, NULL);
                 /* Only return failure if it was not GETATTR by cfid
                    (from inode_revalidate) */
-                if (mode || op_data->op_namelen != 0)
-                        RETURN(!!mode);
+                if (rc || op_data->op_namelen != 0)
+                        RETURN(rc);
         }
 
         /* lookup_it may be called only after revalidate_it has run, because
@@ -977,8 +1018,12 @@ int mdc_intent_getattr_async(struct obd_export *exp,
         struct ptlrpc_request   *req;
         struct obd_device       *obddev = class_exp2obd(exp);
         struct ldlm_res_id       res_id;
+        /*XXX: Both MDS_INODELOCK_LOOKUP and MDS_INODELOCK_UPDATE are needed
+         *     for statahead currently. Consider CMD in future, such two bits
+         *     maybe managed by different MDS, should be adjusted then. */
         ldlm_policy_data_t       policy = {
-                                        .l_inodebits = { MDS_INODELOCK_LOOKUP }
+                                        .l_inodebits = { MDS_INODELOCK_LOOKUP | 
+                                                         MDS_INODELOCK_UPDATE }
                                  };
         int                      rc;
         int                      flags = LDLM_FL_HAS_INTENT;
@@ -1008,35 +1053,4 @@ int mdc_intent_getattr_async(struct obd_export *exp,
         ptlrpcd_add_req(req, PSCOPE_OTHER);
 
         RETURN(0);
-}
-
-int mdc_revalidate_lock(struct obd_export *exp,
-                        struct lookup_intent *it,
-                        struct lu_fid *fid)
-{
-        /* We could just return 1 immediately, but since we should only
-         * be called in revalidate_it if we already have a lock, let's
-         * verify that. */
-        struct ldlm_res_id res_id;
-        struct lustre_handle lockh;
-        ldlm_policy_data_t policy;
-        ldlm_mode_t mode;
-        ENTRY;
-
-        fid_build_reg_res_name(fid, &res_id);
-        /* As not all attributes are kept under update lock, e.g.
-           owner/group/acls are under lookup lock, we need both
-           ibits for GETATTR. */
-        policy.l_inodebits.bits = (it->it_op == IT_GETATTR) ?
-                MDS_INODELOCK_UPDATE : MDS_INODELOCK_LOOKUP;
-
-        mode = ldlm_lock_match(exp->exp_obd->obd_namespace,
-                               LDLM_FL_BLOCK_GRANTED, &res_id, LDLM_IBITS,
-                               &policy, LCK_CR|LCK_CW|LCK_PR|LCK_PW, &lockh, 0);
-        if (mode) {
-                it->d.lustre.it_lock_handle = lockh.cookie;
-                it->d.lustre.it_lock_mode = mode;
-        }
-
-        RETURN(!!mode);
 }

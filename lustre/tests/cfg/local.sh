@@ -12,6 +12,9 @@ CLIENTS=""
 
 TMP=${TMP:-/tmp}
 
+ZVDEVBASE=${ZVDEVBASE:-$TMP/img}
+ZPOOLBASE=${ZPOOLBASE:-tank}
+
 DAEMONSIZE=${DAEMONSIZE:-500}
 MDSCOUNT=${MDSCOUNT:-1}
 [ $MDSCOUNT -gt 4 ] && MDSCOUNT=4
@@ -22,7 +25,7 @@ for num in $(seq $MDSCOUNT); do
 done
 MDSDEVBASE=${MDSDEVBASE:-$TMP/${FSNAME}-mdt}
 MDSSIZE=${MDSSIZE:-200000}
-MDSOPT=${MDSOPT:-"--mountfsoptions=acl"}
+MDSOPT=${MDSOPT:-"--mountfsoptions=errors=remount-ro,iopen_nopriv,user_xattr,acl"}
 
 MGSDEV=${MGSDEV:-$MDSDEV1}
 MGSSIZE=${MGSSIZE:-$MDSSIZE}
@@ -30,6 +33,7 @@ MGSSIZE=${MGSSIZE:-$MDSSIZE}
 OSTCOUNT=${OSTCOUNT:-2}
 OSTDEVBASE=${OSTDEVBASE:-$TMP/${FSNAME}-ost}
 OSTSIZE=${OSTSIZE:-200000}
+
 OSTOPT=""
 # Can specify individual ost devs with
 # OSTDEV1="/dev/sda"
@@ -45,6 +49,9 @@ SINGLEMDS=${SINGLEMDS:-"mds1"}
 TIMEOUT=${TIMEOUT:-20}
 PTLDEBUG=${PTLDEBUG:-0x33f0404}
 DEBUG_SIZE=${DEBUG_SIZE:-10}
+if [ `grep processor /proc/cpuinfo | wc -l` -gt 5 ]; then
+    DEBUG_SIZE=$((`grep processor /proc/cpuinfo | wc -l` * 2))   # promise 2MB for every cpu
+fi
 SUBSYSTEM=${SUBSYSTEM:- 0xffb7e3ff}
 
 ENABLE_QUOTA=${ENABLE_QUOTA:-""}
@@ -77,7 +84,7 @@ if [[ $mds1_HOST == $mgs_HOST ]] && [[ $MDSDEV1 == $MGSDEV ]]; then
     MDS_MKFS_OPTS="--mgs $MDS_MKFS_OPTS"
 else
     MDS_MKFS_OPTS="--mgsnode=$MGSNID $MDS_MKFS_OPTS"
-    mgs_MKFS_OPTS="--mgs --device-size=$MGSSIZE "
+    mgs_MKFS_OPTS="--mgs --device-size=$MGSSIZE"
 fi
 MDSn_MKFS_OPTS="--mgsnode=$MGSNID --mdt --fsname=$FSNAME --device-size=$MDSSIZE --param sys.timeout=$TIMEOUT $MKFSOPT $MDSOPT $MDSn_MKFS_OPTS"
 

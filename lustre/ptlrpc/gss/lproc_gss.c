@@ -105,7 +105,6 @@ void gss_stat_oos_record_svc(int phase, int replay)
 static int gss_proc_read_oos(char *page, char **start, off_t off, int count,
                              int *eof, void *data)
 {
-        *eof = 1;
         return libcfs_param_snprintf(page, count, data, LP_STR,
                       "seqwin:                %u\n"
                       "backwin:               %u\n"
@@ -158,7 +157,6 @@ static int gss_lk_debug_level = 1;
 static int gss_lk_proc_read_dl(char *page, char **start, off_t off,
                                int count, int *eof, void *data)
 {
-        *eof = 1;
         return libcfs_param_snprintf(page, count, data, LP_U32, "%u\n",
                                      gss_lk_debug_level);
 }

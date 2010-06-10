@@ -320,8 +320,11 @@ int lustre_pack_reply_v2(struct ptlrpc_request *req, int count,
 
         LASSERT(req->rq_reply_state == NULL);
 
-        if ((flags & LPRFL_EARLY_REPLY) == 0)
+        if ((flags & LPRFL_EARLY_REPLY) == 0) {
+                cfs_spin_lock(&req->rq_lock);
                 req->rq_packed_final = 1;
+                cfs_spin_unlock(&req->rq_lock);
+        }
 
         msg_len = lustre_msg_size_v2(count, lens);
         rc = sptlrpc_svc_alloc_rs(req, msg_len);
@@ -1249,13 +1252,34 @@ __u32 lustre_msg_get_cksum(struct lustre_msg *msg)
         }
 }
 
+#if LUSTRE_VERSION_CODE < OBD_OCD_VERSION(2, 9, 0, 0)
+/*
+ * In 1.6 and 1.8 the checksum was computed only on struct ptlrpc_body as
+ * it was in 1.6 (88 bytes, smaller than the full size in 1.8).  It makes
+ * more sense to compute the checksum on the full ptlrpc_body, regardless
+ * of what size it is, but in order to keep interoperability with 1.8 we
+ * can optionally also checksum only the first 88 bytes (caller decides). */
+# define ptlrpc_body_cksum_size_compat18         88
+
+__u32 lustre_msg_calc_cksum(struct lustre_msg *msg, int compat18)
+#else
+# warning "remove checksum compatibility support for b1_8"
 __u32 lustre_msg_calc_cksum(struct lustre_msg *msg)
+#endif
 {
         switch (msg->lm_magic) {
         case LUSTRE_MSG_MAGIC_V2: {
                 struct ptlrpc_body *pb = lustre_msg_ptlrpc_body(msg);
+#if LUSTRE_VERSION_CODE < OBD_OCD_VERSION(2, 9, 0, 0)
+                __u32 len = compat18 ? ptlrpc_body_cksum_size_compat18 :
+                            lustre_msg_buflen(msg, MSG_PTLRPC_BODY_OFF);
                 LASSERTF(pb, "invalid msg %p: no ptlrpc body!\n", msg);
-                return crc32_le(~(__u32)0, (unsigned char *)pb, sizeof(*pb));
+                return crc32_le(~(__u32)0, (unsigned char *)pb, len);
+#else
+# warning "remove checksum compatibility support for b1_8"
+                return crc32_le(~(__u32)0, (unsigned char *)pb,
+                                lustre_msg_buflen(msg, MSG_PTLRPC_BODY_OFF));
+#endif
         }
         default:
                 CERROR("incorrect message magic: %08x\n", msg->lm_magic);
@@ -1456,6 +1480,55 @@ void ptlrpc_req_set_repsize(struct ptlrpc_request *req, int count, __u32 *lens)
         if (req->rq_reqmsg->lm_magic == LUSTRE_MSG_MAGIC_V2)
                 req->rq_reqmsg->lm_repsize = req->rq_replen;
 }
+
+/**
+ * Send a remote set_info_async.
+ *
+ * This may go from client to server or server to client.
+ */
+int do_set_info_async(struct obd_import *imp,
+                      int opcode, int version,
+                      obd_count keylen, void *key,
+                      obd_count vallen, void *val,
+                      struct ptlrpc_request_set *set)
+{
+        struct ptlrpc_request *req;
+        char                  *tmp;
+        int                    rc;
+        ENTRY;
+
+        req = ptlrpc_request_alloc(imp, &RQF_OBD_SET_INFO);
+        if (req == NULL)
+                RETURN(-ENOMEM);
+
+        req_capsule_set_size(&req->rq_pill, &RMF_SETINFO_KEY,
+                             RCL_CLIENT, keylen);
+        req_capsule_set_size(&req->rq_pill, &RMF_SETINFO_VAL,
+                             RCL_CLIENT, vallen);
+        rc = ptlrpc_request_pack(req, version, opcode);
+        if (rc) {
+                ptlrpc_request_free(req);
+                RETURN(rc);
+        }
+
+        tmp = req_capsule_client_get(&req->rq_pill, &RMF_SETINFO_KEY);
+        memcpy(tmp, key, keylen);
+        tmp = req_capsule_client_get(&req->rq_pill, &RMF_SETINFO_VAL);
+        memcpy(tmp, val, vallen);
+
+        ptlrpc_request_set_replen(req);
+
+        if (set) {
+                ptlrpc_set_add_req(set, req);
+                ptlrpc_check_set(NULL, set);
+        } else {
+                rc = ptlrpc_queue_wait(req);
+                ptlrpc_req_finished(req);
+        }
+
+        RETURN(rc);
+}
+EXPORT_SYMBOL(do_set_info_async);
 
 /* byte flipping routines for all wire types declared in
  * lustre_idl.h implemented here.
@@ -2196,12 +2269,12 @@ void lustre_swab_lustre_capa_key(struct lustre_capa_key *k)
         __swab32s (&k->lk_padding);
 }
 
-void lustre_swab_lnlh(struct lnl_hdr *l)
+void lustre_swab_kuch(struct kuc_hdr *l)
 {
-        __swab16s(&l->lnl_magic);
-        /* __u8 l->lnl_transport */
-        __swab16s(&l->lnl_msgtype);
-        __swab16s(&l->lnl_msglen);
+        __swab16s(&l->kuc_magic);
+        /* __u8 l->kuc_transport */
+        __swab16s(&l->kuc_msgtype);
+        __swab16s(&l->kuc_msglen);
 }
-EXPORT_SYMBOL(lustre_swab_lnlh);
+EXPORT_SYMBOL(lustre_swab_kuch);
 

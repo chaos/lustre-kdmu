@@ -63,11 +63,9 @@ static int ll_rd_blksize(char *page, char **start, off_t off, int count,
         LASSERT(sb != NULL);
         rc = ll_statfs_internal(sb, &osfs, cfs_time_current_64() - CFS_HZ,
                                 OBD_STATFS_NODELAY);
-        if (!rc) {
-              *eof = 1;
+        if (!rc)
               rc = libcfs_param_snprintf(page, count, data, LP_U32,
                                          "%u\n", osfs.os_bsize);
-        }
 
         return rc;
 }
@@ -90,7 +88,6 @@ static int ll_rd_kbytestotal(char *page, char **start, off_t off, int count,
                 while (blk_size >>= 1)
                         result <<= 1;
 
-                *eof = 1;
                 rc = libcfs_param_snprintf(page, count, data, LP_U64,
                                            LPU64"\n", result);
         }
@@ -116,7 +113,6 @@ static int ll_rd_kbytesfree(char *page, char **start, off_t off, int count,
                 while (blk_size >>= 1)
                         result <<= 1;
 
-                *eof = 1;
                 rc = libcfs_param_snprintf(page, count, data, LP_U64,
                                            LPU64"\n", result);
         }
@@ -141,7 +137,6 @@ static int ll_rd_kbytesavail(char *page, char **start, off_t off, int count,
                 while (blk_size >>= 1)
                         result <<= 1;
 
-                *eof = 1;
                 rc = libcfs_param_snprintf(page, count, data, LP_U64,
                                            LPU64"\n", result);
         }
@@ -159,11 +154,9 @@ static int ll_rd_filestotal(char *page, char **start, off_t off, int count,
         LASSERT(sb != NULL);
         rc = ll_statfs_internal(sb, &osfs, cfs_time_current_64() - CFS_HZ,
                                 OBD_STATFS_NODELAY);
-        if (!rc) {
-                *eof = 1;
+        if (!rc)
                 rc = libcfs_param_snprintf(page, count, data, LP_U64,
                                            LPU64"\n", osfs.os_files);
-        }
         return rc;
 }
 
@@ -178,11 +171,9 @@ static int ll_rd_filesfree(char *page, char **start, off_t off, int count,
         LASSERT(sb != NULL);
         rc = ll_statfs_internal(sb, &osfs, cfs_time_current_64() - CFS_HZ,
                                 OBD_STATFS_NODELAY);
-        if (!rc) {
-                *eof = 1;
+        if (!rc)
                 rc = libcfs_param_snprintf(page, count, data, LP_U64,
                                            LPU64"\n", osfs.os_ffree);
-        }
         return rc;
 
 }
@@ -195,7 +186,6 @@ static int ll_rd_client_type(char *page, char **start, off_t off, int count,
 
         LIBCFS_PARAM_GET_DATA(sbi, data, NULL);
         LASSERT(sbi != NULL);
-        *eof = 1;
         if (sbi->ll_flags & LL_SBI_RMT_CLIENT)
                 rc = libcfs_param_snprintf(page, count, data, LP_STR,
                                            "%s", "remote client\n");
@@ -213,7 +203,6 @@ static int ll_rd_fstype(char *page, char **start, off_t off, int count,
 
         LIBCFS_PARAM_GET_DATA(sb, data, NULL);
         LASSERT(sb != NULL);
-        *eof = 1;
 
         return libcfs_param_snprintf(page, count, data, LP_STR,
                                      "%s\n", sb->s_type->name);
@@ -226,7 +215,6 @@ static int ll_rd_sb_uuid(char *page, char **start, off_t off, int count,
 
         LIBCFS_PARAM_GET_DATA(sb, data, NULL);
         LASSERT(sb != NULL);
-        *eof = 1;
 
         return libcfs_param_snprintf(page, count, data, LP_STR, "%s\n",
                                      ll_s2sbi(sb)->ll_sb_uuid.uuid);
@@ -243,7 +231,6 @@ static int ll_rd_site_stats(char *page, char **start, off_t off,
          * See description of statistical counters in struct cl_site, and
          * struct lu_site.
          */
-        *eof = 1;
         rc = cl_site_stats_print(lu2cl_site(ll_s2sbi(sb)->ll_site),
                                  page, count);
         rc = libcfs_param_snprintf(page, count, data, LP_STR, NULL, NULL);
@@ -266,7 +253,6 @@ static int ll_rd_max_readahead_mb(char *page, char **start, off_t off,
         pages_number = sbi->ll_ra_info.ra_max_pages;
         cfs_spin_unlock(&sbi->ll_lock);
 
-        *eof = 1;
         mult = 1 << (20 - PAGE_CACHE_SHIFT);
         rc = lprocfs_read_frac_helper(page, count, pages_number, mult);
         if (rc > 0)
@@ -318,7 +304,6 @@ static int ll_rd_max_readahead_per_file_mb(char *page, char **start, off_t off,
         pages_number = sbi->ll_ra_info.ra_max_pages_per_file;
         cfs_spin_unlock(&sbi->ll_lock);
 
-        *eof = 1;
         mult = 1 << (20 - CFS_PAGE_SHIFT);
         rc = lprocfs_read_frac_helper(page, count, pages_number, mult);
         if (rc > 0)
@@ -372,7 +357,6 @@ static int ll_rd_max_read_ahead_whole_mb(char *page, char **start, off_t off,
         pages_number = sbi->ll_ra_info.ra_max_read_ahead_whole_pages;
         cfs_spin_unlock(&sbi->ll_lock);
 
-        *eof = 1;
         mult = 1 << (20 - CFS_PAGE_SHIFT);
         rc = lprocfs_read_frac_helper(page, count, pages_number, mult);
         if (rc > 0)
@@ -430,7 +414,6 @@ static int ll_rd_max_cached_mb(char *page, char **start, off_t off,
         pages_number = sbi->ll_async_page_max;
         cfs_spin_unlock(&sbi->ll_lock);
 
-        *eof = 1;
         mult = 1 << (20 - CFS_PAGE_SHIFT);
         rc = lprocfs_read_frac_helper(page, count, pages_number, mult);
         if (rc > 0)
@@ -480,7 +463,6 @@ static int ll_rd_checksum(char *page, char **start, off_t off,
 
         LIBCFS_PARAM_GET_DATA(sb, data, NULL);
         sbi = ll_s2sbi(sb);
-        *eof = 1;
         temp = (sbi->ll_flags & LL_SBI_CHECKSUM) ? 1 : 0;
 
         return libcfs_param_snprintf(page, count, data, LP_U32, "%d\n", temp);
@@ -521,7 +503,6 @@ static int ll_rd_max_rw_chunk(char *page, char **start, off_t off,
         struct super_block *sb;
 
         LIBCFS_PARAM_GET_DATA(sb, data, NULL);
-        *eof = 1;
 
         return libcfs_param_snprintf(page, count, data, LP_U32, "%lu\n",
                                      ll_s2sbi(sb)->ll_max_rw_chunk);
@@ -580,7 +561,6 @@ static int ll_wr_track_id(const char *buffer, unsigned long count, void *data,
 static int ll_rd_track_pid(char *page, char **start, off_t off,
                           int count, int *eof, void *data)
 {
-        *eof = 1;
         return (ll_rd_track_id(page, count, data, STATS_TRACK_PID));
 }
 
@@ -593,7 +573,6 @@ static int ll_wr_track_pid(libcfs_file_t *file, const char *buffer,
 static int ll_rd_track_ppid(char *page, char **start, off_t off,
                           int count, int *eof, void *data)
 {
-        *eof = 1;
         return (ll_rd_track_id(page, count, data, STATS_TRACK_PPID));
 }
 
@@ -606,7 +585,6 @@ static int ll_wr_track_ppid(libcfs_file_t *file, const char *buffer,
 static int ll_rd_track_gid(char *page, char **start, off_t off,
                           int count, int *eof, void *data)
 {
-        *eof = 1;
         return (ll_rd_track_id(page, count, data, STATS_TRACK_GID));
 }
 
@@ -624,7 +602,6 @@ static int ll_rd_statahead_max(char *page, char **start, off_t off,
 
         LIBCFS_PARAM_GET_DATA(sb, data, NULL);
         sbi = ll_s2sbi(sb);
-        *eof = 1;
 
         return libcfs_param_snprintf(page, count, data, LP_U32,
                                      "%u\n", sbi->ll_sa_max);
@@ -657,24 +634,14 @@ static int ll_rd_statahead_stats(char *page, char **start, off_t off,
 {
         struct super_block *sb;
         struct ll_sb_info *sbi;
-        int flag = 0;
 
-        LIBCFS_PARAM_GET_DATA(sb, data, &flag);
+        LIBCFS_PARAM_GET_DATA(sb, data, NULL);
         sbi = ll_s2sbi(sb);
-        *eof = 1;
         return libcfs_param_snprintf(page, count, data, LP_STR,
-                                "statahead wrong: %u\n"
-                                "statahead total: %u\n"
-                                "ls blocked:      %llu\n"
-                                "ls cached:       %llu\n"
-                                "hit count:       %llu\n"
-                                "miss count:      %llu\n",
-                                sbi->ll_sa_wrong,
-                                sbi->ll_sa_total,
-                                sbi->ll_sa_blocked,
-                                sbi->ll_sa_cached,
-                                sbi->ll_sa_hit,
-                                sbi->ll_sa_miss);
+                                     "statahead total: %u\n"
+                                     "statahead wrong: %u\n",
+                                     atomic_read(&sbi->ll_sa_total),
+                                     atomic_read(&sbi->ll_sa_wrong));
 }
 
 static int ll_rd_lazystatfs(char *page, char **start, off_t off,
@@ -686,7 +653,6 @@ static int ll_rd_lazystatfs(char *page, char **start, off_t off,
 
         LIBCFS_PARAM_GET_DATA(sb, data, NULL);
         sbi = ll_s2sbi(sb);
-        *eof = 1;
         temp = (sbi->ll_flags & LL_SBI_LAZYSTATFS) ? 1 : 0;
 
         return libcfs_param_snprintf(page, count, data, LP_D32, "%d\n", temp);

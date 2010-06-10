@@ -682,8 +682,8 @@ void ccc_lock_state(const struct lu_env *env,
                 if (rc == 0) {
                         if (lock->cll_descr.cld_start == 0 &&
                             lock->cll_descr.cld_end == CL_PAGE_EOF) {
-                                cl_isize_write(inode, attr->cat_kms);
-                                CDEBUG(D_INODE, DFID" updating i_size %llu\n",
+                                cl_isize_write_nolock(inode, attr->cat_kms);
+                                CDEBUG(D_INODE, DFID" updating i_size "LPU64"\n",
                                        PFID(lu_object_fid(&obj->co_lu)),
                                        (__u64)cl_isize_read(inode));
                         }
@@ -749,11 +749,8 @@ void ccc_io_update_iov(const struct lu_env *env,
         size_t size = io->u.ci_rw.crw_count;
 
         cio->cui_iov_olen = 0;
-        if (!cl_is_normalio(env, io) || size == cio->cui_tot_count)
+        if (!cl_is_normalio(env, io))
                 return;
-
-        if (cio->cui_tot_nrsegs == 0)
-                cio->cui_tot_nrsegs =  cio->cui_nrsegs;
 
         for (i = 0; i < cio->cui_tot_nrsegs; i++) {
                 struct iovec *iv = &cio->cui_iov[i];
@@ -932,9 +929,9 @@ int ccc_prep_size(const struct lu_env *env, struct cl_object *obj,
                          */
                         if (cl_isize_read(inode) < kms) {
                                 if (vfslock)
-                                        cl_isize_write(inode, kms);
-                                else
                                         cl_isize_write_nolock(inode, kms);
+                                else
+                                        cl_isize_write(inode, kms);
                         }
                 }
         }
@@ -1013,9 +1010,8 @@ const struct cl_req_operations ccc_req_ops = {
         .cro_completion = ccc_req_completion
 };
 
-/* Setattr helpers */
-int cl_setattr_do_truncate(struct inode *inode, loff_t size,
-                           struct obd_capa *capa)
+int cl_setattr_ost(struct inode *inode, const struct iattr *attr,
+                   struct obd_capa *capa)
 {
         struct lu_env *env;
         struct cl_io  *io;
@@ -1030,9 +1026,15 @@ int cl_setattr_do_truncate(struct inode *inode, loff_t size,
 
         io = &ccc_env_info(env)->cti_io;
         io->ci_obj = cl_i2info(inode)->lli_clob;
-        io->u.ci_truncate.tr_size = size;
-        io->u.ci_truncate.tr_capa = capa;
-        if (cl_io_init(env, io, CIT_TRUNC, io->ci_obj) == 0)
+
+        io->u.ci_setattr.sa_attr.lvb_atime = LTIME_S(attr->ia_atime);
+        io->u.ci_setattr.sa_attr.lvb_mtime = LTIME_S(attr->ia_mtime);
+        io->u.ci_setattr.sa_attr.lvb_ctime = LTIME_S(attr->ia_ctime);
+        io->u.ci_setattr.sa_attr.lvb_size = attr->ia_size;
+        io->u.ci_setattr.sa_valid = attr->ia_valid;
+        io->u.ci_setattr.sa_capa = capa;
+
+        if (cl_io_init(env, io, CIT_SETATTR, io->ci_obj) == 0)
                 result = cl_io_loop(env, io);
         else
                 result = io->ci_result;
@@ -1040,45 +1042,6 @@ int cl_setattr_do_truncate(struct inode *inode, loff_t size,
         cl_env_put(env, &refcheck);
         RETURN(result);
 }
-
-int cl_setattr_ost(struct inode *inode, struct obd_capa *capa)
-{
-        struct cl_inode_info *lli = cl_i2info(inode);
-        struct lov_stripe_md *lsm = lli->lli_smd;
-        int rc;
-        obd_flag flags;
-        struct obd_info oinfo = { { { 0 } } };
-        struct obdo *oa;
-
-        OBDO_ALLOC(oa);
-        if (oa) {
-                oa->o_id = lsm->lsm_object_id;
-                oa->o_gr = lsm->lsm_object_gr;
-                oa->o_valid = OBD_MD_FLID | OBD_MD_FLGROUP;
-
-                flags = OBD_MD_FLTYPE | OBD_MD_FLATIME |
-                        OBD_MD_FLMTIME | OBD_MD_FLCTIME |
-                        OBD_MD_FLFID | OBD_MD_FLGENER |
-                        OBD_MD_FLGROUP;
-
-                obdo_from_inode(oa, inode, flags);
-
-                oinfo.oi_oa = oa;
-                oinfo.oi_md = lsm;
-                oinfo.oi_capa = capa;
-
-                /* XXX: this looks unnecessary now. */
-                rc = obd_setattr_rqset(cl_i2sbi(inode)->ll_dt_exp, &oinfo,
-                                       NULL);
-                if (rc)
-                        CERROR("obd_setattr_async fails: rc=%d\n", rc);
-                OBDO_FREE(oa);
-        } else {
-                rc = -ENOMEM;
-        }
-        return rc;
-}
-
 
 /*****************************************************************************
  *

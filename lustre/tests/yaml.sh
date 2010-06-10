@@ -147,6 +147,7 @@ yml_log_test() {
         name: $1
         description: $TESTSUITE $1
         submission: $(date)
+        report_version: 2
         SubTests:
 EOF
     fi
@@ -154,22 +155,30 @@ EOF
 
 yml_log_test_status() {
     cat <<EOF
-    duration: $1
-    status: $2
+        duration: $1
+        status: $2
 EOF
 }
 
-yml_log_sub_test() {
+yml_log_sub_test_begin() {
     cat <<EOF
         -
             name: $1
-            status: $2
-            duration: $3
-            return_code: $4
 EOF
-    shift 4
-    printf "            error: "
-    echo $@
+}
+
+yml_log_sub_test_end() {
+    cat <<EOF
+            status: $1
+            duration: $2
+            return_code: $3
+EOF
+    shift 3
+    if [ -z "$*" ]; then
+        printf '            error:\n'
+    else
+        printf '            error: "%q"\n' "$*"
+    fi
 }
 
 yml_log_sub_test_log() {

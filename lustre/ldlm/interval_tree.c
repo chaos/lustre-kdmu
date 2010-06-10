@@ -545,12 +545,10 @@ void interval_erase(struct interval_node *node,
 
                 if (child)
                         child->in_parent = parent;
-                if (parent == old) {
+                if (parent == old)
                         parent->in_right = child;
-                        parent = node;
-                } else {
+                else
                         parent->in_left = child;
-                }
 
                 node->in_color = old->in_color;
                 node->in_right = old->in_right;
@@ -569,8 +567,10 @@ void interval_erase(struct interval_node *node,
                 old->in_left->in_parent = node;
                 if (old->in_right)
                         old->in_right->in_parent = node;
-                update_maxhigh(child, node->in_max_high);
+                update_maxhigh(child ? : parent, node->in_max_high);
                 update_maxhigh(node, old->in_max_high);
+                if (parent == old)
+                         parent = node;
                 goto color;
         }
         parent = node->in_parent;
@@ -587,7 +587,7 @@ void interval_erase(struct interval_node *node,
                 *root = child;
         }
 
-        update_maxhigh(child, node->in_max_high);
+        update_maxhigh(child ? : parent, node->in_max_high);
 
 color:
         if (color == INTERVAL_BLACK)
@@ -680,6 +680,60 @@ enum interval_iter interval_search(struct interval_node *node,
         return rc;
 }
 EXPORT_SYMBOL(interval_search);
+
+enum interval_iter interval_search_expand_extent( struct interval_node *node,
+                                       struct interval_node_extent *ext,
+                                       struct interval_node_extent *result_ext,
+                                       interval_callback_t func, void *data)
+{
+        struct interval_node *parent;
+        enum interval_iter rc = INTERVAL_ITER_CONT;
+
+        LASSERT(ext != NULL);
+        LASSERT(func != NULL);
+
+        while (node) {
+                if (ext->end < interval_low(node)) {
+                        if (result_ext->end > interval_low(node) - 1)
+                                result_ext->end = interval_low(node) - 1;
+                        if (node->in_left) {
+                                node = node->in_left;
+                                continue;
+                        }
+                } else if (ext->start > node->in_max_high) {
+                        if (result_ext->start < node->in_max_high + 1)
+                                result_ext->start = node->in_max_high + 1;
+                } else {
+                        if (extent_overlapped(ext, &node->in_extent)) {
+                                rc = func(node, data);
+                                if (rc == INTERVAL_ITER_STOP)
+                                        break;
+                        }
+
+                        if (node->in_left) {
+                                node = node->in_left;
+                                continue;
+                        }
+                        if (node->in_right) {
+                                node = node->in_right;
+                                continue;
+                        }
+                }
+
+                parent = node->in_parent;
+                while (parent) {
+                        if (node_is_left_child(node) && parent->in_right) {
+                                node = parent->in_right;
+                                break;
+                        }
+                        node = parent;
+                        parent = node->in_parent;
+                }
+                if (parent == NULL)
+                        break;
+        }
+        return rc;
+}
 
 static enum interval_iter interval_overlap_cb(struct interval_node *n,
                                               void *args)

@@ -36,7 +36,7 @@ for dir in $proc_dirs; do
                         [ "${param:len-9}" == "/timeouts" ] && continue
                         [ "${param:len-18}" == "encrypt_page_pools" ] && continue
                         #Exception: change everytime
-                        [ "$param" == "memused" ] && continue
+                        [ "${param:len-7}" == "memused" ] && continue
                         #Exception: change with obd_timeout
                         [ "$param" == "ldlm_timeout" ] && continue
 

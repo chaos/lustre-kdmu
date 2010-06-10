@@ -1148,7 +1148,6 @@ static int llog_osd_declare_create_2(struct llog_handle *res,
         LASSERT(rc == 0);
 
         rc = dt_declare_record_write(&env, o, LLOG_CHUNK_SIZE, 0, th);
-        LASSERT(rc == 0);
 
         lu_env_fini(&env);
 
@@ -1468,9 +1467,9 @@ int llog_get_cat_list(struct obd_device *disk_obd,
                         GOTO(out_trans, rc);
 
                 dt_write_lock(&env, o, 0);
-                LASSERT(!dt_object_exists(o));
 
-                rc = dt_create(&env, o, &attr, NULL, &dof, th);
+                if (!dt_object_exists(o))
+                        rc = dt_create(&env, o, &attr, NULL, &dof, th);
 
                 dt_write_unlock(&env, o);
 

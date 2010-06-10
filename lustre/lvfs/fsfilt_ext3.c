@@ -854,7 +854,6 @@ static int fsfilt_ext3_sync(struct super_block *sb)
 
 struct bpointers {
         unsigned long *blocks;
-        int *created;
         unsigned long start;
         int num;
         int init_num;
@@ -987,8 +986,6 @@ static int ext3_ext_new_extent_cb(struct ext3_ext_base *base,
                         CERROR("nothing to do?! i = %d, e_num = %u\n",
                                         i, cex->ec_len);
                 for (; i < cex->ec_len && bp->num; i++) {
-                        *(bp->created) = 0;
-                        bp->created++;
                         *(bp->blocks) = 0;
                         bp->blocks++;
                         bp->num--;
@@ -1070,16 +1067,12 @@ map:
                                         i, cex->ec_len);
                 for (; i < cex->ec_len && bp->num; i++) {
                         *(bp->blocks) = cex->ec_start + i;
-                        if (cex->ec_type == EXT3_EXT_CACHE_EXTENT) {
-                                *(bp->created) = 0;
-                        } else {
-                                *(bp->created) = 1;
+                        if (cex->ec_type != EXT3_EXT_CACHE_EXTENT) {
                                 /* unmap any possible underlying metadata from
                                  * the block device mapping.  bug 6998. */
                                 ll_unmap_underlying_metadata(inode->i_sb,
                                                              *(bp->blocks));
                         }
-                        bp->created++;
                         bp->blocks++;
                         bp->num--;
                         bp->start++;
@@ -1109,7 +1102,6 @@ int fsfilt_map_nblocks(struct inode *inode, unsigned long block,
         tree.private = &bp;
 #endif
         bp.blocks = blocks;
-        bp.created = created;
         bp.start = block;
         bp.init_num = bp.num = num;
         bp.create = create;
@@ -1182,18 +1174,17 @@ int fsfilt_ext3_map_bm_inode_pages(struct inode *inode, struct page **page,
 {
         int blocks_per_page = CFS_PAGE_SIZE >> inode->i_blkbits;
         unsigned long *b;
-        int rc = 0, i, *cr;
+        int rc = 0, i;
 
-        for (i = 0, cr = created, b = blocks; i < pages; i++, page++) {
-                rc = ext3_map_inode_page(inode, *page, b, cr, create);
+        for (i = 0, b = blocks; i < pages; i++, page++) {
+                rc = ext3_map_inode_page(inode, *page, b, NULL, create);
                 if (rc) {
-                        CERROR("ino %lu, blk %lu cr %u create %d: rc %d\n",
-                               inode->i_ino, *b, *cr, create, rc);
+                        CERROR("ino %lu, blk %lu create %d: rc %d\n",
+                               inode->i_ino, *b, create, rc);
                         break;
                 }
 
                 b += blocks_per_page;
-                cr += blocks_per_page;
         }
         return rc;
 }
@@ -2218,6 +2209,12 @@ ssize_t lustre_read_quota(struct file *f, struct inode *inode, int type,
 {
         loff_t p = pos;
         int rc;
+
+        if (!f && !inode) {
+                CERROR("lustre_read_quota failed for no quota file!\n");
+                libcfs_debug_dumpstack(NULL);
+                return -EINVAL;
+        }
 
         /* Support for both adm and op quota files must be provided */
         if (f) {

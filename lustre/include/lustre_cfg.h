@@ -37,6 +37,11 @@
 #ifndef _LUSTRE_CFG_H
 #define _LUSTRE_CFG_H
 
+/** \defgroup cfg cfg
+ *
+ * @{
+ */
+
 /*
  * 1cf6
  * lcfG
@@ -88,9 +93,6 @@ struct lustre_cfg_bufs {
         __u32    lcfg_buflen[LUSTRE_CFG_MAX_BUFCOUNT];
         __u32    lcfg_bufcount;
 };
-
-/* Mountconf transitional hack, should go away after 1.6 */
-#define LCFG_FLG_MOUNTCONF 0x400
 
 struct lustre_cfg {
         __u32 lcfg_version;
@@ -286,5 +288,7 @@ static inline int lustre_cfg_sanity_check(void *buf, int len)
 #include <lustre/lustre_user.h>
 
 #define INVALID_UID     (-1)
+
+/** @} cfg */
 
 #endif // _LUSTRE_CFG_H

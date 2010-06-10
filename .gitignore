@@ -61,7 +61,9 @@
 /patches
 /Rules
 /series
+/spl
 /stamp-h1
+/zfs
 
 #
 # Top level generic files

@@ -489,6 +489,7 @@ void lustre_assert_wire_constants(void)
         CLASSERT(OBD_CONNECT_LRU_RESIZE == 0x2000000ULL);
         CLASSERT(OBD_CONNECT_VBR == 0x80000000ULL);
         CLASSERT(OBD_CONNECT_SKIP_ORPHAN == 0x400000000ULL);
+        CLASSERT(OBD_CONNECT_FULL20 == 0x800000000ULL);
 
         /* Checks for struct obdo */
         LASSERTF((int)sizeof(struct obdo) == 208, " found %lld\n",
@@ -1160,12 +1161,11 @@ void lustre_assert_wire_constants(void)
         CLASSERT(MDS_OPEN_JOIN_FILE == 0400000000);
         CLASSERT(MDS_OPEN_HAS_EA == 010000000000);
         CLASSERT(MDS_OPEN_HAS_OBJS == 020000000000);
-        CLASSERT(MDS_SYNC_FL == 0x00000008);
-        CLASSERT(MDS_IMMUTABLE_FL == 0x00000010);
-        CLASSERT(MDS_APPEND_FL == 0x00000020);
-        CLASSERT(MDS_NOATIME_FL == 0x00000080);
-        CLASSERT(MDS_DIRSYNC_FL == 0x00010000);
-        CLASSERT(MDS_BFLAG_EXT_FLAGS == 0x80000000);
+        CLASSERT(LUSTRE_SYNC_FL == 0x00000008);
+        CLASSERT(LUSTRE_IMMUTABLE_FL == 0x00000010);
+        CLASSERT(LUSTRE_APPEND_FL == 0x00000020);
+        CLASSERT(LUSTRE_NOATIME_FL == 0x00000080);
+        CLASSERT(LUSTRE_DIRSYNC_FL == 0x00010000);
         CLASSERT(MDS_INODELOCK_LOOKUP == 0x000001);
         CLASSERT(MDS_INODELOCK_UPDATE == 0x000002);
         CLASSERT(MDS_INODELOCK_OPEN == 0x000004);
@@ -2667,17 +2667,17 @@ void lustre_assert_wire_constants(void)
                  (long long)(int)sizeof(((struct link_ea_header *)0)->padding2));
 
         /* Checks for struct link_ea_entry */
-        LASSERTF((int)sizeof(struct link_ea_entry) == 20, " found %lld\n",
+        LASSERTF((int)sizeof(struct link_ea_entry) == 18, " found %lld\n",
                  (long long)(int)sizeof(struct link_ea_entry));
-        LASSERTF((int)offsetof(struct link_ea_entry, lee_reclen) == 16, " found %lld\n",
+        LASSERTF((int)offsetof(struct link_ea_entry, lee_reclen) == 0, " found %lld\n",
                  (long long)(int)offsetof(struct link_ea_entry, lee_reclen));
         LASSERTF((int)sizeof(((struct link_ea_entry *)0)->lee_reclen) == 2, " found %lld\n",
                  (long long)(int)sizeof(((struct link_ea_entry *)0)->lee_reclen));
-        LASSERTF((int)offsetof(struct link_ea_entry, lee_parent_fid) == 0, " found %lld\n",
+        LASSERTF((int)offsetof(struct link_ea_entry, lee_parent_fid) == 2, " found %lld\n",
                  (long long)(int)offsetof(struct link_ea_entry, lee_parent_fid));
         LASSERTF((int)sizeof(((struct link_ea_entry *)0)->lee_parent_fid) == 16, " found %lld\n",
                  (long long)(int)sizeof(((struct link_ea_entry *)0)->lee_parent_fid));
-        LASSERTF((int)offsetof(struct link_ea_entry, lee_name) == 20, " found %lld\n",
+        LASSERTF((int)offsetof(struct link_ea_entry, lee_name) == 18, " found %lld\n",
                  (long long)(int)offsetof(struct link_ea_entry, lee_name));
         LASSERTF((int)sizeof(((struct link_ea_entry *)0)->lee_name) == 0, " found %lld\n",
                  (long long)(int)sizeof(((struct link_ea_entry *)0)->lee_name));

@@ -51,7 +51,6 @@ static int lprocfs_mgs_rd_mntdev(char *page, char **start, off_t off, int count,
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         LASSERT(obd != NULL);
         LASSERT(obd->u.mgs.mgs_vfsmnt->mnt_devname);
-        *eof = 1;
 
         return libcfs_param_snprintf(page, count, data, LP_STR, "%s\n",
                                      obd->u.mgs.mgs_vfsmnt->mnt_devname);

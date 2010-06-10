@@ -55,6 +55,8 @@ struct ll_sai_entry {
         int                     se_stat;
         struct ptlrpc_request  *se_req;
         struct md_enqueue_info *se_minfo;
+        struct dentry          *se_dentry;
+        struct inode           *se_inode;
 };
 
 enum {
@@ -67,7 +69,7 @@ static cfs_spinlock_t sai_generation_lock = CFS_SPIN_LOCK_UNLOCKED;
 
 /**
  * Check whether first entry was stated already or not.
- * No need to hold lli_lock, for:
+ * No need to hold lli_sa_lock, for:
  * (1) it is me that remove entry from the list
  * (2) the statahead thread only add new entry to the list
  */
@@ -121,6 +123,38 @@ static inline int sa_low_hit(struct ll_statahead_info *sai)
                 (sai->sai_consecutive_miss > 8));
 }
 
+static inline int sa_skip_nolock(struct ll_statahead_info *sai)
+{
+        return (sai->sai_nolock >= 3);
+}
+
+static void ll_sai_entry_free(struct ll_sai_entry *entry)
+{
+        struct dentry *dentry = entry->se_dentry;
+        struct inode  *inode  = entry->se_inode;
+
+        if (dentry) {
+                struct ll_dentry_data *lld = ll_d2d(dentry);
+                struct ll_inode_info *lli;
+
+                entry->se_dentry = NULL;
+                LASSERT(inode != NULL);
+                lli = ll_i2info(inode);
+                if (!cfs_list_empty(&lli->lli_sa_dentry)) {
+                        cfs_spin_lock(&lli->lli_sa_lock);
+                        cfs_list_del_init(&lld->lld_sa_alias);
+                        cfs_spin_unlock(&lli->lli_sa_lock);
+                }
+                dput(dentry);
+        }
+        if (inode) {
+                entry->se_inode = NULL;
+                iput(inode);
+        }
+        LASSERT(cfs_list_empty(&entry->se_list));
+        OBD_FREE_PTR(entry);
+}
+
 /**
  * process the deleted entry's member and free the entry.
  * (1) release intent
@@ -131,7 +165,7 @@ static inline int sa_low_hit(struct ll_statahead_info *sai)
 static void ll_sai_entry_cleanup(struct ll_sai_entry *entry, int free)
 {
         struct md_enqueue_info *minfo = entry->se_minfo;
-        struct ptlrpc_request  *req = entry->se_req;
+        struct ptlrpc_request  *req   = entry->se_req;
         ENTRY;
 
         if (minfo) {
@@ -145,10 +179,8 @@ static void ll_sai_entry_cleanup(struct ll_sai_entry *entry, int free)
                 entry->se_req = NULL;
                 ptlrpc_req_finished(req);
         }
-        if (free) {
-                LASSERT(cfs_list_empty(&entry->se_list));
-                OBD_FREE_PTR(entry);
-        }
+        if (free)
+                ll_sai_entry_free(entry);
 
         EXIT;
 }
@@ -197,11 +229,11 @@ static void ll_sai_put(struct ll_statahead_info *sai)
         if (cfs_atomic_dec_and_test(&sai->sai_refcount)) {
                 struct ll_sai_entry *entry, *next;
 
-                cfs_spin_lock(&lli->lli_lock);
+                cfs_spin_lock(&lli->lli_sa_lock);
                 if (unlikely(cfs_atomic_read(&sai->sai_refcount) > 0)) {
                         /* It is race case, the interpret callback just hold
                          * a reference count */
-                        cfs_spin_unlock(&lli->lli_lock);
+                        cfs_spin_unlock(&lli->lli_sa_lock);
                         EXIT;
                         return;
                 }
@@ -209,7 +241,7 @@ static void ll_sai_put(struct ll_statahead_info *sai)
                 LASSERT(lli->lli_opendir_key == NULL);
                 lli->lli_sai = NULL;
                 lli->lli_opendir_pid = 0;
-                cfs_spin_unlock(&lli->lli_lock);
+                cfs_spin_unlock(&lli->lli_sa_lock);
 
                 LASSERT(sa_is_stopped(sai));
 
@@ -259,11 +291,11 @@ ll_sai_entry_init(struct ll_statahead_info *sai, unsigned int index)
         CDEBUG(D_READA, "alloc sai entry %p index %u\n",
                entry, index);
         entry->se_index = index;
-        entry->se_stat  = SA_ENTRY_UNSTATED;
+        entry->se_stat = SA_ENTRY_UNSTATED;
 
-        cfs_spin_lock(&lli->lli_lock);
+        cfs_spin_lock(&lli->lli_sa_lock);
         cfs_list_add_tail(&entry->se_list, &sai->sai_entries_sent);
-        cfs_spin_unlock(&lli->lli_lock);
+        cfs_spin_unlock(&lli->lli_sa_lock);
 
         RETURN(entry);
 }
@@ -272,30 +304,33 @@ ll_sai_entry_init(struct ll_statahead_info *sai, unsigned int index)
  * delete it from sai_entries_stated head when fini, it need not
  * to process entry's member.
  */
-static void ll_sai_entry_fini(struct ll_statahead_info *sai)
+static int ll_sai_entry_fini(struct ll_statahead_info *sai)
 {
         struct ll_inode_info *lli = ll_i2info(sai->sai_inode);
         struct ll_sai_entry  *entry;
+        int rc = 0;
         ENTRY;
 
-        cfs_spin_lock(&lli->lli_lock);
+        cfs_spin_lock(&lli->lli_sa_lock);
         sai->sai_index_next++;
         if (likely(!cfs_list_empty(&sai->sai_entries_stated))) {
                 entry = cfs_list_entry(sai->sai_entries_stated.next,
                                        struct ll_sai_entry, se_list);
                 if (entry->se_index < sai->sai_index_next) {
-                        cfs_list_del(&entry->se_list);
-                        OBD_FREE_PTR(entry);
+                        cfs_list_del_init(&entry->se_list);
+                        rc = entry->se_stat;
+                        ll_sai_entry_free(entry);
                 }
-        } else
+        } else {
                 LASSERT(sa_is_stopped(sai));
-        cfs_spin_unlock(&lli->lli_lock);
+        }
+        cfs_spin_unlock(&lli->lli_sa_lock);
 
-        EXIT;
+        RETURN(rc);
 }
 
 /**
- * inside lli_lock.
+ * inside lli_sa_lock.
  * \retval NULL : can not find the entry in sai_entries_sent with the index
  * \retval entry: find the entry in sai_entries_sent with the index
  */
@@ -314,15 +349,16 @@ ll_sai_entry_set(struct ll_statahead_info *sai, unsigned int index, int stat,
                                 entry->se_req = ptlrpc_request_addref(req);
                                 entry->se_minfo = minfo;
                                 RETURN(entry);
-                        } else if (entry->se_index > index)
+                        } else if (entry->se_index > index) {
                                 RETURN(NULL);
+                        }
                 }
         }
         RETURN(NULL);
 }
 
 /**
- * inside lli_lock.
+ * inside lli_sa_lock.
  * Move entry to sai_entries_received and
  * insert it into sai_entries_received tail.
  */
@@ -347,20 +383,21 @@ ll_sai_entry_to_stated(struct ll_statahead_info *sai, struct ll_sai_entry *entry
 
         ll_sai_entry_cleanup(entry, 0);
 
-        cfs_spin_lock(&lli->lli_lock);
+        cfs_spin_lock(&lli->lli_sa_lock);
         if (!cfs_list_empty(&entry->se_list))
                 cfs_list_del_init(&entry->se_list);
 
+        /* stale entry */
         if (unlikely(entry->se_index < sai->sai_index_next)) {
-                cfs_spin_unlock(&lli->lli_lock);
-                OBD_FREE_PTR(entry);
+                cfs_spin_unlock(&lli->lli_sa_lock);
+                ll_sai_entry_free(entry);
                 RETURN(0);
         }
 
         cfs_list_for_each_entry_reverse(se, &sai->sai_entries_stated, se_list) {
                 if (se->se_index < entry->se_index) {
                         cfs_list_add(&entry->se_list, &se->se_list);
-                        cfs_spin_unlock(&lli->lli_lock);
+                        cfs_spin_unlock(&lli->lli_sa_lock);
                         RETURN(1);
                 }
         }
@@ -369,7 +406,7 @@ ll_sai_entry_to_stated(struct ll_statahead_info *sai, struct ll_sai_entry *entry
          * I am the first entry.
          */
         cfs_list_add(&entry->se_list, &sai->sai_entries_stated);
-        cfs_spin_unlock(&lli->lli_lock);
+        cfs_spin_unlock(&lli->lli_sa_lock);
         RETURN(1);
 }
 
@@ -388,12 +425,12 @@ static int do_statahead_interpret(struct ll_statahead_info *sai)
         struct mdt_body        *body;
         ENTRY;
 
-        cfs_spin_lock(&lli->lli_lock);
+        cfs_spin_lock(&lli->lli_sa_lock);
         LASSERT(!sa_received_empty(sai));
         entry = cfs_list_entry(sai->sai_entries_received.next,
                                struct ll_sai_entry, se_list);
         cfs_list_del_init(&entry->se_list);
-        cfs_spin_unlock(&lli->lli_lock);
+        cfs_spin_unlock(&lli->lli_sa_lock);
 
         if (unlikely(entry->se_index < sai->sai_index_next)) {
                 CWARN("Found stale entry: [index %u] [next %u]\n",
@@ -419,33 +456,62 @@ static int do_statahead_interpret(struct ll_statahead_info *sai)
                  * lookup.
                  */
                 struct dentry    *save = dentry;
+                __u32 bits             = 0;
                 struct it_cb_data icbd = {
                         .icbd_parent   = minfo->mi_dir,
-                        .icbd_childp   = &dentry
+                        .icbd_childp   = &dentry,
+                        .icbd_alias    = &entry->se_inode,
+                        .bits          = &bits
                 };
 
                 LASSERT(fid_is_zero(&minfo->mi_data.op_fid2));
 
-                /*
-                 * XXX: No fid in reply, this is probaly cross-ref case.
-                 * SA can't handle it yet.
-                 */
+                /* XXX: No fid in reply, this is probaly cross-ref case.
+                 * SA can't handle it yet. */
                 if (body->valid & OBD_MD_MDS)
                         GOTO(out, rc = -EAGAIN);
 
-                rc = ll_lookup_it_finish(req, it, &icbd);
-                if (!rc)
-                        /*
-                         * Here dentry->d_inode might be NULL,
-                         * because the entry may have been removed before
-                         * we start doing stat ahead.
-                         */
-                        ll_lookup_finish_locks(it, dentry);
+                /* Here dentry->d_inode might be NULL, because the entry may
+                 * have been removed before we start doing stat ahead. */
 
-                if (dentry != save) {
-                        minfo->mi_dentry = dentry;
-                        dput(save);
+                /* BUG 15962, 21739: since statahead thread does not hold
+                 * parent's i_mutex, it can not alias the dentry to inode.
+                 * Here we just create/update inode in memory, and let the
+                 * main "ls -l" thread to alias such dentry to the inode with
+                 * parent's i_mutex held.
+                 * On the other hand, we hold ldlm ibits lock for the inode
+                 * yet, to allow other operations to cancel such lock in time,
+                 * we should drop the ldlm lock reference count, then the main
+                 * "ls -l" thread should check/get such ldlm ibits lock before
+                 * aliasing such dentry to the inode later. If we don't do such
+                 * drop here, it maybe cause deadlock with i_muext held by
+                 * others, just like bug 21739. */
+                rc = ll_lookup_it_finish(req, it, &icbd);
+                if (entry->se_inode != NULL) {
+                        struct ll_dentry_data *lld = ll_d2d(dentry);
+                        struct ll_inode_info *sei = ll_i2info(entry->se_inode);
+
+                        /* For statahead lookup case, both MDS_INODELOCK_LOOKUP
+                         * and MDS_INODELOCK_UPDATE should be granted */
+                        if (likely(bits & MDS_INODELOCK_LOOKUP &&
+                                   bits & MDS_INODELOCK_UPDATE)) {
+                                /* the first dentry ref_count will be dropped by
+                                 * ll_sai_entry_to_stated(), so hold another ref
+                                 * in advance */
+                                entry->se_dentry = dget(dentry);
+                                cfs_spin_lock(&sei->lli_sa_lock);
+                                cfs_list_add(&lld->lld_sa_alias,
+                                             &sei->lli_sa_dentry);
+                                cfs_spin_unlock(&sei->lli_sa_lock);
+                                sai->sai_nolock = 0;
+                        } else {
+                                iput(entry->se_inode);
+                                entry->se_inode = NULL;
+                                sai->sai_nolock++;
+                        }
                 }
+                LASSERT(dentry == save);
+                ll_intent_drop_lock(it);
         } else {
                 /*
                  * revalidate.
@@ -476,6 +542,10 @@ static int do_statahead_interpret(struct ll_statahead_info *sai)
         EXIT;
 
 out:
+        /* The "ll_sai_entry_to_stated()" will drop related ldlm ibits lock
+         * reference count with ll_intent_drop_lock() called in spite of the
+         * above operations failed or not. Do not worry about calling
+         * "ll_intent_drop_lock()" more than once. */
         if (likely(ll_sai_entry_to_stated(sai, entry)))
                 cfs_waitq_signal(&sai->sai_waitq);
         return rc;
@@ -496,10 +566,11 @@ static int ll_statahead_interpret(struct ptlrpc_request *req,
         CDEBUG(D_READA, "interpret statahead %.*s rc %d\n",
                dentry->d_name.len, dentry->d_name.name, rc);
 
-        cfs_spin_lock(&lli->lli_lock);
+        cfs_spin_lock(&lli->lli_sa_lock);
+        /* stale entry */
         if (unlikely(lli->lli_sai == NULL ||
             lli->lli_sai->sai_generation != minfo->mi_generation)) {
-                cfs_spin_unlock(&lli->lli_lock);
+                cfs_spin_unlock(&lli->lli_sa_lock);
                 ll_intent_release(it);
                 dput(dentry);
                 iput(dir);
@@ -509,19 +580,19 @@ static int ll_statahead_interpret(struct ptlrpc_request *req,
                 sai = ll_sai_get(lli->lli_sai);
                 entry = ll_sai_entry_set(sai,
                                          (unsigned int)(long)minfo->mi_cbdata,
-                                         rc ? SA_ENTRY_UNSTATED :
-                                         SA_ENTRY_STATED, req, minfo);
+                                         rc < 0 ? rc : SA_ENTRY_STATED, req,
+                                         minfo);
                 LASSERT(entry != NULL);
                 if (likely(sa_is_running(sai))) {
                         ll_sai_entry_to_received(sai, entry);
                         sai->sai_replied++;
-                        cfs_spin_unlock(&lli->lli_lock);
+                        cfs_spin_unlock(&lli->lli_sa_lock);
                         cfs_waitq_signal(&sai->sai_thread.t_ctl_waitq);
                 } else {
                         if (!cfs_list_empty(&entry->se_list))
                                 cfs_list_del_init(&entry->se_list);
                         sai->sai_replied++;
-                        cfs_spin_unlock(&lli->lli_lock);
+                        cfs_spin_unlock(&lli->lli_sa_lock);
                         ll_sai_entry_cleanup(entry, 1);
                 }
                 ll_sai_put(sai);
@@ -642,16 +713,17 @@ static int do_sa_revalidate(struct inode *dir, struct dentry *dentry)
         int rc;
         ENTRY;
 
-        if (inode == NULL)
+        if (unlikely(inode == NULL))
                 RETURN(1);
 
         if (d_mountpoint(dentry))
                 RETURN(1);
 
-        if (dentry == dentry->d_sb->s_root)
+        if (unlikely(dentry == dentry->d_sb->s_root))
                 RETURN(1);
 
-        rc = md_revalidate_lock(ll_i2mdexp(dir), &it, ll_inode2fid(inode));
+        rc = md_revalidate_lock(ll_i2mdexp(dir), &it, ll_inode2fid(inode),
+                                NULL);
         if (rc == 1) {
                 ll_intent_release(&it);
                 RETURN(1);
@@ -705,9 +777,18 @@ static int ll_statahead_one(struct dentry *parent, const char* entry_name,
         ll_name2qstr(&name, entry_name, entry_name_len);
         dentry = d_lookup(parent, &name);
         if (!dentry) {
+                if (unlikely(sa_skip_nolock(sai))) {
+                        CWARN("can not obtain lookup lock, skip the succeedent "
+                              "lookup cases, will cause statahead miss, and "
+                              "statahead maybe exit for that.\n");
+                        GOTO(out, rc = -EAGAIN);
+                }
+
                 dentry = d_alloc(parent, &name);
                 if (dentry) {
-                        rc = do_sa_lookup(dir, dentry);
+                        rc = ll_dops_init(dentry, 1);
+                        if (!rc)
+                                rc = do_sa_lookup(dir, dentry);
                         if (rc)
                                 dput(dentry);
                 } else {
@@ -725,7 +806,7 @@ out:
         if (rc) {
                 CDEBUG(D_READA, "set sai entry %p index %u stat %d rc %d\n",
                        se, se->se_index, se->se_stat, rc);
-                se->se_stat = rc;
+                se->se_stat = rc < 0 ? rc : SA_ENTRY_STATED;
                 if (ll_sai_entry_to_stated(sai, se))
                         cfs_waitq_signal(&sai->sai_waitq);
         } else {
@@ -757,10 +838,10 @@ static int ll_statahead_thread(void *arg)
                 cfs_daemonize(pname);
         }
 
-        sbi->ll_sa_total++;
-        cfs_spin_lock(&lli->lli_lock);
+        atomic_inc(&sbi->ll_sa_total);
+        cfs_spin_lock(&lli->lli_sa_lock);
         thread->t_flags = SVC_RUNNING;
-        cfs_spin_unlock(&lli->lli_lock);
+        cfs_spin_unlock(&lli->lli_sa_lock);
         cfs_waitq_signal(&thread->t_ctl_waitq);
         CDEBUG(D_READA, "start doing statahead for %s\n", parent->d_name.name);
 
@@ -774,9 +855,10 @@ static int ll_statahead_thread(void *arg)
 
                 if (IS_ERR(page)) {
                         rc = PTR_ERR(page);
-                        CDEBUG(D_READA, "error reading dir "DFID" at "LPU64"/%u: rc %d\n",
-                               PFID(ll_inode2fid(dir)), pos,
-                               sai->sai_index, rc);
+                        CDEBUG(D_READA, "error reading dir "DFID" at "LPU64
+                               "/%u: [rc %d] [parent %u]\n",
+                               PFID(ll_inode2fid(dir)), pos, sai->sai_index,
+                               rc, lli->lli_opendir_pid);
                         break;
                 }
 
@@ -786,7 +868,7 @@ static int ll_statahead_thread(void *arg)
                         char *name = ent->lde_name;
                         int namelen = le16_to_cpu(ent->lde_namelen);
 
-                        if (namelen == 0)
+                        if (unlikely(namelen == 0))
                                 /*
                                  * Skip dummy record.
                                  */
@@ -880,9 +962,9 @@ keep_de:
 
 out:
         ll_dir_chain_fini(&chain);
-        cfs_spin_lock(&lli->lli_lock);
+        cfs_spin_lock(&lli->lli_sa_lock);
         thread->t_flags = SVC_STOPPED;
-        cfs_spin_unlock(&lli->lli_lock);
+        cfs_spin_unlock(&lli->lli_sa_lock);
         cfs_waitq_signal(&sai->sai_waitq);
         cfs_waitq_signal(&thread->t_ctl_waitq);
         ll_sai_put(sai);
@@ -902,9 +984,9 @@ void ll_stop_statahead(struct inode *inode, void *key)
         if (unlikely(key == NULL))
                 return;
 
-        cfs_spin_lock(&lli->lli_lock);
+        cfs_spin_lock(&lli->lli_sa_lock);
         if (lli->lli_opendir_key != key || lli->lli_opendir_pid == 0) {
-                cfs_spin_unlock(&lli->lli_lock);
+                cfs_spin_unlock(&lli->lli_sa_lock);
                 return;
         }
 
@@ -916,7 +998,7 @@ void ll_stop_statahead(struct inode *inode, void *key)
 
                 if (!sa_is_stopped(lli->lli_sai)) {
                         thread->t_flags = SVC_STOPPING;
-                        cfs_spin_unlock(&lli->lli_lock);
+                        cfs_spin_unlock(&lli->lli_sa_lock);
                         cfs_waitq_signal(&thread->t_ctl_waitq);
 
                         CDEBUG(D_READA, "stopping statahead thread, pid %d\n",
@@ -925,7 +1007,7 @@ void ll_stop_statahead(struct inode *inode, void *key)
                                      sa_is_stopped(lli->lli_sai),
                                      &lwi);
                 } else {
-                        cfs_spin_unlock(&lli->lli_lock);
+                        cfs_spin_unlock(&lli->lli_sa_lock);
                 }
 
                 /*
@@ -936,7 +1018,7 @@ void ll_stop_statahead(struct inode *inode, void *key)
                 ll_sai_put(lli->lli_sai);
         } else {
                 lli->lli_opendir_pid = 0;
-                cfs_spin_unlock(&lli->lli_lock);
+                cfs_spin_unlock(&lli->lli_sa_lock);
         }
 }
 
@@ -973,9 +1055,13 @@ static int is_first_dirent(struct inode *dir, struct dentry *dentry)
                 struct lu_dirent  *ent;
 
                 if (IS_ERR(page)) {
+                        struct ll_inode_info *lli = ll_i2info(dir);
+
                         rc = PTR_ERR(page);
-                        CERROR("error reading dir "DFID" at "LPU64": rc %d\n",
-                               PFID(ll_inode2fid(dir)), pos, rc);
+                        CERROR("error reading dir "DFID" at "LPU64": "
+                               "[rc %d] [parent %u]\n",
+                               PFID(ll_inode2fid(dir)), pos,
+                               rc, lli->lli_opendir_pid);
                         break;
                 }
 
@@ -1052,11 +1138,48 @@ out:
         return rc;
 }
 
+/*
+ * tgt: the dentry to be revalidate or lookup
+ * new: the dentry created by statahead
+ */
+static int is_same_dentry(struct dentry *tgt, struct dentry *new, int lookup)
+{
+        if (tgt == new) {
+                LASSERT(lookup == 0);
+                return 1;
+        }
+        if (tgt->d_parent != new->d_parent)
+                return 0;
+        if (tgt->d_name.hash != new->d_name.hash)
+                return 0;
+        if (tgt->d_name.len != new->d_name.len)
+                return 0;
+        if (memcmp(tgt->d_name.name, new->d_name.name, tgt->d_name.len) != 0)
+                return 0;
+        if (tgt->d_inode == NULL && lookup)
+                return 1;
+        if (tgt->d_inode)
+                LASSERTF(tgt->d_flags & DCACHE_LUSTRE_INVALID,
+                         "[%.*s/%.*s] [%x %p "DFID"] [%x %p "DFID"]\n",
+                         tgt->d_parent->d_name.len, tgt->d_parent->d_name.name,
+                         tgt->d_name.len, tgt->d_name.name,
+                         tgt->d_flags, tgt, PFID(ll_inode2fid(tgt->d_inode)),
+                         new->d_flags, new, PFID(ll_inode2fid(new->d_inode)));
+        else
+                LASSERTF(tgt->d_flags & DCACHE_LUSTRE_INVALID,
+                         "[%.*s/%.*s] [%x %p 0] [%x %p "DFID"]\n",
+                         tgt->d_parent->d_name.len, tgt->d_parent->d_name.name,
+                         tgt->d_name.len, tgt->d_name.name,
+                         tgt->d_flags, tgt,
+                         new->d_flags, new, PFID(ll_inode2fid(new->d_inode)));
+        return 0;
+}
+
 /**
  * Start statahead thread if this is the first dir entry.
  * Otherwise if a thread is started already, wait it until it is ahead of me.
- * \retval 0       -- stat ahead thread process such dentry, for lookup, it miss
- * \retval 1       -- stat ahead thread process such dentry, for lookup, it hit
+ * \retval 0       -- stat ahead thread process such dentry, miss for lookup
+ * \retval 1       -- stat ahead thread process such dentry, hit for any case
  * \retval -EEXIST -- stat ahead thread started, and this is the first dentry
  * \retval -EBADFD -- statahead thread exit and not dentry available
  * \retval -EAGAIN -- try to stat by caller
@@ -1077,8 +1200,6 @@ int do_statahead_enter(struct inode *dir, struct dentry **dentryp, int lookup)
         sai = lli->lli_sai;
 
         if (sai) {
-                struct ll_sb_info *sbi;
-
                 if (unlikely(sa_is_stopped(sai) &&
                              cfs_list_empty(&sai->sai_entries_stated)))
                         RETURN(-EBADFD);
@@ -1110,11 +1231,7 @@ int do_statahead_enter(struct inode *dir, struct dentry **dentryp, int lookup)
                         }
                 }
 
-                sbi = ll_i2sbi(dir);
-                if (ll_sai_entry_stated(sai)) {
-                        sbi->ll_sa_cached++;
-                } else {
-                        sbi->ll_sa_blocked++;
+                if (!ll_sai_entry_stated(sai)) {
                         /*
                          * thread started already, avoid double-stat.
                          */
@@ -1123,6 +1240,110 @@ int do_statahead_enter(struct inode *dir, struct dentry **dentryp, int lookup)
                                           ll_sai_entry_stated(sai) ||
                                           sa_is_stopped(sai),
                                           &lwi);
+                        if (unlikely(rc == -EINTR))
+                                RETURN(rc);
+                }
+
+                if (ll_sai_entry_stated(sai)) {
+                        struct ll_sai_entry  *entry;
+
+                        entry = cfs_list_entry(sai->sai_entries_stated.next,
+                                               struct ll_sai_entry, se_list);
+                        /* This is for statahead lookup */
+                        if (entry->se_inode != NULL) {
+                                struct lookup_intent it = {.it_op = IT_LOOKUP};
+                                struct dentry *dchild = entry->se_dentry;
+                                struct inode *ichild = entry->se_inode;
+                                struct ll_dentry_data *lld = ll_d2d(dchild);
+                                struct ll_inode_info *sei = ll_i2info(ichild);
+                                struct dentry *save = dchild;
+                                int invalid = 0;
+                                __u32 bits = MDS_INODELOCK_LOOKUP |
+                                             MDS_INODELOCK_UPDATE;
+                                int found = 0;
+
+                                LASSERT(dchild != *dentryp);
+
+                                if (!lookup)
+                                        mutex_lock(&dir->i_mutex);
+
+                                /*
+                                 * Make sure dentry is still valid.
+                                 * For statahead lookup case, we need both
+                                 * LOOKUP lock and UPDATE lock which obtained
+                                 * by statahead thread originally.
+                                 *
+                                 * Consider following racer case:
+                                 * 1. statahead thread on client1 get lock with
+                                 *    both LOOKUK and UPDATE bits for "aaa"
+                                 * 2. rename thread on client2 cancel such lock
+                                 *    from client1, then rename "aaa" to "bbb"
+                                 * 3. ls thread on client1 obtain LOOKUP lock
+                                 *    for "bbb" again
+                                 * 4. here the dentry "aaa" created by statahead
+                                 *    thread should be invalid even related
+                                 *    LOOKUP lock valid for the same inode
+                                 */
+                                rc = md_revalidate_lock(ll_i2mdexp(dir), &it,
+                                                        ll_inode2fid(ichild),
+                                                        &bits);
+                                cfs_spin_lock(&sei->lli_sa_lock);
+                                if (!cfs_list_empty(&lld->lld_sa_alias))
+                                        cfs_list_del_init(&lld->lld_sa_alias);
+                                else
+                                        invalid = 1;
+                                cfs_spin_unlock(&sei->lli_sa_lock);
+                                if (rc != 1)
+                                        /* Someone has cancelled the original
+                                         * lock before the real "revalidate"
+                                         * using it. Drop it. */
+                                        goto out_mutex;
+
+                                if (invalid) {
+                                        /* Someone has cancelled the original
+                                         * lock, and reobtained it, the dentry
+                                         * maybe invalid anymore, Drop it. */
+                                        ll_intent_drop_lock(&it);
+                                        goto out_mutex;
+                                }
+
+                                ll_lookup_it_alias(&dchild, ichild, bits);
+                                found = is_same_dentry(*dentryp, dchild, lookup);
+                                ll_lookup_finish_locks(&it, dchild);
+                                if (dchild != save)
+                                        dput(save);
+                                ichild = NULL;
+
+out_mutex:
+                                if (!lookup)
+                                        mutex_unlock(&dir->i_mutex);
+                                /* Drop the inode reference count held by
+                                 * interpreter. */
+                                if (ichild != NULL)
+                                        iput(ichild);
+
+                                entry->se_dentry = NULL;
+                                entry->se_inode = NULL;
+                                if (found) {
+                                        if (lookup) {
+                                                LASSERT(*dentryp != dchild);
+                                                /* VFS will drop the reference
+                                                 * count for dchild and *dentryp
+                                                 * by itself. */
+                                                *dentryp = dchild;
+                                        } else {
+                                                LASSERT(*dentryp == dchild);
+                                                /* Drop the dentry reference
+                                                 * count held by statahead. */
+                                                dput(dchild);
+                                        }
+                                        RETURN(1);
+                                } else {
+                                        /* Drop the dentry reference count held
+                                         * by statahead. */
+                                        dput(dchild);
+                                }
+                        }
                 }
 
                 if (lookup) {
@@ -1141,7 +1362,7 @@ int do_statahead_enter(struct inode *dir, struct dentry **dentryp, int lookup)
                 /*
                  * do nothing for revalidate.
                  */
-                RETURN(rc);
+                RETURN(0);
         }
 
         /* I am the "lli_opendir_pid" owner, only me can set "lli_sai". */
@@ -1157,7 +1378,7 @@ int do_statahead_enter(struct inode *dir, struct dentry **dentryp, int lookup)
         sai->sai_ls_all = (rc == LS_FIRST_DOT_DE);
         sai->sai_inode = igrab(dir);
         if (unlikely(sai->sai_inode == NULL)) {
-                CWARN("Do not start stat ahead on dying inode "DFID" .\n",
+                CWARN("Do not start stat ahead on dying inode "DFID"\n",
                       PFID(&lli->lli_fid));
                 OBD_FREE_PTR(sai);
                 GOTO(out, rc = -ESTALE);
@@ -1169,7 +1390,7 @@ int do_statahead_enter(struct inode *dir, struct dentry **dentryp, int lookup)
                 struct ll_inode_info *nlli = ll_i2info(parent->d_inode);
 
                 CWARN("Race condition, someone changed %.*s just now: "
-                      "old parent "DFID", new parent "DFID" .\n",
+                      "old parent "DFID", new parent "DFID"\n",
                       (*dentryp)->d_name.len, (*dentryp)->d_name.name,
                       PFID(&lli->lli_fid), PFID(&nlli->lli_fid));
                 dput(parent);
@@ -1201,10 +1422,10 @@ int do_statahead_enter(struct inode *dir, struct dentry **dentryp, int lookup)
         RETURN(-EEXIST);
 
 out:
-        cfs_spin_lock(&lli->lli_lock);
+        cfs_spin_lock(&lli->lli_sa_lock);
         lli->lli_opendir_key = NULL;
         lli->lli_opendir_pid = 0;
-        cfs_spin_unlock(&lli->lli_lock);
+        cfs_spin_unlock(&lli->lli_sa_lock);
         return rc;
 }
 
@@ -1217,6 +1438,7 @@ void ll_statahead_exit(struct inode *dir, struct dentry *dentry, int result)
         struct ll_statahead_info *sai;
         struct ll_sb_info        *sbi;
         struct ll_dentry_data    *ldd = ll_d2d(dentry);
+        int                       rc;
         ENTRY;
 
         LASSERT(dir != NULL);
@@ -1226,33 +1448,39 @@ void ll_statahead_exit(struct inode *dir, struct dentry *dentry, int result)
         LASSERT(sai != NULL);
         sbi = ll_i2sbi(dir);
 
-        if (result >= 1) {
-                sbi->ll_sa_hit++;
+        rc = ll_sai_entry_fini(sai);
+        /* rc == -ENOENT means such dentry was removed just between statahead
+         * readdir and pre-fetched, count it as hit.
+         *
+         * result == -ENOENT has two meanings:
+         * 1. such dentry was removed just between statahead pre-fetched and
+         *    main process stat such dentry.
+         * 2. main process stat non-exist dentry.
+         * We can not distinguish such two cases, just count them as miss. */
+        if (result >= 1 || unlikely(rc == -ENOENT)) {
                 sai->sai_hit++;
                 sai->sai_consecutive_miss = 0;
                 sai->sai_max = min(2 * sai->sai_max, sbi->ll_sa_max);
         } else {
-                sbi->ll_sa_miss++;
                 sai->sai_miss++;
                 sai->sai_consecutive_miss++;
                 if (sa_low_hit(sai) && sa_is_running(sai)) {
-                        sbi->ll_sa_wrong++;
+                        atomic_inc(&sbi->ll_sa_wrong);
                         CDEBUG(D_READA, "Statahead for dir "DFID" hit ratio "
                                "too low: hit/miss %u/%u, sent/replied %u/%u, "
                                "stopping statahead thread: pid %d\n",
                                PFID(&lli->lli_fid), sai->sai_hit,
                                sai->sai_miss, sai->sai_sent,
                                sai->sai_replied, cfs_curproc_pid());
-                        cfs_spin_lock(&lli->lli_lock);
+                        cfs_spin_lock(&lli->lli_sa_lock);
                         if (!sa_is_stopped(sai))
                                 sai->sai_thread.t_flags = SVC_STOPPING;
-                        cfs_spin_unlock(&lli->lli_lock);
+                        cfs_spin_unlock(&lli->lli_sa_lock);
                 }
         }
 
         if (!sa_is_stopped(sai))
                 cfs_waitq_signal(&sai->sai_thread.t_ctl_waitq);
-        ll_sai_entry_fini(sai);
         if (likely(ldd != NULL))
                 ldd->lld_sa_generation = sai->sai_generation;
 

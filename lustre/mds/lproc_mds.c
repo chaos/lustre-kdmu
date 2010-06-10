@@ -49,11 +49,10 @@ static int lprocfs_mds_rd_mntdev(char *page, char **start, off_t off, int count,
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         LASSERT(obd != NULL);
-        LASSERT(obd->u.mds.mds_vfsmnt->mnt_devname);
-        *eof = 1;
+        LASSERT(obd->u.obt.obt_vfsmnt->mnt_devname);
 
         return libcfs_param_snprintf(page, count, data, LP_STR, "%s\n",
-                                     obd->u.mds.mds_vfsmnt->mnt_devname);
+                                     obd->u.obt.obt_vfsmnt->mnt_devname);
 }
 
 static int lprocfs_mds_rd_evictostnids(char *page, char **start, off_t off,
@@ -64,7 +63,6 @@ static int lprocfs_mds_rd_evictostnids(char *page, char **start, off_t off,
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         LASSERT(obd != NULL);
-        *eof = 1;
         temp = obd->u.mds.mds_evict_ost_nids;
 
         return libcfs_param_snprintf(page, count, data, LP_D32, "%d\n", temp);
@@ -177,7 +175,6 @@ static int lprocfs_rd_atime_diff(char *page, char **start, off_t off,
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         mds = &obd->u.mds;
-        *eof = 1;
 
         return libcfs_param_snprintf(page, count, data, LP_U32,
                                      "%lu\n", mds->mds_atime_diff);

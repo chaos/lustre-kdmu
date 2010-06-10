@@ -13,7 +13,7 @@ ONLY=${ONLY:-"$*"}
 
 # bug number for skipped test:
 #               15977
-ALWAYS_EXCEPT=" 39    $CONF_SANITY_EXCEPT"
+ALWAYS_EXCEPT="$CONF_SANITY_EXCEPT"
 # UPDATE THE COMMENT ABOVE WITH BUG NUMBERS WHEN CHANGING ALWAYS_EXCEPT!
 
 SRCDIR=`dirname $0`
@@ -26,15 +26,19 @@ RLUSTRE=${RLUSTRE:-$LUSTRE}
 
 . $LUSTRE/tests/test-framework.sh
 init_test_env $@
-init_logging
+
+# use small MDS + OST size to speed formatting time
+# do not use too small MDSSIZE/OSTSIZE, which affect the default jouranl size
+MDSSIZE=200000
+OSTSIZE=200000
+. ${CONFIG:=$LUSTRE/tests/cfg/$NAME.sh}
+
 # STORED_MDSSIZE is used in test_18
 if [ -n "$MDSSIZE" ]; then
     STORED_MDSSIZE=$MDSSIZE
 fi
-# use small MDS + OST size to speed formatting time
-MDSSIZE=40000
-OSTSIZE=40000
-. ${CONFIG:=$LUSTRE/tests/cfg/$NAME.sh}
+
+init_logging
 
 require_dsh_mds || exit 0
 require_dsh_ost || exit 0
@@ -54,9 +58,9 @@ writeconf() {
 	stop ${facet} -f
 	rm -f ${facet}active
 	# who knows if/where $TUNEFS is installed?  Better reformat if it fails...
-	do_facet ${facet} "$TUNEFS --writeconf ${!dev}" || echo "tunefs failed, reformatting instead" && reformat
+	do_facet ${facet} "$TUNEFS --writeconf ${!dev}" ||
+		echo "tunefs failed, reformatting instead" && reformat_and_config
 
-	gen_config
 }
 
 gen_config() {
@@ -71,7 +75,15 @@ gen_config() {
 
 reformat_and_config() {
 	reformat
+	if ! combined_mgs_mds ; then
+		start_mgs
+	fi
 	gen_config
+}
+
+start_mgs () {
+	echo "start mgs"
+	start mgs $MGSDEV $mgs_MOUNT_OPTS
 }
 
 start_mds() {
@@ -142,12 +154,16 @@ manual_umount_client(){
 }
 
 setup() {
-	start_ost
-	start_mds
-	mount_client $MOUNT
+	start_mds || error "MDT start failed"
+	start_ost || error "OST start failed"
+	mount_client $MOUNT || error "client start failed"
 }
 
 setup_noconfig() {
+	if ! combined_mgs_mds ; then
+		start_mgs
+	fi
+
 	start_mds
 	start_ost
 	mount_client $MOUNT
@@ -207,19 +223,21 @@ test_0() {
 run_test 0 "single mount setup"
 
 test_1() {
+	start_mds || error "MDT start failed"
 	start_ost
 	echo "start ost second time..."
-	setup
+	start_ost && error "2nd OST start should fail"
+	mount_client $MOUNT || error "client start failed"
 	check_mount || return 42
 	cleanup || return $?
 }
 run_test 1 "start up ost twice (should return errors)"
 
 test_2() {
-	start_ost
 	start_mds
 	echo "start mds second time.."
-	start_mds
+	start_mds && error "2nd MDT start should fail"
+	start_ost
 	mount_client $MOUNT
 	check_mount || return 43
 	cleanup || return $?
@@ -229,7 +247,7 @@ run_test 2 "start up mds twice (should return err)"
 test_3() {
 	setup
 	#mount.lustre returns an error if already in mtab
-	mount_client $MOUNT && return $?
+	mount_client $MOUNT && error "2nd client mount should fail"
 	check_mount || return 44
 	cleanup || return $?
 }
@@ -312,8 +330,8 @@ test_5b() {
 run_test 5b "mds down, cleanup after failed mount (bug 2712) (should return errs)"
 
 test_5c() {
-	start_ost
 	start_mds
+	start_ost
 	[ -d $MOUNT ] || mkdir -p $MOUNT
 	grep " $MOUNT " /etc/mtab && echo "test 5c: mtab before mount" && return 10
 	local oldfs="${FSNAME}"
@@ -339,8 +357,8 @@ test_5d() {
 run_test 5d "mount with ost down"
 
 test_5e() {
-	start_ost
 	start_mds
+	start_ost
 
 #define OBD_FAIL_PTLRPC_DELAY_SEND       0x506
 	do_facet client "lctl set_param fail_loc=0x80000506"
@@ -533,8 +551,8 @@ run_test 19b "start/stop OSTs without MDS"
 
 test_20() {
 	# first format the ost/mdt
-	start_ost
 	start_mds
+	start_ost
 	mount_client $MOUNT
 	check_mount || return 43
 	rm -f $DIR/$tfile
@@ -617,8 +635,8 @@ test_22() {
 run_test 22 "start a client before osts (should return errs)"
 
 test_23a() {	# was test_23
-        setup
-        # fail mds
+	setup
+	# fail mds
 	stop $SINGLEMDS
 	# force down client so that recovering mds waits for reconnect
 	local running=$(grep -c $MOUNT /proc/mounts) || true
@@ -645,7 +663,7 @@ test_23a() {	# was test_23
 	local PID1
 	local PID2
 	local WAIT=0
-	local MAX_WAIT=20
+	local MAX_WAIT=30
 	local sleep=1
 	while [ "$WAIT" -lt "$MAX_WAIT" ]; do
 		sleep $sleep
@@ -657,9 +675,11 @@ test_23a() {	# was test_23
 		echo "waiting for mount to finish ... "
 		WAIT=$(( WAIT + sleep))
 	done
-	[ "$WAIT" -eq "$MAX_WAIT" ] && error "MOUNT_PID $MOUNT_PID and "\
+	if [ "$WAIT" -eq "$MAX_WAIT" ]; then
+		error "MOUNT_PID $MOUNT_PID and "\
 		"MOUNT_LUSTRE_PID $MOUNT_LUSTRE_PID still not killed in $WAIT secs"
-	ps -ef | grep mount
+		ps -ef | grep mount
+	fi
 	stop_mds || error
 	stop_ost || error
 }
@@ -669,8 +689,8 @@ umount_client $MOUNT
 cleanup_nocli
 
 test_23b() {    # was test_23
-	start_ost
 	start_mds
+	start_ost
 	# Simulate -EINTR during mount OBD_FAIL_LDLM_CLOSE_THREAD
 	lctl set_param fail_loc=0x80000313
 	mount_client $MOUNT
@@ -909,6 +929,7 @@ run_test 29 "permanently remove an OST"
 test_30() {
 	setup
 
+	echo Big config llog
 	TEST="lctl get_param -n llite.$FSNAME-*.max_read_ahead_whole_mb"
 	ORIG=$($TEST)
 	LIST=(1 2 3 4 5 4 3 2 1 2 3 4 5 4 3 2 1 2 3 4 5)
@@ -919,10 +940,20 @@ test_30() {
  	umount_client $MOUNT
 	mount_client $MOUNT || return 4
 	[ "$($TEST)" -ne "$i" ] && return 5
-	set_and_check client "$TEST" "$FSNAME.llite.max_read_ahead_whole_mb" $ORIG || return 6
+	pass
+
+	echo Erase parameter setting
+	do_facet mgs "$LCTL conf_param -d $FSNAME.llite.max_read_ahead_whole_mb" || return 6
+	umount_client $MOUNT
+	mount_client $MOUNT || return 6
+	FINAL=$($TEST)
+	echo "deleted (default) value=$FINAL, orig=$ORIG"
+	# assumes this parameter started at the default value
+	[ "$FINAL" -eq "$ORIG" ] || fail "Deleted value=$FINAL, orig=$ORIG"
+
 	cleanup
 }
-run_test 30 "Big config llog"
+run_test 30 "Big config llog and conf_param deletion"
 
 test_31() { # bug 10734
         # ipaddr must not exist
@@ -1518,7 +1549,7 @@ run_test 41 "mount mds with --nosvc and --nomgs"
 test_42() { #bug 14693
         setup
         check_mount || return 2
-        do_facet client lctl conf_param lustre.llite.some_wrong_param=10
+        do_facet mgs $LCTL conf_param lustre.llite.some_wrong_param=10
         umount_client $MOUNT
         mount_client $MOUNT || return 1
         cleanup
@@ -1688,7 +1719,7 @@ cleanup_46a() {
 
 test_46a() {
 	echo "Testing with $OSTCOUNT OSTs"
-	reformat
+	reformat_and_config
 	start_mds || return 1
 	#first client should see only one ost
 	start_ost || return 2
@@ -1811,9 +1842,7 @@ test_49() { # bug 17710
 	OST_MKFS_OPTS="--ost --fsname=$FSNAME --device-size=$OSTSIZE --mgsnode=$MGSNID --param sys.timeout=$LOCAL_TIMEOUT --param sys.ldlm_timeout=$LOCAL_TIMEOUT $MKFSOPT $OSTOPT"
 
 	reformat
-	start_mds
-	start_ost
-	mount_client $MOUNT
+	setup_noconfig
 	check_mount || return 1
 
 	echo "check ldlm_timout..."
@@ -1836,9 +1865,7 @@ test_49() { # bug 17710
 	OST_MKFS_OPTS="--ost --fsname=$FSNAME --device-size=$OSTSIZE --mgsnode=$MGSNID --param sys.timeout=$LOCAL_TIMEOUT --param sys.ldlm_timeout=$((LOCAL_TIMEOUT - 1)) $MKFSOPT $OSTOPT"
 
 	reformat
-	start_mds || return 4
-	start_ost || return 5
-	mount_client $MOUNT || return 6
+	setup_noconfig
 	check_mount || return 7
 
 	LDLM_MDS="`do_facet mds lctl get_param -n ldlm_timeout`"
@@ -2060,9 +2087,7 @@ test_51() {
 	local LOCAL_TIMEOUT=20
 
 	reformat
-	start_mds
-	start_ost
-	mount_client $MOUNT
+	setup_noconfig
 	check_mount || return 1
 
 	mkdir $MOUNT/d1
@@ -2211,6 +2236,187 @@ test_52() {
 	cleanup
 }
 run_test 52 "check recovering objects from lost+found"
+
+# Checks threads_min/max/started for some service
+#
+# Arguments: service name (OST or MDT), facet (e.g., ost1, $SINGLEMDS), and a
+# parameter pattern prefix like 'ost.*.ost'.
+thread_sanity() {
+        local modname=$1
+        local facet=$2
+        local parampat=$3
+        local opts=$4
+        local tmin
+        local tmin2
+        local tmax
+        local tmax2
+        local tstarted
+        local paramp
+        local msg="Insane $modname thread counts"
+        shift 4
+
+        setup
+        check_mount || return 41
+
+        # We need to expand $parampat, but it may match multiple parameters, so
+        # we'll pick the first one
+        if ! paramp=$(do_facet $facet "lctl get_param -N ${parampat}.threads_min"|head -1); then
+                error "Couldn't expand ${parampat}.threads_min parameter name"
+                return 22
+        fi
+
+        # Remove the .threads_min part
+        paramp=${paramp%.threads_min}
+
+        # Check for sanity in defaults
+        tmin=$(do_facet $facet "lctl get_param -n ${paramp}.threads_min" || echo 0)
+        tmax=$(do_facet $facet "lctl get_param -n ${paramp}.threads_max" || echo 0)
+        tstarted=$(do_facet $facet "lctl get_param -n ${paramp}.threads_started" || echo 0)
+        lassert 23 "$msg (PDSH problems?)" '(($tstarted && $tmin && $tmax))' || return $?
+        lassert 24 "$msg" '(($tstarted >= $tmin && $tstarted <= tmax ))' || return $?
+
+        # Check that we can lower min/max
+        do_facet $facet "lctl set_param ${paramp}.threads_min=$((tmin - 1))"
+        do_facet $facet "lctl set_param ${paramp}.threads_max=$((tmax - 10))"
+        tmin2=$(do_facet $facet "lctl get_param -n ${paramp}.threads_min" || echo 0)
+        tmax2=$(do_facet $facet "lctl get_param -n ${paramp}.threads_max" || echo 0)
+        lassert 25 "$msg" '(($tmin2 == ($tmin - 1) && $tmax2 == ($tmax -10)))' || return $?
+
+        # Check that we can set min/max to the same value
+        do_facet $facet "lctl set_param ${paramp}.threads_min=$tmin"
+        do_facet $facet "lctl set_param ${paramp}.threads_max=$tmin"
+        tmin2=$(do_facet $facet "lctl get_param -n ${paramp}.threads_min" || echo 0)
+        tmax2=$(do_facet $facet "lctl get_param -n ${paramp}.threads_max" || echo 0)
+        lassert 26 "$msg" '(($tmin2 == $tmin && $tmax2 == $tmin))' || return $?
+
+        # Check that we can't set max < min
+        do_facet $facet "lctl set_param ${paramp}.threads_max=$((tmin - 1))"
+        tmin2=$(do_facet $facet "lctl get_param -n ${paramp}.threads_min" || echo 0)
+        tmax2=$(do_facet $facet "lctl get_param -n ${paramp}.threads_max" || echo 0)
+        lassert 27 "$msg" '(($tmin <= $tmax2))' || return $?
+
+        # We need to ensure that we get the module options desired; to do this
+        # we set LOAD_MODULES_REMOTE=true and we call setmodopts below.
+        LOAD_MODULES_REMOTE=true
+        cleanup
+        local oldvalue
+        setmodopts -a $modname "$opts" oldvalue
+
+        load_modules
+        setup
+        check_mount || return 41
+
+        # Restore previous setting of MODOPTS_*
+        setmodopts $modname "$oldvalue"
+
+        # Check that $opts took
+        tmin=$(do_facet $facet "lctl get_param -n ${paramp}.threads_min")
+        tmax=$(do_facet $facet "lctl get_param -n ${paramp}.threads_max")
+        tstarted=$(do_facet $facet "lctl get_param -n ${paramp}.threads_started")
+        lassert 28 "$msg" '(($tstarted == $tmin && $tstarted == $tmax ))' || return $?
+        cleanup
+
+        # Workaround a YALA bug where YALA expects that modules will remain
+        # loaded on the servers
+        LOAD_MODULES_REMOTE=false
+        load_modules
+        setup
+        cleanup
+}
+
+test_53a() {
+        thread_sanity OST ost1 'ost.*.ost' 'oss_num_threads=64'
+}
+run_test 53a "check OSS thread count params"
+
+test_53b() {
+        thread_sanity MDT $SINGLEMDS 'mdt.*.*.' 'mdt_num_threads=64'
+}
+run_test 53b "check MDT thread count params"
+
+if ! combined_mgs_mds ; then
+	stop mgs
+fi
+
+run_llverfs()
+{
+        local dir=$1
+        local partial_arg=""
+        local size=$(df -B G $dir | tail -1 | awk '{print $2}' | sed 's/G//') # Gb
+
+        # Run in partial (fast) mode if the size
+        # of a partition > 10 GB
+        [ $size -gt 10 ] && partial_arg="-p"
+
+        llverfs $partial_arg $dir
+}
+
+test_54a() {
+    do_rpc_nodes $(facet_host ost1) run_llverdev $(ostdevname 1)
+    [ $? -eq 0 ] || error "llverdev failed!"
+    reformat_and_config
+}
+run_test 54a "llverdev"
+
+test_54b() {
+    setup
+    run_llverfs $MOUNT
+    [ $? -eq 0 ] || error "llverfs failed!"
+    cleanup
+}
+run_test 54b "llverfs"
+
+lov_objid_size()
+{
+	local max_ost_index=$1
+	echo -n $(((max_ost_index + 1) * 8))
+}
+
+test_55() {
+	local mdsdev=$(mdsdevname 1)
+	local ostdev=$(ostdevname 1)
+	local saved_opts=$OST_MKFS_OPTS
+
+	for i in 0 1023 2048
+	do
+		OST_MKFS_OPTS="$saved_opts --index $i"
+		reformat
+
+		setup_noconfig
+		stopall
+
+		setup
+		sync
+		echo checking size of lov_objid for ost index $i
+		LOV_OBJID_SIZE=$(do_facet mds1 "$DEBUGFS -R 'stat lov_objid' $mdsdev 2>/dev/null" | grep ^User | awk '{print $6}')
+		if [ "$LOV_OBJID_SIZE" != $(lov_objid_size $i) ]; then
+			error "lov_objid size has to be $(lov_objid_size $i), not $LOV_OBJID_SIZE"
+		else
+			echo ok, lov_objid size is correct: $LOV_OBJID_SIZE
+		fi
+		stopall
+	done
+
+	OST_MKFS_OPTS=$saved_opts
+	reformat
+}
+run_test 55 "check lov_objid size"
+
+test_56() {
+	add mds1 $MDS_MKFS_OPTS --mkfsoptions='\"-J size=16\"' --reformat $(mdsdevname 1)
+	add ost1 $OST_MKFS_OPTS --index=1000 --reformat $(ostdevname 1)
+	add ost2 $OST_MKFS_OPTS --index=10000 --reformat $(ostdevname 2)
+
+	start_mds
+	start_ost
+	start_ost2 || error "Unable to start second ost"
+	mount_client $MOUNT || error "Unable to mount client"
+	echo ok
+	$LFS osts
+	stopall
+	reformat
+}
+run_test 56 "check big indexes"
 
 cleanup_gss
 equals_msg `basename $0`: test complete

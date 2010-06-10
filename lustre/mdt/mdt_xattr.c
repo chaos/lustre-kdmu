@@ -352,14 +352,14 @@ int mdt_reint_setxattr(struct mdt_thread_info *info,
         if (IS_ERR(obj))
                 GOTO(out, rc =  PTR_ERR(obj));
 
-        info->mti_mos[0] = obj;
-        rc = mdt_version_get_check(info, 0);
+        info->mti_mos = obj;
+        rc = mdt_version_get_check_save(info, obj, 0);
         if (rc)
                 GOTO(out_unlock, rc);
 
         if (unlikely(!(valid & OBD_MD_FLCTIME))) {
                 CWARN("client miss to set OBD_MD_FLCTIME when "
-                      "setxattr: [object "DFID"] [valid %llu]\n",
+                      "setxattr: [object "DFID"] [valid "LPU64"]\n",
                       PFID(rr->rr_fid1), valid);
                 attr->la_ctime = cfs_time_current_sec();
         }

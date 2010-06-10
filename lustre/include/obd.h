@@ -231,17 +231,7 @@ struct obd_device_target {
         struct super_block       *obt_sb;
         /** last_rcvd file */
         struct file              *obt_rcvd_filp;
-        /** server data in last_rcvd file */
-        struct lr_server_data    *obt_lsd;
-        /** Lock protecting client bitmap */
-        cfs_spinlock_t            obt_client_bitmap_lock;
-        /** Bitmap of known clients */
-        unsigned long            *obt_client_bitmap;
-        /** Server last transaction number */
-        __u64                     obt_last_transno;
-        /** Lock protecting last transaction number */
-        cfs_spinlock_t            obt_translock;
-        /** Number of mounts */
+        struct lu_target         *obt_lut;
         __u64                     obt_mount_count;
         cfs_semaphore_t           obt_quotachecking;
         struct lustre_quota_ctxt  obt_qctxt;
@@ -286,7 +276,6 @@ struct filter_ext {
 struct filter_obd {
         /* NB this field MUST be first */
         struct obd_device_target fo_obt;
-        struct lu_target     fo_lut;
         const char          *fo_fstype;
 
         int                  fo_group_count;
@@ -295,8 +284,6 @@ struct filter_obd {
         ///struct filter_subdirs   *fo_dentry_O_sub;
         cfs_semaphore_t      fo_init_lock;      /* group initialization lock */
         int                  fo_committed_group;
-
-#define CLIENT_QUOTA_DEFAULT_RESENDS 10
 
         cfs_spinlock_t       fo_objidlock;      /* protect fo_lastobjid */
 
@@ -366,13 +353,6 @@ struct filter_obd {
         struct llog_commit_master *fo_lcm;
         int                      fo_sec_level;
 };
-
-#define fo_translock            fo_obt.obt_translock
-#define fo_rcvd_filp            fo_obt.obt_rcvd_filp
-#define fo_fsd                  fo_obt.obt_lsd
-#define fo_last_rcvd_slots      fo_obt.obt_client_bitmap
-#define fo_mount_count          fo_obt.obt_mount_count
-#define fo_vfsmnt               fo_obt.obt_vfsmnt
 
 struct timeout_item {
         enum timeout_event ti_event;
@@ -495,7 +475,6 @@ struct client_obd {
         struct lu_client_seq    *cl_seq;
 
         cfs_atomic_t             cl_resends; /* resend count */
-        cfs_atomic_t             cl_quota_resends; /* quota related resend count */
 };
 #define obd2cli_tgt(obd) ((char *)(obd)->u.cli.cl_target_uuid.uuid)
 
@@ -552,7 +531,7 @@ struct mds_obd {
 
 
         struct lustre_quota_info         mds_quota_info;
-        cfs_semaphore_t                  mds_qonoff_sem;
+        cfs_rw_semaphore_t               mds_qonoff_sem;
         cfs_semaphore_t                  mds_health_sem;
         unsigned long                    mds_fl_user_xattr:1,
                                          mds_fl_acl:1,
@@ -572,14 +551,6 @@ struct mds_obd {
         struct dt_object                *mds_lov_objid_dt;
         struct dt_device                *mds_next_dev;
 };
-
-#define mds_transno_lock         mds_obt.obt_translock
-#define mds_rcvd_filp            mds_obt.obt_rcvd_filp
-#define mds_server_data          mds_obt.obt_lsd
-#define mds_client_bitmap        mds_obt.obt_client_bitmap
-#define mds_mount_count          mds_obt.obt_mount_count
-#define mds_last_transno         mds_obt.obt_last_transno
-#define mds_vfsmnt               mds_obt.obt_vfsmnt
 
 /* lov objid */
 extern __u32 mds_max_ost_index;
@@ -1102,7 +1073,7 @@ struct obd_device {
         cfs_timer_t                      obd_recovery_timer;
         time_t                           obd_recovery_start; /* seconds */
         time_t                           obd_recovery_end; /* seconds, for lprocfs_status */
-        time_t                           obd_recovery_max_time; /* seconds, bz13079 */
+        time_t                           obd_recovery_time_hard;
         int                              obd_recovery_timeout;
 
         /* new recovery stuff from CMD2 */
@@ -1239,6 +1210,7 @@ struct md_op_data {
         unsigned int            op_attr_flags;
 #endif
 #endif
+        __u64                   op_valid;
         loff_t                  op_attr_blocks;
 
         /* Size-on-MDS epoch and flags. */
@@ -1389,10 +1361,12 @@ struct obd_ops {
                          struct ptlrpc_request_set *rqset);
         int (*o_change_cbdata)(struct obd_export *, struct lov_stripe_md *,
                                ldlm_iterator_t it, void *data);
+        int (*o_find_cbdata)(struct obd_export *, struct lov_stripe_md *,
+                             ldlm_iterator_t it, void *data);
         int (*o_cancel)(struct obd_export *, struct lov_stripe_md *md,
                         __u32 mode, struct lustre_handle *);
         int (*o_cancel_unused)(struct obd_export *, struct lov_stripe_md *,
-                               int flags, void *opaque);
+                               ldlm_cancel_flags_t flags, void *opaque);
         int (*o_init_export)(struct obd_export *exp);
         int (*o_destroy_export)(struct obd_export *exp);
         int (*o_extent_calc)(struct obd_export *, struct lov_stripe_md *,
@@ -1488,6 +1462,8 @@ struct md_ops {
                            struct obd_capa **);
         int (*m_change_cbdata)(struct obd_export *, const struct lu_fid *,
                                ldlm_iterator_t, void *);
+        int (*m_find_cbdata)(struct obd_export *, const struct lu_fid *,
+                             ldlm_iterator_t, void *);
         int (*m_close)(struct obd_export *, struct md_op_data *,
                        struct md_open_data *, struct ptlrpc_request **);
         int (*m_create)(struct obd_export *, struct md_op_data *,
@@ -1499,12 +1475,10 @@ struct md_ops {
                          struct lookup_intent *, struct md_op_data *,
                          struct lustre_handle *, void *, int,
                          struct ptlrpc_request **, int);
-        int (*m_getattr)(struct obd_export *, const struct lu_fid *,
-                         struct obd_capa *, obd_valid, int,
+        int (*m_getattr)(struct obd_export *, struct md_op_data *,
                          struct ptlrpc_request **);
-        int (*m_getattr_name)(struct obd_export *, const struct lu_fid *,
-                              struct obd_capa *, const char *, int, obd_valid,
-                              int, __u32, struct ptlrpc_request **);
+        int (*m_getattr_name)(struct obd_export *, struct md_op_data *,
+                              struct ptlrpc_request **);
         int (*m_intent_lock)(struct obd_export *, struct md_op_data *,
                              void *, int, struct lookup_intent *, int,
                              struct ptlrpc_request **,
@@ -1560,8 +1534,8 @@ struct md_ops {
                                     struct lustre_handle *);
 
         int (*m_cancel_unused)(struct obd_export *, const struct lu_fid *,
-                               ldlm_policy_data_t *, ldlm_mode_t, int flags,
-                               void *opaque);
+                               ldlm_policy_data_t *, ldlm_mode_t,
+                               ldlm_cancel_flags_t flags, void *opaque);
         int (*m_renew_capa)(struct obd_export *, struct obd_capa *oc,
                             renew_capa_cb_t cb);
         int (*m_unpack_capa)(struct obd_export *, struct ptlrpc_request *,
@@ -1575,9 +1549,8 @@ struct md_ops {
                                       struct md_enqueue_info *,
                                       struct ldlm_enqueue_info *);
 
-        int (*m_revalidate_lock)(struct obd_export *,
-                                 struct lookup_intent *,
-                                 struct lu_fid *);
+        int (*m_revalidate_lock)(struct obd_export *, struct lookup_intent *,
+                                 struct lu_fid *, __u32 *);
 
         /*
          * NOTE: If adding ops, add another LPROCFS_MD_OP_INIT() line to

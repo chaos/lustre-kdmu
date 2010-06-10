@@ -24,7 +24,7 @@ noinst_SCRIPTS += recovery-mds-scale.sh run_dd.sh run_tar.sh run_iozone.sh
 noinst_SCRIPTS += run_dbench.sh run_IOR.sh recovery-double-scale.sh
 noinst_SCRIPTS += recovery-random-scale.sh parallel-scale.sh metadata-updates.sh
 noinst_SCRIPTS += lustre-rsync-test.sh ost-pools.sh rpc.sh yaml.sh liblustre.sh
-noinst_SCRIPTS += lnet-selftest.sh comp_params.sh
+noinst_SCRIPTS += lnet-selftest.sh mmp.sh comp_params.sh
 nobase_noinst_SCRIPTS = cfg/local.sh
 nobase_noinst_SCRIPTS += acl/make-tree acl/run cfg/ncli.sh
 nobase_noinst_SCRIPTS += racer/dir_create.sh racer/file_create.sh racer/file_list.sh
@@ -67,7 +67,6 @@ endif # TESTS
 mmap_sanity_SOURCES= mmap_sanity.c
 
 LIBLUSTREAPI := $(top_builddir)/lustre/utils/liblustreapi.a $(top_builddir)/libcfs/libcfs/libcfsutil.a
-ll_getstripe_info_LDADD=$(LIBLUSTREAPI)
 multiop_LDADD=$(LIBLUSTREAPI) -lrt
 copytool_LDADD=$(LIBLUSTREAPI)
 

@@ -521,11 +521,6 @@ extern int lprocfs_wr_evict_client(libcfs_file_t *file, const char *buffer,
 extern int lprocfs_wr_ping(libcfs_file_t *file, const char *buffer,
                            unsigned long count, void *data);
 
-extern int lprocfs_rd_quota_resend_count(char *page, char **start, off_t off,
-                                         int count, int *eof, void *data);
-extern int lprocfs_wr_quota_resend_count(libcfs_file_t *file, const char *buffer,
-                                         unsigned long count, void *data);
-
 /* Statfs helpers */
 extern int lprocfs_rd_blksize(char *page, char **start, off_t off,
                               int count, int *eof, void *data);
@@ -644,13 +639,15 @@ libcfs_file_ops_t name##_fops = {                                          \
 struct ptlrpc_request;
 extern int target_print_req(void *data, int count, struct ptlrpc_request *req);
 
-/* lprocfs_status.c: read recovery max time bz13079 */
-int lprocfs_obd_rd_recovery_maxtime(char *page, char **start, off_t off,
-                                    int count, int *eof, void *data);
-
-/* lprocfs_status.c: write recovery max time bz13079 */
-int lprocfs_obd_wr_recovery_maxtime(libcfs_file_t *file, const char *buffer,
-                                    unsigned long count, void *data);
+/* lproc_status.c */
+int lprocfs_obd_rd_recovery_time_soft(char *page, char **start, off_t off,
+                                      int count, int *eof, void *data);
+int lprocfs_obd_wr_recovery_time_soft(libcfs_file_t *file, const char *buffer,
+                                      unsigned long count, void *data);
+int lprocfs_obd_rd_recovery_time_hard(char *page, char **start, off_t off,
+                                      int count, int *eof, void *data);
+int lprocfs_obd_wr_recovery_time_hard(libcfs_file_t *file, const char *buffer,
+                                      unsigned long count, void *data);
 
 /* all quota proc functions */
 extern int lprocfs_quota_rd_bunit(char *page, char **start, off_t off, int count,

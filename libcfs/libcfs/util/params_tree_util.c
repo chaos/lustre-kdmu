@@ -42,7 +42,7 @@
 #include <libcfs/libcfsutil.h>
 #include <lnet/lnetctl.h>
 
-#define MAX_PARAMS_BUFLEN       8192
+#define PARAMS_BUFLEN_DEFAULT       8192
 
 /* Parameters Tree Userspace APIs */
 /* Introduction to how to list/get/set_param from params_tree without glob.
@@ -189,28 +189,14 @@ out:
         return preg_head;
 }
 
-/* receive params from kernel by pipe */
-static int
-params_pipe_recv(int fd, void *buf, int buflen, struct params_entry_list **pel)
+/* fill entry list */
+static int params_fill_list(void *buf, struct params_entry_list **pel)
 {
-        struct libcfs_param_pipe_hdr *lpph = buf;
-        struct libcfs_param_info *lpi;
+        struct libcfs_param_info *lpi = buf;
         struct params_entry_list *temp = NULL;
         char *ptr;
-        int rc;
+        int rc = 0;
 
-        rc = read(fd, lpph, buflen);
-        if (rc < 0)
-                return rc;
-        /* Handle generic messages */
-        if (lpph->lpph_magic != LPPH_MAGIC) {
-                fprintf(stderr, "Unknown magic type %d\n", lpph->lpph_magic);
-                return -EPROTO;
-        }
-        if (lpph->lpph_msgtype == LPPH_MSG_SHUTDOWN)
-                return 0;
-
-        lpi = (struct libcfs_param_info *)(lpph + 1);
         temp = malloc(sizeof(*temp) + lpi->lpi_name_len + 1);
         if (temp == NULL) {
                 fprintf(stderr, "error: %s: No memory for pel.\n",__FUNCTION__);
@@ -227,9 +213,10 @@ params_pipe_recv(int fd, void *buf, int buflen, struct params_entry_list **pel)
         return rc;
 }
 
-/* client sends req{path, pfd[1]} to kernel by ioctl,
- * then kernel sends data back by pipe */
-static int send_req_to_kernel(int fd, char *path)
+/* client sends req{path, buf, buflen} to kernel by ioctl,
+ * if buflen is not big enough, kernel will send a likely size back;
+ * otherwise, send data back directly */
+static int send_req_to_kernel(char *path, char *list_buf, int *buflen)
 {
         struct libcfs_ioctl_data data = { 0 };
         int ioc_data_buflen = 0;
@@ -240,18 +227,20 @@ static int send_req_to_kernel(int fd, char *path)
         /* pack the parameters to ioc_data */
         data.ioc_inllen1 = strlen(path) + 1;
         data.ioc_inlbuf1 = path;
-        data.ioc_u32[0] = fd;
-        /* if MAX_PARAMS_BUFLEN is not large enough,
+        data.ioc_plen1 = *buflen;
+        data.ioc_pbuf1 = list_buf;
+
+        /* if PARAMS_BUFLEN_DEFAULT is not large enough,
          * we should avoid buflen < packlen */
         ioc_data_buflen = libcfs_ioctl_packlen(&data);
-        if (ioc_data_buflen <= MAX_PARAMS_BUFLEN)
-                ioc_data_buflen = MAX_PARAMS_BUFLEN;
+        if (ioc_data_buflen <= PARAMS_BUFLEN_DEFAULT)
+                ioc_data_buflen = PARAMS_BUFLEN_DEFAULT;
         ioc_data_buf = malloc(ioc_data_buflen);
         if (ioc_data_buf == NULL) {
                 fprintf(stderr,
                         "error: %s: No memory for ioc_data.\n", __FUNCTION__);
-                rc = -ENOMEM;
-                return rc;
+                *buflen = 0;
+                return -ENOMEM;
         }
         memset(ioc_data_buf, 0, ioc_data_buflen);
         /* list params through libcfs_ioctl */
@@ -261,8 +250,7 @@ static int send_req_to_kernel(int fd, char *path)
                 fprintf(stderr,
                         "error: %s: Failed to pack libcfs_ioctl data (%d).\n",
                         __FUNCTION__, rc);
-                rc = -rc;
-                goto out;
+                GOTO(out, rc < 0 ? rc : -rc);
         }
         /* XXX: lreplicate can't recognize LNET_DEV_ID */
         register_ioc_dev(LNET_DEV_ID, LNET_DEV_PATH,
@@ -271,10 +259,13 @@ static int send_req_to_kernel(int fd, char *path)
         if (rc) {
                 fprintf(stderr, "error: %s: IOC_LIBCFS_LIST_PARAM failed.\n",
                         __FUNCTION__);
-                goto out;
+                *buflen = 0;
+                GOTO(out, rc);
         }
         rc = ((struct libcfs_ioctl_data *)buf)->ioc_u32[0];
         if (rc < 0) {
+                /* if not big enough, tell what kernel needs */
+                *buflen = ((struct libcfs_ioctl_data *)buf)->ioc_plen1;
                 goto out;
         }
 out:
@@ -287,37 +278,36 @@ out:
 static int params_readdir(char *parent_path, struct params_entry_list **pel)
 {
         struct params_entry_list *temp = NULL;
-        char *buffer = NULL;
-        int pfd[2];
-        int len = 0;
+        char *list_buf = NULL;
+        char *temp_buf = NULL;
+        int buflen = PARAMS_BUFLEN_DEFAULT;
+        int num;
+        int len;
+        int i;
         int rc = 0;
 
-        /* reads from pfd[0], write to pfd[1] */
-        rc = pipe(pfd);
-        if (rc < 0) {
-                fprintf(stderr, "error: %s: Failed to open pipe file (%d).\n",
-                        __FUNCTION__, rc);
-                return rc;
-        }
-        /* send pfd[1] to kernel */
-        rc = send_req_to_kernel(pfd[1], parent_path);
-        if (rc < 0)
-                return rc;
-        /* prepare read buffer */
-        len = sizeof(struct libcfs_param_pipe_hdr) +
-              sizeof(struct libcfs_param_info) + LPE_NAME_MAXLEN;
-        buffer = malloc(len);
-        if (buffer == NULL) {
-                fprintf(stderr, "error: %s: Failed to malloc pipe read buf.\n",
-                        __FUNCTION__);
-                return -ENOMEM;
-        }
-        /* pipe read */
-        while (1) {
-                rc = params_pipe_recv(pfd[0], buffer, len, &temp);
-                if (rc == 0)
-                        /* pipe write is over */
-                        break;
+        /* send {path, buf, buflen} to kernel */
+        do {
+                list_buf = malloc(buflen);
+                if (list_buf == NULL) {
+                        fprintf(stderr, "error: %s: No memory for list_buf.",
+                                __FUNCTION__);
+                        return -ENOMEM;
+                }
+                memset(list_buf, 0, buflen);
+                rc = send_req_to_kernel(parent_path, list_buf, &buflen);
+                if (rc < 0) {
+                        free(list_buf);
+                        if (buflen == 0)
+                                return rc;
+                }
+        } while (rc == -ENOMEM);
+        /* receive params from kernel */
+        len = sizeof(struct libcfs_param_info);
+        temp_buf = list_buf;
+        num = rc;
+        for (i = 0; i < num; i++) {
+                rc = params_fill_list(temp_buf, &temp);
                 if (rc < 0) {
                         fprintf(stderr,
                                 "error: Message receive: %s\n", strerror(-rc));
@@ -326,15 +316,14 @@ static int params_readdir(char *parent_path, struct params_entry_list **pel)
                 temp->pel_next = NULL;
                 (*pel)->pel_next = temp;
                 (*pel) = (*pel)->pel_next;
+                temp_buf += len;
         }
-        close(pfd[0]);
-        close(pfd[1]);
-        free(buffer);
+        if (list_buf)
+                free(list_buf);
 
         return rc;
 }
 
-//void params_free_entrylist(struct params_entry_list *entry_list);
 /* match the entry list with the regular expression list */
 static int params_match(char *parent_path, struct params_preg_list *pregl,
                         struct params_entry_list **pel)
@@ -453,7 +442,7 @@ int params_list(const char *pattern, struct params_entry_list **pel_ptr)
         return rc;
 }
 
-/* Get parameters from the params tree */
+/* get parameters value */
 int params_read(char *path, int path_len, char *read_buf,
                       int buf_len, long long *offset, int *eof)
 {
@@ -489,8 +478,8 @@ int params_read(char *path, int path_len, char *read_buf,
         data.ioc_pbuf1 = read_buf;
         /* avoid buflen < packlen */
         ioc_data_buflen = libcfs_ioctl_packlen(&data);
-        if (ioc_data_buflen <= MAX_PARAMS_BUFLEN)
-                ioc_data_buflen = MAX_PARAMS_BUFLEN;
+        if (ioc_data_buflen <= PARAMS_BUFLEN_DEFAULT)
+                ioc_data_buflen = PARAMS_BUFLEN_DEFAULT;
         ioc_data_buf = malloc(ioc_data_buflen);
         if (ioc_data_buf == NULL) {
                 fprintf(stderr,
@@ -529,6 +518,7 @@ out:
         return rc;
 }
 
+/* set parameters value */
 int params_write(char *path, int path_len, char *write_buf, int buf_len,
                        int offset)
 {
@@ -563,8 +553,8 @@ int params_write(char *path, int path_len, char *write_buf, int buf_len,
         data.ioc_inllen2 = buf_len + 1;
         /* avoid buflen < packlen */
         ioc_data_buflen = libcfs_ioctl_packlen(&data);
-        if (ioc_data_buflen <= MAX_PARAMS_BUFLEN)
-                ioc_data_buflen = MAX_PARAMS_BUFLEN;
+        if (ioc_data_buflen <= PARAMS_BUFLEN_DEFAULT)
+                ioc_data_buflen = PARAMS_BUFLEN_DEFAULT;
         ioc_data_buf = malloc(ioc_data_buflen);
         if (ioc_data_buf == NULL) {
                 fprintf(stderr,

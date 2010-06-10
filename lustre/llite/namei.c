@@ -197,6 +197,7 @@ int ll_md_blocking_ast(struct ldlm_lock *lock, struct ldlm_lock_desc *desc,
                 break;
         case LDLM_CB_CANCELING: {
                 struct inode *inode = ll_inode_from_lock(lock);
+                struct ll_inode_info *lli;
                 __u64 bits = lock->l_policy_data.l_inodebits.bits;
                 struct lu_fid *fid;
 
@@ -243,8 +244,9 @@ int ll_md_blocking_ast(struct ldlm_lock *lock, struct ldlm_lock_desc *desc,
                         ll_md_real_close(inode, flags);
                 }
 
+                lli = ll_i2info(inode);
                 if (bits & MDS_INODELOCK_UPDATE)
-                        ll_i2info(inode)->lli_flags &= ~LLIF_MDS_SIZE_LOCK;
+                        lli->lli_flags &= ~LLIF_MDS_SIZE_LOCK;
 
                 if (S_ISDIR(inode->i_mode) &&
                      (bits & MDS_INODELOCK_UPDATE)) {
@@ -252,6 +254,18 @@ int ll_md_blocking_ast(struct ldlm_lock *lock, struct ldlm_lock_desc *desc,
                                inode->i_ino);
                         truncate_inode_pages(inode->i_mapping, 0);
                         ll_drop_negative_dentry(inode);
+                }
+
+                if ((bits & MDS_INODELOCK_LOOKUP) &&
+                    !cfs_list_empty(&lli->lli_sa_dentry)) {
+                        struct ll_dentry_data *lld, *next;
+
+                        cfs_spin_lock(&lli->lli_sa_lock);
+                        cfs_list_for_each_entry_safe(lld, next,
+                                                     &lli->lli_sa_dentry,
+                                                     lld_sa_alias)
+                                cfs_list_del_init(&lld->lld_sa_alias);
+                        cfs_spin_unlock(&lli->lli_sa_lock);
                 }
 
                 if (inode->i_sb->s_root &&
@@ -411,13 +425,38 @@ static struct dentry *ll_find_alias(struct inode *inode, struct dentry *de)
                 iput(inode);
                 return last_discon;
         }
+        lock_dentry(de);
         de->d_flags |= DCACHE_LUSTRE_INVALID;
+        unlock_dentry(de);
         ll_d_add(de, inode);
 
         spin_unlock(&dcache_lock);
         cfs_spin_unlock(&ll_lookup_lock);
 
         return de;
+}
+
+void ll_lookup_it_alias(struct dentry **de, struct inode *inode, __u32 bits)
+{
+        struct dentry *save = *de;
+        ENTRY;
+
+        ll_dops_init(*de, 1);
+        *de = ll_find_alias(inode, *de);
+        if (*de != save) {
+                struct ll_dentry_data *lld = ll_d2d(*de);
+
+                /* just make sure the ll_dentry_data is ready */
+                if (unlikely(lld == NULL))
+                        ll_dops_init(*de, 1);
+        }
+        /* we have lookup look - unhide dentry */
+        if (bits & MDS_INODELOCK_LOOKUP) {
+                lock_dentry(*de);
+                (*de)->d_flags &= ~DCACHE_LUSTRE_INVALID;
+                unlock_dentry(*de);
+        }
+        EXIT;
 }
 
 int ll_lookup_it_finish(struct ptlrpc_request *request,
@@ -434,7 +473,6 @@ int ll_lookup_it_finish(struct ptlrpc_request *request,
         /* NB 1 request reference will be taken away by ll_intent_lock()
          * when I return */
         if (!it_disposition(it, DISP_LOOKUP_NEG)) {
-                struct dentry *save = *de;
                 __u32 bits;
 
                 rc = ll_prep_inode(&inode, request, (*de)->d_sb);
@@ -446,6 +484,13 @@ int ll_lookup_it_finish(struct ptlrpc_request *request,
                 md_set_lock_data(sbi->ll_md_exp,
                                  &it->d.lustre.it_lock_handle, inode, &bits);
 
+                if (icbd->bits != NULL)
+                        *icbd->bits = bits;
+                if (icbd->icbd_alias != NULL) {
+                        *icbd->icbd_alias = inode;
+                        RETURN(0);
+                }
+
                 /* We used to query real size from OSTs here, but actually
                    this is not needed. For stat() calls size would be updated
                    from subsequent do_revalidate()->ll_inode_revalidate_it() in
@@ -454,26 +499,7 @@ int ll_lookup_it_finish(struct ptlrpc_request *request,
                    Everybody else who needs correct file size would call
                    cl_glimpse_size or some equivalent themselves anyway.
                    Also see bug 7198. */
-
-                ll_dops_init(*de, 1);
-                *de = ll_find_alias(inode, *de);
-                if (*de != save) {
-                        struct ll_dentry_data *lld = ll_d2d(*de);
-
-                        /* just make sure the ll_dentry_data is ready */
-                        if (unlikely(lld == NULL)) {
-                                ll_set_dd(*de);
-                                lld = ll_d2d(*de);
-                                if (likely(lld != NULL))
-                                        lld->lld_sa_generation = 0;
-                        }
-                }
-                /* we have lookup look - unhide dentry */
-                if (bits & MDS_INODELOCK_LOOKUP) {
-                        lock_dentry(*de);
-                        (*de)->d_flags &= ~(DCACHE_LUSTRE_INVALID);
-                        unlock_dentry(*de);
-                }
+                ll_lookup_it_alias(de, inode, bits);
         } else {
                 ll_dops_init(*de, 1);
                 /* Check that parent has UPDATE lock. If there is none, we
@@ -548,6 +574,8 @@ static struct dentry *ll_lookup_it(struct inode *parent, struct dentry *dentry,
 
         icbd.icbd_childp = &dentry;
         icbd.icbd_parent = parent;
+        icbd.icbd_alias  = NULL;
+        icbd.bits        = NULL;
 
         if (it->it_op & IT_CREAT ||
             (it->it_op & IT_OPEN && it->it_create_mode & O_CREAT))
@@ -823,21 +851,15 @@ static void ll_update_times(struct ptlrpc_request *request,
                                                        &RMF_MDT_BODY);
 
         LASSERT(body);
-        /* mtime is always updated with ctime, but can be set in past.
-           As write and utime(2) may happen within 1 second, and utime's
-           mtime has a priority over write's one, so take mtime from mds
-           for the same ctimes. */
-        if (body->valid & OBD_MD_FLCTIME &&
-            body->ctime >= LTIME_S(inode->i_ctime)) {
-                LTIME_S(inode->i_ctime) = body->ctime;
-
-                if (body->valid & OBD_MD_FLMTIME) {
-                        CDEBUG(D_INODE, "setting ino %lu mtime from %lu "
-                               "to "LPU64"\n", inode->i_ino,
-                               LTIME_S(inode->i_mtime), body->mtime);
-                        LTIME_S(inode->i_mtime) = body->mtime;
-                }
+        if (body->valid & OBD_MD_FLMTIME &&
+            body->mtime > LTIME_S(inode->i_mtime)) {
+                CDEBUG(D_INODE, "setting ino %lu mtime from %lu to "LPU64"\n",
+                       inode->i_ino, LTIME_S(inode->i_mtime), body->mtime);
+                LTIME_S(inode->i_mtime) = body->mtime;
         }
+        if (body->valid & OBD_MD_FLCTIME &&
+            body->ctime > LTIME_S(inode->i_ctime))
+                LTIME_S(inode->i_ctime) = body->ctime;
 }
 
 static int ll_new_node(struct inode *dir, struct qstr *name,
@@ -1146,6 +1168,10 @@ int ll_objects_destroy(struct ptlrpc_request *request, struct inode *dir)
         return rc;
 }
 
+/* ll_unlink_generic() doesn't update the inode with the new link count.
+ * Instead, ll_ddelete() and ll_d_iput() will update it based upon if there
+ * is any lock existing. They will recycle dentries and inodes based upon locks
+ * too. b=20433 */
 static int ll_unlink_generic(struct inode *dir, struct dentry *dparent,
                              struct dentry *dchild, struct qstr *name)
 {

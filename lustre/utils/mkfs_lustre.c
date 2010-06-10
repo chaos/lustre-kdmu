@@ -62,6 +62,7 @@
 #include <string.h>
 #include <getopt.h>
 #include <limits.h>
+#include <ctype.h>
 
 #ifdef __linux__
 /* libcfs.h is not really needed here, but on SLES10/PPC, fs.h includes idr.h which
@@ -548,7 +549,13 @@ static void enable_default_backfs_features(struct mkfs_opts *mop)
         int maj_high, maj_low, min;
         int ret;
 
-        strscat(mop->mo_mkfsopts, " -O dir_index,extents", sizeof(mop->mo_mkfsopts));
+        if (IS_MDT(&mop->mo_ldd))
+                strscat(mop->mo_mkfsopts, " -O dir_index,extents,dirdata",
+                                sizeof(mop->mo_mkfsopts));
+        else
+                strscat(mop->mo_mkfsopts, " -O dir_index,extents",
+                                sizeof(mop->mo_mkfsopts));
+
 
         /* Upstream e2fsprogs called our uninit_groups feature uninit_bg,
          * check for both of them when testing e2fsprogs features. */
@@ -844,7 +851,7 @@ int make_lustre_backfs(struct mkfs_opts *mop)
         vprint("formatting backing filesystem %s on %s\n",
                MT_STR(&mop->mo_ldd), dev);
         vprint("\ttarget name  %s\n", mop->mo_ldd.ldd_svname);
-        vprint("\t4k blocks     %llu\n", block_count);
+        vprint("\t4k blocks     "LPU64"\n", block_count);
         vprint("\toptions       %s\n", mop->mo_mkfsopts);
 
         /* mkfs_cmd's trailing space is important! */
@@ -852,7 +859,7 @@ int make_lustre_backfs(struct mkfs_opts *mop)
         strscat(mkfs_cmd, " ", sizeof(mkfs_cmd));
         strscat(mkfs_cmd, dev, sizeof(mkfs_cmd));
         if (block_count != 0) {
-                sprintf(buf, " %llu", block_count);
+                sprintf(buf, " "LPU64, block_count);
                 strscat(mkfs_cmd, buf, sizeof(mkfs_cmd));
         }
 
@@ -1543,8 +1550,16 @@ int parse_opts(int argc, char *const argv[], struct mkfs_opts *mop,
                 }
         }//while
 
-        /* optind points to device or pool name */
-        strscpy(mop->mo_device, argv[optind], sizeof(mop->mo_device));
+        if (optind == argc) {
+                /* The user didn't specify device name */
+                fatal();
+                fprintf(stderr, "Not enough arguments - device name or "
+                        "pool/dataset name not specified.\n");
+                return EINVAL;
+        } else {
+                /* optind points to device or pool/filesystem name */
+                strscpy(mop->mo_device, argv[optind], sizeof(mop->mo_device));
+        }
 
         if (mop->mo_ldd.ldd_mount_type == LDD_MT_ZFS) {
                 /* Common mistake: user gave device name instead of pool name */
@@ -1557,7 +1572,7 @@ int parse_opts(int argc, char *const argv[], struct mkfs_opts *mop,
                 }
                 if (strchr(mop->mo_device, '/') == NULL) {
                         fatal();
-                        fprintf(stderr, "Incomplete pool/dataset name: '%s'\n"
+                        fprintf(stderr, "Incomplete ZFS dataset name: '%s'\n"
                                 "Please run '%s --help' for syntax help.\n",
                                 mop->mo_device, progname);
                         return EINVAL;
@@ -1766,7 +1781,8 @@ int main(int argc, char *const argv[])
                 if (ret == 0)
                         mop.mo_flags |= MO_IS_LOOP;
 
-                sprintf(always_mountopts, "errors=remount-ro");
+                strscat(default_mountopts, ",errors=remount-ro",
+                        sizeof(default_mountopts));
                 if (IS_MDT(ldd) || IS_MGS(ldd))
                         strscat(always_mountopts, ",iopen_nopriv,user_xattr",
                                 sizeof(always_mountopts));
@@ -1786,7 +1802,7 @@ int main(int argc, char *const argv[])
         }
         case LDD_MT_SMFS: {
                 mop.mo_flags |= MO_IS_LOOP;
-                sprintf(always_mountopts, "type=ext3,dev=%s",
+                sprintf(always_mountopts, ",type=ext3,dev=%s",
                         mop.mo_device);
                 break;
         }
@@ -1803,10 +1819,13 @@ int main(int argc, char *const argv[])
         }
 
         if (mountopts) {
-                /* If user specifies mount opts, don't use defaults,
-                   but always use always_mountopts */
-                sprintf(ldd->ldd_mount_opts, "%s,%s",
-                        always_mountopts, mountopts);
+                trim_mountfsoptions(mountopts);
+                (void)check_mountfsoptions(mountopts, default_mountopts, 1);
+                if (check_mountfsoptions(mountopts, always_mountopts, 0)) {
+                        ret = EINVAL;
+                        goto out;
+                }
+                sprintf(ldd->ldd_mount_opts, "%s", mountopts);
         } else {
 #ifdef TUNEFS
                 if (ldd->ldd_mount_opts[0] == 0)
@@ -1815,6 +1834,7 @@ int main(int argc, char *const argv[])
                 {
                         sprintf(ldd->ldd_mount_opts, "%s%s",
                                 always_mountopts, default_mountopts);
+                        trim_mountfsoptions(ldd->ldd_mount_opts);
                 }
         }
 

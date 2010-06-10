@@ -130,11 +130,9 @@ int lprocfs_osd_rd_blksize(char *page, char **start, off_t off, int count,
 
         LIBCFS_PARAM_GET_DATA(osd, data, NULL);
         rc = osd_statfs(NULL, &osd->od_dt_dev, &osd->od_kstatfs);
-        if (!rc) {
-                *eof = 1;
+        if (!rc)
                 rc = libcfs_param_snprintf(page, count, data, LP_D32,
                                            "%ld\n", osd->od_kstatfs.f_bsize);
-        }
         return rc;
 }
 
@@ -153,7 +151,6 @@ int lprocfs_osd_rd_kbytestotal(char *page, char **start, off_t off, int count,
                 while (blk_size >>= 1)
                         result <<= 1;
 
-                *eof = 1;
                 rc = libcfs_param_snprintf(page, count, data, LP_U64,
                                            LPU64"\n", result);
         }
@@ -175,7 +172,6 @@ int lprocfs_osd_rd_kbytesfree(char *page, char **start, off_t off, int count,
                 while (blk_size >>= 1)
                         result <<= 1;
 
-                *eof = 1;
                 rc = libcfs_param_snprintf(page, count, data, LP_U64,
                                            LPU64"\n", result);
         }
@@ -197,7 +193,6 @@ int lprocfs_osd_rd_kbytesavail(char *page, char **start, off_t off, int count,
                 while (blk_size >>= 1)
                         result <<= 1;
 
-                *eof = 1;
                 rc = libcfs_param_snprintf(page, count, data, LP_U64,
                                            LPU64"\n", result);
         }
@@ -212,11 +207,9 @@ int lprocfs_osd_rd_filestotal(char *page, char **start, off_t off, int count,
 
         LIBCFS_PARAM_GET_DATA(osd, data, NULL);
         rc = osd_statfs(NULL, &osd->od_dt_dev, &osd->od_kstatfs);
-        if (!rc) {
-                *eof = 1;
+        if (!rc)
                 rc = libcfs_param_snprintf(page, count, data, LP_U64,
                                            LPU64"\n", osd->od_kstatfs.f_files);
-        }
 
         return rc;
 }
@@ -229,11 +222,9 @@ int lprocfs_osd_rd_filesfree(char *page, char **start, off_t off, int count,
 
         LIBCFS_PARAM_GET_DATA(osd, data, NULL);
         rc = osd_statfs(NULL, &osd->od_dt_dev, &osd->od_kstatfs);
-        if (!rc) {
-                *eof = 1;
+        if (!rc)
                 rc = libcfs_param_snprintf(page, count, data, LP_U64,
                                            LPU64"\n", osd->od_kstatfs.f_ffree);
-        }
         return rc;
 }
 
@@ -244,7 +235,6 @@ int lprocfs_osd_rd_fstype(char *page, char **start, off_t off, int count,
 
         LIBCFS_PARAM_GET_DATA(osd, data, NULL);
         LASSERT(osd != NULL);
-        *eof = 1;
 
         return libcfs_param_snprintf(page, count, data, LP_STR, "%s", "zfs\n");
 }
@@ -256,11 +246,40 @@ static int lprocfs_osd_rd_mntdev(char *page, char **start, off_t off, int count,
 
         LIBCFS_PARAM_GET_DATA(osd, data, NULL);
         LASSERT(osd != NULL);
-        *eof = 1;
 
         return libcfs_param_snprintf(page, count, data, LP_STR,
                                      "%s\n", osd->od_objset.name);
 }
+
+int lprocfs_osd_rd_reserved(char *page, char **start, off_t off, int count,
+                            int *eof, void *data)
+{
+        struct osd_device *osd;
+        int rc;
+
+        LIBCFS_PARAM_GET_DATA(osd, data, NULL);
+
+        return libcfs_param_snprintf(page, count, data, LP_U32,
+			             "%u\n", osd->od_reserved_fraction);
+}
+
+int lprocfs_osd_wr_reserved(libcfs_file_t *file, const char *buffer,
+                            unsigned long count, void *data)
+{
+        struct osd_device *osd;
+        int                val, rc, flag = 0;
+
+        LIBCFS_PARAM_GET_DATA(osd, data, &flag);
+        rc = lprocfs_write_helper(buffer, count, &val, flag);
+        if (rc)
+                return rc;
+        if (val < 0)
+                return -EINVAL;
+
+        osd->od_reserved_fraction = val;
+        return count;
+}
+
 
 struct lprocfs_vars lprocfs_osd_obd_vars[] = {
         { "blocksize",       lprocfs_osd_rd_blksize,     0, 0 },
@@ -271,6 +290,8 @@ struct lprocfs_vars lprocfs_osd_obd_vars[] = {
         { "filesfree",       lprocfs_osd_rd_filesfree,   0, 0 },
         { "fstype",          lprocfs_osd_rd_fstype,      0, 0 },
         { "mntdev",          lprocfs_osd_rd_mntdev,      0, 0 },
+        { "reserved_space",  lprocfs_osd_rd_reserved,
+                             lprocfs_osd_wr_reserved,       0 },
         { 0 }
 };
 

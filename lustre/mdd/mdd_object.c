@@ -46,11 +46,6 @@
 #define DEBUG_SUBSYSTEM S_MDS
 
 #include <linux/module.h>
-#ifdef HAVE_EXT4_LDISKFS
-#include <ldiskfs/ldiskfs_jbd2.h>
-#else
-#include <linux/jbd.h>
-#endif
 #include <obd.h>
 #include <obd_class.h>
 #include <obd_support.h>
@@ -59,11 +54,6 @@
 #include <lustre_fid.h>
 
 #include <lustre_param.h>
-#ifdef HAVE_EXT4_LDISKFS
-#include <ldiskfs/ldiskfs.h>
-#else
-#include <linux/ldiskfs_fs.h>
-#endif
 #include <lustre_mds.h>
 #include <lustre/lustre_idl.h>
 
@@ -131,6 +121,7 @@ void mdd_buf_put(struct lu_buf *buf)
         else
                 OBD_FREE(buf->lb_buf, buf->lb_len);
         buf->lb_buf = NULL;
+        buf->lb_len = 0;
 }
 
 const struct lu_buf *mdd_buf_get_const(const struct lu_env *env,
@@ -314,7 +305,7 @@ static int mdd_object_print(const struct lu_env *env, void *cookie,
 {
         struct mdd_object *mdd = lu2mdd_obj((struct lu_object *)o);
         return (*p)(env, cookie, LUSTRE_MDD_NAME"-object@%p(open_count=%d, "
-                    "valid=%x, cltime=%llu, flags=%lx)",
+                    "valid=%x, cltime="LPU64", flags=%lx)",
                     mdd, mdd->mod_count, mdd->mod_valid,
                     mdd->mod_cltime, mdd->mod_flags);
 }
@@ -503,7 +494,7 @@ static int mdd_path_current(const struct lu_env *env,
                        PFID(&pli->pli_fid));
                 GOTO(out, rc = -EAGAIN);
         }
-
+        ptr++; /* skip leading / */
         memmove(pli->pli_path, ptr, pli->pli_path + pli->pli_pathlen - ptr);
 
         EXIT;
@@ -534,8 +525,7 @@ static int mdd_path(const struct lu_env *env, struct md_object *obj,
                 RETURN(-EOVERFLOW);
 
         if (mdd_is_root(mdo2mdd(obj), mdd_object_fid(md2mdd_obj(obj)))) {
-                path[0] = '/';
-                path[1] = '\0';
+                path[0] = '\0';
                 RETURN(0);
         }
 
@@ -616,8 +606,10 @@ int mdd_get_default_md(struct mdd_object *mdd_obj, struct lov_mds_md *lmm,
         ldesc = &mdd->mdd_obd_dev->u.mds.mds_lov_desc;
         LASSERT(ldesc != NULL);
 
-        if (!lmm)
+        if (!lmm) {
+                *size = 0;
                 RETURN(0);
+        }
 
         lmm->lmm_magic = LOV_MAGIC_V1;
         lmm->lmm_object_gr = LOV_OBJECT_GROUP_DEFAULT;
@@ -641,12 +633,9 @@ static int __mdd_lmm_get(const struct lu_env *env,
 
         rc = mdd_get_md(env, mdd_obj, ma->ma_lmm, &ma->ma_lmm_size,
                         XATTR_NAME_LOV);
-
-        if (rc == 0 && (ma->ma_need & MA_LOV_DEF)) {
+        if (rc == 0 && (ma->ma_need & MA_LOV_DEF))
                 rc = mdd_get_default_md(mdd_obj, ma->ma_lmm,
-                                &ma->ma_lmm_size);
-        }
-
+                                        &ma->ma_lmm_size);
         if (rc > 0) {
                 ma->ma_valid |= MA_LOV;
                 rc = 0;
@@ -1249,7 +1238,7 @@ static int mdd_changelog_data_store(const struct lu_env     *env,
         LASSERT(handle != NULL);
         LASSERT(mdd_obj != NULL);
 
-        if ((type == CL_SETATTR) &&
+        if ((type == CL_TIME) &&
             cfs_time_before_64(mdd->mdd_cl.mc_starttime, mdd_obj->mod_cltime)) {
                 /* Don't need multiple updates in this log */
                 /* Don't check under lock - no big deal if we get an extra
@@ -1307,6 +1296,11 @@ mdd_declare_and_start_attr_set(const struct lu_env *env, struct md_object *obj,
         }
 
         rc = mdd_declare_setattr_log(env, mdd_obj, ma, lmm, lmm_size, handle);
+        if (rc)
+                GOTO(out, rc);
+
+        /* XXX: use appropriate len? */
+        rc = mdo_declare_xattr_set(env, mdd_obj, 4096, XATTR_NAME_ACL_ACCESS, 0, handle);
         if (rc)
                 GOTO(out, rc);
 
@@ -1525,9 +1519,12 @@ static int mdd_attr_set(const struct lu_env *env, struct md_object *obj,
 
         }
 cleanup:
-        if ((rc == 0) && (ma->ma_attr.la_valid & (LA_MTIME | LA_CTIME)))
-                rc = mdd_changelog_data_store(env, mdd, CL_SETATTR, mdd_obj,
-                                              handle);
+        if (rc == 0)
+                rc = mdd_changelog_data_store(env, mdd,
+                                              (ma->ma_attr.la_valid &
+                                               ~(LA_MTIME|LA_CTIME|LA_ATIME)) ?
+                                              CL_SETATTR : CL_TIME,
+                                              mdd_obj, handle);
         mdd_trans_stop(env, mdd, rc, handle);
         if (rc == 0 && (lmm != NULL && lmm_size > 0 )) {
                 /*set obd attr, if needed*/
@@ -2452,7 +2449,7 @@ static void mdd_version_set(const struct lu_env *env, struct md_object *obj,
         struct mdd_object *mdd_obj = md2mdd_obj(obj);
 
         LASSERT(mdd_object_exists(mdd_obj));
-        return do_version_set(env, mdd_object_child(mdd_obj), version);
+        do_version_set(env, mdd_object_child(mdd_obj), version);
 }
 
 const struct md_object_operations mdd_obj_ops = {

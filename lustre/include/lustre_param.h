@@ -43,6 +43,11 @@
 #ifndef _LUSTRE_PARAM_H
 #define _LUSTRE_PARAM_H
 
+/** \defgroup param param
+ *
+ * @{
+ */
+
 /* obd_config.c */
 int class_find_param(char *buf, char *key, char **valp);
 int class_get_next_param(char **params, char *copy);
@@ -64,7 +69,9 @@ int do_lcfg(char *cfgname, lnet_nid_t nid, int cmd,
                     ... testfs.llite.max_read_ahead_mb=16
 */
 
-/* System global or special params not handled in obd's proc */
+/* System global or special params not handled in obd's proc
+ * See mgs_write_log_sys()
+ */
 #define PARAM_TIMEOUT              "timeout="          /* global */
 #define PARAM_LDLM_TIMEOUT         "ldlm_timeout="     /* global */
 #define PARAM_AT_MIN               "at_min="           /* global */
@@ -72,10 +79,10 @@ int do_lcfg(char *cfgname, lnet_nid_t nid, int cmd,
 #define PARAM_AT_EXTRA             "at_extra="         /* global */
 #define PARAM_AT_EARLY_MARGIN      "at_early_margin="  /* global */
 #define PARAM_AT_HISTORY           "at_history="       /* global */
-#define PARAM_MGSNODE              "mgsnode="          /* during mount */
-#define PARAM_FAILNODE             "failover.node="    /* llog generation */
-#define PARAM_FAILMODE             "failover.mode="    /* llog generation */
-#define PARAM_ACTIVE               "active="           /* llog generation */
+#define PARAM_MGSNODE              "mgsnode="          /* only at mounttime */
+#define PARAM_FAILNODE             "failover.node="    /* add failover nid */
+#define PARAM_FAILMODE             "failover.mode="    /* initial mount only */
+#define PARAM_ACTIVE               "active="           /* activate/deactivate */
 
 /* Prefixes for parameters handled by obd's proc methods (XXX_process_config) */
 #define PARAM_OST                  "ost."
@@ -90,5 +97,7 @@ int do_lcfg(char *cfgname, lnet_nid_t nid, int cmd,
 #define PARAM_SRPC_FLVR            "srpc.flavor."
 #define PARAM_SRPC_UDESC           "srpc.udesc.cli2mdt"
 #define PARAM_SEC                  "security."
+
+/** @} param */
 
 #endif /* _LUSTRE_PARAM_H */

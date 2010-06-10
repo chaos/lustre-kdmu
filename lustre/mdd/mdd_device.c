@@ -46,11 +46,6 @@
 #define DEBUG_SUBSYSTEM S_MDS
 
 #include <linux/module.h>
-#ifdef HAVE_EXT4_LDISKFS
-#include <ldiskfs/ldiskfs_jbd2.h>
-#else
-#include <linux/jbd.h>
-#endif
 #include <obd.h>
 #include <obd_class.h>
 #include <lustre_ver.h>
@@ -59,11 +54,6 @@
 
 #include <lustre_disk.h>
 #include <lustre_fid.h>
-#ifdef HAVE_EXT4_LDISKFS
-#include <ldiskfs/ldiskfs.h>
-#else
-#include <linux/ldiskfs_fs.h>
-#endif
 #include <lustre_mds.h>
 #include <lustre/lustre_idl.h>
 #include <lustre_disk.h>      /* for changelogs */
@@ -415,7 +405,7 @@ int mdd_changelog_write_header(struct mdd_device *mdd, int markerflags)
         rc = mdd_changelog_llog_write(mdd, rec, NULL);
 
         /* assume on or off event; reset repeat-access time */
-        mdd->mdd_cl.mc_starttime = rec->cr.cr_time;
+        mdd->mdd_cl.mc_starttime = cfs_time_current_64();
 
         OBD_FREE(rec, reclen);
         RETURN(rc);
@@ -745,7 +735,7 @@ static int obf_attr_get(const struct lu_env *env, struct md_object *obj,
 
                 if (ma->ma_need & MA_LOV_DEF) {
                         rc = mdd_get_default_md(mdd_obj, ma->ma_lmm,
-                                        &ma->ma_lmm_size);
+                                                &ma->ma_lmm_size);
                         if (rc > 0) {
                                 ma->ma_valid |= MA_LOV;
                                 rc = 0;
@@ -1165,7 +1155,11 @@ static int mdd_init_capa_ctxt(const struct lu_env *env, struct md_device *m,
         int rc;
         ENTRY;
 
+        /* need barrier for mds_capa_keys access. */
+        cfs_down_write(&mds->mds_notify_lock);
         mds->mds_capa_keys = keys;
+        cfs_up_write(&mds->mds_notify_lock);
+
         rc = mdd_child_ops(mdd)->dt_init_capa_ctxt(env, mdd->mdd_child, mode,
                                                    timeout, alg, keys);
         RETURN(rc);
@@ -1410,7 +1404,7 @@ static int mdd_changelog_user_purge(struct mdd_device *mdd, int id,
         int rc;
         ENTRY;
 
-        CDEBUG(D_IOCTL, "Purge request: id=%d, endrec="LPD64"\n", id, endrec);
+        CDEBUG(D_IOCTL, "Purge request: id=%d, endrec=%lld\n", id, endrec);
 
         data.mcud_id = id;
         data.mcud_minid = 0;

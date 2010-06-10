@@ -114,9 +114,11 @@ int obd_alloc_fail(const void *ptr, const char *name, const char *type,
 #define OBD_TIMEOUT_DEFAULT             100
 #define LDLM_TIMEOUT_DEFAULT            20
 #define MDS_LDLM_TIMEOUT_DEFAULT        6
-/* Time to wait for all clients to reconnect during recovery */
+/* Time to wait for all clients to reconnect during recovery (hard limit) */
+#define OBD_RECOVERY_TIME_HARD          (obd_timeout * 9)
+/* Time to wait for all clients to reconnect during recovery (soft limit) */
 /* Should be very conservative; must catch the first reconnect after reboot */
-#define OBD_RECOVERY_FACTOR (3) /* times obd_timeout */
+#define OBD_RECOVERY_TIME_SOFT          (obd_timeout * 3)
 /* Change recovery-small 26b time if you change this */
 #define PING_INTERVAL max(obd_timeout / 4, 1U)
 /* Client may skip 1 ping; we must wait at least 2.5. But for multiple
@@ -222,8 +224,10 @@ int obd_alloc_fail(const void *ptr, const char *name, const char *type,
 #define OBD_FAIL_MDS_FAIL_LOV_LOG_ADD    0x140
 #define OBD_FAIL_MDS_LOV_PREP_CREATE     0x141
 #define OBD_FAIL_MDS_REINT_DELAY         0x142
-#define OBD_FAIL_MDS_OPEN_WAIT_CREATE    0x143
-#define OBD_FAIL_MDS_READLINK_EPROTO     0x144
+#define OBD_FAIL_MDS_READLINK_EPROTO     0x143
+#define OBD_FAIL_MDS_OPEN_WAIT_CREATE    0x144
+#define OBD_FAIL_MDS_PDO_LOCK            0x145
+#define OBD_FAIL_MDS_PDO_LOCK2           0x146
 
 /* CMD */
 #define OBD_FAIL_MDS_IS_SUBDIR_NET       0x180
@@ -359,6 +363,7 @@ int obd_alloc_fail(const void *ptr, const char *name, const char *type,
 #define OBD_FAIL_TGT_FAKE_EXP            0x708
 #define OBD_FAIL_TGT_REPLAY_DELAY        0x709
 #define OBD_FAIL_TGT_LAST_REPLAY         0x710
+#define OBD_FAIL_TGT_CLIENT_ADD          0x711
 
 #define OBD_FAIL_MDC_REVALIDATE_PAUSE    0x800
 #define OBD_FAIL_MDC_ENQUEUE_PAUSE       0x801
@@ -402,7 +407,8 @@ int obd_alloc_fail(const void *ptr, const char *name, const char *type,
 #define OBD_FAIL_LLOG_ORIGIN_HANDLE_WRITE_REC_NET   0x1307
 #define OBD_FAIL_LLOG_ORIGIN_HANDLE_CLOSE_NET       0x1308
 #define OBD_FAIL_LLOG_CATINFO_NET                   0x1309
-
+#define OBD_FAIL_MDS_SYNC_CAPA_SL                   0x1310
+#define OBD_FAIL_SEQ_ALLOC                          0x1311
 
 /* Failure injection control */
 #define OBD_FAIL_MASK_SYS    0x0000FF00

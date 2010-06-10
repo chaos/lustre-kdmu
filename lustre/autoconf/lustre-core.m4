@@ -421,6 +421,7 @@ AC_DEFUN([LC_POSIX_ACL_XATTR_H],
 [LB_CHECK_FILE([$LINUX/include/linux/posix_acl_xattr.h],[
         AC_MSG_CHECKING([if linux/posix_acl_xattr.h can be compiled])
         LB_LINUX_TRY_COMPILE([
+                #include <linux/fs.h>
                 #include <linux/posix_acl_xattr.h>
         ],[],[
                 AC_MSG_RESULT([yes])
@@ -431,19 +432,7 @@ AC_DEFUN([LC_POSIX_ACL_XATTR_H],
         ])
 $1
 ],[
-AC_MSG_RESULT([no])
-])
-])
-
-#
-# LC_EXPORT___IGET
-# starting from 2.6.19 linux kernel exports __iget()
-#
-AC_DEFUN([LC_EXPORT___IGET],
-[LB_CHECK_SYMBOL_EXPORT([__iget],
-[fs/inode.c],[
-        AC_DEFINE(HAVE_EXPORT___IGET, 1, [kernel exports __iget])
-],[
+        AC_MSG_RESULT([no])
 ])
 ])
 
@@ -731,7 +720,7 @@ LB_LINUX_TRY_COMPILE([
 AC_DEFUN([LC_UMOUNTBEGIN_HAS_VFSMOUNT],
 [AC_MSG_CHECKING([if umount_begin needs vfsmount parameter instead of super_block])
 tmp_flags="$EXTRA_KCFLAGS"
-#EXTRA_KCFLAGS="-Werror"
+EXTRA_KCFLAGS="-Werror"
 LB_LINUX_TRY_COMPILE([
 	#include <linux/fs.h>
 
@@ -796,7 +785,7 @@ LB_LINUX_TRY_COMPILE([
 AC_DEFUN([LC_VFS_READDIR_U64_INO],
 [AC_MSG_CHECKING([check vfs_readdir need 64bit inode number])
 tmp_flags="$EXTRA_KCFLAGS"
-#EXTRA_KCFLAGS="-Werror"
+EXTRA_KCFLAGS="-Werror"
 LB_LINUX_TRY_COMPILE([
 #include <linux/fs.h>
 	int fillonedir(void * __buf, const char * name, int namlen, loff_t offset,
@@ -1378,7 +1367,7 @@ AC_DEFUN([LC_FUNC_GRAB_CACHE_PAGE_NOWAIT_GFP],
 AC_DEFUN([LC_RW_TREE_LOCK],
 [AC_MSG_CHECKING([if kernel has tree_lock as rwlock])
 tmp_flags="$EXTRA_KCFLAGS"
-#EXTRA_KCFLAGS="-Werror"
+EXTRA_KCFLAGS="-Werror"
 LB_LINUX_TRY_COMPILE([
         #include <linux/fs.h>
 ],[
@@ -1397,7 +1386,7 @@ EXTRA_KCFLAGS="$tmp_flags"
 AC_DEFUN([LC_CONST_ACL_SIZE],
 [AC_MSG_CHECKING([calc acl size])
 tmp_flags="$CFLAGS"
-CFLAGS="$CFLAGS -I$LINUX/include -I$LINUX_OBJ/include -I$LINUX_OBJ/include2 $EXTRA_KCFLAGS"
+CFLAGS="$CFLAGS -I$LINUX/include -I$LINUX_OBJ/include -I$LINUX_OBJ/include2 -I$LINUX/arch/`uname -m|sed -e 's/ppc.*/powerpc/' -e 's/x86_64/x86/' -e 's/i.86/x86/'`/include $EXTRA_KCFLAGS"
 AC_TRY_RUN([
 #define __KERNEL__
 #include <linux/autoconf.h>
@@ -1815,6 +1804,39 @@ AC_DEFUN([LC_LINUX_FIEMAP_H],
 [])
 ])
 
+# LC_LOCK_MAP_ACQUIRE
+# after 2.6.27 lock_map_acquire replaces lock_acquire
+AC_DEFUN([LC_LOCK_MAP_ACQUIRE],
+[AC_MSG_CHECKING([if lock_map_acquire is defined])
+LB_LINUX_TRY_COMPILE([
+        #include <linux/lockdep.h>
+],[
+        lock_map_acquire(NULL);
+],[
+        AC_MSG_RESULT(yes)
+        AC_DEFINE(HAVE_LOCK_MAP_ACQUIRE, 1,
+                [lock_map_acquire is defined])
+],[
+        AC_MSG_RESULT(no)
+])
+])
+
+# 2.6.31 replaces blk_queue_hardsect_size by blk_queue_logical_block_size function
+AC_DEFUN([LC_BLK_QUEUE_LOG_BLK_SIZE],
+[AC_MSG_CHECKING([if blk_queue_logical_block_size is defined])
+LB_LINUX_TRY_COMPILE([
+        #include <linux/blkdev.h>
+],[
+        blk_queue_logical_block_size(NULL, 0);
+],[
+        AC_MSG_RESULT(yes)
+        AC_DEFINE(HAVE_BLK_QUEUE_LOG_BLK_SIZE, 1,
+                  [blk_queue_logical_block_size is defined])
+],[
+        AC_MSG_RESULT(no)
+])
+])
+
 #
 # LC_PROG_LINUX
 #
@@ -1955,6 +1977,7 @@ AC_DEFUN([LC_PROG_LINUX],
          LC_QUOTA_ON_5ARGS
          LC_QUOTA_OFF_3ARGS
          LC_VFS_DQ_OFF
+         LC_LOCK_MAP_ACQUIRE
 
          # 2.6.27.15-2 sles11
          LC_BI_HW_SEGMENTS
@@ -1962,6 +1985,9 @@ AC_DEFUN([LC_PROG_LINUX],
          LC_VFS_SYMLINK_5ARGS
          LC_SB_ANY_QUOTA_ACTIVE
          LC_SB_HAS_QUOTA_ACTIVE
+
+         # 2.6.31
+         LC_BLK_QUEUE_LOG_BLK_SIZE
 ])
 
 #
@@ -2487,14 +2513,12 @@ lustre/include/Makefile
 lustre/include/lustre_ver.h
 lustre/include/linux/Makefile
 lustre/include/lustre/Makefile
-lustre/kernel_patches/targets/2.6-vanilla.target
-lustre/kernel_patches/targets/2.6-rhel4.target
 lustre/kernel_patches/targets/2.6-rhel5.target
-lustre/kernel_patches/targets/2.6-fc5.target
-lustre/kernel_patches/targets/2.6-patchless.target
 lustre/kernel_patches/targets/2.6-sles10.target
 lustre/kernel_patches/targets/2.6-sles11.target
 lustre/kernel_patches/targets/2.6-oel5.target
+lustre/kernel_patches/targets/2.6-fc11.target
+lustre/kernel_patches/targets/2.6-fc12.target
 lustre/ldlm/Makefile
 lustre/fid/Makefile
 lustre/fid/autoMakefile
@@ -2552,11 +2576,6 @@ lustre/tests/Makefile
 lustre/tests/mpi/Makefile
 lustre/utils/Makefile
 lustre/utils/gss/Makefile
+lustre/obdclass/darwin/Makefile
 ])
-case $lb_target_os in
-        darwin)
-                AC_CONFIG_FILES([ lustre/obdclass/darwin/Makefile ])
-                ;;
-esac
-
 ])

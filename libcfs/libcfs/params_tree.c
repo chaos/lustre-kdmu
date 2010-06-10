@@ -63,7 +63,7 @@ static void free_param(struct libcfs_param_entry *lpe)
                 /* seq params use orig data can't be freed */
                 LIBCFS_FREE_PARAMDATA(lpe->lpe_data);
         if (lpe->lpe_hash_t != NULL)
-                cfs_hash_destroy(lpe->lpe_hash_t);
+                cfs_hash_putref(lpe->lpe_hash_t);
         if (lpe->lpe_name != NULL)
                 LIBCFS_FREE(lpe, sizeof(*lpe) + lpe->lpe_name_len + 1);
         else
@@ -184,7 +184,7 @@ void libcfs_param_root_fini(void)
                  "params_root has %d refs\n",
                  cfs_atomic_read(&libcfs_param_root.lpe_refcount));
         if (libcfs_param_root.lpe_hash_t != NULL)
-                cfs_hash_destroy(libcfs_param_root.lpe_hash_t);
+                cfs_hash_putref(libcfs_param_root.lpe_hash_t);
 }
 
 struct libcfs_param_cb_data *
@@ -549,7 +549,7 @@ static void remove_param(const char *name, struct libcfs_param_entry *parent)
 }
 
 /**
- * interface for external use
+ * interfaces for external use
  */
 void libcfs_param_remove(const char *name, struct libcfs_param_entry *lpe)
 {
@@ -559,126 +559,108 @@ void libcfs_param_remove(const char *name, struct libcfs_param_entry *lpe)
 }
 
 /**
- * interface for pipe write in kernel space
+ * List all the subdirs of an entry by ioctl.
  */
-static int libcfs_param_pipe_write(cfs_file_t *filp, void *payload, int msgtype)
-{
-        struct libcfs_param_pipe_hdr *lpph = payload;
-
-        lpph->lpph_msgtype = msgtype;
-
-        return cfs_user_write(filp, (char *)lpph, lpph->lpph_msglen, 0);
-}
-
 struct list_param_cb_data {
-        cfs_file_t *lpcd_fp;
-        loff_t *lpcd_pos;
-        struct libcfs_param_pipe_hdr *lpcd_lpph;
+        char *buf;
+        int pos;
+        int left;
 };
 
 static void list_param_cb(void *obj, void *data)
 {
         struct libcfs_param_entry *lpe = obj;
-        struct list_param_cb_data *lpcd = data;
-        struct libcfs_param_pipe_hdr *lpph = lpcd->lpcd_lpph;
+        struct list_param_cb_data *lpcb = data;
         struct libcfs_param_info *lpi;
-        int rc = 0;
+        int len = sizeof(struct libcfs_param_info);
 
         LASSERT(lpe != NULL);
 
+        if (lpcb->left < len) {
+                CERROR("Have no enough buffer for list_param.\n");
+                return;
+        }
+        lpi = (struct libcfs_param_info *)(lpcb->buf + lpcb->pos);
         /* copy name_len, name, mode */
-        lpi = (struct libcfs_param_info *)(lpph + 1);
         lpi->lpi_name_len = lpe->lpe_name_len;
         lpi->lpi_mode = lpe->lpe_mode;
         strncpy(lpi->lpi_name, lpe->lpe_name, lpe->lpe_name_len);
         lpi->lpi_name[lpi->lpi_name_len] = '\0';
+        lpcb->pos += len;
+        lpcb->left -= len;
 
-        rc = libcfs_param_pipe_write(lpcd->lpcd_fp, lpph, LPPH_MSG_LISTPARAM);
-        CDEBUG(D_INFO, "Send \"%s\" to fd=%p, len=%d, rc=%d\n",
-               lpe->lpe_name, lpcd->lpcd_fp, lpph->lpph_msglen, rc);
+        CDEBUG(D_INFO, "copy \"%s\" out, pos=%d\n", lpe->lpe_name, lpcb->pos);
 }
 
-struct list_thread_args {
-        struct libcfs_param_entry *lta_parent;
-        cfs_file_t *lta_fp;
-};
-
-int list_param_thread(void *data)
+static int list_param(struct libcfs_param_entry *parent,
+                      char *kern_buf, int kern_buflen)
 {
-        struct list_thread_args *lta = data;
-        struct libcfs_param_entry *parent = lta->lta_parent;
-        struct libcfs_param_pipe_hdr *lpph;
         struct list_param_cb_data lpcd;
-        loff_t pos = 0;
-        int len;
+        int rc = 0;
 
         if (parent == NULL)
                 return -EINVAL;
-        len = sizeof(*lpph) + sizeof(struct libcfs_param_info) + LPE_NAME_MAXLEN;
-        LIBCFS_ALLOC(lpph, len);
-        if (lpph == NULL) {
-                CERROR("No memory for lhl header.\n");
-                return -ENOMEM;
-        }
-        /* build pipe msg header */
-        lpph->lpph_magic = LPPH_MAGIC;
-        lpph->lpph_msglen = len;
-        lpcd.lpcd_fp = lta->lta_fp;
-        lpcd.lpcd_lpph = lpph;
-        lpcd.lpcd_pos = &pos;
 
+        lpcd.buf = kern_buf;
+        lpcd.pos = 0;
+        lpcd.left = kern_buflen;
+        /* we pass kern_buflen here, because we should avoid the real dir size
+         * is larger than we have. */
         cfs_down_write(&parent->lpe_rw_sem);
         cfs_hash_for_each(parent->lpe_hash_t, list_param_cb, &lpcd);
         cfs_up_write(&parent->lpe_rw_sem);
 
-        libcfs_param_put(parent);
-        libcfs_param_pipe_write(lta->lta_fp, lpph, LPPH_MSG_SHUTDOWN);
-        cfs_put_file(lta->lta_fp);
-        LIBCFS_FREE(lpph, len);
-        LIBCFS_FREE(lta, sizeof(*lta));
-
-        return 0;
+        return rc;
 }
 
-/**
- * List all the subdirs of an entry through pipe.
- */
-int libcfs_param_list(const char *parent_path, int fd)
+int libcfs_param_list(const char *parent_path, char *user_buf, int *buflen)
 {
         /* In kernel space, do like readdir
          * In user space, match these entries pathname with the pattern */
         struct libcfs_param_entry *parent;
-        struct list_thread_args *lta = NULL;
+        char *kern_buf = NULL;
+        int datalen = 0;
+        int num;
         int rc;
 
+        if (user_buf == NULL) {
+                CERROR("The buffer is null.\n");
+                GOTO(out, rc = -ENOMEM);
+        }
         if (parent_path == NULL) {
                 CERROR("The full path is null.\n");
-                return -EINVAL;
+                GOTO(out, rc = -EINVAL);
         }
 
         parent = lookup_param_by_path(parent_path, NULL);
         if (parent == NULL) {
                 CERROR("The parent entry %s doesn't exist.\n",
                        parent_path);
-                return -EEXIST;
+                GOTO(out, rc = -EEXIST);
         }
-
+        /* estimate if buflen is big enough */
+        num = cfs_atomic_read(&(parent->lpe_hash_t->hs_count));
+        if (num == 0)
+                GOTO(parent, rc = 0);
+        datalen = num * sizeof(struct libcfs_param_info);
+        if (datalen > *buflen)
+                GOTO(parent, rc = -ENOMEM);
         /* list the entries */
-        LIBCFS_ALLOC(lta, sizeof(*lta));
-        lta->lta_parent = parent;
-        lta->lta_fp = cfs_get_fd(fd);
-
-        /* Use kernel thread to list params */
-        rc = cfs_kernel_thread(list_param_thread, lta, CLONE_VM | CLONE_FILES);
-        if (rc >= 0) {
-                CDEBUG(D_INFO, "start list_param_thread: %d\n", rc);
-        } else {
-                CERROR("Failed to start list_param_thread: %d\n", rc);
-                LIBCFS_FREE(lta, sizeof(*lta));
-                libcfs_param_put(parent);
+        LIBCFS_ALLOC(kern_buf, datalen);
+        if (kern_buf == NULL) {
+                CERROR("kernel can't alloc %d bytes.\n", datalen);
+                *buflen = 0;
+                GOTO(parent, rc = -ENOMEM);
         }
-
-        return rc;
+        rc = list_param(parent, kern_buf, datalen);
+        if (cfs_copy_to_user(user_buf, kern_buf, datalen))
+                rc = -EFAULT;
+        LIBCFS_FREE(kern_buf, datalen);
+parent:
+        libcfs_param_put(parent);
+out:
+        *buflen = datalen;
+        return (rc < 0 ? rc : num);
 }
 
 /**
@@ -1031,6 +1013,9 @@ static int libcfs_param_normal_read(char *buf, loff_t *ppos,
         if (page == NULL)
                 return -ENOMEM;
         while((left_bytes > 0) && !(*eof)) {
+                /* suppose *eof = 1 by default so that we don't need to
+                 * set it in each read_cb function. */
+                *eof = 1;
                 /* read the param value */
                 if (entry->lpe_cb_read != NULL)
                         bytes = entry->lpe_cb_read(page, &start, pos, count,
@@ -1174,7 +1159,6 @@ int libcfs_param_intvec_read(char *page, char **start, off_t off, int count,
 {
         unsigned long *temp = ((lparcb_t *)data)->cb_data;
 
-        *eof = 1;
         return libcfs_param_snprintf(page, count, data, LP_D32, NULL, *temp);
 }
 
@@ -1188,7 +1172,6 @@ int libcfs_param_string_write(libcfs_file_t *filp, const char *buffer,
 int libcfs_param_string_read(char *page, char **start, off_t off, int count,
                              int *eof, void *data)
 {
-        *eof = 1;
         return libcfs_param_snprintf(page, count, data, LP_STR, "%s",
                                    (char *)(((lparcb_t *)data)->cb_data));
 }

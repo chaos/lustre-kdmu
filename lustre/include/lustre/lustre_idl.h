@@ -216,18 +216,6 @@ static inline int range_within(const struct lu_seq_range *range,
         return s >= range->lsr_start && s < range->lsr_end;
 }
 
-/**
- * allocate \a w units of sequence from range \a from.
- */
-static inline void range_alloc(struct lu_seq_range *to,
-                               struct lu_seq_range *from,
-                               __u64 width)
-{
-        to->lsr_start = from->lsr_start;
-        to->lsr_end = from->lsr_start + width;
-        from->lsr_start += width;
-}
-
 static inline int range_is_sane(const struct lu_seq_range *range)
 {
         return (range->lsr_end >= range->lsr_start);
@@ -670,6 +658,7 @@ static inline void lustre_handle_copy(struct lustre_handle *tgt,
 
 /* flags for lm_flags */
 #define MSGHDR_AT_SUPPORT               0x1
+#define MSGHDR_CKSUM_INCOMPAT18         0x2
 
 #define lustre_msg lustre_msg_v2
 /* we depend on this structure to be 8-byte aligned */
@@ -808,6 +797,7 @@ extern void lustre_swab_ptlrpc_body(struct ptlrpc_body *pb);
 #define OBD_CONNECT_LOV_V3        0x100000000ULL /*client supports LOV v3 EA */
 #define OBD_CONNECT_GRANT_SHRINK  0x200000000ULL /* support grant shrink */
 #define OBD_CONNECT_SKIP_ORPHAN   0x400000000ULL /* don't reuse orphan objids */
+#define OBD_CONNECT_FULL20        0x800000000ULL /* it is 2.0 client */
 /* also update obd_connect_names[] for lprocfs_rd_connect_flags()
  * and lustre/utils/wirecheck.c */
 
@@ -827,7 +817,8 @@ extern void lustre_swab_ptlrpc_body(struct ptlrpc_body *pb);
                                 OBD_CONNECT_MDS_CAPA | OBD_CONNECT_OSS_CAPA | \
                                 OBD_CONNECT_MDS_MDS | OBD_CONNECT_FID | \
                                 LRU_RESIZE_CONNECT_FLAG | OBD_CONNECT_VBR | \
-                                OBD_CONNECT_LOV_V3 | OBD_CONNECT_SOM)
+                                OBD_CONNECT_LOV_V3 | OBD_CONNECT_SOM | \
+                                OBD_CONNECT_FULL20)
 #define OST_CONNECT_SUPPORTED  (OBD_CONNECT_SRVLOCK | OBD_CONNECT_GRANT | \
                                 OBD_CONNECT_REQPORTAL | OBD_CONNECT_VERSION | \
                                 OBD_CONNECT_TRUNCLOCK | OBD_CONNECT_INDEX | \
@@ -838,9 +829,10 @@ extern void lustre_swab_ptlrpc_body(struct ptlrpc_body *pb);
                                 OBD_CONNECT_OSS_CAPA  | OBD_CONNECT_RMT_CLIENT | \
                                 OBD_CONNECT_RMT_CLIENT_FORCE | OBD_CONNECT_VBR | \
                                 OBD_CONNECT_MDS | OBD_CONNECT_SKIP_ORPHAN | \
-                                OBD_CONNECT_GRANT_SHRINK)
+                                OBD_CONNECT_GRANT_SHRINK | OBD_CONNECT_FULL20)
 #define ECHO_CONNECT_SUPPORTED (0)
-#define MGS_CONNECT_SUPPORTED  (OBD_CONNECT_VERSION | OBD_CONNECT_AT)
+#define MGS_CONNECT_SUPPORTED  (OBD_CONNECT_VERSION | OBD_CONNECT_AT | \
+                                OBD_CONNECT_FULL20)
 
 #define OBD_OCD_VERSION(major,minor,patch,fix) (((major)<<24) + ((minor)<<16) +\
                                                 ((patch)<<8) + (fix))
@@ -1050,6 +1042,7 @@ struct lov_mds_md_v3 {            /* LOV EA mds/wire data (little-endian) */
 #define OBD_MD_MDS         (0x0000000100000000ULL) /* where an inode lives on */
 #define OBD_MD_REINT       (0x0000000200000000ULL) /* reintegrate oa */
 #define OBD_MD_MEA         (0x0000000400000000ULL) /* CMD split EA  */
+#define OBD_MD_MDTIDX      (0x0000000800000000ULL) /* Get MDT index  */
 
 #define OBD_MD_FLXATTR     (0x0000001000000000ULL) /* xattr */
 #define OBD_MD_FLXATTRLS   (0x0000002000000000ULL) /* xattr list */
@@ -1257,46 +1250,42 @@ enum md_op_flags {
 #define MF_SOM_LOCAL_FLAGS (MF_SOM_CHANGE | MF_EPOCH_OPEN | MF_EPOCH_CLOSE)
 
 #define MDS_BFLAG_UNCOMMITTED_WRITES   0x1
-#define MDS_BFLAG_EXT_FLAGS     0x80000000 /* == EXT3_RESERVED_FL */
 
 /* these should be identical to their EXT3_*_FL counterparts, and are
  * redefined here only to avoid dragging in ext3_fs.h */
-#define MDS_SYNC_FL             0x00000008 /* Synchronous updates */
-#define MDS_IMMUTABLE_FL        0x00000010 /* Immutable file */
-#define MDS_APPEND_FL           0x00000020 /* writes to file may only append */
-#define MDS_NOATIME_FL          0x00000080 /* do not update atime */
-#define MDS_DIRSYNC_FL          0x00010000 /* dirsync behaviour (dir only) */
+#define LUSTRE_SYNC_FL         0x00000008 /* Synchronous updates */
+#define LUSTRE_IMMUTABLE_FL    0x00000010 /* Immutable file */
+#define LUSTRE_APPEND_FL       0x00000020 /* writes to file may only append */
+#define LUSTRE_NOATIME_FL      0x00000080 /* do not update atime */
+#define LUSTRE_DIRSYNC_FL      0x00010000 /* dirsync behaviour (dir only) */
 
 #ifdef __KERNEL__
-/* If MDS_BFLAG_IOC_FLAGS is set it means we requested EXT3_*_FL inode flags
- * and we need to decode these into local S_* flags in the inode.  Otherwise
- * we pass flags straight through (see bug 9486). */
+/* Convert wire LUSTRE_*_FL to corresponding client local VFS S_* values
+ * for the client inode i_flags.  The LUSTRE_*_FL are the Lustre wire
+ * protocol equivalents of LDISKFS_*_FL values stored on disk, while
+ * the S_* flags are kernel-internal values that change between kernel
+ * versions.  These flags are set/cleared via FSFILT_IOC_{GET,SET}_FLAGS.
+ * See b=16526 for a full history. */
 static inline int ll_ext_to_inode_flags(int flags)
 {
-        return (flags & MDS_BFLAG_EXT_FLAGS) ?
-               (((flags & MDS_SYNC_FL)      ? S_SYNC      : 0) |
-                ((flags & MDS_NOATIME_FL)   ? S_NOATIME   : 0) |
-                ((flags & MDS_APPEND_FL)    ? S_APPEND    : 0) |
+        return (((flags & LUSTRE_SYNC_FL)      ? S_SYNC      : 0) |
+                ((flags & LUSTRE_NOATIME_FL)   ? S_NOATIME   : 0) |
+                ((flags & LUSTRE_APPEND_FL)    ? S_APPEND    : 0) |
 #if defined(S_DIRSYNC)
-                ((flags & MDS_DIRSYNC_FL)   ? S_DIRSYNC   : 0) |
+                ((flags & LUSTRE_DIRSYNC_FL)   ? S_DIRSYNC   : 0) |
 #endif
-                ((flags & MDS_IMMUTABLE_FL) ? S_IMMUTABLE : 0)) :
-               (flags & ~MDS_BFLAG_EXT_FLAGS);
+                ((flags & LUSTRE_IMMUTABLE_FL) ? S_IMMUTABLE : 0));
 }
 
-/* If MDS_BFLAG_EXT_FLAGS is set it means we requested EXT3_*_FL inode flags
- * and we pass these straight through.  Otherwise we need to convert from
- * S_* flags to their EXT3_*_FL equivalents (see bug 9486). */
-static inline int ll_inode_to_ext_flags(int oflags, int iflags)
+static inline int ll_inode_to_ext_flags(int iflags)
 {
-        return (oflags & MDS_BFLAG_EXT_FLAGS) ? (oflags & ~MDS_BFLAG_EXT_FLAGS):
-               (((iflags & S_SYNC)      ? MDS_SYNC_FL      : 0) |
-                ((iflags & S_NOATIME)   ? MDS_NOATIME_FL   : 0) |
-                ((iflags & S_APPEND)    ? MDS_APPEND_FL    : 0) |
+        return (((iflags & S_SYNC)      ? LUSTRE_SYNC_FL      : 0) |
+                ((iflags & S_NOATIME)   ? LUSTRE_NOATIME_FL   : 0) |
+                ((iflags & S_APPEND)    ? LUSTRE_APPEND_FL    : 0) |
 #if defined(S_DIRSYNC)
-                ((iflags & S_DIRSYNC)   ? MDS_DIRSYNC_FL   : 0) |
+                ((iflags & S_DIRSYNC)   ? LUSTRE_DIRSYNC_FL   : 0) |
 #endif
-                ((iflags & S_IMMUTABLE) ? MDS_IMMUTABLE_FL : 0));
+                ((iflags & S_IMMUTABLE) ? LUSTRE_IMMUTABLE_FL : 0));
 }
 #endif
 
@@ -2232,12 +2221,6 @@ struct changelog_setinfo {
         __u32 cs_id;
 } __attribute__((packed));
 
-struct changelog_show {
-        __u64 cs_startrec;
-        __u32 cs_pid;
-        __u32 cs_flags;
-} __attribute__((packed));
-
 /** changelog record */
 struct llog_changelog_rec {
         struct llog_rec_hdr  cr_hdr;
@@ -2598,10 +2581,9 @@ struct link_ea_header {
  * Stored in this crazy struct for maximum packing and endian-neutrality
  */
 struct link_ea_entry {
-        struct lu_fid      lee_parent_fid;
         /** __u16 stored big-endian, unaligned */
-        char               lee_reclen[2];
-        __u16              lee_padding;
+        unsigned char      lee_reclen[2];
+        unsigned char      lee_parent_fid[sizeof(struct lu_fid)];
         char               lee_name[0];
 }__attribute__((packed));
 
@@ -2616,7 +2598,7 @@ struct getinfo_fid2path {
 
 void lustre_swab_fid2path (struct getinfo_fid2path *gf);
 
-extern void lustre_swab_lnlh(struct lnl_hdr *);
+extern void lustre_swab_kuch(struct kuc_hdr *);
 
 
 #endif

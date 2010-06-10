@@ -57,6 +57,8 @@
 
 #include <libcfs/libcfs.h>
 
+static void cfs_hash_destroy(cfs_hash_t *hs);
+
 static void
 cfs_hash_rlock(cfs_hash_t *hs)
 {
@@ -104,6 +106,12 @@ cfs_hash_create(char *name, unsigned int cur_bits,
 
         LASSERT(name != NULL);
         LASSERT(ops != NULL);
+        /* The following ops are required for all hash table types */
+        LASSERT(ops->hs_hash != NULL);
+        LASSERT(ops->hs_key != NULL);
+        LASSERT(ops->hs_compare != NULL);
+        LASSERT(ops->hs_get != NULL);
+        LASSERT(ops->hs_put != NULL);
 
         LASSERT(cur_bits > 0);
         LASSERT(max_bits >= cur_bits);
@@ -117,6 +125,7 @@ cfs_hash_create(char *name, unsigned int cur_bits,
         strncpy(hs->hs_name, name, sizeof(hs->hs_name));
         hs->hs_name[sizeof(hs->hs_name) - 1] = '\0';
         cfs_atomic_set(&hs->hs_rehash_count, 0);
+        cfs_atomic_set(&hs->hs_refcount, 1);
         cfs_atomic_set(&hs->hs_count, 0);
         cfs_rwlock_init(&hs->hs_rwlock);
         hs->hs_cur_bits = cur_bits;
@@ -159,7 +168,7 @@ CFS_EXPORT_SYMBOL(cfs_hash_create);
 /**
  * Cleanup libcfs hash @hs.
  */
-void
+static void
 cfs_hash_destroy(cfs_hash_t *hs)
 {
         cfs_hash_bucket_t    *hsb;
@@ -197,7 +206,21 @@ cfs_hash_destroy(cfs_hash_t *hs)
         CFS_FREE_PTR(hs);
         EXIT;
 }
-CFS_EXPORT_SYMBOL(cfs_hash_destroy);
+
+cfs_hash_t *cfs_hash_getref(cfs_hash_t *hs)
+{
+        if (cfs_atomic_inc_not_zero(&hs->hs_refcount))
+                return hs;
+        return NULL;
+}
+CFS_EXPORT_SYMBOL(cfs_hash_getref);
+
+void cfs_hash_putref(cfs_hash_t *hs)
+{
+        if (cfs_atomic_dec_and_test(&hs->hs_refcount))
+                cfs_hash_destroy(hs);
+}
+CFS_EXPORT_SYMBOL(cfs_hash_putref);
 
 static inline unsigned int
 cfs_hash_rehash_bits(cfs_hash_t *hs)
@@ -358,6 +381,37 @@ cfs_hash_del(cfs_hash_t *hs, void *key, cfs_hlist_node_t *hnode)
         RETURN(obj);
 }
 CFS_EXPORT_SYMBOL(cfs_hash_del);
+
+/**
+ * Delete item from the libcfs hash @hs when @func return true.
+ * The write lock being hold during loop for each bucket to avoid
+ * any object be reference.
+ */
+void
+cfs_hash_cond_del(cfs_hash_t *hs, cfs_hash_cond_opt_cb_t func, void *data)
+{
+        cfs_hlist_node_t       *hnode;
+        cfs_hlist_node_t       *pos;
+        cfs_hash_bucket_t      *hsb;
+        int                    i;
+        ENTRY;
+
+        cfs_hash_wlock(hs);
+        cfs_hash_for_each_bucket(hs, hsb, i) {
+                cfs_write_lock(&hsb->hsb_rwlock);
+                cfs_hlist_for_each_safe(hnode, pos, &(hsb->hsb_head)) {
+                        __cfs_hash_bucket_validate(hs, hsb, hnode);
+                        if (func(cfs_hash_get(hs, hnode), data))
+                                __cfs_hash_bucket_del(hs, hsb, hnode);
+                        (void)cfs_hash_put(hs, hnode);
+                }
+                cfs_write_unlock(&hsb->hsb_rwlock);
+        }
+        cfs_hash_wunlock(hs);
+
+        EXIT;
+}
+CFS_EXPORT_SYMBOL(cfs_hash_cond_del);
 
 /**
  * Delete item given @key in libcfs hash @hs.  The first @key found in
@@ -756,7 +810,7 @@ void cfs_hash_rehash_key(cfs_hash_t *hs, void *old_key, void *new_key,
                 cfs_write_lock(&new_hsb->hsb_rwlock);
                 cfs_write_lock(&old_hsb->hsb_rwlock);
         } else { /* do nothing */
-                cfs_read_unlock(&hs->hs_rwlock);
+                cfs_hash_runlock(hs);
                 EXIT;
                 return;
         }

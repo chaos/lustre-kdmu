@@ -37,6 +37,11 @@
 #ifndef _LUSTRE_QUOTA_H
 #define _LUSTRE_QUOTA_H
 
+/** \defgroup quota quota
+ *
+ * @{
+ */
+
 #if defined(__linux__)
 #include <linux/lustre_quota.h>
 #elif defined(__APPLE__)
@@ -262,15 +267,11 @@ struct lustre_quota_ctxt {
                                          * 0:Off, 1:On
                                          */
                       lqc_valid:1,      /** this qctxt is valid or not */
-                      lqc_setup:1,      /**
+                      lqc_setup:1;      /**
                                          * tell whether of not quota_type has
                                          * been processed, so that the master
                                          * knows when it can start processing
                                          * incoming acq/rel quota requests
-                                         */
-                      lqc_immutable:1;  /**
-                                         * cannot be turned on/off on-fly;
-                                         * temporary used by SOM.
                                          */
         /** }@ */
         /**
@@ -816,5 +817,7 @@ extern quota_interface_t lmv_quota_interface;
         "admin_quotafile_v2.usr",       /** user admin quotafile */\
         "admin_quotafile_v2.grp"        /** group admin quotafile */\
 }
+
+/** @} quota */
 
 #endif /* _LUSTRE_QUOTA_H */

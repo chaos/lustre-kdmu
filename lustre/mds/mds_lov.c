@@ -490,8 +490,7 @@ static int mds_lov_read_objids(struct obd_device *obd)
         if (size == 0)
                 GOTO(out2, rc = 0);
 
-        page = (size + (OBJID_PER_PAGE() * sizeof(obd_id) - sizeof(obd_id)) /
-                (OBJID_PER_PAGE() * sizeof(obd_id)));
+        page = (size + MDS_LOV_ALLOC_SIZE - 1) / MDS_LOV_ALLOC_SIZE;
         CDEBUG(D_INFO, "file size %lu pages %d\n", size, page);
         for (i = 0; i < page; i++) {
                 obd_id *data;
@@ -507,7 +506,7 @@ static int mds_lov_read_objids(struct obd_device *obd)
 
                 lb.lb_vmalloc = 0;
                 lb.lb_buf = data;
-                lb.lb_len = OBJID_PER_PAGE()*sizeof(obd_id);
+                lb.lb_len = MDS_LOV_ALLOC_SIZE;
                 if (off + lb.lb_len > size)
                         lb.lb_len = size - off;
                 rc = dt_record_read(&env, o, &lb, &off);
@@ -515,18 +514,17 @@ static int mds_lov_read_objids(struct obd_device *obd)
                         CERROR("Error reading objids %d\n", rc);
                         GOTO(out, rc);
                 }
+                if (off == off_old) /* hole is read */
+                        off += MDS_LOV_ALLOC_SIZE;
 
-                count += (off - off_old) / sizeof(obd_id);
+                count = (off - off_old) / sizeof(obd_id);
                 if (mds_lov_update_from_read(mds, data, count)) {
                         CERROR("Can't update mds data\n");
                         GOTO(out, rc = -EIO);
                 }
-
-                if (off == off_old)
-                        break; /* eof */
         }
-        mds->mds_lov_objid_lastpage = i;
-        mds->mds_lov_objid_lastidx = count % OBJID_PER_PAGE();
+        mds->mds_lov_objid_lastpage = page - 1;
+        mds->mds_lov_objid_lastidx = count - 1;
 
         CDEBUG(D_INFO, "Read %u - %u %u objid\n", mds->mds_lov_objid_count,
                mds->mds_lov_objid_lastpage, mds->mds_lov_objid_lastidx);
@@ -592,7 +590,7 @@ int mds_lov_write_objids(const struct lu_env *env,
 
         cfs_foreach_bit(mds->mds_lov_page_dirty, i) {
                 obd_id *data =  mds->mds_lov_page_array[i];
-                unsigned int size = OBJID_PER_PAGE()*sizeof(obd_id);
+                unsigned int size = MDS_LOV_ALLOC_SIZE;
                 loff_t off = i * size;
 
                 LASSERT(data != NULL);
@@ -748,7 +746,7 @@ static int mds_lov_update_desc(struct obd_device *obd, int idx,
                  LASSERT(obd->obd_upcall.onu_upcall != NULL);
                  rc = obd->obd_upcall.onu_upcall(obd, NULL, ev,
                                                  obd->obd_upcall.onu_owner,
-                                                 &mds->mds_mount_count);
+                                                 &mds->mds_obt.obt_mount_count);
         }
 out:
         OBD_FREE(ld, sizeof(*ld));
@@ -863,7 +861,7 @@ int mds_lov_connect(struct obd_device *obd, char * lov_name)
                                   OBD_CONNECT_BRW_SIZE  | OBD_CONNECT_CKSUM   |
                                   OBD_CONNECT_CHANGE_QS | OBD_CONNECT_AT      |
                                   OBD_CONNECT_MDS | OBD_CONNECT_SKIP_ORPHAN   |
-                                  OBD_CONNECT_SOM;
+                                  OBD_CONNECT_SOM | OBD_CONNECT_FULL20;
 #ifdef HAVE_LRU_RESIZE_SUPPORT
         data->ocd_connect_flags |= OBD_CONNECT_LRU_RESIZE;
 #endif
@@ -938,6 +936,7 @@ static int mds_propagate_capa_keys(struct mds_obd *mds, struct obd_uuid *uuid)
         if (!mds->mds_capa_keys)
                 RETURN(0);
 
+        OBD_FAIL_TIMEOUT(OBD_FAIL_MDS_SYNC_CAPA_SL, 5);
         for (i = 0; i < 2; i++) {
                 key = &mds->mds_capa_keys[i];
                 DEBUG_CAPA_KEY(D_SEC, key, "propagate");

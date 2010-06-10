@@ -20,7 +20,7 @@ GRANT_CHECK_LIST=${GRANT_CHECK_LIST:-""}
 require_dsh_mds || exit 0
 
 # Skip these tests
-# bug number:  17466 18857,15962
+# bug number:  17466 18857
 ALWAYS_EXCEPT="61d   33a 33b     $REPLAY_SINGLE_EXCEPT"
 
 if [ "$FAILURE_MODE" = "HARD" ] && mixed_ost_devs; then
@@ -718,30 +718,30 @@ test_32() {
 }
 run_test 32 "close() notices client eviction; close() after client eviction"
 
-# Abort recovery before client complete
-test_33a() {	# was test_33
-    replay_barrier $SINGLEMDS
-    createmany -o $DIR/$tfile-%d 100
-    fail_abort $SINGLEMDS
-    # this file should be gone, because the replay was aborted
-    $CHECKSTAT -t file $DIR/$tfile-* && return 3
-    unlinkmany $DIR/$tfile-%d 0 100
-    return 0
-}
-run_test 33a "abort recovery before client does replay"
-
-# Stale FID sequence bug 15962
-test_33b() {	# was test_33a
-    replay_barrier $SINGLEMDS
+test_33a() {
     createmany -o $DIR/$tfile-%d 10
+    replay_barrier_nosync $SINGLEMDS
     fail_abort $SINGLEMDS
-    unlinkmany $DIR/$tfile-%d 0 10
     # recreate shouldn't fail
-    createmany -o $DIR/$tfile-%d 10 || return 3
-    unlinkmany $DIR/$tfile-%d 0 10
+    createmany -o $DIR/$tfile--%d 10 || return 1
+    rm $DIR/$tfile-* -f
     return 0
 }
-run_test 33b "fid shouldn't be reused after abort recovery"
+run_test 33a "fid seq shouldn't be reused after abort recovery"
+
+test_33b() {
+    #define OBD_FAIL_SEQ_ALLOC                          0x1311
+    do_facet $SINGLEMDS "lctl set_param fail_loc=0x1311"
+
+    createmany -o $DIR/$tfile-%d 10
+    replay_barrier_nosync $SINGLEMDS
+    fail_abort $SINGLEMDS
+    # recreate shouldn't fail
+    createmany -o $DIR/$tfile--%d 10 || return 1
+    rm $DIR/$tfile-* -f
+    return 0
+}
+run_test 33b "test fid seq allocation"
 
 test_34() {
     multiop_bg_pause $DIR/$tfile O_c || return 2
@@ -1092,6 +1092,7 @@ run_test 52 "time out lock replay (3764)"
 
 # bug 3462 - simultaneous MDC requests
 test_53a() {
+        cancel_lru_locks mdc    # cleanup locks from former test cases
         mkdir -p $DIR/${tdir}-1
         mkdir -p $DIR/${tdir}-2
         multiop $DIR/${tdir}-1/f O_c &
@@ -1121,6 +1122,7 @@ test_53a() {
 run_test 53a "|X| close request while two MDC requests in flight"
 
 test_53b() {
+        cancel_lru_locks mdc    # cleanup locks from former test cases
         rm -rf $DIR/${tdir}-1 $DIR/${tdir}-2
 
         mkdir -p $DIR/${tdir}-1
@@ -1152,6 +1154,7 @@ test_53b() {
 run_test 53b "|X| open request while two MDC requests in flight"
 
 test_53c() {
+        cancel_lru_locks mdc    # cleanup locks from former test cases
         rm -rf $DIR/${tdir}-1 $DIR/${tdir}-2
 
         mkdir -p $DIR/${tdir}-1
@@ -1170,6 +1173,9 @@ test_53c() {
         kill -USR1 $close_pid
         cancel_lru_locks mdc    # force the close
 
+        #bz20647: make sure all pids are exists before failover
+        [ -d /proc/$close_pid ] || error "close_pid doesn't exist"
+        [ -d /proc/$open_pid ] || error "open_pid doesn't exists"
         replay_barrier_nodf $SINGLEMDS
         fail_nodf $SINGLEMDS
         wait $open_pid || return 1
@@ -1214,6 +1220,7 @@ test_53d() {
 run_test 53d "|X| close reply while two MDC requests in flight"
 
 test_53e() {
+        cancel_lru_locks mdc    # cleanup locks from former test cases
         rm -rf $DIR/${tdir}-1 $DIR/${tdir}-2
 
         mkdir -p $DIR/${tdir}-1
@@ -1245,6 +1252,7 @@ test_53e() {
 run_test 53e "|X| open reply while two MDC requests in flight"
 
 test_53f() {
+        cancel_lru_locks mdc    # cleanup locks from former test cases
         rm -rf $DIR/${tdir}-1 $DIR/${tdir}-2
 
         mkdir -p $DIR/${tdir}-1
@@ -1263,6 +1271,9 @@ test_53f() {
         kill -USR1 $close_pid
         cancel_lru_locks mdc    # force the close
 
+        #bz20647: make sure all pids are exists before failover
+        [ -d /proc/$close_pid ] || error "close_pid doesn't exist"
+        [ -d /proc/$open_pid ] || error "open_pid doesn't exists"
         replay_barrier_nodf $SINGLEMDS
         fail_nodf $SINGLEMDS
         wait $open_pid || return 1
@@ -1278,6 +1289,7 @@ test_53f() {
 run_test 53f "|X| open reply and close reply while two MDC requests in flight"
 
 test_53g() {
+        cancel_lru_locks mdc    # cleanup locks from former test cases
         rm -rf $DIR/${tdir}-1 $DIR/${tdir}-2
 
         mkdir -p $DIR/${tdir}-1
@@ -1295,8 +1307,11 @@ test_53g() {
         do_facet $SINGLEMDS "lctl set_param fail_loc=0x80000115"
         kill -USR1 $close_pid
         cancel_lru_locks mdc    # force the close
-
         do_facet $SINGLEMDS "lctl set_param fail_loc=0"
+
+        #bz20647: make sure all pids are exists before failover
+        [ -d /proc/$close_pid ] || error "close_pid doesn't exist"
+        [ -d /proc/$open_pid ] || error "open_pid doesn't exists"
         replay_barrier_nodf $SINGLEMDS
         fail_nodf $SINGLEMDS
         wait $open_pid || return 1
@@ -1311,6 +1326,7 @@ test_53g() {
 run_test 53g "|X| drop open reply and close request while close and open are both in flight"
 
 test_53h() {
+        cancel_lru_locks mdc    # cleanup locks from former test cases
         rm -rf $DIR/${tdir}-1 $DIR/${tdir}-2
 
         mkdir -p $DIR/${tdir}-1
@@ -1330,6 +1346,9 @@ test_53h() {
         cancel_lru_locks mdc    # force the close
         sleep 1
 
+        #bz20647: make sure all pids are exists before failover
+        [ -d /proc/$close_pid ] || error "close_pid doesn't exist"
+        [ -d /proc/$open_pid ] || error "open_pid doesn't exists"
         replay_barrier_nodf $SINGLEMDS
         fail_nodf $SINGLEMDS
         wait $open_pid || return 1
@@ -1636,6 +1655,8 @@ test_65b() #bug 3055
     $LCTL dk > /dev/null
     # Slow down a request to the current service time, this is critical
     # because previous tests may have caused this value to increase.
+    lfs setstripe $DIR/$tfile --index=0 --count=1
+    multiop $DIR/$tfile Ow1yc
     REQ_DELAY=`lctl get_param -n osc.${FSNAME}-OST0000-osc-*.timeouts |
                awk '/portal 6/ {print $5}'`
     REQ_DELAY=$((${REQ_DELAY} + ${REQ_DELAY} / 4 + 5))
@@ -1735,7 +1756,7 @@ test_67b() #bug 3055
     CONN1=$(lctl get_param -n osc.*.stats | awk '/_connect/ {total+=$2} END {print total}')
 
     # exhaust precreations on ost1
-    local OST=$(lfs osts | grep 0": " | awk '{print $2}' | sed -e 's/_UUID$//')
+    local OST=$(lfs osts | grep ^0": " | awk '{print $2}' | sed -e 's/_UUID$//')
     local mdtosc=$(get_mdtosc_proc_path $OST)
     local last_id=$(do_facet mds lctl get_param -n osc.$mdtosc.prealloc_last_id)
     local next_id=$(do_facet mds lctl get_param -n osc.$mdtosc.prealloc_next_id)
@@ -1843,7 +1864,7 @@ test_70b () {
 	[ "$SLOW" = "no" ] && duration=60
 	local cmd="rundbench 1 -t $duration"
 	local PID=""
-	do_nodes --verbose $clients "set -x; MISSING_DBENCH_OK=$MISSING_DBENCH_OK \
+	do_nodesv $clients "set -x; MISSING_DBENCH_OK=$MISSING_DBENCH_OK \
 		PATH=:$PATH:$LUSTRE/utils:$LUSTRE/tests/:$DBENCH_LIB \
 		DBENCH_LIB=$DBENCH_LIB TESTSUITE=$TESTSUITE TESTNAME=$TESTNAME \
 		LCTL=$LCTL $cmd" &
@@ -2021,8 +2042,8 @@ test_83b() {
 run_test 83b "fail log_add during unlink recovery"
 
 test_84a() {
-#define OBD_FAIL_MDS_OPEN_WAIT_CREATE  0x143
-    do_facet $SINGLEMDS "lctl set_param fail_loc=0x80000143"
+#define OBD_FAIL_MDS_OPEN_WAIT_CREATE  0x144
+    do_facet $SINGLEMDS "lctl set_param fail_loc=0x80000144"
     createmany -o $DIR/$tfile- 1 &
     PID=$!
     mds_evict_client
@@ -2030,6 +2051,26 @@ test_84a() {
     client_up || client_up || true    # reconnect
 }
 run_test 84a "stale open during export disconnect"
+
+test_85() { # bug 22190
+    local fail=0
+    do_facet ost1 "lctl set_param -n obdfilter.${ost1_svc}.sync_journal 1"
+
+    replay_barrier ost1
+    lfs setstripe -i 0 -c 1 $DIR/$tfile
+    dd oflag=dsync if=/dev/urandom of=$DIR/$tfile bs=4k count=100 || fail=1
+    fail_abort ost1
+    echo "FAIL $fail"
+    [ $fail -ne 0 ] || error "Write was successful"
+}
+run_test 85 "ensure there is no reply on bulk write if obd is in rdonly mode"
+
+test_86() {
+        umount $MOUNT
+        do_facet $SINGLEMDS lctl set_param mdt.${FSNAME}-MDT*.exports.clear=0
+        remount_facet $SINGLEMDS
+}
+run_test 86 "umount server after clear nid_stats should not hit LBUG"
 
 equals_msg `basename $0`: test complete, cleaning up
 check_and_cleanup_lustre

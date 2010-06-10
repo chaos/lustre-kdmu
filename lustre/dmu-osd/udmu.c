@@ -1,4 +1,3 @@
-#if 1
 /* -*- mode: c; c-basic-offset: 8; indent-tabs-mode: nil; -*-
  * vim:expandtab:shiftwidth=8:tabstop=8:
  *
@@ -88,26 +87,10 @@ static int debug_level = LEVEL_CRITICAL;
 static void udmu_gethrestime(struct timespec *tp)
 {
         struct timeval time;
-        do_gettimeofday(&time);
+        cfs_gettimeofday(&time);
         tp->tv_nsec = 0;
         tp->tv_sec = time.tv_sec;
 }
-
-#if 0
-static void udmu_printf(int level, FILE *stream, char *message, ...)
-{
-        va_list args;
-
-        if (level <= debug_level) {
-                va_start(args, message);
-                (void) vfprintf(stream, message, args);
-                va_end(args);
-        }
-}
-#else
-#define udmu_printf(level,stream,msg, a...)      \
-        printk(msg, ## a)
-#endif
 
 void udmu_debug(int level)
 {
@@ -116,6 +99,7 @@ void udmu_debug(int level)
 
 int udmu_objset_open(char *osname, udmu_objset_t *uos)
 {
+        uint64_t refdbytes, availbytes, usedobjs, availobjs;
         uint64_t version = ZPL_VERSION;
         int      error;
 
@@ -131,8 +115,7 @@ int udmu_objset_open(char *osname, udmu_objset_t *uos)
         error = zap_lookup(uos->os, MASTER_NODE_OBJ, ZPL_VERSION_STR, 8, 1,
                            &version);
         if (error) {
-                udmu_printf(LEVEL_CRITICAL, stderr,
-                            "Error looking up ZPL VERSION");
+                CERROR("Error looking up ZPL VERSION\n");
                 /*
                  * We can't return ENOENT because that would mean the objset
                  * didn't exist.
@@ -141,11 +124,10 @@ int udmu_objset_open(char *osname, udmu_objset_t *uos)
                 goto out;
 #if 0
         } else if (version != LUSTRE_ZPL_VERSION) {
-                udmu_printf(LEVEL_CRITICAL, stderr,
-                            "Mismatched versions:  File system "
-                            "is version %lld on-disk format, which is "
-                            "incompatible with this software version %lld!",
-                            (u_longlong_t)version, LUSTRE_ZPL_VERSION);
+                CERROR("Mismatched versions:  File system "
+                       "is version %lld on-disk format, which is "
+                       "incompatible with this software version %lld!\n",
+                       (u_longlong_t)version, LUSTRE_ZPL_VERSION);
                 error = ENOTSUP;
                 goto out;
 #endif
@@ -154,14 +136,24 @@ int udmu_objset_open(char *osname, udmu_objset_t *uos)
         error = zap_lookup(uos->os, MASTER_NODE_OBJ, ZFS_ROOT_OBJ,
                            8, 1, &uos->root);
         if (error) {
-                udmu_printf(LEVEL_CRITICAL, stderr,
-                            "Error looking up ZFS root object.");
+                CERROR("Error looking up ZFS root object.\n");
                 error = EIO;
                 goto out;
         }
         ASSERT(uos->root != 0);
-      
+
         strncpy(uos->name, osname, sizeof(uos->name));
+
+        /*
+         * as DMU doesn't maintain f_files absolutely actual (it's updated
+         * at flush, not when object is create/destroed) we've implemented
+         * own counter which is initialized from on-disk at mount, then is
+         * being maintained by DMU OSD
+         */
+        dmu_objset_space(uos->os, &refdbytes, &availbytes, &usedobjs,
+                         &availobjs);
+        uos->objects = usedobjs;
+        cfs_spin_lock_init(&uos->lock);
 
 out:
         if (error && uos->os != NULL)
@@ -263,7 +255,7 @@ int udmu_objset_statfs(udmu_objset_t *uos, struct statfs64 *statp)
          */
         statp->f_ffree = MIN(availobjs, statp->f_bfree);
         //statp->f_favail = statp->f_ffree; /* no "root reservation" */
-        statp->f_files = statp->f_ffree + usedobjs;
+        statp->f_files = statp->f_ffree + uos->objects;
 
         /* ZFSFUSE: not necessary? see 'man statfs' */
         /*(void) cmpldev(&d32, vfsp->vfs_dev);
@@ -305,8 +297,7 @@ static int udmu_userprop_setup(udmu_objset_t *uos, const char *prop_name,
                         kmem_free(*os_name, MAXNAMELEN);
                 kmem_free(*real_prop, MAXNAMELEN);
 
-                udmu_printf(LEVEL_CRITICAL, stderr, "property name too long: "
-                            " %s\n", prop_name);
+                CERROR("property name too long: %s\n", prop_name);
                 return ENAMETOOLONG;
         }
 
@@ -382,9 +373,9 @@ int udmu_userprop_get_str(udmu_objset_t *uos, const char *prop_name, char *buf,
 
                 nvp_len = strlen(nvp_val);
                 if (buf_size < nvp_len + 1) {
-                        udmu_printf(LEVEL_INFO, stderr, "buffer too small (%d)"
-                                    " for string(%d): '%s'\n", buf_size,
-                                    nvp_len, nvp_val);
+                        CWARN("buffer too small (%llu) for string(%llu): '%s'"
+                              "\n", (u_longlong_t) buf_size,
+                              (u_longlong_t) nvp_len, nvp_val);
                         rc = EOVERFLOW;
                         goto out;
                 }
@@ -476,7 +467,10 @@ static void udmu_object_create_impl(objset_t *os, dmu_buf_t **dbp, dmu_tx_t *tx,
         oid = dmu_object_alloc(os, DMU_OT_PLAIN_FILE_CONTENTS, 0, DMU_OT_ZNODE,
                                sizeof (znode_phys_t), tx);
 
+#if 0
+        /* XXX: do we really need 128K blocksize by default? even on OSS? */
         dmu_object_set_blocksize(os, oid, 128ULL << 10, 0, tx);
+#endif
 
         VERIFY(0 == dmu_bonus_hold(os, oid, tag, dbp));
 
@@ -498,7 +492,9 @@ static void udmu_object_create_impl(objset_t *os, dmu_buf_t **dbp, dmu_tx_t *tx,
 void udmu_object_create(udmu_objset_t *uos, dmu_buf_t **dbp, dmu_tx_t *tx,
                         void *tag)
 {
-        uos->creates++;
+        cfs_spin_lock(&uos->lock);
+        uos->objects++;
+        cfs_spin_unlock(&uos->lock);
         udmu_object_create_impl(uos->os, dbp, tx, tag);
 }
 
@@ -548,6 +544,9 @@ static void udmu_zap_create_impl(objset_t *os, dmu_buf_t **zap_dbp,
 void udmu_zap_create(udmu_objset_t *uos, dmu_buf_t **zap_dbp, dmu_tx_t *tx,
                      void *tag)
 {
+        cfs_spin_lock(&uos->lock);
+        uos->objects++;
+        cfs_spin_unlock(&uos->lock);
         udmu_zap_create_impl(uos->os, zap_dbp, tx, tag);
 }
 
@@ -934,6 +933,16 @@ void udmu_declare_object_delete(udmu_objset_t *uos, dmu_tx_t *tx, dmu_buf_t *db)
         }
 }
 
+static int udmu_object_free(udmu_objset_t *uos, uint64_t oid, dmu_tx_t *tx)
+{
+        ASSERT(uos->objects != 0);
+        cfs_spin_lock(&uos->lock);
+        uos->objects--;
+        cfs_spin_unlock(&uos->lock);
+
+        return dmu_object_free(uos->os, oid, tx);
+}
+
 /*
  * Delete a DMU object
  *
@@ -972,21 +981,18 @@ static int udmu_object_delete_impl(udmu_objset_t *uos, dmu_buf_t **db, dmu_tx_t 
                                 printk("error during xattr lookup: %d\n", rc);
                                 break;
                         }
-                        uos->deletes++;
-                        dmu_object_free(uos->os, xid, tx);
+                        udmu_object_free(uos, xid, tx);
 
                         zap_cursor_advance(zc);
                 }
                 udmu_zap_cursor_fini(zc);
 
-                uos->deletes++;
-                dmu_object_free(uos->os, zp->zp_xattr, tx);
+                udmu_object_free(uos, zp->zp_xattr, tx);
         }
 
         oid = (*db)->db_object;
 
-        uos->deletes++;
-        return dmu_object_free(uos->os, oid, tx);
+        return udmu_object_free(uos, oid, tx);
 }
 
 int udmu_object_delete(udmu_objset_t *uos, dmu_buf_t **db, dmu_tx_t *tx,
@@ -1189,7 +1195,7 @@ void udmu_xattr_declare_set(udmu_objset_t *uos, dmu_buf_t *db,
         znode_phys_t *zp = NULL;
         uint64_t      xa_data_obj;
         int           error;
-       
+
         if (db)
                 zp = db->db_data;
 
@@ -1251,7 +1257,7 @@ int udmu_xattr_set(udmu_objset_t *uos, dmu_buf_t *db, void *val,
         int           error;
 
         if (zp->zp_xattr == 0) {
-                udmu_zap_create_impl(uos->os, &xa_zap_db, tx, FTAG);
+                udmu_zap_create(uos, &xa_zap_db, tx, FTAG);
 
                 zp->zp_xattr = xa_zap_db->db_object;
                 dmu_buf_will_dirty(db, tx);
@@ -1276,8 +1282,7 @@ int udmu_xattr_set(udmu_objset_t *uos, dmu_buf_t *db, void *val,
                  * Entry doesn't exist, we need to create a new one and a new
                  * object to store the value.
                  */
-                uos->creates++;
-                udmu_object_create_impl(uos->os, &xa_data_db, tx, FTAG);
+                udmu_object_create(uos, &xa_data_db, tx, FTAG);
                 xa_data_obj = xa_data_db->db_object;
                 error = zap_add(uos->os, zp->zp_xattr, name, sizeof(uint64_t), 1,
                                 &xa_data_obj, tx);
@@ -1361,8 +1366,7 @@ int udmu_xattr_del(udmu_objset_t *uos, dmu_buf_t *db,
                  * Entry exists.
                  * We'll delete the existing object and ZAP entry.
                  */
-                uos->deletes++;
-                error = dmu_object_free(uos->os, xa_data_obj, tx);
+                error = udmu_object_free(uos, xa_data_obj, tx);
                 if (error)
                         goto out;
 
@@ -1411,5 +1415,3 @@ void udmu_freeze(udmu_objset_t *uos)
 {
         spa_freeze(uos->os->os->os_spa);
 }
-
-#endif

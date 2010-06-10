@@ -305,7 +305,6 @@ int client_obd_setup(struct obd_device *obddev, struct lustre_cfg *lcfg)
         cli->cl_cksum_type = cli->cl_supp_cksum_types = OBD_CKSUM_CRC32;
 #endif
         cfs_atomic_set(&cli->cl_resends, OSC_DEFAULT_RESENDS);
-        cfs_atomic_set(&cli->cl_quota_resends, CLIENT_QUOTA_DEFAULT_RESENDS);
 
         /* This value may be changed at connect time in
            ptlrpc_connect_interpret. */
@@ -338,8 +337,6 @@ int client_obd_setup(struct obd_device *obddev, struct lustre_cfg *lcfg)
                 GOTO(err_ldlm, rc = -ENOENT);
         imp->imp_client = &obddev->obd_ldlm_client;
         imp->imp_connect_op = connect_op;
-        imp->imp_initial_recov = 1;
-        imp->imp_initial_recov_bk = 0;
         CFS_INIT_LIST_HEAD(&imp->imp_pinger_chain);
         memcpy(cli->cl_target_uuid.uuid, lustre_cfg_buf(lcfg, 1),
                LUSTRE_CFG_BUFLEN(lcfg, 1));
@@ -514,8 +511,7 @@ int client_disconnect_export(struct obd_export *exp)
         if (obd->obd_namespace != NULL) {
                 /* obd_force == local only */
                 ldlm_cli_cancel_unused(obd->obd_namespace, NULL,
-                                       obd->obd_force ? LDLM_FL_LOCAL_ONLY:0,
-                                       NULL);
+                                       obd->obd_force ? LCF_LOCAL : 0, NULL);
                 ldlm_namespace_free_prior(obd->obd_namespace, imp, obd->obd_force);
         }
 
@@ -1054,6 +1050,12 @@ dont_check_exports:
         else
                 revimp->imp_msghdr_flags &= ~MSGHDR_AT_SUPPORT;
 
+        if ((export->exp_connect_flags & OBD_CONNECT_FULL20) &&
+            (revimp->imp_msg_magic != LUSTRE_MSG_MAGIC_V1))
+                revimp->imp_msghdr_flags |= MSGHDR_CKSUM_INCOMPAT18;
+        else
+                revimp->imp_msghdr_flags &= ~MSGHDR_CKSUM_INCOMPAT18;
+
         rc = sptlrpc_import_sec_adapt(revimp, req->rq_svc_ctx, &req->rq_flvr);
         if (rc) {
                 CERROR("Failed to get sec for reverse import: %d\n", rc);
@@ -1329,15 +1331,11 @@ static void reset_recovery_timer(struct obd_device *obd, int duration,
         else if (!extend && (duration > obd->obd_recovery_timeout))
                 /* Track the client's largest expected replay time */
                 obd->obd_recovery_timeout = duration;
-#ifdef CRAY_XT3
-        /*
-         * If total recovery time already exceed the
-         * obd_recovery_max_time, then CRAY XT3 will
-         * abort the recovery
-         */
-        if(obd->obd_recovery_timeout > obd->obd_recovery_max_time)
-                obd->obd_recovery_timeout = obd->obd_recovery_max_time;
-#endif
+
+        /* Hard limit of obd_recovery_time_hard which should not happen */
+        if (obd->obd_recovery_timeout > obd->obd_recovery_time_hard)
+                obd->obd_recovery_timeout = obd->obd_recovery_time_hard;
+
         obd->obd_recovery_end = obd->obd_recovery_start +
                                 obd->obd_recovery_timeout;
         if (!cfs_timer_is_armed(&obd->obd_recovery_timer) ||
@@ -1359,8 +1357,6 @@ static void check_and_start_recovery_timer(struct obd_device *obd)
         }
         CDEBUG(D_HA, "%s: starting recovery timer\n", obd->obd_name);
         obd->obd_recovery_start = cfs_time_current_sec();
-        /* minimum */
-        obd->obd_recovery_timeout = OBD_RECOVERY_FACTOR * obd_timeout;
         cfs_spin_unlock_bh(&obd->obd_processing_task_lock);
 
         reset_recovery_timer(obd, obd->obd_recovery_timeout, 0);
@@ -1387,8 +1383,8 @@ target_start_and_reset_recovery_timer(struct obd_device *obd,
         if (!new_client && service_time)
                 /* Teach server about old server's estimates, as first guess
                  * at how long new requests will take. */
-                at_add(&req->rq_rqbd->rqbd_service->srv_at_estimate,
-                       service_time);
+                at_measured(&req->rq_rqbd->rqbd_service->srv_at_estimate,
+                            service_time);
 
         check_and_start_recovery_timer(obd);
 
@@ -1727,7 +1723,9 @@ static int target_recovery_thread(void *arg)
                 RETURN(rc);
 
         thread->t_env = &env;
+        thread->t_id = -1; /* force filter_iobuf_get/put to use local buffers */
         env.le_ctx.lc_thread = thread;
+        thread->t_data = NULL;
 
         CERROR("%s: started recovery thread pid %d\n", obd->obd_name,
                cfs_curproc_pid());
@@ -1808,7 +1806,7 @@ static int target_recovery_thread(void *arg)
         delta = cfs_duration_sec(cfs_time_sub(cfs_time_current(), start_time));
         CDEBUG(D_INFO,"4: recovery completed in %lus - %d/%d reqs/locks\n",
               delta, obd->obd_replayed_requests, obd->obd_replayed_locks);
-        if (delta > obd_timeout * OBD_RECOVERY_FACTOR) {
+        if (delta > OBD_RECOVERY_TIME_SOFT) {
                 CWARN("too long recovery - read logs\n");
                 libcfs_debug_dumplog();
         }
@@ -1899,9 +1897,12 @@ void target_recovery_init(struct lu_target *lut, svc_handler_t handler)
         obd->obd_next_recovery_transno = obd->obd_last_committed + 1;
         obd->obd_recovery_start = 0;
         obd->obd_recovery_end = 0;
-        obd->obd_recovery_timeout = OBD_RECOVERY_FACTOR * obd_timeout;
-        /* bz13079: this should be set to desired value for ost but not for mds */
-        obd->obd_recovery_max_time = OBD_RECOVERY_MAX_TIME;
+
+        /* both values can be get from mount data already */
+        if (obd->obd_recovery_timeout == 0)
+                obd->obd_recovery_timeout = OBD_RECOVERY_TIME_SOFT;
+        if (obd->obd_recovery_time_hard == 0)
+                obd->obd_recovery_time_hard = OBD_RECOVERY_TIME_HARD;
         cfs_timer_init(&obd->obd_recovery_timer, target_recovery_expired, obd);
         target_start_recovery_thread(lut, handler);
 }
@@ -2360,53 +2361,6 @@ out:
 #endif /* !__KERNEL__ */
 }
 #endif /* HAVE_QUOTA_SUPPORT */
-
-/* Send a remote set_info_async.
- * This may go from client to server or server to client
- */
-int target_set_info_rpc(struct obd_import *imp, int opcode,
-                        obd_count keylen, void *key,
-                        obd_count vallen, void *val,
-                        struct ptlrpc_request_set *set)
-{
-        struct ptlrpc_request *req;
-        char                  *tmp;
-        int                    rc;
-        ENTRY;
-
-        req = ptlrpc_request_alloc(imp, &RQF_OBD_SET_INFO);
-        if (req == NULL)
-                RETURN(-ENOMEM);
-
-        req_capsule_set_size(&req->rq_pill, &RMF_SETINFO_KEY,
-                             RCL_CLIENT, keylen);
-        req_capsule_set_size(&req->rq_pill, &RMF_SETINFO_VAL,
-                             RCL_CLIENT, vallen);
-        rc = ptlrpc_request_pack(req, LUSTRE_OBD_VERSION, opcode);
-        if (rc) {
-                ptlrpc_request_free(req);
-                RETURN(rc);
-        }
-
-        tmp = req_capsule_client_get(&req->rq_pill, &RMF_SETINFO_KEY);
-        memcpy(tmp, key, keylen);
-        tmp = req_capsule_client_get(&req->rq_pill, &RMF_SETINFO_VAL);
-        memcpy(tmp, val, vallen);
-
-        ptlrpc_request_set_replen(req);
-
-        if (set) {
-                ptlrpc_set_add_req(set, req);
-                ptlrpc_check_set(NULL, set);
-        } else {
-                rc = ptlrpc_queue_wait(req);
-                ptlrpc_req_finished(req);
-        }
-
-        RETURN(rc);
-}
-EXPORT_SYMBOL(target_set_info_rpc);
-
 
 ldlm_mode_t lck_compat_array[] = {
         [LCK_EX] LCK_COMPAT_EX,

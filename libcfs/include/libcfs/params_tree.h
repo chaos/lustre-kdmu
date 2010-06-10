@@ -334,7 +334,7 @@ extern struct libcfs_param_entry *
 libcfs_param_get(struct libcfs_param_entry *lpe);
 extern void libcfs_param_put(struct libcfs_param_entry *lpe);
 
-extern int libcfs_param_list(const char *parent_path, int fd);
+extern int libcfs_param_list(const char *parent_path, char *buf, int *buflen);
 extern int libcfs_param_read(const char *path, char *buf, int nbytes,
                              loff_t *ppos, int *eof);
 extern int libcfs_param_write(const char *path, char *buf, int count);
@@ -380,20 +380,7 @@ extern void libcfs_param_sysctl_change(char *mod_name,
 struct libcfs_param_info {
         int lpi_name_len;
         int lpi_mode;
-        char lpi_name[0];
-};
-/* Pipe message header.
- */
-struct libcfs_param_pipe_hdr {
-        __u16 lpph_magic;
-        __u8  lpph_flags;
-        __u16 lpph_msgtype;    /* Message type or opcode */
-        __u16 lpph_msglen;
-} __attribute__((aligned(sizeof(__u64))));
-#define LPPH_MAGIC          0x191D
-enum lpph_msg_type {
-        LPPH_MSG_SHUTDOWN = 0,
-        LPPH_MSG_LISTPARAM = 1,
+        char lpi_name[LPE_NAME_MAXLEN];
 };
 
 enum libcfs_param_value_type {

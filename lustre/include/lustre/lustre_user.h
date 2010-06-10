@@ -41,6 +41,11 @@
 #ifndef _LUSTRE_USER_H
 #define _LUSTRE_USER_H
 
+/** \defgroup lustreuser lustreuser
+ *
+ * @{
+ */
+
 #include <lustre/ll_fiemap.h>
 #if defined(__linux__)
 #include <linux/lustre_user.h>
@@ -134,6 +139,10 @@ struct obd_statfs {
 #define LL_IOC_LLOOP_INFO               _IOWR('f', 171, long)
 #define LL_IOC_LLOOP_DETACH_BYDEV       _IOWR('f', 172, long)
 #define LL_IOC_PATH2FID                 _IOR ('f', 173, long)
+#define LL_IOC_GET_CONNECT_FLAGS        _IOWR('f', 174, __u64 *)
+#define LL_IOC_GET_MDTIDX               _IOR ('f', 175, int)
+
+#define LL_IOC_HSM_CT_START             _IOW ('f', 178, struct lustre_kernelcomm *)
 
 #define LL_STATFS_MDC           1
 #define LL_STATFS_LOV           2
@@ -326,7 +335,11 @@ typedef struct lu_fid lustre_fid;
 
 /* scanf input parse format -- strip '[' first.
    e.g. sscanf(fidstr, SFID, RFID(&fid)); */
-#define SFID "0x%llx:0x%x:0x%x"
+/* #define SFID "0x"LPX64i":0x"LPSZX":0x"LPSZX""
+liblustreapi.c:2893: warning: format '%lx' expects type 'long unsigned int *', but argument 4 has type 'unsigned int *'
+liblustreapi.c:2893: warning: format '%lx' expects type 'long unsigned int *', but argument 5 has type 'unsigned int *'
+*/
+#define SFID "0x"LPX64i":0x%x:0x%x"
 #define RFID(fid)     \
         &((fid)->f_seq), \
         &((fid)->f_oid), \
@@ -347,8 +360,6 @@ typedef struct lu_fid lustre_fid;
 #define LUSTRE_Q_FINVALIDATE 0x80000c     /* invalidate filter quota data */
 
 #define UGQUOTA 2       /* set both USRQUOTA and GRPQUOTA */
-#define IMMQUOTA 0x4    /* set immutable quota flag, cannot be turned on/off
-                         * on-fly. temporary used by SOM */
 
 struct if_quotacheck {
         char                    obd_type[16];
@@ -472,6 +483,7 @@ enum changelog_rec_type {
         CL_SETATTR  = 14,
         CL_XATTR    = 15,
         CL_HSM      = 16, /* HSM specific events, see flags */
+        CL_TIME     = 17, /* mtime, atime, ctime change only */
         CL_LAST
 };
 
@@ -479,7 +491,7 @@ static inline const char *changelog_type2str(int type) {
         static const char *changelog_str[] = {
                 "MARK",  "CREAT", "MKDIR", "HLINK", "SLINK", "MKNOD", "UNLNK",
                 "RMDIR", "RNMFM", "RNMTO", "OPEN",  "CLOSE", "IOCTL", "TRUNC",
-                "SATTR", "XATTR", "HSM"   };
+                "SATTR", "XATTR", "HSM",   "TIME"  };
         if (type >= 0 && type < CL_LAST)
                 return changelog_str[type];
         return NULL;
@@ -506,10 +518,11 @@ struct changelog_rec {
         char                  cr_name[0];     /**< last element */
 } __attribute__((packed));
 
-struct ioc_changelog_clear {
+struct ioc_changelog {
+        __u64 icc_recno;
         __u32 icc_mdtindex;
         __u32 icc_id;
-        __u64 icc_recno;
+        __u32 icc_flags;
 };
 
 enum changelog_message_type {
@@ -592,5 +605,6 @@ static __inline__ struct hsm_action_item * hai_next(struct hsm_action_item *hai)
                                           cfs_size_round(hai->hai_len));
 }
 
+/** @} lustreuser */
 
 #endif /* _LUSTRE_USER_H */

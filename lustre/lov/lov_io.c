@@ -46,24 +46,13 @@
  *  @{
  */
 
-static void lov_sub_enter(struct lov_io_sub *sub)
+static inline void lov_sub_enter(struct lov_io_sub *sub)
 {
-        ENTRY;
-        if (sub->sub_reenter++ == 0) {
-                sub->sub_cookie = cl_env_reenter();
-                cl_env_implant(sub->sub_env, &sub->sub_refcheck2);
-        }
-        EXIT;
+        sub->sub_reenter++;
 }
-
-static void lov_sub_exit(struct lov_io_sub *sub)
+static inline void lov_sub_exit(struct lov_io_sub *sub)
 {
-        ENTRY;
-        if (--sub->sub_reenter == 0) {
-                cl_env_unplant(sub->sub_env, &sub->sub_refcheck2);
-                cl_env_reexit(sub->sub_cookie);
-        }
-        EXIT;
+        sub->sub_reenter--;
 }
 
 static void lov_io_sub_fini(const struct lu_env *env, struct lov_io *lio,
@@ -99,12 +88,16 @@ static void lov_io_sub_inherit(struct cl_io *io, struct lov_io *lio,
         struct cl_io         *parent = lio->lis_cl.cis_io;
 
         switch(io->ci_type) {
-        case CIT_TRUNC: {
-                size_t new_size = parent->u.ci_truncate.tr_size;
+        case CIT_SETATTR: {
+                io->u.ci_setattr.sa_attr = parent->u.ci_setattr.sa_attr;
+                io->u.ci_setattr.sa_valid = parent->u.ci_setattr.sa_valid;
+                io->u.ci_setattr.sa_capa = parent->u.ci_setattr.sa_capa;
+                if (cl_io_is_trunc(io)) {
+                        loff_t new_size = parent->u.ci_setattr.sa_attr.lvb_size;
 
-                new_size = lov_size_to_stripe(lsm, new_size, stripe);
-                io->u.ci_truncate.tr_capa = parent->u.ci_truncate.tr_capa;
-                io->u.ci_truncate.tr_size = new_size;
+                        new_size = lov_size_to_stripe(lsm, new_size, stripe);
+                        io->u.ci_setattr.sa_attr.lvb_size = new_size;
+                }
                 break;
         }
         case CIT_FAULT: {
@@ -323,8 +316,11 @@ static void lov_io_slice_init(struct lov_io *lio,
                 }
                 break;
 
-        case CIT_TRUNC:
-                lio->lis_pos = io->u.ci_truncate.tr_size;
+        case CIT_SETATTR:
+                if (cl_io_is_trunc(io))
+                        lio->lis_pos = io->u.ci_setattr.sa_attr.lvb_size;
+                else
+                        lio->lis_pos = 0;
                 lio->lis_endpos = OBD_OBJECT_EOF;
                 break;
 
@@ -396,7 +392,7 @@ static int lov_io_iter_init(const struct lu_env *env,
                                            start, end);
                         rc = cl_io_iter_init(sub->sub_env, sub->sub_io);
                         lov_sub_put(sub);
-                        CDEBUG(D_VFSTRACE, "shrink: %i [%llu, %llu)\n",
+                        CDEBUG(D_VFSTRACE, "shrink: %i ["LPU64", "LPU64")\n",
                                stripe, start, end);
                 } else
                         rc = PTR_ERR(sub);
@@ -435,7 +431,7 @@ static int lov_io_rw_iter_init(const struct lu_env *env,
                                               next) - io->u.ci_rw.crw_pos;
                 lio->lis_pos    = io->u.ci_rw.crw_pos;
                 lio->lis_endpos = io->u.ci_rw.crw_pos + io->u.ci_rw.crw_count;
-                CDEBUG(D_VFSTRACE, "stripe: %llu chunk: [%llu, %llu) %llu\n",
+                CDEBUG(D_VFSTRACE, "stripe: "LPU64" chunk: ["LPU64", "LPU64") "LPU64"\n",
                        (__u64)start, lio->lis_pos, lio->lis_endpos,
                        (__u64)lio->lis_io_endpos);
         }
@@ -750,7 +746,7 @@ static const struct cl_io_operations lov_io_ops = {
                         .cio_start     = lov_io_start,
                         .cio_end       = lov_io_end
                 },
-                [CIT_TRUNC] = {
+                [CIT_SETATTR] = {
                         .cio_fini      = lov_io_fini,
                         .cio_iter_init = lov_io_iter_init,
                         .cio_iter_fini = lov_io_iter_fini,
@@ -826,7 +822,7 @@ static const struct cl_io_operations lov_empty_io_ops = {
                         .cio_start     = LOV_EMPTY_IMPOSSIBLE,
                         .cio_end       = LOV_EMPTY_IMPOSSIBLE
                 },
-                [CIT_TRUNC] = {
+                [CIT_SETATTR] = {
                         .cio_fini      = lov_empty_io_fini,
                         .cio_iter_init = LOV_EMPTY_IMPOSSIBLE,
                         .cio_lock      = LOV_EMPTY_IMPOSSIBLE,
@@ -888,7 +884,7 @@ int lov_io_init_empty(const struct lu_env *env, struct cl_object *obj,
                 result = 0;
                 break;
         case CIT_WRITE:
-        case CIT_TRUNC:
+        case CIT_SETATTR:
                 result = -EBADF;
                 break;
         case CIT_FAULT:

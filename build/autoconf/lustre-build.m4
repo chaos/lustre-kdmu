@@ -361,86 +361,6 @@ fi
 ])
 
 #
-# LB_DEFINE_E2FSPROGS_NAMES
-#
-# Enable the use of alternate naming of ldiskfs-enabled e2fsprogs package.
-#
-AC_DEFUN([LB_DEFINE_E2FSPROGS_NAMES],
-[AC_ARG_WITH([ldiskfsprogs],
-        AC_HELP_STRING([--with-ldiskfsprogs],
-                       [use alternate names for ldiskfs-enabled e2fsprogs]),
-	[],[withval='no'])
-
-if test x$withval = xyes ; then
-	AC_DEFINE(HAVE_LDISKFSPROGS, 1, [enable use of ldiskfsprogs package])
-	E2FSPROGS="ldiskfsprogs"
-	MKE2FS="mkfs.ldiskfs"
-	DEBUGFS="debug.ldiskfs"
-	TUNE2FS="tune.ldiskfs"
-	E2LABEL="label.ldiskfs"
-	DUMPE2FS="dump.ldiskfs"
-	E2FSCK="fsck.ldiskfs"
-	AC_MSG_RESULT([enabled])
-else
-	E2FSPROGS="e2fsprogs"
-	MKE2FS="mke2fs"
-	DEBUGFS="debugfs"
-	TUNE2FS="tune2fs"
-	E2LABEL="e2label"
-	DUMPE2FS="dumpe2fs"
-	E2FSCK="e2fsck"
-	AC_MSG_RESULT([disabled])
-fi
-	AC_DEFINE_UNQUOTED(E2FSPROGS, "$E2FSPROGS", [name of ldiskfs e2fsprogs package])
-	AC_DEFINE_UNQUOTED(MKE2FS, "$MKE2FS", [name of ldiskfs mkfs program])
-	AC_DEFINE_UNQUOTED(DEBUGFS, "$DEBUGFS", [name of ldiskfs debug program])
-	AC_DEFINE_UNQUOTED(TUNE2FS, "$TUNE2FS", [name of ldiskfs tune program])
-	AC_DEFINE_UNQUOTED(E2LABEL, "$E2LABEL", [name of ldiskfs label program])
-	AC_DEFINE_UNQUOTED(DUMPE2FS,"$DUMPE2FS", [name of ldiskfs dump program])
-	AC_DEFINE_UNQUOTED(E2FSCK, "$E2FSCK", [name of ldiskfs fsck program])
-])
-
-#
-# LB_DEFINE_E2FSPROGS_NAMES
-#
-# Enable the use of alternate naming of ldiskfs-enabled e2fsprogs package.
-#
-AC_DEFUN([LB_DEFINE_E2FSPROGS_NAMES],
-[AC_ARG_WITH([ldiskfsprogs],
-        AC_HELP_STRING([--with-ldiskfsprogs],
-                       [use alternate names for ldiskfs-enabled e2fsprogs]),
-	[],[withval='no'])
-
-if test x$withval = xyes ; then
-	AC_DEFINE(HAVE_LDISKFSPROGS, 1, [enable use of ldiskfsprogs package])
-	E2FSPROGS="ldiskfsprogs"
-	MKE2FS="mkfs.ldiskfs"
-	DEBUGFS="debug.ldiskfs"
-	TUNE2FS="tune.ldiskfs"
-	E2LABEL="label.ldiskfs"
-	DUMPE2FS="dump.ldiskfs"
-	E2FSCK="fsck.ldiskfs"
-	AC_MSG_RESULT([enabled])
-else
-	E2FSPROGS="e2fsprogs"
-	MKE2FS="mke2fs"
-	DEBUGFS="debugfs"
-	TUNE2FS="tune2fs"
-	E2LABEL="e2label"
-	DUMPE2FS="dumpe2fs"
-	E2FSCK="e2fsck"
-	AC_MSG_RESULT([disabled])
-fi
-	AC_DEFINE_UNQUOTED(E2FSPROGS, "$E2FSPROGS", [name of ldiskfs e2fsprogs package])
-	AC_DEFINE_UNQUOTED(MKE2FS, "$MKE2FS", [name of ldiskfs mkfs program])
-	AC_DEFINE_UNQUOTED(DEBUGFS, "$DEBUGFS", [name of ldiskfs debug program])
-	AC_DEFINE_UNQUOTED(TUNE2FS, "$TUNE2FS", [name of ldiskfs tune program])
-	AC_DEFINE_UNQUOTED(E2LABEL, "$E2LABEL", [name of ldiskfs label program])
-	AC_DEFINE_UNQUOTED(DUMPE2FS,"$DUMPE2FS", [name of ldiskfs dump program])
-	AC_DEFINE_UNQUOTED(E2FSCK, "$E2FSCK", [name of ldiskfs fsck program])
-])
-
-#
 # LB_CONFIG_CRAY_XT3
 #
 # Enable Cray XT3 features
@@ -566,29 +486,48 @@ if test x$dmu_osd = xyes; then
 		AC_CONFIG_SUBDIRS(lustre/zfs-lustre)
 	else
 		# Kernel DMU
-		SPL_SUBDIR="spl"
-		ZFS_SUBDIR="zfs"
+		AC_ARG_WITH([spl],
+			AC_HELP_STRING([--with-spl], [set path to spl]),
+			[
+				SPL_SUBDIR=""
+				SPL_DIR="$with_spl"
+				SPL_EXTRA_PRE_CFLAGS="-I$SPL_DIR"
+			],[
+				SPL_SUBDIR="spl"
+				SPL_DIR="$PWD/$SPL_SUBDIR"
+				LB_CHECK_FILE([$SPL_DIR/module/spl/spl-generic.c],[],[
+					AC_MSG_ERROR([A complete SPL tree was not found in $SPL_DIR.])
+				])
+				SPL_EXTRA_PRE_CFLAGS="-I$SPL_DIR/include -I$SPL_DIR"
+				AC_CONFIG_SUBDIRS(spl)
 
-		SPL_DIR="$PWD/$SPL_SUBDIR"
-		ZFS_DIR="$PWD/$ZFS_SUBDIR"
+			])
 
-		LB_CHECK_FILE([$SPL_DIR/module/spl/spl-generic.c],[],[
-			AC_MSG_ERROR([A complete SPL tree was not found in $SPL_DIR.])
-		])
-
-		LB_CHECK_FILE([$ZFS_DIR/module/zfs/dmu.c],[],[
-			AC_MSG_ERROR([A complete kernel DMU tree was not found in $ZFS_DIR.])
-		])
-
-		AC_CONFIG_SUBDIRS(spl)
-		ac_configure_args="$ac_configure_args --with-spl=$SPL_DIR"
-		AC_CONFIG_SUBDIRS(zfs)
+		AC_ARG_WITH([zfs],
+			AC_HELP_STRING([--with-zfs], [set path to zfs]),
+			[
+				ZFS_SUBDIR=""
+				ZFS_DIR="$with_zfs"
+				ZFS_EXTRA_PRE_CFLAGS="-I$ZFS_DIR"
+			],[
+				ZFS_SUBDIR="zfs"
+				ZFS_DIR="$PWD/$ZFS_SUBDIR"
+				LB_CHECK_FILE([$ZFS_DIR/module/zfs/dmu.c],[],[
+					AC_MSG_ERROR([A complete kernel DMU tree was not found in $ZFS_DIR.])
+				])
+				ZFS_EXTRA_PRE_CFLAGS="-I$ZFS_DIR/module/zcommon/include -I$ZFS_DIR/module/avl/include -I$ZFS_DIR/module/nvpair/include -I$ZFS_DIR/module/zfs/include -I$ZFS_DIR"
+				ac_configure_args="$ac_configure_args --with-spl=$SPL_DIR"
+				AC_CONFIG_SUBDIRS(zfs)
+			])
 	fi
 fi
+
 AC_SUBST(SPL_SUBDIR)
 AC_SUBST(ZFS_SUBDIR)
 AC_SUBST(SPL_DIR)
 AC_SUBST(ZFS_DIR)
+AC_SUBST(SPL_EXTRA_PRE_CFLAGS)
+AC_SUBST(ZFS_EXTRA_PRE_CFLAGS)
 AM_CONDITIONAL(DMU_OSD_ENABLED, test x$dmu_osd = xyes)
 AM_CONDITIONAL(KDMU, test x$dmu_osd$enable_uoss = xyesno)
 ])
@@ -921,10 +860,6 @@ LB_PATH_LIBSYSIO
 LB_PATH_SNMP
 LB_PATH_LDISKFS
 LB_PATH_LUSTREIOKIT
-
-LB_DEFINE_E2FSPROGS_NAMES
-
-LB_DEFINE_E2FSPROGS_NAMES
 
 LB_DEFINE_E2FSPROGS_NAMES
 

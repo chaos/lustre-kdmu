@@ -119,6 +119,39 @@ LB_LINUX_CONFIG([SUSE_KERNEL],[SUSE_KERNEL="yes"],[])
 
 ])
 
+# LB_ARG_REPLACE_PATH(PACKAGE, PATH)
+AC_DEFUN([LB_ARG_REPLACE_PATH],[
+	new_configure_args=
+	eval "set x $ac_configure_args"
+	shift
+	for arg; do
+		case $arg in
+			--with-[$1]=*)
+				arg=--with-[$1]=[$2]
+				;;
+			*\'*)
+				arg=$(printf %s\n ["$arg"] | \
+				      sed "s/'/'\\\\\\\\''/g")
+				;;
+		esac
+		dnl AS_VAR_APPEND([new_configure_args], [" '$arg'"])
+		new_configure_args="$new_configure_args \"$arg\""
+	done
+	ac_configure_args=$new_configure_args
+])
+
+# this is the work-horse of the next function
+AC_DEFUN([__LB_ARG_CANON_PATH], [
+	[$3]=$(readlink -f $with_$2)
+	LB_ARG_REPLACE_PATH([$1], $[$3])
+])
+
+# a front-end for the above function that transforms - and . in the
+# PACKAGE portion of --with-PACKAGE into _ suitable for variable names
+AC_DEFUN([LB_ARG_CANON_PATH], [
+	__LB_ARG_CANON_PATH([$1], m4_translit([$1], [-.], [__]), [$2])
+])
+
 #
 #
 # LB_LINUX_PATH
@@ -130,13 +163,7 @@ AC_DEFUN([LB_LINUX_PATH],
 AC_ARG_WITH([linux],
 	AC_HELP_STRING([--with-linux=path],
 		       [set path to Linux source (default=/usr/src/linux)]),
-	[
-		if ! [[[ $with_linux = /* ]]]; then
-			AC_MSG_ERROR([You must provide an absolute pathname to the --with-linux= option.])
-		else
-			LINUX=$with_linux
-		fi
-	],
+	[LB_ARG_CANON_PATH([linux], [LINUX])],
 	[LINUX=/usr/src/linux])
 AC_MSG_RESULT([$LINUX])
 AC_SUBST(LINUX)
@@ -150,7 +177,7 @@ AC_MSG_CHECKING([for Linux objects dir])
 AC_ARG_WITH([linux-obj],
 	AC_HELP_STRING([--with-linux-obj=path],
 			[set path to Linux objects dir (default=$LINUX)]),
-	[LINUX_OBJ=$with_linux_obj],
+	[LB_ARG_CANON_PATH([linux-obj], [LINUX_OBJ])],
 	[LINUX_OBJ=$LINUX])
 AC_MSG_RESULT([$LINUX_OBJ])
 AC_SUBST(LINUX_OBJ)
@@ -159,7 +186,7 @@ AC_SUBST(LINUX_OBJ)
 AC_ARG_WITH([linux-config],
 	[AC_HELP_STRING([--with-linux-config=path],
 			[set path to Linux .conf (default=$LINUX_OBJ/.config)])],
-	[LINUX_CONFIG=$with_linux_config],
+	[LB_ARG_CANON_PATH([linux-config], [LINUX_CONFIG])],
 	[LINUX_CONFIG=$LINUX_OBJ/.config])
 AC_SUBST(LINUX_CONFIG)
 
@@ -171,7 +198,7 @@ LB_CHECK_FILE([/boot/kernel.h],
 AC_ARG_WITH([kernel-source-header],
 	AC_HELP_STRING([--with-kernel-source-header=path],
 			[Use a different kernel version header.  Consult build/README.kernel-source for details.]),
-	[KERNEL_SOURCE_HEADER=$with_kernel_source_header])
+	[LB_ARG_CANON_PATH([kernel-source-header], [KERNEL_SOURCE_HEADER])])
 
 # ------------ .config exists ----------------
 LB_CHECK_FILE([$LINUX_CONFIG],[],
@@ -343,7 +370,7 @@ rm -f build/conftest.o build/conftest.mod.c build/conftest.ko
 AS_IF([AC_TRY_COMMAND(cp conftest.c build && make -d [$2] ${LD:+"LD=$LD"} CC="$CC" -f $PWD/build/Makefile LUSTRE_LINUX_CONFIG=$LINUX_CONFIG LINUXINCLUDE="$EXTRA_LNET_INCLUDE -I$LINUX/arch/`uname -m|sed -e 's/ppc.*/powerpc/' -e 's/x86_64/x86/' -e 's/i.86/x86/'`/include -I$LINUX/include -I$LINUX_OBJ/include -I$LINUX_OBJ/include2 -include include/linux/autoconf.h" -o tmp_include_depends -o scripts -o include/config/MARKER -C $LINUX_OBJ EXTRA_CFLAGS="-Werror-implicit-function-declaration $EXTRA_KCFLAGS" $ARCH_UM $MODULE_TARGET=$PWD/build) >/dev/null && AC_TRY_COMMAND([$3])],
 	[$4],
 	[_AC_MSG_LOG_CONFTEST
-m4_ifvaln([$5],[$5])dnl])dnl
+m4_ifvaln([$5],[$5])dnl])
 rm -f build/conftest.o build/conftest.mod.c build/conftest.mod.o build/conftest.ko m4_ifval([$1], [build/conftest.c conftest.c])[]dnl
 ])
 
@@ -512,6 +539,57 @@ else
 fi
 ])
 
+# LC_MODULE_LOADING
+# after 2.6.28 CONFIG_KMOD is removed, and only CONFIG_MODULES remains
+# so we test if request_module is implemented or not
+AC_DEFUN([LC_MODULE_LOADING],
+[AC_MSG_CHECKING([if kernel module loading is possible])
+LB_LINUX_TRY_MAKE([
+        #include <linux/kmod.h>
+],[
+        int myretval=ENOSYS ;
+        return myretval;
+],[
+        $makerule LUSTRE_KERNEL_TEST=conftest.i
+],[
+        grep request_module build/conftest.i | grep -v `grep "int myretval=" build/conftest.i | cut -d= -f2 | cut -d" "  -f1` >/dev/null
+],[
+        AC_MSG_RESULT(yes)
+        AC_DEFINE(HAVE_MODULE_LOADING_SUPPORT, 1,
+                [kernel module loading is possible])
+],[
+        AC_MSG_RESULT(no)
+        AC_MSG_WARN([])
+        AC_MSG_WARN([Kernel module loading support is highly recommended.])
+        AC_MSG_WARN([])
+])
+])
+
+# LC_MODULE_LOADING
+# after 2.6.28 CONFIG_KMOD is removed, and only CONFIG_MODULES remains
+# so we test if request_module is implemented or not
+AC_DEFUN([LC_MODULE_LOADING],
+[AC_MSG_CHECKING([if kernel module loading is possible])
+LB_LINUX_TRY_MAKE([
+        #include <linux/kmod.h>
+],[
+        int myretval=ENOSYS ;
+        return myretval;
+],[
+        $makerule LUSTRE_KERNEL_TEST=conftest.i
+],[
+        grep request_module build/conftest.i | grep -v `grep "int myretval=" build/conftest.i | cut -d= -f2 | cut -d" "  -f1` >/dev/null
+],[
+        AC_MSG_RESULT(yes)
+        AC_DEFINE(HAVE_MODULE_LOADING_SUPPORT, 1,
+                [kernel module loading is possible])
+],[
+        AC_MSG_RESULT(no)
+        AC_MSG_WARN([])
+        AC_MSG_WARN([Kernel module loading support is highly recommended.])
+        AC_MSG_WARN([])
+])
+])
 
 #
 # LB_PROG_LINUX
@@ -536,11 +614,8 @@ if test "x$ARCH_UM" = "x" ; then
 fi
 ])
 
-LB_LINUX_CONFIG([KMOD],[],[
-	AC_MSG_WARN([])
-	AC_MSG_WARN([Kernel module loading support is highly recommended.])
-	AC_MSG_WARN([])
-])
+# 2.6.28
+LC_MODULE_LOADING
 
 #LB_LINUX_CONFIG_BIG_STACK
 

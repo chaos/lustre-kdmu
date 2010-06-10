@@ -160,7 +160,6 @@ static int lprocfs_rd_identity_expire(char *page, char **start, off_t off,
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         mdt = mdt_dev(obd->obd_lu_dev);
-        *eof = 1;
         temp = mdt->mdt_identity_cache->uc_entry_expire;
 
         return libcfs_param_snprintf(page, count, data, LP_U32, "%lu\n", temp);
@@ -193,7 +192,6 @@ static int lprocfs_rd_identity_acquire_expire(char *page, char **start,
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         mdt = mdt_dev(obd->obd_lu_dev);
-        *eof = 1;
         temp = mdt->mdt_identity_cache->uc_acquire_expire;
 
         return libcfs_param_snprintf(page, count, data, LP_U32, "%lu\n", temp);
@@ -230,7 +228,6 @@ static int lprocfs_rd_identity_upcall(char *page, char **start, off_t off,
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         mdt = mdt_dev(obd->obd_lu_dev);
         hash = mdt->mdt_identity_cache;
-        *eof = 1;
         cfs_read_lock(&hash->uc_upcall_rwlock);
         rc = libcfs_param_snprintf(page, count, data, LP_STR,
                                    "%s\n", hash->uc_upcall);
@@ -373,7 +370,6 @@ static int lprocfs_rd_capa(char *page, char **start, off_t off,
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         mdt = mdt_dev(obd->obd_lu_dev);
-        *eof = 1;
 
         return libcfs_param_snprintf(page, count, data, LP_STR,
                       "capability on: %s %s\n",
@@ -425,7 +421,6 @@ static int lprocfs_wr_capa(libcfs_file_t *file, const char *buffer,
 static int lprocfs_rd_capa_count(char *page, char **start, off_t off,
                                  int count, int *eof, void *data)
 {
-        *eof = 1;
         return libcfs_param_snprintf(page, count, data, LP_STR, "%d %d\n",
                                      capa_count[CAPA_SITE_CLIENT],
                                      capa_count[CAPA_SITE_SERVER]);
@@ -440,7 +435,6 @@ static int lprocfs_rd_site_stats(char *page, char **start, off_t off,
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         mdt = mdt_dev(obd->obd_lu_dev);
-        *eof = 1;
         rc = lu_site_stats_print(mdt_lu_site(mdt), page, count);
         if (rc > 0)
                 rc = libcfs_param_snprintf(page, count, data, LP_STR,
@@ -457,7 +451,6 @@ static int lprocfs_rd_capa_timeout(char *page, char **start, off_t off,
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         mdt = mdt_dev(obd->obd_lu_dev);
-        *eof = 1;
 
         return libcfs_param_snprintf(page, count, data, LP_U32,
                                      "%lu\n", mdt->mdt_capa_timeout);
@@ -489,7 +482,6 @@ static int lprocfs_rd_ck_timeout(char *page, char **start, off_t off, int count,
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         mdt = mdt_dev(obd->obd_lu_dev);
-        *eof = 1;
 
         return libcfs_param_snprintf(page, count, data, LP_U32, "%lu\n",
                                      mdt->mdt_ck_timeout);
@@ -537,7 +529,6 @@ static int lprocfs_rd_sec_level(char *page, char **start, off_t off,
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         mdt = mdt_dev(obd->obd_lu_dev);
-        *eof = 1;
 
         return libcfs_param_snprintf(page, count, data, LP_D32, "%d\n",
                                      mdt->mdt_sec_level);
@@ -579,7 +570,6 @@ static int lprocfs_rd_cos(char *page, char **start, off_t off,
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         mdt = mdt_dev(obd->obd_lu_dev);
-        *eof = 1;
         temp = mdt_cos_is_enabled(mdt);
 
         return libcfs_param_snprintf(page, count, data, LP_D32, "%u\n", temp);
@@ -610,7 +600,6 @@ static int lprocfs_rd_root_squash(char *page, char **start, off_t off,
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         mdt = mdt_dev(obd->obd_lu_dev);
-        *eof = 1;
 
         return libcfs_param_snprintf(page, count, data, LP_STR, "%u:%u\n",
                                      mdt->mdt_squash_uid, mdt->mdt_squash_gid);
@@ -699,7 +688,6 @@ static int lprocfs_rd_nosquash_nids(char *page, char **start, off_t off,
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         mdt = mdt_dev(obd->obd_lu_dev);
-        *eof = 1;
         if (mdt->mdt_nosquash_str)
                 return libcfs_param_snprintf(page, count, data, LP_STR,
                                              "%s\n", mdt->mdt_nosquash_str);
@@ -783,36 +771,11 @@ static int lprocfs_rd_mdt_som(char *page, char **start, off_t off,
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         LASSERT(obd != NULL);
-        *eof = 1;
         mdt = mdt_dev(obd->obd_lu_dev);
 
         return libcfs_param_snprintf(page, count, data, LP_STR, "%sabled\n",
                                      mdt->mdt_som_conf ? "en" : "dis");
 }
-
-#ifdef HAVE_QUOTA_SUPPORT
-static int mdt_quota_off(struct mdt_device *mdt)
-{
-#ifdef HAVE_QUOTA_SUPPORT
-        struct md_device *next = mdt->mdt_child;
-        const struct md_quota_operations *mqo = &next->md_ops->mdo_quota;
-        struct lu_env env;
-        int rc;
-
-        lu_env_init(&env, LCT_MD_THREAD);
-        rc = mqo->mqo_off(&env, next, UGQUOTA | IMMQUOTA);
-        lu_env_fini(&env);
-        return rc;
-#else
-        return 0;
-#endif
-}
-#else
-static int mdt_quota_off(struct mdt_device *mdt)
-{
-        return 0;
-}
-#endif
 
 static int lprocfs_wr_mdt_som(libcfs_file_t *file, const char *buffer,
                               unsigned long count, void *data)
@@ -823,7 +786,6 @@ static int lprocfs_wr_mdt_som(libcfs_file_t *file, const char *buffer,
         char kernbuf[16];
         unsigned long val = 0;
         int flag = 0;
-        int rc;
 
         LIBCFS_PARAM_GET_DATA(obd, data, &flag);
         mdt = mdt_dev(obd->obd_lu_dev);
@@ -832,7 +794,7 @@ static int lprocfs_wr_mdt_som(libcfs_file_t *file, const char *buffer,
 
         if (libcfs_param_copy(flag, kernbuf, buffer, count))
                 return -EFAULT;
-      
+
         kernbuf[count] = '\0';
 
         if (!strcmp(kernbuf, "enabled"))
@@ -862,13 +824,6 @@ static int lprocfs_wr_mdt_som(libcfs_file_t *file, const char *buffer,
                 return count;
         }
 
-        if ((rc = mdt_quota_off(mdt))) {
-                if (rc == -EALREADY)
-                        rc = 0;
-                else
-                        return rc;
-        }
-
         mdt->mdt_som_conf = val;
         LCONSOLE_INFO("Enabling SOM\n");
 
@@ -876,21 +831,29 @@ static int lprocfs_wr_mdt_som(libcfs_file_t *file, const char *buffer,
 }
 
 /* Temporary; for testing purposes only */
-static int lprocfs_mdt_wr_mdc(struct file *file, const char *buffer,
+static int lprocfs_mdt_wr_mdc(libcfs_file_t *file, const char *buffer,
                               unsigned long count, void *data)
 {
-        struct obd_device *obd = data;
-        struct obd_export *exp = NULL;
+        struct obd_device *obd;
+        struct obd_export *exp;
         struct obd_uuid uuid;
-        char tmpbuf[sizeof(struct obd_uuid)];
+        char kernbuf[sizeof(struct obd_uuid)];
+        int flag = 0;
 
-        sscanf(buffer, "%40s", tmpbuf);
+        LIBCFS_PARAM_GET_DATA(obd, data, &flag);
+        if (count >= sizeof(kernbuf)) {
+                return -EINVAL;
+        }
+        if (libcfs_param_copy(flag, kernbuf, buffer, count)) {
+                return -EFAULT;
+        }
 
-        obd_str2uuid(&uuid, tmpbuf);
+        obd_str2uuid(&uuid, kernbuf);
         exp = cfs_hash_lookup(obd->obd_uuid_hash, &uuid);
         if (exp == NULL) {
                 CERROR("%s: no export %s found\n",
                        obd->obd_name, obd_uuid2str(&uuid));
+                return -EINVAL;
         } else {
                 mdt_hsm_copytool_send(exp);
                 class_export_put(exp);

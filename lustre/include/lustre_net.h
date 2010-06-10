@@ -37,6 +37,11 @@
 #ifndef _LUSTRE_NET_H
 #define _LUSTRE_NET_H
 
+/** \defgroup net net
+ *
+ * @{
+ */
+
 #if defined(__linux__)
 #include <linux/lustre_net.h>
 #elif defined(__APPLE__)
@@ -59,6 +64,7 @@
 #include <lustre_req_layout.h>
 
 #include <obd_support.h>
+#include <lustre_ver.h>
 
 /* MD flags we _always_ use */
 #define PTLRPC_MD_OPTIONS  0
@@ -118,12 +124,6 @@
 #define MDT_NUM_THREADS max(min_t(unsigned long, MDT_MAX_THREADS, \
                                   cfs_num_physpages >> (25 - CFS_PAGE_SHIFT)), \
                                   2UL)
-#define FLD_NUM_THREADS max(min_t(unsigned long, MDT_MAX_THREADS, \
-                                  cfs_num_physpages >> (25 - CFS_PAGE_SHIFT)), \
-                                  2UL)
-#define SEQ_NUM_THREADS max(min_t(unsigned long, MDT_MAX_THREADS, \
-                                  cfs_num_physpages >> (25 - CFS_PAGE_SHIFT)), \
-                                  2UL)
 
 /* Absolute limits */
 #define MDS_THREADS_MIN 2
@@ -164,7 +164,8 @@
 /* SEQ_MAXREPSIZE == lustre_msg + ptlrpc_body + lu_range */
 #define SEQ_MAXREPSIZE  (152)
 
-#define MGS_THREADS_AUTO_MIN 2
+/* MGS threads must be >= 3, see bug 22458 comment #28 */
+#define MGS_THREADS_AUTO_MIN 3
 #define MGS_THREADS_AUTO_MAX 32
 #define MGS_NBUFS       (64 * cfs_num_online_cpus())
 #define MGS_BUFSIZE     (8 * 1024)
@@ -223,7 +224,7 @@ struct ptlrpc_request_set;
 typedef int (*set_interpreter_func)(struct ptlrpc_request_set *, void *, int);
 
 struct ptlrpc_request_set {
-        int                   set_remaining; /* # uncompleted requests */
+        cfs_atomic_t          set_remaining; /* # uncompleted requests */
         cfs_waitq_t           set_waitq;
         cfs_waitq_t          *set_wakeup_ptr;
         cfs_list_t            set_requests;
@@ -376,7 +377,9 @@ struct ptlrpc_request {
                 rq_hp:1,            /* high priority RPC */
                 rq_at_linked:1,     /* link into service's srv_at_array */
                 rq_reply_truncate:1,
-                rq_committed:1;
+                rq_committed:1,
+                /* whether the "rq_set" is a valid one */
+                rq_invalid_rqset:1;
 
         enum rq_phase rq_phase; /* one of RQ_PHASE_* */
         enum rq_phase rq_next_phase; /* one of RQ_PHASE_* to be used next */
@@ -388,8 +391,9 @@ struct ptlrpc_request {
         int rq_request_portal;  /* XXX FIXME bug 249 */
         int rq_reply_portal;    /* XXX FIXME bug 249 */
 
-        int rq_nob_received; /* client-side # reply bytes actually received  */
-
+        int rq_nob_received; /* client-side:
+                              * !rq_truncate : # reply bytes actually received,
+                              *  rq_truncate : required repbuf_len for resend */
         int rq_reqlen;
         struct lustre_msg *rq_reqmsg;
 
@@ -455,6 +459,8 @@ struct ptlrpc_request {
         /* client+server request */
         lnet_handle_md_t     rq_req_md_h;
         struct ptlrpc_cb_id  rq_req_cbid;
+        cfs_duration_t       rq_delay_limit;           /* optional time limit for send attempts */
+        cfs_time_t           rq_queued_time;          /* time request was first queued */
 
         /* server-side... */
         struct timeval       rq_arrival_time;       /* request arrival time */
@@ -492,7 +498,8 @@ struct ptlrpc_request {
         int    rq_timeout;               /* service time estimate (secs) */
 
         /* Multi-rpc bits */
-        cfs_list_t rq_set_chain;
+        cfs_list_t  rq_set_chain;
+        cfs_waitq_t rq_set_waitq;
         struct ptlrpc_request_set *rq_set;
         /** Async completion handler */
         ptlrpc_interpterer_t rq_interpret_reply;
@@ -592,9 +599,10 @@ ptlrpc_rqphase2str(struct ptlrpc_request *req)
         FLAG(req->rq_restart, "T"), FLAG(req->rq_replay, "P"),                  \
         FLAG(req->rq_no_resend, "N"),                                           \
         FLAG(req->rq_waiting, "W"),                                             \
-        FLAG(req->rq_wait_ctx, "C"), FLAG(req->rq_hp, "H")
+        FLAG(req->rq_wait_ctx, "C"), FLAG(req->rq_hp, "H"),                     \
+        FLAG(req->rq_committed, "M")
 
-#define REQ_FLAGS_FMT "%s:%s%s%s%s%s%s%s%s%s%s%s"
+#define REQ_FLAGS_FMT "%s:%s%s%s%s%s%s%s%s%s%s%s%s"
 
 void _debug_req(struct ptlrpc_request *req, __u32 mask,
                 struct libcfs_debug_msg_data *data, const char *fmt, ...)
@@ -1170,7 +1178,12 @@ __u32 lustre_msg_get_magic(struct lustre_msg *msg);
 __u32 lustre_msg_get_timeout(struct lustre_msg *msg);
 __u32 lustre_msg_get_service_time(struct lustre_msg *msg);
 __u32 lustre_msg_get_cksum(struct lustre_msg *msg);
+#if LUSTRE_VERSION_CODE < OBD_OCD_VERSION(2, 9, 0, 0)
+__u32 lustre_msg_calc_cksum(struct lustre_msg *msg, int compat18);
+#else
+# warning "remove checksum compatibility support for b1_8"
 __u32 lustre_msg_calc_cksum(struct lustre_msg *msg);
+#endif
 void lustre_msg_set_handle(struct lustre_msg *msg,struct lustre_handle *handle);
 void lustre_msg_set_type(struct lustre_msg *msg, __u32 type);
 void lustre_msg_set_opc(struct lustre_msg *msg, __u32 opc);
@@ -1313,6 +1326,27 @@ static inline int ptlrpc_req_get_repsize(struct ptlrpc_request *req)
         }
 }
 
+static inline int ptlrpc_send_limit_expired(struct ptlrpc_request *req)
+{
+        if (req->rq_delay_limit != 0 &&
+            cfs_time_before(cfs_time_add(req->rq_queued_time,
+                                         cfs_time_seconds(req->rq_delay_limit)),
+                            cfs_time_current())) {
+                return 1;
+        }
+        return 0;
+}
+
+static inline int ptlrpc_no_resend(struct ptlrpc_request *req)
+{
+        if (!req->rq_no_resend && ptlrpc_send_limit_expired(req)) {
+                cfs_spin_lock(&req->rq_lock);
+                req->rq_no_resend = 1;
+                cfs_spin_unlock(&req->rq_lock);
+        }
+        return req->rq_no_resend;
+}
+
 /* ldlm/ldlm_lib.c */
 int client_obd_setup(struct obd_device *obddev, struct lustre_cfg *lcfg);
 int client_obd_cleanup(struct obd_device *obddev);
@@ -1402,5 +1436,7 @@ int llog_catinfo(struct ptlrpc_request *req);
 
 /* ptlrpc/llog_client.c */
 extern struct llog_operations llog_client_ops;
+
+/** @} net */
 
 #endif

@@ -43,6 +43,11 @@
 #ifndef _LUSTRE_DISK_H
 #define _LUSTRE_DISK_H
 
+/** \defgroup disk disk
+ *
+ * @{
+ */
+
 #include <libcfs/libcfs.h>
 #include <lnet/types.h>
 
@@ -176,6 +181,8 @@ struct lustre_mount_data {
         __u32      lmd_flags;         /* lustre mount flags */
         int        lmd_mgs_failnodes; /* mgs failover node count */
         int        lmd_exclude_count;
+        int        lmd_recovery_time_soft;
+        int        lmd_recovery_time_hard;
         char      *lmd_dev;           /* device name */
         char      *lmd_profile;       /* client only */
         char      *lmd_mgssec;        /* sptlrpc flavor to mgs */
@@ -202,6 +209,7 @@ struct lustre_mount_data {
 #define LR_EPOCH_BITS   32
 #define lr_epoch(a) ((a) >> LR_EPOCH_BITS)
 #define LR_EXPIRE_INTERVALS 16 /**< number of intervals to track transno */
+#define ENOENT_VERSION 1 /** 'virtual' version of non-existent object */
 
 #define LR_SERVER_SIZE   512
 #define LR_CLIENT_START 8192
@@ -221,8 +229,6 @@ struct lustre_mount_data {
 #else
 #define LR_MAX_CLIENTS (CFS_PAGE_SIZE * 8)
 #endif
-
-#define LR_CLIENT_BITMAP_SIZE ((LR_MAX_CLIENTS >> 3) / sizeof(long))
 
 /** COMPAT_146: this is an OST (temporary) */
 #define OBD_COMPAT_OST          0x00000002
@@ -466,6 +472,7 @@ void lustre_register_kill_super_cb(void (*cfs)(struct super_block *sb));
 
 
 int lustre_common_put_super(struct super_block *sb);
+struct lustre_mount_info *server_find_mount_locked(const char *name);
 struct lustre_mount_info *server_get_mount(const char *name);
 struct lustre_mount_info *server_get_mount_2(const char *name);
 int server_put_mount(const char *name);
@@ -478,5 +485,7 @@ int server_mti_print(char *title, struct mgs_target_info *mti);
 int mgc_fsname2resid(char *fsname, struct ldlm_res_id *res_id);
 
 #endif
+
+/** @} disk */
 
 #endif // _LUSTRE_DISK_H

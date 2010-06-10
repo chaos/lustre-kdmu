@@ -71,10 +71,10 @@ struct osc_io {
         int                oi_lockless;
 
         struct obdo        oi_oa;
-        struct osc_punch_cbargs {
+        struct osc_setattr_cbargs {
                 int               opc_rc;
                 cfs_completion_t  opc_sync;
-        } oi_punch_cbarg;
+        } oi_setattr_cbarg;
 };
 
 /**
@@ -245,9 +245,11 @@ struct osc_lock {
                                  ols_glimpse:1;
         /**
          * IO that owns this lock. This field is used for a dead-lock
-         * avoidance by osc_lock_enqueue().
+         * avoidance by osc_lock_enqueue_wait().
          *
-         * \see osc_deadlock_is_possible()
+         * XXX: unfortunately, the owner of a osc_lock is not unique, 
+         * the lock may have multiple users, if the lock is granted and
+         * then matched.
          */
         struct osc_io           *ols_owner;
 };

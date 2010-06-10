@@ -670,7 +670,9 @@ again:
         }
 
         if (unlikely(cfs_test_bit(PTLRPC_CTX_ERROR_BIT, &ctx->cc_flags))) {
+                cfs_spin_lock(&req->rq_lock);
                 req->rq_err = 1;
+                cfs_spin_unlock(&req->rq_lock);
                 req_off_ctx_list(req, ctx);
                 RETURN(-EPERM);
         }
@@ -712,7 +714,9 @@ again:
                  * don't switch ctx if import was deactivated
                  */
                 if (req->rq_import->imp_deactive) {
+                        cfs_spin_lock(&req->rq_lock);
                         req->rq_err = 1;
+                        cfs_spin_unlock(&req->rq_lock);
                         RETURN(-EINTR);
                 }
 
@@ -721,7 +725,9 @@ again:
                         LASSERT(ctx == req->rq_cli_ctx);
                         CERROR("req %p: failed to replace dead ctx %p: %d\n",
                                 req, ctx, rc);
+                        cfs_spin_lock(&req->rq_lock);
                         req->rq_err = 1;
+                        cfs_spin_unlock(&req->rq_lock);
                         RETURN(rc);
                 }
 
@@ -893,6 +899,7 @@ int sptlrpc_import_check_ctx(struct obd_import *imp)
         cfs_atomic_set(&req->rq_refcount, 10000);
         CFS_INIT_LIST_HEAD(&req->rq_ctx_chain);
         cfs_waitq_init(&req->rq_reply_waitq);
+        cfs_waitq_init(&req->rq_set_waitq);
         req->rq_import = imp;
         req->rq_flvr = sec->ps_flvr;
         req->rq_cli_ctx = ctx;
@@ -1111,6 +1118,7 @@ int sptlrpc_cli_unwrap_early_reply(struct ptlrpc_request *req,
         early_req->rq_repdata = (struct lustre_msg *) early_buf;
         early_req->rq_repdata_len = early_size;
         early_req->rq_early = 1;
+        early_req->rq_reqmsg = req->rq_reqmsg;
 
         rc = do_cli_unwrap_reply(early_req);
         if (rc) {

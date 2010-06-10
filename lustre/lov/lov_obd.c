@@ -876,7 +876,7 @@ static int lov_cleanup(struct obd_device *obd)
                 CDEBUG(D_INFO, "delete pool %p\n", pool);
                 lov_pool_del(obd, pool->pool_name);
         }
-        cfs_hash_destroy(lov->lov_pools_hash_body);
+        cfs_hash_putref(lov->lov_pools_hash_body);
         lov_ost_pool_free(&(lov->lov_qos.lq_rr.lqr_pool));
         lov_ost_pool_free(&lov->lov_packed);
 
@@ -1748,6 +1748,46 @@ static int lov_change_cbdata(struct obd_export *exp,
         RETURN(rc);
 }
 
+/* find any ldlm lock of the inode in lov
+ * return 0    not find
+ *        1    find one
+ *      < 0    error */
+static int lov_find_cbdata(struct obd_export *exp,
+                           struct lov_stripe_md *lsm, ldlm_iterator_t it,
+                           void *data)
+{
+        struct lov_obd *lov;
+        int rc = 0, i;
+        ENTRY;
+
+        ASSERT_LSM_MAGIC(lsm);
+
+        if (!exp || !exp->exp_obd)
+                RETURN(-ENODEV);
+
+        LASSERT_MDS_GROUP(lsm->lsm_object_gr);
+
+        lov = &exp->exp_obd->u.lov;
+        for (i = 0; i < lsm->lsm_stripe_count; i++) {
+                struct lov_stripe_md submd;
+                struct lov_oinfo *loi = lsm->lsm_oinfo[i];
+
+                if (!lov->lov_tgts[loi->loi_ost_idx]) {
+                        CDEBUG(D_HA, "lov idx %d NULL \n", loi->loi_ost_idx);
+                        continue;
+                }
+
+                submd.lsm_object_id = loi->loi_id;
+                submd.lsm_object_gr = loi->loi_gr;
+                submd.lsm_stripe_count = 0;
+                rc = obd_find_cbdata(lov->lov_tgts[loi->loi_ost_idx]->ltd_exp,
+                                     &submd, it, data);
+                if (rc != 0)
+                        RETURN(rc);
+        }
+        RETURN(rc);
+}
+
 static int lov_cancel(struct obd_export *exp, struct lov_stripe_md *lsm,
                       __u32 mode, struct lustre_handle *lockh)
 {
@@ -1795,7 +1835,7 @@ static int lov_cancel(struct obd_export *exp, struct lov_stripe_md *lsm,
 
 static int lov_cancel_unused(struct obd_export *exp,
                              struct lov_stripe_md *lsm,
-                             int flags, void *opaque)
+                             ldlm_cancel_flags_t flags, void *opaque)
 {
         struct lov_obd *lov;
         int rc = 0, i;
@@ -1949,8 +1989,6 @@ static int lov_iocontrol(unsigned int cmd, struct obd_export *exp, int len,
                 __u32 index;
 
                 memcpy(&index, data->ioc_inlbuf2, sizeof(__u32));
-                LASSERT(data->ioc_plen1 == sizeof(struct obd_statfs));
-
                 if ((index >= count))
                         RETURN(-ENODEV);
 
@@ -1964,17 +2002,20 @@ static int lov_iocontrol(unsigned int cmd, struct obd_export *exp, int len,
                 if (!osc_obd)
                         RETURN(-EINVAL);
 
+                /* copy UUID */
+                if (cfs_copy_to_user(data->ioc_pbuf2, obd2cli_tgt(osc_obd),
+                                     min((int) data->ioc_plen2,
+                                         (int) sizeof(struct obd_uuid))))
+                        RETURN(-EFAULT);
+
                 /* got statfs data */
                 rc = obd_statfs(osc_obd, &stat_buf,
                                 cfs_time_current_64() - CFS_HZ, 0);
                 if (rc)
                         RETURN(rc);
                 if (cfs_copy_to_user(data->ioc_pbuf1, &stat_buf,
-                                     data->ioc_plen1))
-                        RETURN(-EFAULT);
-                /* copy UUID */
-                if (cfs_copy_to_user(data->ioc_pbuf2, obd2cli_tgt(osc_obd),
-                                     data->ioc_plen2))
+                                     min((int) data->ioc_plen1,
+                                         (int) sizeof(stat_buf))))
                         RETURN(-EFAULT);
                 break;
         }
@@ -2742,6 +2783,7 @@ struct obd_ops lov_obd_ops = {
         .o_sync                = lov_sync,
         .o_enqueue             = lov_enqueue,
         .o_change_cbdata       = lov_change_cbdata,
+        .o_find_cbdata         = lov_find_cbdata,
         .o_cancel              = lov_cancel,
         .o_cancel_unused       = lov_cancel_unused,
         .o_iocontrol           = lov_iocontrol,

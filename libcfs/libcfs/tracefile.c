@@ -246,7 +246,7 @@ int libcfs_debug_vmsg2(cfs_debug_limit_state_t *cdls, int subsys, int mask,
                        const char *format2, ...)
 {
         struct cfs_trace_cpu_data *tcd = NULL;
-        struct ptldebug_header     header;
+        struct ptldebug_header     header = {0};
         struct cfs_trace_page     *tage;
         /* string_buf is used only if tcd != NULL, and is always set then */
         char                      *string_buf = NULL;
@@ -262,12 +262,18 @@ int libcfs_debug_vmsg2(cfs_debug_limit_state_t *cdls, int subsys, int mask,
         if (strchr(file, '/'))
                 file = strrchr(file, '/') + 1;
 
+        tcd = cfs_trace_get_tcd();
 
+        /* cfs_trace_get_tcd() grabs a lock, which disables preemption and
+         * pins us to a particular CPU.  This avoids an smp_processor_id()
+         * warning on Linux when debugging is enabled. */
         cfs_set_ptldebug_header(&header, subsys, mask, line, CDEBUG_STACK());
 
-        tcd = cfs_trace_get_tcd();
         if (tcd == NULL)                /* arch may not log in IRQ context */
                 goto console;
+
+        if (tcd->tcd_cur_pages == 0)
+                header.ph_flags |= PH_FLAG_FIRST_RECORD;
 
         if (tcd->tcd_shutting_down) {
                 cfs_trace_put_tcd(tcd);
@@ -907,8 +913,11 @@ int cfs_trace_set_debug_mb(int mb)
         int limit = cfs_trace_max_debug_mb();
         struct cfs_trace_cpu_data *tcd;
 
-        if (mb < cfs_num_possible_cpus())
+        if (mb < cfs_num_possible_cpus()) {
+                printk(KERN_ERR "Cannot set debug_mb to %d, the value should be >= %d\n",
+                       mb, cfs_num_possible_cpus());
                 return -EINVAL;
+        }
 
         if (mb > limit) {
                 printk(CFS_KERN_ERR "Lustre: Refusing to set debug buffer size "
@@ -965,7 +974,6 @@ static int tracefiled(void *arg)
         struct tracefiled_ctl *tctl = arg;
         struct cfs_trace_page *tage;
         struct cfs_trace_page *tmp;
-        struct ptldebug_header *hdr;
         cfs_file_t *filp;
         int last_loop = 0;
         int rc;
@@ -1005,13 +1013,6 @@ static int tracefiled(void *arg)
                 }
 
                 CFS_MMSPACE_OPEN;
-
-                /* mark the first header, so we can sort in chunks */
-                tage = cfs_tage_from_list(pc.pc_pages.next);
-                __LASSERT_TAGE_INVARIANT(tage);
-
-                hdr = cfs_page_address(tage->page);
-                hdr->ph_flags |= PH_FLAG_FIRST_RECORD;
 
                 cfs_list_for_each_entry_safe_typed(tage, tmp, &pc.pc_pages,
                                                    struct cfs_trace_page,

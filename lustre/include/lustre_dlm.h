@@ -37,6 +37,11 @@
 #ifndef _LUSTRE_DLM_H__
 #define _LUSTRE_DLM_H__
 
+/** \defgroup ldlm ldlm
+ *
+ * @{
+ */
+
 #if defined(__linux__)
 #include <linux/lustre_dlm.h>
 #elif defined(__APPLE__)
@@ -105,7 +110,7 @@ typedef enum {
 #define LDLM_FL_REPLAY         0x000100
 
 #define LDLM_FL_INTENT_ONLY    0x000200 /* don't grant lock, just do intent */
-#define LDLM_FL_LOCAL_ONLY     0x000400 /* see ldlm_cli_cancel_unused */
+#define LDLM_FL_LOCAL_ONLY     0x000400
 
 /* don't run the cancel callback under ldlm_cli_cancel_unused */
 #define LDLM_FL_FAILED         0x000800
@@ -113,7 +118,7 @@ typedef enum {
 #define LDLM_FL_HAS_INTENT     0x001000 /* lock request has intent */
 #define LDLM_FL_CANCELING      0x002000 /* lock cancel has already been sent */
 #define LDLM_FL_LOCAL          0x004000 /* local lock (ie, no srv/cli split) */
-#define LDLM_FL_WARN           0x008000 /* see ldlm_cli_cancel_unused */
+/* was LDLM_FL_WARN  until 2.0.0  0x008000 */
 #define LDLM_FL_DISCARD_DATA   0x010000 /* discard (no writeback) on cancel */
 
 #define LDLM_FL_NO_TIMEOUT     0x020000 /* Blocked by group lock - wait
@@ -163,8 +168,7 @@ typedef enum {
  * w/o involving separate thread. in order to decrease cs rate */
 #define LDLM_FL_ATOMIC_CB      0x4000000
 
-/* Cancel lock asynchronously. See ldlm_cli_cancel_unused_resource. */
-#define LDLM_FL_ASYNC           0x8000000
+/* was LDLM_FL_ASYNC until 2.0.0 0x8000000 */
 
 /* It may happen that a client initiate 2 operations, e.g. unlink and mkdir,
  * such that server send blocking ast for conflict locks to this client for
@@ -278,9 +282,9 @@ struct ldlm_pool_ops {
 #define LDLM_POOLS_THREAD_PERIOD (1)
 
 /**
- * 5% margin for modest pools. See ldlm_pool.c for details.
+ * ~6% margin for modest pools. See ldlm_pool.c for details.
  */
-#define LDLM_POOLS_MODEST_MARGIN (5)
+#define LDLM_POOLS_MODEST_MARGIN_SHIFT (4)
 
 /**
  * Default recalc period for server side pools in sec.
@@ -546,6 +550,14 @@ struct ldlm_interval_tree {
 
 #define LUSTRE_TRACKS_LOCK_EXP_REFS (1)
 
+/* Cancel flag. */
+typedef enum {
+        LCF_ASYNC      = 0x1, /* Cancel locks asynchronously. */
+        LCF_LOCAL      = 0x2, /* Cancel locks locally, not notifing server */
+        LCF_BL_AST     = 0x4, /* Cancel locks marked as LDLM_FL_BL_AST
+                               * in the same RPC */
+} ldlm_cancel_flags_t;
+
 struct ldlm_lock {
         /**
          * Must be first in the structure.
@@ -618,6 +630,13 @@ struct ldlm_lock {
         struct lustre_handle     l_remote_handle;
 
         ldlm_policy_data_t       l_policy_data;
+
+        /**
+         * Traffic index indicating how busy the resource will be, if it is
+         * high, the lock's granted region will not be so big lest it conflicts
+         * other locks, causing frequent lock cancellation and re-enqueue
+         */
+        int                   l_traffic;
 
         /*
          * Protected by lr_lock. Various counters: readers, writers, etc.
@@ -852,7 +871,7 @@ int ldlm_namespace_foreach_res(struct ldlm_namespace *ns,
                                ldlm_res_iterator_t iter, void *closure);
 
 int ldlm_replay_locks(struct obd_import *imp);
-void ldlm_resource_iterate(struct ldlm_namespace *, const struct ldlm_res_id *,
+int ldlm_resource_iterate(struct ldlm_namespace *, const struct ldlm_res_id *,
                            ldlm_iterator_t iter, void *data);
 
 /* ldlm_flock.c */
@@ -1090,20 +1109,22 @@ int ldlm_handle_convert0(struct ptlrpc_request *req,
                          const struct ldlm_request *dlm_req);
 int ldlm_cli_cancel(struct lustre_handle *lockh);
 int ldlm_cli_cancel_unused(struct ldlm_namespace *, const struct ldlm_res_id *,
-                           int flags, void *opaque);
+                           ldlm_cancel_flags_t flags, void *opaque);
 int ldlm_cli_cancel_unused_resource(struct ldlm_namespace *ns,
                                     const struct ldlm_res_id *res_id,
                                     ldlm_policy_data_t *policy,
-                                    ldlm_mode_t mode, int flags, void *opaque);
+                                    ldlm_mode_t mode,
+                                    ldlm_cancel_flags_t flags,
+                                    void *opaque);
 int ldlm_cli_cancel_req(struct obd_export *exp, cfs_list_t *head,
-                        int count, int flags);
+                        int count, ldlm_cancel_flags_t flags);
 int ldlm_cancel_resource_local(struct ldlm_resource *res,
                                cfs_list_t *cancels,
                                ldlm_policy_data_t *policy,
                                ldlm_mode_t mode, int lock_flags,
-                               int cancel_flags, void *opaque);
+                               ldlm_cancel_flags_t cancel_flags, void *opaque);
 int ldlm_cli_cancel_list(cfs_list_t *head, int count,
-                         struct ptlrpc_request *req, int flags);
+                         struct ptlrpc_request *req, ldlm_cancel_flags_t flags);
 
 /* mds/handler.c */
 /* This has to be here because recursive inclusion sucks. */
@@ -1176,4 +1197,7 @@ void ldlm_pool_set_clv(struct ldlm_pool *pl, __u64 clv);
 void ldlm_pool_set_limit(struct ldlm_pool *pl, __u32 limit);
 void ldlm_pool_add(struct ldlm_pool *pl, struct ldlm_lock *lock);
 void ldlm_pool_del(struct ldlm_pool *pl, struct ldlm_lock *lock);
+
+/** @} ldlm */
+
 #endif

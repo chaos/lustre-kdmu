@@ -129,6 +129,11 @@ int ll_setxattr_common(struct inode *inode, const char *name,
             (xattr_type == XATTR_LUSTRE_T && strcmp(name, "lustre.lov") == 0))
                 RETURN(0);
 
+        /* b15587: ignore security.capability xattr for now */
+        if ((xattr_type == XATTR_SECURITY_T &&
+            strcmp(name, "security.capability") == 0))
+                RETURN(0);
+
 #ifdef CONFIG_FS_POSIX_ACL
         if (sbi->ll_flags & LL_SBI_RMT_CLIENT &&
             (xattr_type == XATTR_ACL_ACCESS_T ||
@@ -222,10 +227,10 @@ int ll_setxattr(struct dentry *dentry, const char *name,
                 /* Attributes that are saved via getxattr will always have
                  * the stripe_offset as 0.  Instead, the MDS should be
                  * allowed to pick the starting OST index.   b=17846 */
-                if (lump->lmm_stripe_offset == 0)
+                if (lump != NULL && lump->lmm_stripe_offset == 0)
                         lump->lmm_stripe_offset = -1;
 
-                if (S_ISREG(inode->i_mode)) {
+                if (lump != NULL && S_ISREG(inode->i_mode)) {
                         struct file f;
                         int flags = FMODE_WRITE;
 
@@ -292,6 +297,11 @@ int ll_getxattr_common(struct inode *inode, const char *name,
         rc = xattr_type_filter(sbi, xattr_type);
         if (rc)
                 RETURN(rc);
+
+        /* b15587: ignore security.capability xattr for now */
+        if ((xattr_type == XATTR_SECURITY_T &&
+            strcmp(name, "security.capability") == 0))
+                RETURN(-ENODATA);
 
 #ifdef CONFIG_FS_POSIX_ACL
         if (sbi->ll_flags & LL_SBI_RMT_CLIENT &&

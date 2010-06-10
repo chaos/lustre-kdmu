@@ -64,7 +64,6 @@ static int libcfs_param_bitmasks_read(char *page, char **start, off_t off,
         unsigned int *mask = ((lparcb_t *)data)->cb_data;
         int           is_subsys = (mask == &libcfs_subsystem_debug) ? 1 : 0;
 
-        *eof = 1;
         libcfs_debug_mask2str(page, tmpstrlen, *mask, is_subsys);
         rc = strlen(page);
         if (rc > 0)
@@ -107,7 +106,6 @@ static int libcfs_param_dump_kernel_write(libcfs_file_t *filp,
 static int libcfs_param_daemon_file_read(char *page, char **start, off_t off,
                                          int count, int *eof, void *data)
 {
-        *eof = 1;
         if (off >= strlen(cfs_tracefile))
                 return 0;
         return libcfs_param_snprintf(page, count, data, LP_STR,
@@ -129,7 +127,6 @@ static int libcfs_param_debug_mb_read(char *page, char **start, off_t off,
 {
         int  temp;
 
-        *eof = 1;
         temp = cfs_trace_get_debug_mb();
 
         return libcfs_param_snprintf(page, count, data, LP_D32, NULL, temp);
@@ -150,7 +147,6 @@ libcfs_param_console_max_delay_cs_read(char *page, char **start, off_t off,
 {
         int max_delay_cs;
 
-        *eof = 1;
         max_delay_cs = cfs_duration_sec(libcfs_console_max_delay * 100);
 
         return libcfs_param_snprintf(page, count, data, LP_D32,
@@ -184,7 +180,6 @@ libcfs_param_console_min_delay_cs_read(char *page, char **start, off_t off,
 {
         int min_delay_cs;
 
-        *eof = 1;
         min_delay_cs = cfs_duration_sec(libcfs_console_min_delay * 100);
 
         return libcfs_param_snprintf(page, count, data, LP_D32,
@@ -215,7 +210,6 @@ libcfs_param_console_min_delay_cs_write(libcfs_file_t *filp,
 static int libcfs_param_console_backoff_read(char *page, char **start,off_t off,
                                              int count,int *eof, void *data)
 {
-        *eof = 1;
         return libcfs_param_snprintf(page, count, data, LP_U32,
                                      NULL, libcfs_console_backoff);
 }
@@ -257,7 +251,6 @@ static int libcfs_param_memused_read(char *page, char **start, off_t off,
         int temp;
         cfs_atomic_t *memused = ((lparcb_t *)data)->cb_data;
 
-        *eof = 1;
         temp = cfs_atomic_read(memused);
 
         return libcfs_param_snprintf(page, count, data, LP_D32, NULL, temp);
@@ -332,7 +325,7 @@ static struct libcfs_param_ctl_table libcfs_param_lnet_table[] = {
                 .write  = libcfs_param_string_write
         },
         {
-                .name   = "memused",
+                .name   = "lnet_memused",
                 .data   = &libcfs_kmemory,
                 .mode   = 0444,
                 .read   = libcfs_param_memused_read,
