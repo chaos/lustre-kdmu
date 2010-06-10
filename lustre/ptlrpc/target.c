@@ -98,6 +98,7 @@ void lut_client_free(struct obd_export *exp)
         struct tg_export_data *ted = &exp->exp_target_data;
         struct lu_target *lut = class_exp2tgt(exp);
 
+        LASSERT(ted);
         OBD_FREE_PTR(ted->ted_lcd);
         ted->ted_lcd = NULL;
 
