@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright  2009 Sun Microsystems, Inc. All rights reserved
  * Use is subject to license terms.
  */
 /*
@@ -420,6 +420,8 @@ out:
 }
 EXPORT_SYMBOL(llog_ioctl);
 
+#if !defined(__sun__)
+
 int llog_catalog_list(struct obd_device *obd, int count,
                       struct obd_ioctl_data *data)
 {
@@ -464,4 +466,7 @@ out:
         RETURN(rc);
 
 }
+
+#endif /* !__sun__ */
+
 EXPORT_SYMBOL(llog_catalog_list);

@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright  2009 Sun Microsystems, Inc. All rights reserved
  * Use is subject to license terms.
  */
 /*
@@ -43,6 +43,8 @@
 #include <darwin/obd.h>
 #elif defined(__WINNT__)
 #include <winnt/obd.h>
+#elif defined(__sun__)
+#include <solaris/obd.h>
 #else
 #error Unsupported operating system.
 #endif
@@ -64,7 +66,9 @@
 #include <lu_ref.h>
 #include <lustre_lib.h>
 #include <lustre_export.h>
+#ifdef HAVE_QUOTA_SUPPORT
 #include <lustre_quota.h>
+#endif
 #include <lustre_fld.h>
 #include <lustre_capa.h>
 
@@ -233,9 +237,11 @@ struct obd_device_target {
         struct file              *obt_rcvd_filp;
         struct lu_target         *obt_lut;
         __u64                     obt_mount_count;
+#ifdef HAVE_QUOTA_SUPPORT
         cfs_semaphore_t           obt_quotachecking;
         struct lustre_quota_ctxt  obt_qctxt;
         lustre_quota_version_t    obt_qfmt;
+#endif
         cfs_rw_semaphore_t        obt_rwsem;
         struct vfsmount          *obt_vfsmnt;
         struct file              *obt_health_check_filp;
@@ -335,10 +341,11 @@ struct filter_obd {
         cfs_spinlock_t           fo_llog_list_lock;
 
         struct brw_stats         fo_filter_stats;
+#ifdef HAVE_QUOTA_SUPPORT
         struct lustre_quota_ctxt fo_quota_ctxt;
         cfs_spinlock_t           fo_quotacheck_lock;
         cfs_atomic_t             fo_quotachecking;
-
+#endif
         int                      fo_fmd_max_num; /* per exp filter_mod_data */
         int                      fo_fmd_max_age; /* jiffies to fmd expiry */
 
@@ -454,7 +461,7 @@ struct client_obd {
         cfs_semaphore_t          cl_mgc_sem;
         struct vfsmount         *cl_mgc_vfsmnt;
         struct dt_device        *cl_mgc_dt_dev;
-        struct dentry           *cl_mgc_configs_dir;
+        cfs_dentry_t            *cl_mgc_configs_dir;
         cfs_atomic_t             cl_mgc_refcount;
         struct obd_export       *cl_mgc_mgsexp;
 
@@ -484,8 +491,8 @@ struct mgs_obd {
         struct ptlrpc_service           *mgs_service;
         struct vfsmount                 *mgs_vfsmnt;
         struct super_block              *mgs_sb;
-        struct dentry                   *mgs_configs_dir;
-        struct dentry                   *mgs_fid_de;
+        cfs_dentry_t                    *mgs_configs_dir;
+        cfs_dentry_t                    *mgs_fid_de;
         cfs_list_t                       mgs_fs_db_list;
         cfs_semaphore_t                  mgs_sem;
         struct libcfs_param_entry       *mgs_proc_live;
@@ -529,9 +536,10 @@ struct mds_obd {
         __u32                            mds_lov_objid_lastpage;
         __u32                            mds_lov_objid_lastidx;
 
-
+#ifdef HAVE_QUOTA_SUPPORT
         struct lustre_quota_info         mds_quota_info;
         cfs_rw_semaphore_t               mds_qonoff_sem;
+#endif
         cfs_semaphore_t                  mds_health_sem;
         unsigned long                    mds_fl_user_xattr:1,
                                          mds_fl_acl:1,
@@ -1172,6 +1180,8 @@ enum obd_cleanup_stage {
 
 struct lu_context;
 
+#if !defined (SOLARIS_LSERVER)
+
 static inline int it_to_lock_mode(struct lookup_intent *it)
 {
         /* CREAT needs to be tested before open (both could be set) */
@@ -1183,6 +1193,8 @@ static inline int it_to_lock_mode(struct lookup_intent *it)
         LASSERTF(0, "Invalid it_op: %d\n", it->it_op);
         return -EINVAL;
 }
+
+#endif /* !SOLARIS_LSERVER */
 
 struct md_op_data {
         struct lu_fid           op_fid1; /* operation fid1 (usualy parent) */
@@ -1203,9 +1215,12 @@ struct md_op_data {
         cfs_cap_t               op_cap;
         void                   *op_data;
 
+#if !defined(SOLARIS_LSERVER)
         /* iattr fields and blocks. */
         struct iattr            op_attr;
-#ifdef __KERNEL__
+#endif
+
+#if defined(__KERNEL__) && !defined(__sun__)
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,14)
         unsigned int            op_attr_flags;
 #endif
@@ -1234,16 +1249,20 @@ typedef int (* md_enqueue_cb_t)(struct ptlrpc_request *req,
                                 struct md_enqueue_info *minfo,
                                 int rc);
 
+#if !defined(SOLARIS_LSERVER)
+
 struct md_enqueue_info {
         struct md_op_data       mi_data;
         struct lookup_intent    mi_it;
         struct lustre_handle    mi_lockh;
-        struct dentry          *mi_dentry;
+        cfs_dentry_t           *mi_dentry;
         struct inode           *mi_dir;
         md_enqueue_cb_t         mi_cb;
         unsigned int            mi_generation;
         void                   *mi_cbdata;
 };
+
+#endif /* !SOLARIS_LSERVER */
 
 struct obd_ops {
         cfs_module_t *o_owner;
@@ -1392,6 +1411,7 @@ struct obd_ops {
         int (*o_health_check)(struct obd_device *);
         struct obd_uuid *(*o_get_uuid) (struct obd_export *exp);
 
+#ifdef HAVE_QUOTA_SUPPORT
         /* quota methods */
         int (*o_quotacheck)(struct obd_device *, struct obd_export *,
                             struct obd_quotactl *);
@@ -1400,7 +1420,7 @@ struct obd_ops {
         int (*o_quota_adjust_qunit)(struct obd_export *exp,
                                     struct quota_adjust_qunit *oqaq,
                                     struct lustre_quota_ctxt *qctxt);
-
+#endif
 
         int (*o_ping)(struct obd_export *exp);
 
@@ -1440,7 +1460,7 @@ struct lustre_md {
         struct mdt_body         *body;
         struct lov_stripe_md    *lsm;
         struct lmv_stripe_md    *mea;
-#ifdef CONFIG_FS_POSIX_ACL
+#if defined(CONFIG_FS_POSIX_ACL) && !defined(SOLARIS_LSERVER)
         struct posix_acl        *posix_acl;
 #endif
         struct mdt_remote_perm  *remote_perm;
@@ -1615,6 +1635,7 @@ static inline void obd_transno_commit_cb(struct obd_device *obd, __u64 transno,
                 obd->obd_last_committed = transno;
 }
 
+#ifdef HAVE_QUOTA_SUPPORT
 static inline void init_obd_quota_ops(quota_interface_t *interface,
                                       struct obd_ops *obd_ops)
 {
@@ -1626,6 +1647,7 @@ static inline void init_obd_quota_ops(quota_interface_t *interface,
         obd_ops->o_quotactl = QUOTA_OP(interface, ctl);
         obd_ops->o_quota_adjust_qunit = QUOTA_OP(interface, adjust_qunit);
 }
+#endif
 
 static inline struct lustre_capa *oinfo_capa(struct obd_info *oinfo)
 {

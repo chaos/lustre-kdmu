@@ -2889,7 +2889,7 @@ kiblnd_check_txs (kib_conn_t *conn, cfs_list_t *txs)
                         LASSERT (tx->tx_waiting || tx->tx_sending != 0);
                 }
 
-                if (cfs_time_after_eq (cfs_time_current(), tx->tx_deadline)) {
+                if (cfs_time_aftereq (cfs_time_current(), tx->tx_deadline)) {
                         timed_out = 1;
                         CERROR("Timed out tx: %s, %lu seconds\n",
                                kiblnd_queue2str(conn, txs),

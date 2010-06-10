@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright  2009 Sun Microsystems, Inc. All rights reserved
  * Use is subject to license terms.
  */
 /*
@@ -41,7 +41,9 @@
 #define DEBUG_SUBSYSTEM S_CLASS
 #ifdef __KERNEL__
 #include <obd_class.h>
+#if defined(__linux__)
 #include <linux/string.h>
+#endif
 #else
 #include <liblustre.h>
 #include <obd_class.h>
@@ -1006,15 +1008,19 @@ int class_process_proc_param(char *prefix, struct lprocfs_vars *lvars,
                                 rc = -EROFS;
                                 if (var->write_fptr) {
                                         struct libcfs_param_cb_data cb_data;
+#if defined(__linux__)
                                         mm_segment_t oldfs;
                                         oldfs = get_fs();
                                         set_fs(KERNEL_DS);
+#endif
                                         cb_data.cb_data = data;
                                         cb_data.cb_flag = 0;
                                         cb_data.cb_magic = PARAM_DEBUG_MAGIC;
                                         rc = (var->write_fptr)(NULL, sval,
                                                                vallen, &cb_data);
+#if defined(__linux__)
                                         set_fs(oldfs);
+#endif
                                 }
                                 break;
                         }
@@ -1056,7 +1062,7 @@ int class_process_proc_param(char *prefix, struct lprocfs_vars *lvars,
 int class_config_dump_handler(struct llog_handle * handle,
                               struct llog_rec_hdr *rec, void *data);
 
-#ifdef __KERNEL__
+#if defined(__KERNEL__) && !defined(__sun__)
 extern int lustre_check_exclusion(struct super_block *sb, char *svname);
 #else
 #define lustre_check_exclusion(a,b)  0

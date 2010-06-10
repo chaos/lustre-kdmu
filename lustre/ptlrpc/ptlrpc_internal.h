@@ -146,9 +146,11 @@ void sptlrpc_conf_fini(void);
 int  __init sptlrpc_init(void);
 void __exit sptlrpc_fini(void);
 
+#if defined(SOLARIS_LLOG)
 /* recov_thread.c */
 int llog_recov_init(void);
 void llog_recov_fini(void);
+#endif /* SOLARIS_LLOG */
 
 static inline int ll_rpc_recoverable_error(int rc)
 {

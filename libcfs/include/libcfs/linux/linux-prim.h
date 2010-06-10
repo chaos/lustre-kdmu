@@ -160,6 +160,8 @@ LL_PROC_PROTO(name)                                     \
 
 typedef struct module cfs_module_t;
 
+#define cfs_module_name(m)              (m->name)
+
 /*
  * Proc file system APIs
  */

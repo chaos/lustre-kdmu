@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright  2009 Sun Microsystems, Inc. All rights reserved
  * Use is subject to license terms.
  */
 /*
@@ -48,15 +48,13 @@
 #include <darwin/lustre_handles.h>
 #elif defined(__WINNT__)
 #include <winnt/lustre_handles.h>
+#elif defined(__sun__)
+#include <solaris/lustre_handles.h>
 #else
 #error Unsupported operating system.
 #endif
 
 #include <libcfs/libcfs.h>
-
-# ifndef HAVE_RCU
-typedef struct cfs_rcu_head { int foo; } cfs_rcu_head_t;
-# endif
 
 typedef void (*portals_handle_addref_cb)(void *object);
 

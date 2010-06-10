@@ -1066,6 +1066,9 @@ out_free:
                 obd_ioctl_freedata(buf, len);
                 RETURN(rc);
         }
+
+#ifdef HAVE_QUOTA_SUPPORT
+
         case OBD_IOC_QUOTACHECK: {
                 struct obd_quotactl *oqctl;
                 int error = 0;
@@ -1236,6 +1239,17 @@ out_free:
                 OBD_FREE_PTR(qctl);
                 RETURN(rc);
         }
+
+#else /* HAVE_QUOTA_SUPPORT */
+
+        case OBD_IOC_QUOTACHECK:
+        case OBD_IOC_POLL_QUOTACHECK:
+        case OBD_IOC_QUOTACTL:
+
+                RETURN(-ENOTSUPP);
+
+#endif /* HAVE_QUOTA_SUPPORT */
+
         case OBD_IOC_GETNAME: {
                 struct obd_device *obd = class_exp2obd(sbi->ll_dt_exp);
                 if (!obd)

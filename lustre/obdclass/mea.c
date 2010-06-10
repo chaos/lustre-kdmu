@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright  2009 Sun Microsystems, Inc. All rights reserved
  * Use is subject to license terms.
  */
 /*
@@ -36,20 +36,21 @@
 
 #define DEBUG_SUBSYSTEM S_CLASS
 #include <obd_class.h>
-#ifdef __KERNEL__
+#if defined(__KERNEL__) && defined(__linux__)
 #include <linux/kmod.h>   /* for request_module() */
 #include <linux/module.h>
 #include <linux/random.h>
 #include <linux/slab.h>
 #include <linux/pagemap.h>
-#else
+#elif !defined(__KERNEL__)
 #include <liblustre.h>
 #include <obd.h>
 #endif
+
 #include <lprocfs_status.h>
 #include <lustre/lustre_idl.h>
 
-#ifdef __KERNEL__
+#if defined(__KERNEL__) && defined(__linux__)
 
 #ifdef HAVE_SERVER_SUPPORT
 
@@ -61,8 +62,10 @@
 #include <linux/ldiskfs_fs.h>
 #endif
 
-#endif
-#endif
+#endif /* HAVE_SERVER_SUPPORT */
+
+#endif /* __KERNEL__ && __linux__ */
+
 static int mea_last_char_hash(int count, char *name, int namelen)
 {
         unsigned int c;

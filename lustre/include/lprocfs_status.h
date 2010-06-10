@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright  2009 Sun Microsystems, Inc. All rights reserved
  * Use is subject to license terms.
  */
 /*
@@ -48,6 +48,8 @@
 #include <darwin/lprocfs_status.h>
 #elif defined(__WINNT__)
 #include <winnt/lprocfs_status.h>
+#elif defined(__sun__)
+#include <solaris/lprocfs_status.h>
 #else
 #error Unsupported operating system.
 #endif
@@ -389,8 +391,48 @@ extern void lprocfs_counter_sub(struct lprocfs_stats *stats, int idx,
 #define lprocfs_counter_decr(stats, idx) \
         lprocfs_counter_sub(stats, idx, 1)
 
-extern __s64 lprocfs_read_helper(struct lprocfs_counter *lc,
-                                 enum lprocfs_fields_flags field);
+static inline __s64 lprocfs_read_helper(struct lprocfs_counter *lc,
+                          enum lprocfs_fields_flags field)
+{
+        __s64 ret = 0;
+        int centry;
+
+        if (!lc)
+                RETURN(0);
+        do {
+                centry = cfs_atomic_read(&lc->lc_cntl.la_entry);
+
+                switch (field) {
+                        case LPROCFS_FIELDS_FLAGS_CONFIG:
+                                ret = lc->lc_config;
+                                break;
+                        case LPROCFS_FIELDS_FLAGS_SUM:
+                                ret = lc->lc_sum + lc->lc_sum_irq;
+                                break;
+                        case LPROCFS_FIELDS_FLAGS_MIN:
+                                ret = lc->lc_min;
+                                break;
+                        case LPROCFS_FIELDS_FLAGS_MAX:
+                                ret = lc->lc_max;
+                                break;
+                        case LPROCFS_FIELDS_FLAGS_AVG:
+                                ret = (lc->lc_max - lc->lc_min)/2;
+                                break;
+                        case LPROCFS_FIELDS_FLAGS_SUMSQUARE:
+                                ret = lc->lc_sumsquare;
+                                break;
+                        case LPROCFS_FIELDS_FLAGS_COUNT:
+                                ret = lc->lc_count;
+                                break;
+                        default:
+                                break;
+                };
+        } while (centry != cfs_atomic_read(&lc->lc_cntl.la_entry) &&
+                 centry != cfs_atomic_read(&lc->lc_cntl.la_exit));
+
+        RETURN(ret);
+}
+
 static inline __u64 lprocfs_stats_collector(struct lprocfs_stats *stats,
                                             int idx,
                                             enum lprocfs_fields_flags field)

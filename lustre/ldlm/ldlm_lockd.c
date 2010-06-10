@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright  2009 Sun Microsystems, Inc. All rights reserved
  * Use is subject to license terms.
  */
 /*
@@ -52,6 +52,7 @@
 
 #include <lustre_dlm.h>
 #include <obd_class.h>
+#include <lustre_log.h>
 #include <libcfs/list.h>
 #include "ldlm_internal.h"
 
@@ -1686,7 +1687,7 @@ static int __ldlm_bl_to_thread(struct ldlm_namespace *ns, struct ldlm_bl_work_it
 
 static int ldlm_bl_to_thread(struct ldlm_namespace *ns,
                              struct ldlm_lock_desc *ld, struct ldlm_lock *lock,
-                             struct list_head *cancels, int count, int mode)
+                             cfs_list_t *cancels, int count, int mode)
 {
         ENTRY;
 
@@ -1834,6 +1835,7 @@ static int ldlm_callback_handler(struct ptlrpc_request *req)
                 rc = ldlm_handle_setinfo(req);
                 ldlm_callback_reply(req, rc);
                 RETURN(0);
+#if defined(LUSTRE_LOG_SERVER)
         case OBD_LOG_CANCEL: /* remove this eventually - for 1.4.0 compat */
                 CERROR("shouldn't be handling OBD_LOG_CANCEL on DLM thread\n");
                 req_capsule_set(&req->rq_pill, &RQF_LOG_CANCEL);
@@ -1844,6 +1846,7 @@ static int ldlm_callback_handler(struct ptlrpc_request *req)
                         RETURN(0);
                 ldlm_callback_reply(req, rc);
                 RETURN(0);
+#endif /* LUSTRE_LOG_SERVER */
         case OBD_QC_CALLBACK:
                 req_capsule_set(&req->rq_pill, &RQF_QC_CALLBACK);
                 if (OBD_FAIL_CHECK(OBD_FAIL_OBD_QC_CALLBACK_NET))
@@ -1857,6 +1860,7 @@ static int ldlm_callback_handler(struct ptlrpc_request *req)
                 req_capsule_set(&req->rq_pill, &RQF_MDS_QUOTA_DQACQ);
                 rc = target_handle_dqacq_callback(req);
                 RETURN(0);
+#if defined(LUSTRE_LOG_SERVER)
         case LLOG_ORIGIN_HANDLE_CREATE:
                 req_capsule_set(&req->rq_pill, &RQF_LLOG_ORIGIN_HANDLE_CREATE);
                 if (OBD_FAIL_CHECK(OBD_FAIL_OBD_LOGD_NET))
@@ -1886,6 +1890,7 @@ static int ldlm_callback_handler(struct ptlrpc_request *req)
                 rc = llog_origin_handle_close(req);
                 ldlm_callback_reply(req, rc);
                 RETURN(0);
+#endif /* LUSTRE_LOG_SERVER */
         default:
                 CERROR("unknown opcode %u\n",
                        lustre_msg_get_opc(req->rq_reqmsg));
@@ -2041,6 +2046,7 @@ static int ldlm_cancel_handler(struct ptlrpc_request *req)
                 if (rc)
                         break;
                 RETURN(0);
+#if defined(LUSTRE_LOG_SERVER)
         case OBD_LOG_CANCEL:
                 req_capsule_set(&req->rq_pill, &RQF_LOG_CANCEL);
                 if (OBD_FAIL_CHECK(OBD_FAIL_OBD_LOG_CANCEL_NET))
@@ -2050,6 +2056,7 @@ static int ldlm_cancel_handler(struct ptlrpc_request *req)
                         RETURN(0);
                 ldlm_callback_reply(req, rc);
                 RETURN(0);
+#endif /* LUSTRE_LOG_SERVER */
         default:
                 CERROR("invalid opcode %d\n",
                        lustre_msg_get_opc(req->rq_reqmsg));
@@ -2589,7 +2596,7 @@ void __exit ldlm_exit(void)
                 CERROR("ldlm_refcount is %d in ldlm_exit!\n", ldlm_refcount);
         rc = cfs_mem_cache_destroy(ldlm_resource_slab);
         LASSERTF(rc == 0, "couldn't free ldlm resource slab\n");
-#ifdef __KERNEL__
+#if defined(__KERNEL__) && defined(HAVE_RCU)
         /* ldlm_lock_put() use RCU to call ldlm_lock_free, so need call
          * synchronize_rcu() to wait a grace period elapsed, so that
          * ldlm_lock_free() get a chance to be called. */

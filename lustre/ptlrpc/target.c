@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright  2009 Sun Microsystems, Inc. All rights reserved
  * Use is subject to license terms.
  */
 /*
@@ -41,6 +41,9 @@
 
 #include <obd.h>
 #include <lustre_fsfilt.h>
+#include <obd_class.h>
+
+#if !defined(__sun__)
 
 /**
  * Update client data in last_rcvd file. An obd API
@@ -141,6 +144,9 @@ static void obt_boot_epoch_update(struct lu_target *lut)
         obt_server_data_update(lut, 1);
 }
 
+#endif /* __sun__ */
+
+
 /**
  * write data in last_rcvd file.
  */
@@ -204,13 +210,13 @@ void lut_client_free(struct obd_export *exp)
         if (ted->ted_lr_idx < 0)
                 return;
         /* Clear bit when lcd is freed */
-        spin_lock(&lut->lut_client_bitmap_lock);
-        if (!test_and_clear_bit(ted->ted_lr_idx, lut->lut_client_bitmap)) {
+        cfs_spin_lock(&lut->lut_client_bitmap_lock);
+        if (!cfs_test_and_clear_bit(ted->ted_lr_idx, lut->lut_client_bitmap)) {
                 CERROR("%s: client %u bit already clear in bitmap\n",
                        exp->exp_obd->obd_name, ted->ted_lr_idx);
                 LBUG();
         }
-        spin_unlock(&lut->lut_client_bitmap_lock);
+        cfs_spin_unlock(&lut->lut_client_bitmap_lock);
 }
 EXPORT_SYMBOL(lut_client_free);
 
@@ -292,9 +298,11 @@ void lut_boot_epoch_update(struct lu_target *lut)
 
         if (lut->lut_obd->obd_stopping)
                 return;
+#if !defined(__sun__)
         /** Increase server epoch after recovery */
         if (lut->lut_bottom == NULL)
                 return obt_boot_epoch_update(lut);
+#endif /* __sun__ */
 
         rc = lu_env_init(&env, LCT_DT_THREAD);
         if (rc) {

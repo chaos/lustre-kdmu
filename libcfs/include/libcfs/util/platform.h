@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright  2009 Sun Microsystems, Inc. All rights reserved
  * Use is subject to license terms.
  */
 /*
@@ -245,6 +245,13 @@ static inline void l_cond_broadcast(l_cond_t *cond)
 #ifdef HAVE_LIBREADLINE
 #define READLINE_LIBRARY
 #include <readline/readline.h>
+
+#if defined(__sun__)
+#ifndef completion_matches
+#  define completion_matches rl_completion_matches
+#endif
+#endif /* __sun__ */
+
 #endif /* HAVE_LIBREADLINE */
 #include <errno.h>
 #include <string.h>

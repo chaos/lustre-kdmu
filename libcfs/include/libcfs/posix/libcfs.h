@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright  2009 Sun Microsystems, Inc. All rights reserved
  * Use is subject to license terms.
  */
 /*
@@ -116,14 +116,20 @@ typedef unsigned long long cfs_cycles_t;
 #include <sys/mount.h>
 
 #ifdef __linux__
-#include <mntent.h>
-#endif
 
-typedef struct file cfs_file_t;
+#include <mntent.h>
+
 typedef struct dentry cfs_dentry_t;
-#ifdef __linux__
+typedef struct file cfs_file_t;
 typedef struct dirent64 cfs_dirent_t;
-#endif
+
+#else /* __linux__ */
+
+typedef struct {;} cfs_dentry_t;
+typedef struct {;} cfs_file_t;
+typedef struct {;} cfs_dirent_t;
+
+#endif /* __linux__ */
 
 #define cfs_get_fd(x)   NULL
 #define cfs_put_file(f) do {} while (0)

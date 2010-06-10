@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright  2009 Sun Microsystems, Inc. All rights reserved
  * Use is subject to license terms.
  */
 /*
@@ -47,12 +47,17 @@
 #define DEBUG_SUBSYSTEM S_SEC
 
 #ifdef __KERNEL__
+
+#if defined(__linux__)
+
 #include <linux/version.h>
 #include <linux/fs.h>
 #include <asm/unistd.h>
 #include <linux/slab.h>
 #include <linux/module.h>
 #include <linux/init.h>
+
+#endif /* __linux__ */
 
 #include <obd_class.h>
 #include <lustre_debug.h>
@@ -243,6 +248,8 @@ struct obd_capa *capa_lookup(cfs_hlist_head_t *hash, struct lustre_capa *capa,
         return ocapa;
 }
 
+#if !defined(__sun__)
+
 int capa_hmac(__u8 *hmac, struct lustre_capa *capa, __u8 *key)
 {
         struct ll_crypto_hash *tfm;
@@ -379,7 +386,15 @@ out:
         ll_crypto_free_blkcipher(tfm);
         return rc;
 }
-#endif
+#else /* !__sun__ */
+int
+capa_hmac(__u8 *hmac, struct lustre_capa *capa, __u8 *key)
+{
+        LIBCFS_PANIC("capa_hmac not supported yet");
+        return (-ENOTSUPP);
+}
+#endif /* !__sun__ */
+#endif /* __KERNEL__ */
 
 void capa_cpy(void *capa, struct obd_capa *ocapa)
 {

@@ -89,6 +89,7 @@
 typedef spinlock_t cfs_spinlock_t;
 
 #define cfs_spin_lock_init(lock)             spin_lock_init(lock)
+#define cfs_spin_lock_done(lock)             do {} while (0)
 #define cfs_spin_lock(lock)                  spin_lock(lock)
 #define cfs_spin_lock_bh(lock)               spin_lock_bh(lock)
 #define cfs_spin_lock_bh_init(lock)          spin_lock_bh_init(lock)
@@ -120,6 +121,7 @@ typedef spinlock_t cfs_spinlock_t;
 typedef struct rw_semaphore cfs_rw_semaphore_t;
 
 #define cfs_sema_init(s, val)     sema_init(s, val)
+#define cfs_sema_fini(s)          do {} while(0)
 #define cfs_init_rwsem(s)         init_rwsem(s)
 #define cfs_down_read(s)          down_read(s)
 #define cfs_down_read_trylock(s)  down_read_trylock(s)
@@ -153,6 +155,7 @@ typedef struct semaphore      cfs_semaphore_t;
 typedef rwlock_t cfs_rwlock_t;
 
 #define cfs_rwlock_init(lock)                  rwlock_init(lock)
+#define cfs_rwlock_fini(lock)                  do {} while (0)
 #define cfs_read_lock(lock)                    read_lock(lock)
 #define cfs_read_unlock(lock)                  read_unlock(lock)
 #define cfs_read_unlock_irqrestore(lock,flags) \

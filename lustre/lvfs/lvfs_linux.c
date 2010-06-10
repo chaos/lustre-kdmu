@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright  2009 Sun Microsystems, Inc. All rights reserved
  * Use is subject to license terms.
  */
 /*
@@ -64,10 +64,8 @@
 #include <lustre_lib.h>
 #include <lustre_quota.h>
 
-__u64 obd_max_pages = 0;
-__u64 obd_max_alloc = 0;
 struct lprocfs_stats *obd_memory = NULL;
-cfs_spinlock_t obd_updatemax_lock = CFS_SPIN_LOCK_UNLOCKED;
+
 /* refine later and change to seqlock or simlar from libcfs */
 
 /* Debugging check only needed during development */
@@ -538,91 +536,7 @@ int lvfs_check_io_health(struct obd_device *obd, struct file *file)
 EXPORT_SYMBOL(lvfs_check_io_health);
 #endif /* LUSTRE_KERNEL_VERSION */
 
-void obd_update_maxusage()
-{
-        __u64 max1, max2;
-
-        max1 = obd_pages_sum();
-        max2 = obd_memory_sum();
-
-        cfs_spin_lock(&obd_updatemax_lock);
-        if (max1 > obd_max_pages)
-                obd_max_pages = max1;
-        if (max2 > obd_max_alloc)
-                obd_max_alloc = max2;
-        cfs_spin_unlock(&obd_updatemax_lock);
-
-}
-
-__u64 obd_memory_max(void)
-{
-        __u64 ret;
-
-        cfs_spin_lock(&obd_updatemax_lock);
-        ret = obd_max_alloc;
-        cfs_spin_unlock(&obd_updatemax_lock);
-
-        return ret;
-}
-
-__u64 obd_pages_max(void)
-{
-        __u64 ret;
-
-        cfs_spin_lock(&obd_updatemax_lock);
-        ret = obd_max_pages;
-        cfs_spin_unlock(&obd_updatemax_lock);
-
-        return ret;
-}
-
-EXPORT_SYMBOL(obd_update_maxusage);
-EXPORT_SYMBOL(obd_pages_max);
-EXPORT_SYMBOL(obd_memory_max);
 EXPORT_SYMBOL(obd_memory);
-
-__s64 lprocfs_read_helper(struct lprocfs_counter *lc,
-                          enum lprocfs_fields_flags field)
-{
-        __s64 ret = 0;
-        int centry;
-
-        if (!lc)
-                RETURN(0);
-        do {
-                centry = cfs_atomic_read(&lc->lc_cntl.la_entry);
-
-                switch (field) {
-                        case LPROCFS_FIELDS_FLAGS_CONFIG:
-                                ret = lc->lc_config;
-                                break;
-                        case LPROCFS_FIELDS_FLAGS_SUM:
-                                ret = lc->lc_sum + lc->lc_sum_irq;
-                                break;
-                        case LPROCFS_FIELDS_FLAGS_MIN:
-                                ret = lc->lc_min;
-                                break;
-                        case LPROCFS_FIELDS_FLAGS_MAX:
-                                ret = lc->lc_max;
-                                break;
-                        case LPROCFS_FIELDS_FLAGS_AVG:
-                                ret = (lc->lc_max - lc->lc_min)/2;
-                                break;
-                        case LPROCFS_FIELDS_FLAGS_SUMSQUARE:
-                                ret = lc->lc_sumsquare;
-                                break;
-                        case LPROCFS_FIELDS_FLAGS_COUNT:
-                                ret = lc->lc_count;
-                                break;
-                        default:
-                                break;
-                };
-        } while (centry != cfs_atomic_read(&lc->lc_cntl.la_entry) &&
-                 centry != cfs_atomic_read(&lc->lc_cntl.la_exit));
-
-        RETURN(ret);
-}
-EXPORT_SYMBOL(lprocfs_read_helper);
 
 MODULE_AUTHOR("Sun Microsystems, Inc. <http://www.lustre.org/>");
 MODULE_DESCRIPTION("Lustre VFS Filesystem Helper v0.1");

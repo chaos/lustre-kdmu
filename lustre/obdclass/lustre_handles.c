@@ -48,13 +48,20 @@
 #include <lustre_lib.h>
 
 #if !defined(HAVE_RCU) || !defined(__KERNEL__)
-# define list_add_rcu            cfs_list_add
-# define list_del_rcu            cfs_list_del
-# define list_for_each_rcu       cfs_list_for_each
-# define list_for_each_safe_rcu  cfs_list_for_each_safe
-# define list_for_each_entry_rcu cfs_list_for_each_entry
+# define cfs_list_add_rcu   cfs_list_add
+# define cfs_list_del_rcu   cfs_list_del
+# define cfs_list_for_each_entry_rcu cfs_list_for_each_entry
 # define rcu_read_lock()         cfs_spin_lock(&bucket->lock)
 # define rcu_read_unlock()       cfs_spin_unlock(&bucket->lock)
+#elif defined(__linux__)
+# include <linux/list.h>
+# define cfs_list_add_rcu(e,h) \
+         list_add_rcu((struct list_head *)e, (struct list_head *)h)
+# define cfs_list_del_rcu(e) \
+         list_del_rcu((struct list_head *)e)
+# define cfs_list_for_each_entry_rcu list_for_each_entry_rcu
+#else
+# error RCU is only supported on Linux
 #endif /* ifndef HAVE_RCU */
 
 static __u64 handle_base;
@@ -117,7 +124,7 @@ void class_handle_hash(struct portals_handle *h, portals_handle_addref_cb cb)
 
         bucket = &handle_hash[h->h_cookie & HANDLE_HASH_MASK];
         cfs_spin_lock(&bucket->lock);
-        list_add_rcu(&h->h_link, &bucket->head);
+        cfs_list_add_rcu(&h->h_link, &bucket->head);
         h->h_in = 1;
         cfs_spin_unlock(&bucket->lock);
 
@@ -144,7 +151,7 @@ static void class_handle_unhash_nolock(struct portals_handle *h)
         }
         h->h_in = 0;
         cfs_spin_unlock(&h->h_lock);
-        list_del_rcu(&h->h_link);
+        cfs_list_del_rcu(&h->h_link);
 }
 
 void class_handle_unhash(struct portals_handle *h)
@@ -168,7 +175,7 @@ void class_handle_hash_back(struct portals_handle *h)
 
         cfs_atomic_inc(&handle_count);
         cfs_spin_lock(&bucket->lock);
-        list_add_rcu(&h->h_link, &bucket->head);
+        cfs_list_add_rcu(&h->h_link, &bucket->head);
         h->h_in = 1;
         cfs_spin_unlock(&bucket->lock);
 
@@ -189,7 +196,7 @@ void *class_handle2object(__u64 cookie)
         bucket = handle_hash + (cookie & HANDLE_HASH_MASK);
 
         rcu_read_lock();
-        list_for_each_entry_rcu(h, &bucket->head, h_link) {
+        cfs_list_for_each_entry_rcu(h, &bucket->head, h_link) {
                 if (h->h_cookie != cookie)
                         continue;
 
@@ -256,7 +263,7 @@ static void cleanup_all_handles(void)
                 struct portals_handle *h;
 
                 cfs_spin_lock(&handle_hash[i].lock);
-                list_for_each_entry_rcu(h, &(handle_hash[i].head), h_link) {
+                cfs_list_for_each_entry_rcu(h, &(handle_hash[i].head), h_link) {
                         CERROR("force clean handle "LPX64" addr %p addref %p\n",
                                h->h_cookie, h, h->h_addref);
 

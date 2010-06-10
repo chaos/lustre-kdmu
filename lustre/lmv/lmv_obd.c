@@ -770,6 +770,9 @@ static int lmv_iocontrol(unsigned int cmd, struct obd_export *exp,
                         RETURN(-EFAULT);
                 break;
         }
+
+#ifdef HAVE_QUOTA_SUPPORT
+
         case OBD_IOC_QUOTACTL: {
                 struct if_quotactl *qctl = karg;
                 struct lmv_tgt_desc *tgt = NULL;
@@ -816,6 +819,14 @@ static int lmv_iocontrol(unsigned int cmd, struct obd_export *exp,
                 OBD_FREE_PTR(oqctl);
                 break;
         }
+
+#else /* HAVE_QUOTA_SUPPORT */
+
+        case OBD_IOC_QUOTACTL:
+                RETURN (-ENOTSUPP);
+
+#endif /* HAVE_QUOTA_SUPPORT */
+
         case OBD_IOC_CHANGELOG_SEND:
         case OBD_IOC_CHANGELOG_CLEAR: {
                 struct ioc_changelog *icc = karg;
@@ -3085,8 +3096,12 @@ struct md_ops lmv_md_ops = {
         .m_revalidate_lock      = lmv_revalidate_lock
 };
 
+#ifdef HAVE_QUOTA_SUPPORT
+
 static quota_interface_t *quota_interface;
 extern quota_interface_t lmv_quota_interface;
+
+#endif /* HAVE_QUOTA_SUPPORT */
 
 int __init lmv_init(void)
 {
@@ -3103,15 +3118,19 @@ int __init lmv_init(void)
 
         lprocfs_lmv_init_vars(&lvars);
 
+#ifdef HAVE_QUOTA_SUPPORT
         cfs_request_module("lquota");
         quota_interface = PORTAL_SYMBOL_GET(lmv_quota_interface);
         init_obd_quota_ops(quota_interface, &lmv_obd_ops);
+#endif /* HAVE_QUOTA_SUPPORT */
 
         rc = class_register_type(&lmv_obd_ops, &lmv_md_ops,
                                  lvars.module_vars, LUSTRE_LMV_NAME, NULL);
         if (rc) {
+#ifdef HAVE_QUOTA_SUPPORT
                 if (quota_interface)
                         PORTAL_SYMBOL_PUT(lmv_quota_interface);
+#endif /* HAVE_QUOTA_SUPPORT */
                 cfs_mem_cache_destroy(lmv_object_cache);
         }
 
@@ -3121,8 +3140,10 @@ int __init lmv_init(void)
 #ifdef __KERNEL__
 static void lmv_exit(void)
 {
+#ifdef HAVE_QUOTA_SUPPORT
         if (quota_interface)
                 PORTAL_SYMBOL_PUT(lmv_quota_interface);
+#endif /* HAVE_QUOTA_SUPPORT */
 
         class_unregister_type(LUSTRE_LMV_NAME);
 

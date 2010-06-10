@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright  2009 Sun Microsystems, Inc. All rights reserved
  * Use is subject to license terms.
  */
 /*
@@ -53,9 +53,9 @@
 #endif
 #define DEBUG_SUBSYSTEM S_RPC
 
-#ifdef __KERNEL__
+#if defined(__KERNEL__) && defined(__linux__)
 #include <linux/module.h>
-#else
+#elif !defined(__KERNEL__)
 # include <liblustre.h>
 #endif
 

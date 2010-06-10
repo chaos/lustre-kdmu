@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright  2009 Sun Microsystems, Inc. All rights reserved
  * Use is subject to license terms.
  */
 /*
@@ -50,16 +50,19 @@
 #include <darwin/lvfs.h>
 #elif defined(__WINNT__)
 #include <winnt/lvfs.h>
+#elif defined(__sun__)
+#include <solaris/lvfs.h>
 #else
 #error Unsupported operating system.
 #endif
 
 #include <libcfs/lucache.h>
 
-
 #ifdef LIBLUSTRE
 #include <lvfs_user_fs.h>
 #endif
+
+#if !defined(__sun__)
 
 /* lvfs_common.c */
 struct dentry *lvfs_fid2dentry(struct lvfs_run_ctxt *, __u64, __u32, __u64 ,void *data);
@@ -69,10 +72,18 @@ void push_ctxt(struct lvfs_run_ctxt *save, struct lvfs_run_ctxt *new_ctx,
 void pop_ctxt(struct lvfs_run_ctxt *saved, struct lvfs_run_ctxt *new_ctx,
               struct lvfs_ucred *cred);
 
+#endif /* !__sun__ */
 
 static inline int ll_fid2str(char *str, __u64 id, __u32 generation)
 {
-        return sprintf(str, "%llx:%08x", (unsigned long long)id, generation);
+        int n;
+
+        n = snprintf(str, LL_FID_NAMELEN, "%llx:%08x",
+                     (unsigned long long)id, generation);
+
+        LASSERT(n < LL_FID_NAMELEN);
+
+        return n;
 }
 
-#endif
+#endif /* __LVFS_H__ */

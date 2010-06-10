@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright  2009 Sun Microsystems, Inc. All rights reserved
  * Use is subject to license terms.
  */
 /*
@@ -47,7 +47,7 @@
 #ifndef __KERNEL__
 #include <liblustre.h>
 #include <libcfs/list.h>
-#else
+#elif defined(__linux__)
 #include <linux/crypto.h>
 #endif
 
@@ -900,10 +900,10 @@ EXPORT_SYMBOL(bulk_sec_desc_unpack);
 #ifdef HAVE_ADLER
 static int do_bulk_checksum_adler32(struct ptlrpc_bulk_desc *desc, void *buf)
 {
-        struct page    *page;
+        cfs_page_t     *page;
         int             off;
         char           *ptr;
-        __u32           adler32 = 1;
+        __u32           csum32 = 1;
         int             len, i;
 
         for (i = 0; i < desc->bd_iov_count; i++) {
@@ -912,20 +912,20 @@ static int do_bulk_checksum_adler32(struct ptlrpc_bulk_desc *desc, void *buf)
                 ptr = cfs_kmap(page) + off;
                 len = desc->bd_iov[i].kiov_len;
 
-                adler32 = adler32(adler32, ptr, len);
+                csum32 = adler32(csum32, ptr, len);
 
                 cfs_kunmap(page);
         }
 
-        adler32 = cpu_to_le32(adler32);
-        memcpy(buf, &adler32, sizeof(adler32));
+        csum32 = cpu_to_le32(csum32);
+        memcpy(buf, &csum32, sizeof(csum32));
         return 0;
 }
 #endif
 
 static int do_bulk_checksum_crc32(struct ptlrpc_bulk_desc *desc, void *buf)
 {
-        struct page    *page;
+        cfs_page_t     *page;
         int             off;
         char           *ptr;
         __u32           crc32 = ~0;
@@ -950,10 +950,12 @@ static int do_bulk_checksum_crc32(struct ptlrpc_bulk_desc *desc, void *buf)
 int sptlrpc_get_bulk_checksum(struct ptlrpc_bulk_desc *desc, __u8 alg,
                               void *buf, int buflen)
 {
+#if !defined(__sun__)
         struct hash_desc    hdesc;
         int                 hashsize;
         char                hashbuf[64];
         struct scatterlist  sl;
+#endif
         int                 i;
 
         LASSERT(alg > BULK_HASH_ALG_NULL && alg < BULK_HASH_ALG_MAX);
@@ -971,6 +973,9 @@ int sptlrpc_get_bulk_checksum(struct ptlrpc_bulk_desc *desc, __u8 alg,
                 return do_bulk_checksum_crc32(desc, buf);
         }
 
+#if defined(__sun__)
+        LBUG();
+#else
         hdesc.tfm = ll_crypto_alloc_hash(hash_types[alg].sht_tfm_name, 0, 0);
         if (hdesc.tfm == NULL) {
                 CERROR("Unable to allocate TFM %s\n", hash_types[alg].sht_name);
@@ -998,6 +1003,7 @@ int sptlrpc_get_bulk_checksum(struct ptlrpc_bulk_desc *desc, __u8 alg,
 
         ll_crypto_free_hash(hdesc.tfm);
         return 0;
+#endif /* __sun__ */
 }
 EXPORT_SYMBOL(sptlrpc_get_bulk_checksum);
 

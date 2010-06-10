@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright  2009 Sun Microsystems, Inc. All rights reserved
  * Use is subject to license terms.
  */
 /*
@@ -40,7 +40,7 @@
 #endif
 #ifndef __KERNEL__
 # include <liblustre.h>
-#else
+#elif defined(__linux__)
 # include <asm/atomic.h>
 #endif
 
@@ -62,12 +62,62 @@ struct obd_device *obd_devs[MAX_OBD_DEVICES];
 cfs_list_t obd_types;
 cfs_spinlock_t obd_dev_lock;
 
-#ifndef __KERNEL__
 __u64 obd_max_pages = 0;
 __u64 obd_max_alloc = 0;
+
+#ifndef __KERNEL__
 __u64 obd_alloc;
 __u64 obd_pages;
 #endif
+
+#ifdef __KERNEL__
+
+#if defined(__sun__)
+struct	lprocfs_stats *obd_memory = NULL;
+#endif
+
+cfs_spinlock_t obd_updatemax_lock;
+
+void obd_update_maxusage()
+{
+        __u64 max1, max2;
+
+        max1 = obd_pages_sum();
+        max2 = obd_memory_sum();
+
+        cfs_spin_lock(&obd_updatemax_lock);
+        if (max1 > obd_max_pages)
+                obd_max_pages = max1;
+        if (max2 > obd_max_alloc)
+                obd_max_alloc = max2;
+        cfs_spin_unlock(&obd_updatemax_lock);
+
+}
+
+__u64 obd_memory_max(void)
+{
+        __u64 ret;
+
+        cfs_spin_lock(&obd_updatemax_lock);
+        ret = obd_max_alloc;
+        cfs_spin_unlock(&obd_updatemax_lock);
+
+        return ret;
+}
+
+__u64 obd_pages_max(void)
+{
+        __u64 ret;
+
+        cfs_spin_lock(&obd_updatemax_lock);
+        ret = obd_max_pages;
+        cfs_spin_unlock(&obd_updatemax_lock);
+
+        return ret;
+}
+
+#endif /* __KERNEL__ */
+
 
 /* The following are visible and mutable through /proc/sys/lustre/. */
 unsigned int obd_debug_peer_on_timeout;
@@ -658,7 +708,9 @@ static int class_procfs_init(void)
         }
         lprocfs_put_lperef(lustre_root);
 
+#if !defined(__sun__)
         obd_sysctl_init();
+#endif
         obd_params_init();
         EXIT;
 out:
@@ -669,9 +721,10 @@ out:
 
 #endif
 
+extern cfs_mutex_t    lsb_list_mutex;
 extern cfs_spinlock_t obd_types_lock;
 
-#ifdef __KERNEL__
+#if defined(__KERNEL__) && !defined(__sun__)
 extern cfs_semaphore_t lustre_mount_info_lock;
 extern cfs_semaphore_t mgc_start_lock;
 extern cfs_semaphore_t server_start_lock;
@@ -685,8 +738,11 @@ int init_obdclass(void)
 {
         int i, err;
 #ifdef __KERNEL__
+#if !defined(__sun__)
         int lustre_register_fs(void);
+#endif
 
+        cfs_spin_lock_init(&obd_updatemax_lock);
         cfs_spin_lock_init(&capa_lock);
         for (i = CAPA_SITE_CLIENT; i < CAPA_SITE_MAX; i++)
                 CFS_INIT_LIST_HEAD(&capa_list[i]);
@@ -696,12 +752,13 @@ int init_obdclass(void)
         LCONSOLE_INFO("        Lustre Version: "LUSTRE_VERSION_STRING"\n");
         LCONSOLE_INFO("        Build Version: "BUILD_VERSION"\n");
 
-#ifdef __KERNEL__
+#if defined(__KERNEL__) && !defined(__sun__)
         cfs_sema_init(&lustre_mount_info_lock, 1);
         cfs_sema_init(&mgc_start_lock, 1);
         cfs_sema_init(&server_start_lock, 1);
 #endif
 
+        cfs_mutex_init(&lsb_list_mutex);
         cfs_spin_lock_init(&obd_types_lock);
         cfs_waitq_init(&obd_race_waitq);
         obd_zombie_impexp_init();
@@ -763,7 +820,7 @@ int init_obdclass(void)
         if (err)
                 return err;
 
-#ifdef __KERNEL__
+#if defined(__KERNEL__) && !defined(__sun__)
         err = lustre_register_fs();
 #endif
 
@@ -776,12 +833,16 @@ int init_obdclass(void)
 static void cleanup_obdclass(void)
 {
         int i;
+#if !defined(__sun__)
         int lustre_unregister_fs(void);
+#endif
         __u64 memory_leaked, pages_leaked;
         __u64 memory_max, pages_max;
         ENTRY;
 
+#if !defined(__sun__)
         lustre_unregister_fs();
+#endif
 
         cfs_psdev_deregister(&obd_psdev);
         for (i = 0; i < class_devno_max(); i++) {
@@ -796,7 +857,9 @@ static void cleanup_obdclass(void)
         lu_global_fini();
 
         obd_cleanup_caches();
+#if !defined(__sun__)
         obd_sysctl_clean();
+#endif
 
         class_procfs_clean();
 
@@ -820,11 +883,18 @@ static void cleanup_obdclass(void)
 
         cfs_spin_lock_done(&obd_dev_lock);
 #ifdef __KERNEL__
+#if !defined(__sun__)
         cfs_sema_fini(&lustre_mount_info_lock);
         cfs_sema_fini(&mgc_start_lock);
         cfs_sema_fini(&server_start_lock);
-        cfs_spin_lock_done(&capa_lock);
 #endif
+        cfs_spin_lock_done(&capa_lock);
+        cfs_spin_lock_done(&obd_updatemax_lock);
+#endif
+
+        cfs_mutex_destroy(&lsb_list_mutex);
+        cfs_spin_lock_done(&obd_types_lock);
+
         EXIT;
 }
 
@@ -904,3 +974,6 @@ EXPORT_SYMBOL(class_manual_cleanup);
 EXPORT_SYMBOL(mea_name2idx);
 EXPORT_SYMBOL(raw_name2idx);
 
+EXPORT_SYMBOL(obd_update_maxusage);
+EXPORT_SYMBOL(obd_pages_max);
+EXPORT_SYMBOL(obd_memory_max);

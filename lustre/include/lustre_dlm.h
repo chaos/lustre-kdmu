@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright  2009 Sun Microsystems, Inc. All rights reserved
  * Use is subject to license terms.
  */
 /*
@@ -48,6 +48,8 @@
 #include <darwin/lustre_dlm.h>
 #elif defined(__WINNT__)
 #include <winnt/lustre_dlm.h>
+#elif defined(__sun__)
+#include <solaris/lustre_dlm.h>
 #else
 #error Unsupported operating system.
 #endif

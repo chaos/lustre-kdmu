@@ -73,4 +73,11 @@ typedef long long_ptr_t;
 
 #define __user
 
+#define typecheck(type,x) \
+({ type __dummy; \
+   typeof(x) __dummy2; \
+   (void)(&__dummy == &__dummy2); \
+   1; \
+})
+
 #endif /* __LIBCFS_SOLARIS_SOLARIS_TYPES_H__ */

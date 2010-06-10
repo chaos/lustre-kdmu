@@ -198,7 +198,7 @@ static inline __u64 cfs_time_current_64(void)
         __u64 t;
 
         t = lbolt64;
-        t = atomic_cas_64((volatile uint64_t *)&lbolt, t, t);
+        t = atomic_cas_64((volatile uint64_t *)&lbolt64, t, t);
         return (t);
 #endif /* _LP64 */
 }

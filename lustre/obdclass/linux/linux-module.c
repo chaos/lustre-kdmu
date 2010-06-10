@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright  2009 Sun Microsystems, Inc. All rights reserved
  * Use is subject to license terms.
  */
 /*
@@ -89,95 +89,6 @@
 #include <linux/lustre_version.h>
 
 int proc_version;
-
-/* buffer MUST be at least the size of obd_ioctl_hdr */
-int obd_ioctl_getdata(char **buf, int *len, void *arg)
-{
-        struct obd_ioctl_hdr hdr;
-        struct obd_ioctl_data *data;
-        int err;
-        int offset = 0;
-        ENTRY;
-
-        err = cfs_copy_from_user(&hdr, (void *)arg, sizeof(hdr));
-        if ( err )
-                RETURN(err);
-
-        if (hdr.ioc_version != OBD_IOCTL_VERSION) {
-                CERROR("Version mismatch kernel (%x) vs application (%x)\n",
-                       OBD_IOCTL_VERSION, hdr.ioc_version);
-                RETURN(-EINVAL);
-        }
-
-        if (hdr.ioc_len > OBD_MAX_IOCTL_BUFFER) {
-                CERROR("User buffer len %d exceeds %d max buffer\n",
-                       hdr.ioc_len, OBD_MAX_IOCTL_BUFFER);
-                RETURN(-EINVAL);
-        }
-
-        if (hdr.ioc_len < sizeof(struct obd_ioctl_data)) {
-                CERROR("User buffer too small for ioctl (%d)\n", hdr.ioc_len);
-                RETURN(-EINVAL);
-        }
-
-        /* XXX allocate this more intelligently, using kmalloc when
-         * appropriate */
-        OBD_VMALLOC(*buf, hdr.ioc_len);
-        if (*buf == NULL) {
-                CERROR("Cannot allocate control buffer of len %d\n",
-                       hdr.ioc_len);
-                RETURN(-EINVAL);
-        }
-        *len = hdr.ioc_len;
-        data = (struct obd_ioctl_data *)*buf;
-
-        err = cfs_copy_from_user(*buf, (void *)arg, hdr.ioc_len);
-        if ( err ) {
-                OBD_VFREE(*buf, hdr.ioc_len);
-                RETURN(err);
-        }
-
-        if (obd_ioctl_is_invalid(data)) {
-                CERROR("ioctl not correctly formatted\n");
-                OBD_VFREE(*buf, hdr.ioc_len);
-                RETURN(-EINVAL);
-        }
-
-        if (data->ioc_inllen1) {
-                data->ioc_inlbuf1 = &data->ioc_bulk[0];
-                offset += cfs_size_round(data->ioc_inllen1);
-        }
-
-        if (data->ioc_inllen2) {
-                data->ioc_inlbuf2 = &data->ioc_bulk[0] + offset;
-                offset += cfs_size_round(data->ioc_inllen2);
-        }
-
-        if (data->ioc_inllen3) {
-                data->ioc_inlbuf3 = &data->ioc_bulk[0] + offset;
-                offset += cfs_size_round(data->ioc_inllen3);
-        }
-
-        if (data->ioc_inllen4) {
-                data->ioc_inlbuf4 = &data->ioc_bulk[0] + offset;
-        }
-
-        EXIT;
-        return 0;
-}
-
-int obd_ioctl_popdata(void *arg, void *data, int len)
-{
-        int err;
-
-        err = cfs_copy_to_user(arg, data, len);
-        if (err)
-                err = -EFAULT;
-        return err;
-}
-
-EXPORT_SYMBOL(obd_ioctl_getdata);
-EXPORT_SYMBOL(obd_ioctl_popdata);
 
 /*  opening /dev/obd */
 static int obd_class_open(struct inode * inode, struct file * file)

@@ -40,8 +40,7 @@
 # define DEBUG_SUBSYSTEM S_LNET
 
 #include <libcfs/libcfs.h>
-
-#include "tracefile.h"
+#include "../tracefile.h"
 
 char lnet_upcall[1024] = "/usr/lib/lustre/lnet_upcall";
 char lnet_debug_log_upcall[1024] = "/usr/lib/lustre/lnet_debug_log_upcall";

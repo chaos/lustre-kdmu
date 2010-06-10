@@ -111,8 +111,10 @@ static inline void lprocfs_filter_init_vars(struct lprocfs_static_vars *lvars)
 }
 #endif
 
+#ifdef HAVE_QUOTA_SUPPORT
 /* Quota stuff */
 extern quota_interface_t *filter_quota_interface_ref;
+#endif
 
 /* Capability */
 

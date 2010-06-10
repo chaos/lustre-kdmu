@@ -45,7 +45,20 @@
 #endif
 
 #ifndef __KERNEL__
-/* It's not clear yet which system includes we need on Solaris */
+
+#ifdef HAVE_LIBREADLINE
+#define READLINE_LIBRARY
+#include <readline/readline.h>
+
+/* readline.h pulls in a #define that conflicts with one in libcfs.h */
+#undef RETURN
+
+/* completion_matches() is #if 0-ed out in modern glibc */
+#ifndef completion_matches
+#  define completion_matches rl_completion_matches
+#endif
+
+#endif /* HAVE_LIBREADLINE */
 
 #endif /* !__KERNEL__ */
 

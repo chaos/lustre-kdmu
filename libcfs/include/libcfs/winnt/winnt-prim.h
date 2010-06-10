@@ -775,6 +775,7 @@ extern cfs_module_t libcfs_global_module;
         module_init(init);                    \
         module_exit(fini)
 #define cfs_module_refcount(x) (1)
+#define cfs_module_name(m)     (m->name)
 
 /*
  * typecheck

@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright  2009 Sun Microsystems, Inc. All rights reserved
  * Use is subject to license terms.
  */
 /*
@@ -47,7 +47,7 @@
 #ifndef __KERNEL__
 #include <liblustre.h>
 #include <libcfs/list.h>
-#else
+#elif defined(__linux__)
 #include <linux/crypto.h>
 #include <linux/key.h>
 #endif
@@ -2283,7 +2283,7 @@ int sptlrpc_current_user_desc_size(void)
 {
         int ngroups;
 
-#ifdef __KERNEL__
+#if defined(__KERNEL__) && !defined(SOLARIS_LSERVER)
         ngroups = current_ngroups;
 
         if (ngroups > LUSTRE_MAX_GROUPS)
@@ -2308,7 +2308,7 @@ int sptlrpc_pack_user_desc(struct lustre_msg *msg, int offset)
         pud->pud_cap = cfs_curproc_cap_pack();
         pud->pud_ngroups = (msg->lm_buflens[offset] - sizeof(*pud)) / 4;
 
-#ifdef __KERNEL__
+#if defined(__KERNEL__) && !defined(SOLARIS_LSERVER)
         task_lock(current);
         if (pud->pud_ngroups > current_ngroups)
                 pud->pud_ngroups = current_ngroups;

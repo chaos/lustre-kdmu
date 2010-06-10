@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright  2009 Sun Microsystems, Inc. All rights reserved
  * Use is subject to license terms.
  */
 /*
@@ -40,10 +40,12 @@
  * Author: Andreas Dilger <adilger@clusterfs.com>
  */
 #ifdef __KERNEL__
-#include <linux/module.h>
-#include <linux/random.h>
+# if defined(__linux__)
+#  include <linux/module.h>
+#  include <linux/random.h>
+# endif
 #else
-#include <liblustre.h>
+# include <liblustre.h>
 #endif
 #include <lustre_lib.h>
 #include <lprocfs_status.h>

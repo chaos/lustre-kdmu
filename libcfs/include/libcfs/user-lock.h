@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright  2009 Sun Microsystems, Inc. All rights reserved
  * Use is subject to license terms.
  */
 /*
@@ -197,7 +197,7 @@ typedef cfs_rw_semaphore_t cfs_rwlock_t;
 #define CFS_RW_LOCK_UNLOCKED        (cfs_rwlock_t) { }
 
 #define cfs_rwlock_init(pl)         cfs_init_rwsem(pl)
-
+#define cfs_rwlock_fini(l)          cfs_fini_rwsem(l)
 #define cfs_read_lock(l)            cfs_down_read(l)
 #define cfs_read_unlock(l)          cfs_up_read(l)
 #define cfs_write_lock(l)           cfs_down_write(l)

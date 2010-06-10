@@ -78,6 +78,7 @@ open_ioc_dev(int dev_id)
         if (ioc_dev_list[dev_id].dev_fd < 0) {
                 int fd = cfs_proc_open((char *)dev_name, O_RDWR);
 
+#if !defined(__sun__)
                 /* Make the /dev/ node if we need to */
                 if (fd < 0 && errno == ENOENT) {
                         if (cfs_proc_mknod(dev_name, 
@@ -89,6 +90,7 @@ open_ioc_dev(int dev_id)
                                 fprintf(stderr, "mknod %s failed: %s\n",
                                         dev_name, strerror(errno));
                 }
+#endif /* __sun__ */
 
                 if (fd < 0) {
                         fprintf(stderr, "opening %s failed: %s\n"

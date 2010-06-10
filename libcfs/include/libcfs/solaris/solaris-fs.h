@@ -62,7 +62,7 @@ typedef struct {
 } cfs_fsid_t;
 
 /* linux/statfs.h */
-struct cfs_kstatfs {
+typedef struct cfs_kstatfs {
         long       f_type;
         long       f_bsize;
         u64        f_blocks;
@@ -74,7 +74,7 @@ struct cfs_kstatfs {
         long       f_namelen;
         long       f_frsize;
         long       f_spare[5];
-};
+} cfs_kstatfs_t;
 
 /*
  * cfs_file_t and related routines
@@ -137,5 +137,57 @@ typedef struct cfs_file_lock {
 #define cfs_flock_set_start(fl, start)      do { (fl)->fl_start = (start); } while(0)
 #define cfs_flock_end(fl)                   ((fl)->fl_end)
 #define cfs_flock_set_end(fl, end)          do { (fl)->fl_end = (end); } while(0)
+
+/*
+ * Linux inode flags - the definitions added here to be able to
+ * compile common lustre_idl.h
+ */
+
+#define S_SYNC		1	/* Writes are synced at once */
+#define S_NOATIME	2	/* Do not update access times */
+#define S_APPEND	4	/* Append-only file */
+#define S_IMMUTABLE	8	/* Immutable file */
+#define S_DEAD		16	/* removed, but still open directory */
+#define S_NOQUOTA	32	/* Inode is not counted to quota */
+#define S_DIRSYNC	64	/* Directory modifications are synchronous */
+#define S_NOCMTIME	128	/* Do not update file c/mtime */
+#define S_SWAPFILE	256	/* Do not truncate: swapon got its bmaps */
+#define S_PRIVATE	512	/* Inode is fs-internal */
+
+/* stub it out for now */
+struct super_block {
+        ;
+};
+
+typedef struct {
+        ;
+} cfs_dentry_t;
+
+/* Linux ACL structures and definitions */
+
+#define ACL_USER_OBJ            (0x01)
+#define ACL_USER                (0x02)
+#define ACL_GROUP_OBJ           (0x04)
+#define ACL_GROUP               (0x08)
+#define ACL_MASK                (0x10)
+#define ACL_OTHER               (0x20)
+
+#define ACL_UNDEFINED_ID        (-1)
+
+#define POSIX_ACL_XATTR_VERSION (0x0002)
+
+typedef struct {
+        __u16                   e_tag;
+        __u16                   e_perm;
+        __u32                   e_id;
+} posix_acl_xattr_entry;
+
+typedef struct {
+        __u32                   a_version;
+        posix_acl_xattr_entry   a_entries[0];
+} posix_acl_xattr_header;
+
+#define xattr_acl_entry  posix_acl_xattr_entry
+#define xattr_acl_header posix_acl_xattr_header
 
 #endif /* __LIBCFS_SOLARIS_SOLARIS_FS_H__ */

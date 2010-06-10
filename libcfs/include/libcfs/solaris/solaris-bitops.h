@@ -48,10 +48,6 @@
 #error This include is only for kernel use.
 #endif
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 unsigned long cfs_find_next_zero_bit(unsigned long *addr, unsigned long size,
                                      unsigned long offset);
 unsigned long cfs_find_first_zero_bit(unsigned long *addr, unsigned long size);
@@ -222,8 +218,52 @@ __cfs_fls(unsigned long data)
 #define __cfs_ffz(x) __cfs_ffs(~(x))
 #define __cfs_flz(x) __cfs_fls(~(x))
 
-#ifdef __cplusplus
-}
+/*
+ * non atomic versions of set/clear/test bit for little endian layout.
+ */
+   
+static inline int
+ext2_set_bit(int nr, __u32 *bm)
+{
+        int oldbit;
+        ulong_t *addr = (ulong_t *)bm;
+
+#if defined(_BIG_ENDIAN)
+        nr = nr ^ ((BITS_PER_LONG-1) & ~0x7);
 #endif
+
+        oldbit = BT_TEST(addr, nr);
+        BT_SET(addr, nr);
+        return (oldbit);
+}
+
+static inline int
+ext2_clear_bit(int nr, __u32 *bm)
+{
+        int oldbit;
+        ulong_t *addr = (ulong_t *)bm;
+
+#if defined(_BIG_ENDIAN)
+        nr = nr ^ ((BITS_PER_LONG-1) & ~0x7);
+#endif
+
+        oldbit = BT_TEST(addr, nr);
+        BT_CLEAR(addr, nr);
+        return (oldbit);
+}
+
+static inline int
+ext2_test_bit(int nr, __u32 *bm)
+{
+        int oldbit;
+        ulong_t *addr = (ulong_t *)bm;
+
+#if defined(_BIG_ENDIAN)
+        nr = nr ^ ((BITS_PER_LONG-1) & ~0x7);
+#endif
+
+        oldbit = BT_TEST(addr, nr);
+        return (oldbit);
+}
 
 #endif /* __LIBCFS_SOLARIS_SOLARIS_BITOPS_H__ */

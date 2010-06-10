@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright  2009 Sun Microsystems, Inc. All rights reserved
  * Use is subject to license terms.
  */
 /*
@@ -2532,6 +2532,8 @@ void obd_finalize(int argc, char **argv)
         do_disconnect(argv[0], 1);
 }
 
+#if !defined(SOLARIS_LSERVER)
+
 static int check_pool_cmd(enum lcfg_command_type cmd,
                           char *fsname, char *poolname,
                           char *ostname)
@@ -3050,6 +3052,8 @@ out:
 
         return rc;
 }
+
+#endif /* !SOLARIS_LSERVER */
 
 int jt_get_obj_version(int argc, char **argv)
 {

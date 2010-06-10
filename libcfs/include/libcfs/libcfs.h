@@ -127,7 +127,7 @@ int libcfs_sock_read(cfs_socket_t *sock, void *buffer, int nob, int timeout);
 void libcfs_sock_release(cfs_socket_t *sock);
 
 /* libcfs watchdogs */
-struct lc_watchdog;
+#include <libcfs/libcfs_watchdog.h>
 
 /* Add a watchdog which fires after "time" milliseconds of delay.  You have to
  * touch it once to enable it. */

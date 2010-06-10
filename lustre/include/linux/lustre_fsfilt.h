@@ -111,19 +111,30 @@ struct fsfilt_operations {
         int     (* fs_read_record)(struct file *, void *, int size, loff_t *);
         int     (* fs_setup)(struct super_block *sb);
         int     (* fs_get_op_len)(int, struct fsfilt_objinfo *, int);
+
+#ifdef HAVE_QUOTA_SUPPORT
         int     (* fs_quotacheck)(struct super_block *sb,
                                   struct obd_quotactl *oqctl);
+#endif /* HAVE_QUOTA_SUPPORT */
+
         __u64   (* fs_get_version) (struct inode *inode);
         __u64   (* fs_set_version) (struct inode *inode, __u64 new_version);
+
+#ifdef HAVE_QUOTA_SUPPORT
         int     (* fs_quotactl)(struct super_block *sb,
                                 struct obd_quotactl *oqctl);
         int     (* fs_quotainfo)(struct lustre_quota_info *lqi, int type,
                                  int cmd);
         int     (* fs_qids)(struct file *file, struct inode *inode, int type,
                             cfs_list_t *list);
+#endif /* HAVE_QUOTA_SUPPORT */
+
         int     (* fs_get_mblk)(struct super_block *sb, int *count,
                                 struct inode *inode, int frags);
+#ifdef HAVE_QUOTA_SUPPORT
         int     (* fs_dquot)(struct lustre_dquot *dquot, int cmd);
+#endif /* HAVE_QUOTA_SUPPORT */
+
         lvfs_sbdev_type (* fs_journal_sbdev)(struct super_block *sb);
 };
 
@@ -407,6 +418,8 @@ static inline int fsfilt_sync(struct obd_device *obd, struct super_block *sb)
         return obd->obd_fsops->fs_sync(sb);
 }
 
+#ifdef HAVE_QUOTA_SUPPORT
+
 static inline int fsfilt_quotacheck(struct obd_device *obd,
                                     struct super_block *sb,
                                     struct obd_quotactl *oqctl)
@@ -450,6 +463,8 @@ static inline int fsfilt_dquot(struct obd_device *obd,
                 return obd->obd_fsops->fs_dquot(dquot, cmd);
         return -ENOTSUPP;
 }
+
+#endif /* HAVE_QUOTA_SUPPORT */
 
 static inline int fsfilt_get_mblk(struct obd_device *obd,
                                   struct super_block *sb, int *count,

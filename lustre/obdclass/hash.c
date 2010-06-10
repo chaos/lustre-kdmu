@@ -13,18 +13,20 @@
  * obdclass is shared by both client and server, it should not depend on ldiskfs.
  */
 
-#include <linux/fs.h>
-#include <linux/sched.h>
-#ifdef HAVE_SERVER_SUPPORT
-
-#ifdef HAVE_EXT4_LDISKFS
-#include <ldiskfs/ldiskfs_jbd2.h>
-#include <ldiskfs/ldiskfs.h>
-#else
-#include <linux/jbd.h>
-#include <linux/ldiskfs_fs.h>
-#endif
-
+#if defined(__linux__)
+# include <linux/fs.h>
+# include <linux/sched.h>
+# ifdef HAVE_SERVER_SUPPORT
+#  ifdef HAVE_EXT4_LDISKFS
+#   include <ldiskfs/ldiskfs_jbd2.h>
+#   include <ldiskfs/ldiskfs.h>
+#  else
+#   include <linux/jbd.h>
+#   include <linux/ldiskfs_fs.h>
+#  endif
+# else
+#  include <obd_class.h>
+# endif
 #else
 # include <obd_class.h>
 #endif

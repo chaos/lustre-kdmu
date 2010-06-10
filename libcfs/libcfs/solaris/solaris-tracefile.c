@@ -40,7 +40,8 @@
 #define DEBUG_SUBSYSTEM S_LNET
 #define LUSTRE_TRACEFILE_PRIVATE
 
-#include "tracefile.h"
+#include <libcfs/libcfs.h>
+#include "../tracefile.h"
 
 /* percents to share the total debug memory for each type */
 static unsigned int pages_factor[CFS_TCD_TYPE_MAX] = {

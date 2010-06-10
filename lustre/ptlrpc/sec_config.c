@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright  2009 Sun Microsystems, Inc. All rights reserved
  * Use is subject to license terms.
  */
 /*
@@ -43,7 +43,7 @@
 #ifndef __KERNEL__
 #include <liblustre.h>
 #include <libcfs/list.h>
-#else
+#elif defined(__linux__)
 #include <linux/crypto.h>
 #include <linux/key.h>
 #endif
@@ -937,7 +937,7 @@ void sptlrpc_conf_client_adapt(struct obd_device *obd)
 }
 EXPORT_SYMBOL(sptlrpc_conf_client_adapt);
 
-#ifdef __KERNEL__
+#if defined(__KERNEL__) && defined(SOLARIS_LLOG)
 
 static void rule2string(struct sptlrpc_rule *r, char *buf, int buflen)
 {
@@ -1171,7 +1171,7 @@ out_pop:
         RETURN(rc);
 }
 
-#endif /* __KRENEL__ */
+#endif /* __KERNEL__ && SOLARIS_LLOG */
 
 /**
  * called by target devices, extract sptlrpc rules which applies to
@@ -1208,7 +1208,7 @@ int sptlrpc_conf_target_get_rules(struct obd_device *obd,
                 GOTO(out, rc);
         }
 
-#ifdef __KERNEL__
+#if defined(__KERNEL__) && defined(SOLARIS_LLOG)
         if (conf->sc_updated  == 0) {
                 /*
                  * always read from local copy. here another option is

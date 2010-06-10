@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright  2009 Sun Microsystems, Inc. All rights reserved
  * Use is subject to license terms.
  */
 /*
@@ -44,17 +44,24 @@
 #endif
 #define DEBUG_SUBSYSTEM S_OST
 
+#include <libcfs/libcfs.h>
+#if defined(__linux__)
 #include <linux/module.h>
+#endif
 #include <obd_cksum.h>
 #include <obd_ost.h>
 #include <lustre_net.h>
 #include <lustre_dlm.h>
 #include <lustre_export.h>
 #include <lustre_debug.h>
+#if defined(__linux__)
 #include <linux/init.h>
+#endif
 #include <lprocfs_status.h>
 #include <libcfs/list.h>
+#ifdef HAVE_QUOTA_SUPPORT
 #include <lustre_quota.h>
+#endif
 #include "ost_internal.h"
 
 static int oss_num_threads;
@@ -438,9 +445,9 @@ static __u32 ost_checksum_bulk(struct ptlrpc_bulk_desc *desc, int opc,
 
         cksum = init_checksum(cksum_type);
         for (i = 0; i < desc->bd_iov_count; i++) {
-                struct page *page = desc->bd_iov[i].kiov_page;
+                cfs_page_t *page = desc->bd_iov[i].kiov_page;
                 int off = desc->bd_iov[i].kiov_offset & ~CFS_PAGE_MASK;
-                char *ptr = kmap(page) + off;
+                char *ptr = cfs_kmap(page) + off;
                 int len = desc->bd_iov[i].kiov_len;
 
                 /* corrupt the data before we compute the checksum, to
@@ -454,10 +461,12 @@ static __u32 ost_checksum_bulk(struct ptlrpc_bulk_desc *desc, int opc,
                 if (i == 0 && opc == OST_READ &&
                     OBD_FAIL_CHECK(OBD_FAIL_OST_CHECKSUM_SEND)) {
                         memcpy(ptr, "bad4", min(4, len));
+#if defined(__linux__)
                         /* nobody should use corrupted page again */
                         ClearPageUptodate(page);
+#endif
                 }
-                kunmap(page);
+                cfs_kunmap(page);
         }
 
         return cksum;
@@ -1461,7 +1470,7 @@ static int ost_handle_quota_adjust_qunit(struct ptlrpc_request *req)
  out:
         RETURN(rc);
 }
-#endif
+#endif /* HAVE_QUOTA_SUPPORT */
 
 static int ost_llog_handle_connect(struct obd_export *exp,
                                    struct ptlrpc_request *req)
@@ -2042,7 +2051,7 @@ int ost_handle(struct ptlrpc_request *req)
         struct obd_device *obd = NULL;
         ENTRY;
 
-        LASSERT(current->journal_info == NULL);
+        LASSERT_CJI_NULL;
 
         /* primordial rpcs don't affect server recovery */
         switch (lustre_msg_get_opc(req->rq_reqmsg)) {
@@ -2158,7 +2167,7 @@ int ost_handle(struct ptlrpc_request *req)
                 if (OBD_FAIL_CHECK(OBD_FAIL_OST_EROFS))
                         GOTO(out, rc = -EROFS);
                 rc = ost_brw_write(req, oti);
-                LASSERT(current->journal_info == NULL);
+                LASSERT_CJI_NULL;
                 /* ost_brw_write sends its own replies */
                 RETURN(rc);
         case OST_READ:
@@ -2175,7 +2184,7 @@ int ost_handle(struct ptlrpc_request *req)
                 if (OBD_FAIL_CHECK(OBD_FAIL_OST_BRW_NET))
                         RETURN(0);
                 rc = ost_brw_read(req, oti);
-                LASSERT(current->journal_info == NULL);
+                LASSERT_CJI_NULL;
                 /* ost_brw_read sends its own replies */
                 RETURN(rc);
         case OST_PUNCH:
@@ -2247,6 +2256,7 @@ int ost_handle(struct ptlrpc_request *req)
                 if (rc)
                         RETURN(rc);
                 RETURN(ptlrpc_reply(req));
+#if defined(LUSTRE_LOG_SERVER)
         case OBD_LOG_CANCEL:
                 CDEBUG(D_INODE, "log cancel\n");
                 req_capsule_set(&req->rq_pill, &RQF_LOG_CANCEL);
@@ -2260,6 +2270,7 @@ int ost_handle(struct ptlrpc_request *req)
                 if (rc)
                         RETURN(rc);
                 RETURN(ptlrpc_reply(req));
+#endif /* LUSTRE_LOG_SERVER */
         case LDLM_ENQUEUE:
                 CDEBUG(D_INODE, "enqueue\n");
                 req_capsule_set(&req->rq_pill, &RQF_LDLM_ENQUEUE);
@@ -2297,7 +2308,7 @@ int ost_handle(struct ptlrpc_request *req)
                 RETURN(rc);
         }
 
-        LASSERT(current->journal_info == NULL);
+        LASSERT_CJI_NULL;
 
         EXIT;
         /* If we're DISCONNECTing, the export_data is already freed */
@@ -2575,5 +2586,4 @@ MODULE_AUTHOR("Sun Microsystems, Inc. <http://www.lustre.org/>");
 MODULE_DESCRIPTION("Lustre Object Storage Target (OST) v0.01");
 MODULE_LICENSE("GPL");
 
-module_init(ost_init);
-module_exit(ost_exit);
+cfs_module(ost, LUSTRE_VERSION_STRING, ost_init, ost_exit);

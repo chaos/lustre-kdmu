@@ -101,7 +101,7 @@ struct llog_superblock {
 
 /* all initialized llog systems on this node linked on this */
 static CFS_LIST_HEAD(lsb_list_head);
-static CFS_DEFINE_MUTEX(lsb_list_mutex);
+cfs_mutex_t lsb_list_mutex;
 
 static void logid_to_fid(struct llog_logid *id, struct lu_fid *fid)
 {
@@ -498,17 +498,21 @@ static int llog_osd_read_header(struct llog_handle *handle)
                         lustre_swab_llog_hdr(handle->lgh_hdr);
 
                 if (llh_hdr->lrh_type != LLOG_HDR_MAGIC) {
+#if 0
                         CERROR("bad log %.*s header magic: %#x (expected %#x)\n",
                                handle->lgh_file->f_dentry->d_name.len,
                                handle->lgh_file->f_dentry->d_name.name,
                                llh_hdr->lrh_type, LLOG_HDR_MAGIC);
+#endif
                         rc = -EIO;
                 } else if (llh_hdr->lrh_len != LLOG_CHUNK_SIZE) {
+#if 0
                         CERROR("incorrectly sized log %.*s header: %#x "
                                "(expected %#x)\n",
                                handle->lgh_file->f_dentry->d_name.len,
                                handle->lgh_file->f_dentry->d_name.name,
                                llh_hdr->lrh_len, LLOG_CHUNK_SIZE);
+#endif
                         CERROR("you may need to re-run lconf --write_conf.\n");
                         rc = -EIO;
                 }

@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright  2009 Sun Microsystems, Inc. All rights reserved
  * Use is subject to license terms.
  */
 /*
@@ -51,7 +51,6 @@
 #include <lustre_ha.h>
 #include <obd_class.h>   /* for obd_zombie */
 #include <obd_support.h> /* for OBD_FAIL_CHECK */
-#include <cl_object.h> /* cl_env_{get,put}() */
 #include <lprocfs_status.h>
 
 enum pscope_thread {

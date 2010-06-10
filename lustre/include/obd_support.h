@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright  2009 Sun Microsystems, Inc. All rights reserved
  * Use is subject to license terms.
  */
 /*
@@ -47,6 +47,8 @@
 #include <darwin/obd_support.h>
 #elif defined(__WINNT__)
 #include <winnt/obd_support.h>
+#elif defined(__sun__)
+#include <solaris/obd_support.h>
 #else
 #error Unsupported operating system.
 #endif
@@ -483,6 +485,7 @@ static inline int obd_fail_timeout_set(__u32 id, __u32 value, int ms, int set)
 #ifdef __KERNEL__
 static inline void obd_fail_write(int id, struct super_block *sb)
 {
+#if !defined(__sun__)
         /* We set FAIL_ONCE because we never "un-fail" a device */
         if (OBD_FAIL_CHECK_ORSET(id & ~OBD_FAIL_ONCE, OBD_FAIL_ONCE)) {
 #ifdef LIBCFS_DEBUG
@@ -493,6 +496,7 @@ static inline void obd_fail_write(int id, struct super_block *sb)
                 /* TODO-CMD: fix getting jdev */
                 __lvfs_set_rdonly(lvfs_sbdev(sb), (lvfs_sbdev_type)0);
         }
+#endif /* __sun__ */
 }
 #define OBD_FAIL_WRITE(id, sb) obd_fail_write(id, sb)
 

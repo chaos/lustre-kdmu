@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright  2009 Sun Microsystems, Inc. All rights reserved
  * Use is subject to license terms.
  */
 /*
@@ -56,6 +56,8 @@
 #include <darwin/lustre_lib.h>
 #elif defined(__WINNT__)
 #include <winnt/lustre_lib.h>
+#elif defined(__sun__)
+#include <solaris/lustre_lib.h>
 #else
 #error Unsupported operating system.
 #endif
@@ -335,11 +337,6 @@ static inline int obd_ioctl_unpack(struct obd_ioctl_data *data, char *pbuf,
 
 #include <obd_support.h>
 
-#ifdef __KERNEL__
-/* function defined in lustre/obdclass/<platform>/<platform>-module.c */
-int obd_ioctl_getdata(char **buf, int *len, void *arg);
-int obd_ioctl_popdata(void *arg, void *data, int len);
-#else
 /* buffer MUST be at least the size of obd_ioctl_hdr */
 static inline int obd_ioctl_getdata(char **buf, int *len, void *arg)
 {
@@ -354,7 +351,8 @@ static inline int obd_ioctl_getdata(char **buf, int *len, void *arg)
                 RETURN(err);
 
         if (hdr.ioc_version != OBD_IOCTL_VERSION) {
-                CERROR("Version mismatch kernel vs application\n");
+                CERROR("Version mismatch kernel (%x) vs application (%x)\n",
+                       OBD_IOCTL_VERSION, hdr.ioc_version);
                 RETURN(-EINVAL);
         }
 
@@ -411,7 +409,8 @@ static inline int obd_ioctl_getdata(char **buf, int *len, void *arg)
                 data->ioc_inlbuf4 = &data->ioc_bulk[0] + offset;
         }
 
-        RETURN(0);
+        EXIT;
+        return 0;
 }
 
 static inline int obd_ioctl_popdata(void *arg, void *data, int len)
@@ -421,7 +420,6 @@ static inline int obd_ioctl_popdata(void *arg, void *data, int len)
                 err = -EFAULT;
         return err;
 }
-#endif
 
 static inline void obd_ioctl_freedata(char *buf, int len)
 {

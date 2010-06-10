@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright  2009 Sun Microsystems, Inc. All rights reserved
  * Use is subject to license terms.
  */
 /*
@@ -62,6 +62,8 @@
 #include <darwin/lustre_log.h>
 #elif defined(__WINNT__)
 #include <winnt/lustre_log.h>
+#elif defined(__sun__)
+#include <solaris/lustre_log.h>
 #else
 #error Unsupported operating system.
 #endif
@@ -94,7 +96,9 @@ struct llog_handle {
         struct llog_logid       lgh_id;              /* id of this log */
         struct llog_log_hdr    *lgh_hdr;
         union {
+#if !defined(__sun__)
                 struct file             *lgh_file;
+#endif
                 struct dt_object        *lgh_obj;
         } lgh_store;
         int                     lgh_last_idx;
@@ -108,7 +112,9 @@ struct llog_handle {
         void                   *private_data;
 };
 
+#if !defined(__sun__)
 #define lgh_file        lgh_store.lgh_file
+#endif
 #define lgh_obj         lgh_store.lgh_obj
 
 /* llog.c  -  general API */
@@ -920,7 +926,7 @@ static inline int llog_declare_add_2(struct llog_ctxt *ctxt,
         }
 
         if (ctxt->loc_logops->lop_declare_add_2 == NULL)
-                dump_stack();
+                libcfs_debug_dumpstack(NULL);
         raised = cfs_cap_raised(CFS_CAP_SYS_RESOURCE);
         if (!raised)
                 cfs_cap_raise(CFS_CAP_SYS_RESOURCE);

@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright  2009 Sun Microsystems, Inc. All rights reserved
  * Use is subject to license terms.
  */
 /*
@@ -103,7 +103,9 @@
 # include <liblustre.h>
 #endif
 
-#include <cl_object.h>
+#if !defined(SOLARIS_LSERVER)
+# include <cl_object.h>
+#endif
 
 #include <obd_class.h>
 #include <obd_support.h>
@@ -547,7 +549,7 @@ static int ldlm_cli_pool_shrink(struct ldlm_pool *pl,
                 canceled = ldlm_cancel_lru(ns, nr, LDLM_SYNC, 
                                            LDLM_CANCEL_SHRINK);
         }
-#ifdef __KERNEL__
+#if defined(__KERNEL__) && defined(__linux__)
         /*
          * Return the number of potentially reclaimable locks.
          */
@@ -1087,7 +1089,9 @@ static int ldlm_pools_shrink(ldlm_side_t client, int nr,
         CDEBUG(D_DLMTRACE, "Request to shrink %d %s locks from all pools\n",
                nr, client == LDLM_NAMESPACE_CLIENT ? "client" : "server");
 
+#if !defined(SOLARIS_LSERVER)
         cookie = cl_env_reenter();
+#endif
 
         /*
          * Find out how many resources we may release.
@@ -1098,7 +1102,9 @@ static int ldlm_pools_shrink(ldlm_side_t client, int nr,
                 cfs_mutex_down(ldlm_namespace_lock(client));
                 if (cfs_list_empty(ldlm_namespace_list(client))) {
                         cfs_mutex_up(ldlm_namespace_lock(client));
+#if !defined(SOLARIS_LSERVER)
                         cl_env_reexit(cookie);
+#endif
                         return 0;
                 }
                 ns = ldlm_namespace_first_locked(client);
@@ -1110,7 +1116,9 @@ static int ldlm_pools_shrink(ldlm_side_t client, int nr,
         }
 
         if (nr == 0 || total == 0) {
+#if !defined(SOLARIS_LSERVER)
                 cl_env_reexit(cookie);
+#endif
                 return total;
         }
 
@@ -1147,7 +1155,9 @@ static int ldlm_pools_shrink(ldlm_side_t client, int nr,
                 cached += ldlm_pool_granted(&ns->ns_pool);
                 ldlm_namespace_put(ns, 1);
         }
+#if !defined(SOLARIS_LSERVER)
         cl_env_reexit(cookie);
+#endif
         return cached;
 }
 
@@ -1333,6 +1343,7 @@ static int ldlm_pools_thread_main(void *arg)
                t_name, cfs_curproc_pid());
 
         cfs_complete_and_exit(&ldlm_pools_comp, 0);
+        RETURN(0);
 }
 
 static int ldlm_pools_thread_start(void)

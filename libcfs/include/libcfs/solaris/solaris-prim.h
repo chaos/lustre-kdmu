@@ -229,6 +229,9 @@ cfs_lumodule_desc_t name##_module_desc = {                                    \
         &fini_func, /* mdesc_fini */                                          \
 }
 
+extern int cfs_psdev_register(cfs_psdev_t *);
+extern int cfs_psdev_deregister(cfs_psdev_t *);
+
 /*
  * Signal
  */
@@ -238,6 +241,8 @@ cfs_lumodule_desc_t name##_module_desc = {                                    \
                            sigmask(SIGALRM))
 
 typedef k_sigset_t                        cfs_sigset_t;
+
+#define SIGNAL_MASK_ASSERT()  do {} while(0)
 
 /*
  * Timer
@@ -254,7 +259,7 @@ typedef struct cfs_timer {
 
 #define CFS_MAX_SCHEDULE_TIMEOUT LONG_MAX
 
-#define __wait_event(wq, condition)                             \
+#define __cfs_wait_event(wq, condition)                         \
 do {                                                            \
         struct cfs_waitlink __wait;                             \
                                                                 \
@@ -279,10 +284,10 @@ do {                                                            \
 do {                                                            \
         if (condition)                                          \
                 break;                                          \
-        __wait_event(wq, condition);                            \
+        __cfs_wait_event(wq, condition);                        \
 } while (0)
 
-#define __wait_event_interruptible(wq, condition, ex, ret)      \
+#define __cfs_wait_event_interruptible(wq, condition, ex, ret)  \
 do {                                                            \
         struct cfs_waitlink __wait;                             \
         int                 __wret = 1;                         \
@@ -324,19 +329,19 @@ do {                                                            \
 do {                                                            \
         rc = 0;                                                 \
         if (!condition)                                         \
-                __wait_event_interruptible(wq, condition,       \
-                    0, rc);                                     \
+                __cfs_wait_event_interruptible(wq, condition,   \
+                                               0, rc);          \
 } while (0)
 
 #define cfs_wait_event_interruptible_exclusive(wq, condition, rc) \
 do {                                                            \
         rc = 0;                                                 \
         if (!condition)                                         \
-                __wait_event_interruptible(wq, condition,       \
-                    1, rc);                                     \
+                __cfs_wait_event_interruptible(wq, condition,   \
+                                               1, rc);          \
 } while (0)
 
-#define __wait_event_timeout(wq, condition, timeout, ret)       \
+#define __cfs_wait_event_timeout(wq, condition, timeout, ret)   \
 do {                                                            \
         struct cfs_waitlink __wait;                             \
         clock_t             __expire = lbolt + (timeout);       \
@@ -378,10 +383,10 @@ do {                                                            \
 do {                                                                 \
         rc = 0;                                                      \
         if (!(condition))                                            \
-                __wait_event_timeout(wq, condition, timeout, rc);    \
+                __cfs_wait_event_timeout(wq, condition, timeout, rc);\
 } while (0)
 
-#define __wait_event_interruptible_timeout(wq, condition, timeout, ret) \
+#define __cfs_wait_event_interruptible_timeout(wq, condition, timeout, ret) \
 do {                                                            \
         struct cfs_waitlink __wait;                             \
         clock_t             __expire = lbolt + (timeout);       \
@@ -428,24 +433,23 @@ do {                                                            \
 do {                                                                   \
         rc = 0;                                                      \
         if (!(condition))                                            \
-                __wait_event_interruptible_timeout((wq), (condition),\
+                __cfs_wait_event_interruptible_timeout((wq), (condition),\
                     (timeout), rc);                                  \
 } while (0)
 
 #define cfs_request_module(name, ...)        0
 
-#define __module_get(mod)               do {} while (0)
+#define __cfs_module_get(mod)           do {} while (0)
 #define cfs_try_module_get(mod)         1
 #define cfs_module_put(mod)             do {} while (0)
+#define cfs_module_refcount(x)          1
+#define cfs_module_name(x)              ""
 
-struct cfs_module {
-    int foo;
-};
+typedef struct cfs_module {
+        char *name;
+} cfs_module_t;
 
-/* NB: defining THIS_MODULE as NULL a bit dangerous because somebody
- * can do 'owner = THIS_MODULE; LASSERT (owner != NULL);'
- * Fortunately, there is no such a LASSERT in server code */
-#define THIS_MODULE NULL
+#define THIS_MODULE (void *)0x11111111
 
 #define EXPORT_SYMBOL(s)
 #define MODULE_AUTHOR(s)
@@ -469,7 +473,7 @@ struct cfs_module {
 #define cfs_num_online_cpus()   ncpus_online
 
 static inline int
-cfs_cpu_online(i)
+cfs_cpu_online(int i)
 {
         int    rc = 0;
         cpu_t *c;

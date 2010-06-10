@@ -73,10 +73,9 @@
 
 #define LPU64 "%llu"
 #define LPD64 "%lld"
-#define LPX64 "%llx"
-#define LPF64 "%ll"
-#define LPSZ  "%lu"
-#define LPSSZ "%ld"
+#define LPX64 "0x%llx"
+#define LPX64i "%llx"
+#define LPF64 "ll"
 #define LPPID "%d"
 
 #define LPCFSPID "%d"

@@ -47,9 +47,9 @@
 static inline uint32_t
 ksocknal_csum(uint32_t crc, unsigned char const *p, size_t len)
 {
-        CRC32(crc, p, len, LE_32(crc), crc32_table);
+        CRC32(crc, p, len, crc, crc32_table);
 
-        return LE_32(crc);
+        return crc;
 }
 
 static inline int

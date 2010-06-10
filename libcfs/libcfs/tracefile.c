@@ -48,7 +48,7 @@
 #include <libcfs/params_tree.h>
 
 /* XXX move things up to the top, comment */
-union cfs_trace_data_union (*cfs_trace_data[TCD_MAX_TYPES])[CFS_NR_CPUS] __cacheline_aligned;
+union cfs_trace_data_union (*cfs_trace_data[CFS_TCD_TYPE_MAX])[CFS_NR_CPUS] __cacheline_aligned;
 
 char cfs_tracefile[TRACEFILE_NAME_SIZE];
 long long cfs_tracefile_size = CFS_TRACEFILE_SIZE;
@@ -914,7 +914,7 @@ int cfs_trace_set_debug_mb(int mb)
         struct cfs_trace_cpu_data *tcd;
 
         if (mb < cfs_num_possible_cpus()) {
-                printk(KERN_ERR "Cannot set debug_mb to %d, the value should be >= %d\n",
+                printk(CFS_KERN_ERR "Cannot set debug_mb to %d, the value should be >= %d\n",
                        mb, cfs_num_possible_cpus());
                 return -EINVAL;
         }

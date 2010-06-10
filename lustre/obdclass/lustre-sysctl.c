@@ -26,16 +26,13 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright  2009 Sun Microsystems, Inc. All rights reserved
  * Use is subject to license terms.
  */
 /*
  * This file is part of Lustre, http://www.lustre.org/
  * Lustre is a trademark of Sun Microsystems, Inc.
  */
-
-#include <asm/bitops.h>
-#include <asm/uaccess.h>
 
 #define DEBUG_SUBSYSTEM S_CLASS
 

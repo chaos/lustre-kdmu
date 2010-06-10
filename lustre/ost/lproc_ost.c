@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright  2009 Sun Microsystems, Inc. All rights reserved
  * Use is subject to license terms.
  */
 /*
@@ -37,7 +37,9 @@
 
 #include <obd_class.h>
 #include <lprocfs_status.h>
+#if defined(__linux__)
 #include <linux/seq_file.h>
+#endif
 #include "ost_internal.h"
 
 static struct lprocfs_vars lprocfs_ost_obd_vars[] = {

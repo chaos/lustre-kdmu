@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright  2009 Sun Microsystems, Inc. All rights reserved
  * Use is subject to license terms.
  */
 /*
@@ -37,6 +37,15 @@
 #ifndef OST_INTERNAL_H
 #define OST_INTERNAL_H
 
+#if defined(__linux__)
+#define LASSERT_CJI_NULL                                        \
+do {                                                            \
+        LASSERT(current->journal_info == NULL);                 \
+} while (0)
+#else
+#define LASSERT_CJI_NULL do {} while (0)
+#endif
+
 #define OSS_SERVICE_WATCHDOG_FACTOR 2
 
 /*
@@ -45,7 +54,6 @@
 #define OST_THREAD_POOL_SIZE PTLRPC_MAX_BRW_PAGES  /* pool size in pages */
 #define OST_THREAD_POOL_GFP  CFS_ALLOC_HIGHUSER    /* GFP mask for pool pages */
 
-struct page;
 struct niobuf_local;
 struct niobuf_remote;
 struct ptlrpc_request;
@@ -66,9 +74,6 @@ struct ost_thread_local_cache *ost_tls(struct ptlrpc_request *r);
 
 #define OSS_MIN_CREATE_THREADS  2UL
 #define OSS_MAX_CREATE_THREADS 16UL
-
-/* Quota stuff */
-extern quota_interface_t *quota_interface;
 
 void lprocfs_ost_init_vars(struct lprocfs_static_vars *lvars);
 

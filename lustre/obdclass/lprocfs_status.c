@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright  2009 Sun Microsystems, Inc. All rights reserved
  * Use is subject to license terms.
  */
 /*
@@ -1546,9 +1546,11 @@ void lprocfs_init_ops_stats(int num_private_stats, struct lprocfs_stats *stats)
         LPROCFS_OBD_OP_INIT(num_private_stats, stats, notify);
         LPROCFS_OBD_OP_INIT(num_private_stats, stats, health_check);
         LPROCFS_OBD_OP_INIT(num_private_stats, stats, get_uuid);
+#ifdef HAVE_QUOTA_SUPPORT
         LPROCFS_OBD_OP_INIT(num_private_stats, stats, quotacheck);
         LPROCFS_OBD_OP_INIT(num_private_stats, stats, quotactl);
         LPROCFS_OBD_OP_INIT(num_private_stats, stats, quota_adjust_qunit);
+#endif
         LPROCFS_OBD_OP_INIT(num_private_stats, stats, ping);
         LPROCFS_OBD_OP_INIT(num_private_stats, stats, pool_new);
         LPROCFS_OBD_OP_INIT(num_private_stats, stats, pool_rem);

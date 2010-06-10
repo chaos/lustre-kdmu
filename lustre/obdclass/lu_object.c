@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright  2009 Sun Microsystems, Inc. All rights reserved
  * Use is subject to license terms.
  */
 /*
@@ -49,7 +49,7 @@
 
 #include <libcfs/libcfs.h>
 
-#ifdef __KERNEL__
+#if defined(__KERNEL__) && defined(__linux__)
 # include <linux/module.h>
 #endif
 
@@ -1215,13 +1215,15 @@ static CFS_LIST_HEAD(lu_context_remembered);
 void lu_context_key_quiesce(struct lu_context_key *key)
 {
         struct lu_context *ctx;
-        extern unsigned cl_env_cache_purge(unsigned nr);
 
         if (!(key->lct_tags & LCT_QUIESCENT)) {
+#if !defined(SOLARIS_LSERVER)
+                extern unsigned cl_env_cache_purge(unsigned nr);
                 /*
                  * XXX layering violation.
                  */
                 cl_env_cache_purge(~0);
+#endif
                 key->lct_tags |= LCT_QUIESCENT;
                 /*
                  * XXX memory barrier has to go here.
@@ -1460,8 +1462,9 @@ static int lu_cache_shrink(int nr, unsigned int gfp_mask)
         }
         cfs_list_splice(&splice, lu_sites.prev);
         cfs_up(&lu_sites_guard);
-
+#if defined(__linux__)
         cached = (cached / 100) * sysctl_vfs_cache_pressure;
+#endif
         if (nr == 0)
                 CDEBUG(D_INODE, "%d objects cached\n", cached);
         return cached;
@@ -1508,7 +1511,8 @@ void lu_context_keys_dump(void)
                                i, key, key->lct_tags,
                                key->lct_init, key->lct_fini, key->lct_exit,
                                key->lct_index, cfs_atomic_read(&key->lct_used),
-                               key->lct_owner ? key->lct_owner->name : "",
+                               key->lct_owner ?
+                               cfs_module_name(key->lct_owner) : "",
                                key->lct_owner);
                         lu_ref_print(&key->lct_reference);
                 }
@@ -1522,8 +1526,11 @@ static int lu_cache_shrink(int nr, unsigned int gfp_mask)
 }
 #endif /* __KERNEL__ */
 
+#if !defined(SOLARIS_LSERVER)
 int  cl_global_init(void);
 void cl_global_fini(void);
+#endif
+
 int  lu_ref_global_init(void);
 void lu_ref_global_fini(void);
 
@@ -1586,7 +1593,11 @@ int lu_global_init(void)
         if (result)
                 GOTO(out, result);
 #endif
+
+#if !defined(SOLARIS_LSERVER)
         result = cl_global_init();
+#endif
+
 out:
 
         return result;
@@ -1597,7 +1608,9 @@ out:
  */
 void lu_global_fini(void)
 {
+#if !defined(SOLARIS_LSERVER)
         cl_global_fini();
+#endif
 #ifdef __KERNEL__
         llo_global_fini();
         dt_global_fini();

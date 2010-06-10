@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright  2009 Sun Microsystems, Inc. All rights reserved
  * Use is subject to license terms.
  */
 /*
@@ -43,6 +43,8 @@
 #include <darwin/obd_chksum.h>
 #elif defined(__WINNT__)
 #include <winnt/obd_cksum.h>
+#elif defined(__sun__)
+#include <solaris/obd_cksum.h>
 #else
 #error Unsupported operating system.
 #endif

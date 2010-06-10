@@ -153,7 +153,7 @@ void ctx_unhash_pf(struct ptlrpc_cli_ctx *ctx, cfs_hlist_head_t *freelist)
         cfs_clear_bit(PTLRPC_CTX_CACHED_BIT, &ctx->cc_flags);
 
         if (cfs_atomic_dec_and_test(&ctx->cc_refcount)) {
-                __cfs_hlist_del(&ctx->cc_cache);
+                cfs_hlist_del(&ctx->cc_cache);
                 cfs_hlist_add_head(&ctx->cc_cache, freelist);
         } else {
                 cfs_hlist_del_init(&ctx->cc_cache);
@@ -474,7 +474,7 @@ retry:
 
                 /* hot node, move to head */
                 if (hash_head->first != &ctx->cc_cache) {
-                        __cfs_hlist_del(&ctx->cc_cache);
+                        cfs_hlist_del(&ctx->cc_cache);
                         cfs_hlist_add_head(&ctx->cc_cache, hash_head);
                 }
         } else {

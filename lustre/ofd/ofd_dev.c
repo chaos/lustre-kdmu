@@ -925,8 +925,11 @@ static struct lu_device_type filter_device_type = {
         .ldt_ctx_tags = LCT_DT_THREAD
 };
 
+#ifdef HAVE_QUOTA_SUPPORT
 quota_interface_t *filter_quota_interface_ref;
 extern quota_interface_t filter_quota_interface;
+#endif /* HAVE_QUOTA_SUPPORT */
+
 extern struct obd_ops filter_obd_ops;
 
 int __init ofd_init(void)
@@ -936,31 +939,38 @@ int __init ofd_init(void)
 
         lprocfs_filter_init_vars(&lvars);
 
+#ifdef HAVE_QUOTA_SUPPORT
         cfs_request_module("lquota");
+#endif
 
         rc = ofd_fmd_init();
         if (rc)
                 GOTO(out, rc);
 
+#ifdef HAVE_QUOTA_SUPPORT
         //filter_quota_interface_ref = PORTAL_SYMBOL_GET(filter_quota_interface);
         init_obd_quota_ops(filter_quota_interface_ref, &filter_obd_ops);
+#endif
 
         rc = class_register_type(&filter_obd_ops, NULL, lvars.module_vars,
                                  LUSTRE_OST_NAME, &filter_device_type);
         if (rc) {
                 ofd_fmd_exit();
-out:
+#ifdef HAVE_QUOTA_SUPPORT
                 if (filter_quota_interface_ref)
                         PORTAL_SYMBOL_PUT(filter_quota_interface);
+#endif
         }
-
+out:
         return rc;
 }
 
 void __exit ofd_exit(void)
 {
+#ifdef HAVE_QUOTA_SUPPORT
         if (filter_quota_interface_ref)
                 PORTAL_SYMBOL_PUT(filter_quota_interface);
+#endif
 
         ofd_fmd_exit();
 

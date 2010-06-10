@@ -47,4 +47,4 @@ typedef enum {
 	CFS_TCD_TYPE_MAX
 } cfs_trace_buf_type_t;
 
-#endif
+#endif /* __LIBCFS_LINUX_TRACEFILE_H__ */

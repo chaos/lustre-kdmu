@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright  2009 Sun Microsystems, Inc. All rights reserved
  * Use is subject to license terms.
  */
 /*
@@ -54,6 +54,8 @@
 #include <darwin/obd_class.h>
 #elif defined(__WINNT__)
 #include <winnt/obd_class.h>
+#elif defined(__sun__)
+#include <solaris/obd_class.h>
 #else
 #error Unsupported operating system.
 #endif
@@ -278,12 +280,15 @@ static inline struct lr_server_data *class_server_data(struct obd_device *obd)
 
 void obdo_cpy_md(struct obdo *dst, struct obdo *src, obd_flag valid);
 void obdo_to_ioobj(struct obdo *oa, struct obd_ioobj *ioobj);
+
+#if !defined(SOLARIS_LSERVER)
 void obdo_from_iattr(struct obdo *oa, struct iattr *attr,
                      unsigned int ia_valid);
 void iattr_from_obdo(struct iattr *attr, struct obdo *oa, obd_flag valid);
 void md_from_obdo(struct md_op_data *op_data, struct obdo *oa, obd_flag valid);
 void obdo_from_md(struct obdo *oa, struct md_op_data *op_data,
                   unsigned int valid);
+#endif /* !SOLARIS_LSERVER */
 
 #define OBT(dev)        (dev)->obd_type
 #define OBP(dev, op)    (dev)->obd_type->typ_dt_ops->o_ ## op
@@ -1114,6 +1119,8 @@ static inline int obd_extent_calc(struct obd_export *exp,
         RETURN(rc);
 }
 
+#if !defined(__sun__)
+
 static inline struct dentry *
 obd_lvfs_fid2dentry(struct obd_export *exp, __u64 id_ino, __u32 gen, __u64 gr)
 {
@@ -1134,6 +1141,8 @@ obd_lvfs_open_llog(struct obd_export *exp, __u64 id_ino, struct dentry *dentry)
 #endif
         return 0;
 }
+
+#endif /* !__sun__ */
 
 /* @max_age is the oldest time in jiffies that we accept using a cached data.
  * If the cache is older than @max_age we will get a new value from the
@@ -1585,6 +1594,8 @@ static inline int obd_notify_observer(struct obd_device *observer,
         return rc1 ? rc1 : rc2;
 }
 
+#ifdef HAVE_QUOTA_SUPPORT
+
 static inline int obd_quotacheck(struct obd_export *exp,
                                  struct obd_quotactl *oqctl)
 {
@@ -1615,7 +1626,7 @@ static inline int obd_quota_adjust_qunit(struct obd_export *exp,
                                          struct quota_adjust_qunit *oqaq,
                                          struct lustre_quota_ctxt *qctxt)
 {
-#if defined(__KERNEL__) && defined(HAVE_QUOTA_SUPPORT)
+#if defined(__KERNEL__)
         struct timeval work_start;
         struct timeval work_end;
         long timediff;
@@ -1623,7 +1634,7 @@ static inline int obd_quota_adjust_qunit(struct obd_export *exp,
         int rc;
         ENTRY;
 
-#if defined(__KERNEL__) && defined(HAVE_QUOTA_SUPPORT)
+#if defined(__KERNEL__)
         if (qctxt)
                 cfs_gettimeofday(&work_start);
 #endif
@@ -1632,7 +1643,7 @@ static inline int obd_quota_adjust_qunit(struct obd_export *exp,
 
         rc = OBP(exp->exp_obd, quota_adjust_qunit)(exp, oqaq, qctxt);
 
-#if defined(__KERNEL__) && defined(HAVE_QUOTA_SUPPORT)
+#if defined(__KERNEL__)
         if (qctxt) {
                 cfs_gettimeofday(&work_end);
                 timediff = cfs_timeval_sub(&work_end, &work_start, NULL);
@@ -1642,6 +1653,8 @@ static inline int obd_quota_adjust_qunit(struct obd_export *exp,
 #endif
         RETURN(rc);
 }
+
+#endif /* HAVE_QUOTA_SUPPORT */
 
 static inline int obd_health_check(struct obd_device *obd)
 {

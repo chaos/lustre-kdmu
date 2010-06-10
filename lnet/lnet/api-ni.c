@@ -114,7 +114,11 @@ lnet_get_networks(void)
         if (*networks != 0)
                 return networks;
 
+#if defined (__sun__)
+        return "tcp0(e1000g1)"; /* temp for testing */
+#else
         return "tcp";
+#endif
 }
 
 void

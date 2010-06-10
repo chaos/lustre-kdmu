@@ -48,9 +48,15 @@
 
 /*
  * It's weird but there is no common includes defining strsep,
- * see for example smbsrv/string.h
+ * see for example smbsrv/string.h.
  */
 extern char *strsep(char **, const char *);
+
+extern char *strnchr(const char *, size_t, int);
+
+extern int sscanf(const char *, const char *, ...);
+extern int vsscanf(const char *, const char *, va_list);
+
 
 /*
  *  printk flags

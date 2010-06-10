@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright  2009 Sun Microsystems, Inc. All rights reserved
  * Use is subject to license terms.
  */
 /*
@@ -626,8 +626,10 @@ static struct obd_ops echo_obd_ops = {
         .o_cleanup         = echo_cleanup
 };
 
+#if !defined(SOLARIS_LSERVER)
 extern int echo_client_init(void);
 extern void echo_client_exit(void);
+#endif
 
 static void
 echo_persistent_pages_fini (void)
@@ -687,8 +689,10 @@ static int __init obdecho_init(void)
         if (rc != 0)
                 goto failed_1;
 
+#if !defined(SOLARIS_LSERVER)
         rc = echo_client_init();
         if (rc == 0)
+#endif
                 RETURN (0);
 
         class_unregister_type(LUSTRE_ECHO_NAME);
@@ -700,7 +704,9 @@ static int __init obdecho_init(void)
 
 static void /*__exit*/ obdecho_exit(void)
 {
+#if !defined(SOLARIS_LSERVER)
         echo_client_exit();
+#endif
         class_unregister_type(LUSTRE_ECHO_NAME);
         echo_persistent_pages_fini ();
 }

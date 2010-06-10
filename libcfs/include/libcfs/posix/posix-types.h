@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright  2009 Sun Microsystems, Inc. All rights reserved
  * Use is subject to license terms.
  */
 /*
@@ -42,7 +42,9 @@
 #ifndef _LUSTRE_POSIX_TYPES_H
 #define _LUSTRE_POSIX_TYPES_H
 
+#if defined(__linux__)
 #include <asm/types.h>
+#endif
 #ifndef HAVE_UMODE_T
 typedef unsigned short cfs_umode_t;
 #else
@@ -85,5 +87,34 @@ typedef unsigned long long __u64;
 /* long integer with size equal to pointer */
 typedef unsigned long ulong_ptr_t;
 typedef long long_ptr_t;
+
+#if defined(__sun__)
+
+typedef uint8_t        u_int8_t;
+typedef uint16_t       u_int16_t;
+typedef uint32_t       u_int32_t;
+typedef uint64_t       u_int64_t;
+
+typedef off64_t        loff_t;
+
+typedef struct {
+        int     val[2];
+} cfs_fsid_t;
+
+typedef struct cfs_kstatfs {
+        long         f_type;
+        long         f_bsize;
+        __u64        f_blocks;
+        __u64        f_bfree;
+        __u64        f_bavail;
+        __u64        f_files;
+        __u64        f_ffree;
+        cfs_fsid_t   f_fsid;
+        long         f_namelen;
+        long         f_frsize;
+        long         f_spare[5];
+} cfs_kstatfs_t;
+
+#endif /* __sun__ */
 
 #endif

@@ -48,8 +48,8 @@
 
 #include <vm/seg_kpm.h> /* for kpm_enable only */
 
-/* required for generic libcfs module.c; it's dummy on solaris */
 cfs_psdev_t libcfs_dev;
+cfs_psdev_t obd_psdev;
 
 /* what user sees in /dev */
 #define LUSTREFS_LNET_MINOR_NAME "lnet"
@@ -71,11 +71,6 @@ static void       *lustrefs_softstate;
 static dev_info_t *lustrefs_devi;
 
 extern struct cfs_psdev_ops libcfs_psdev_ops;
-
-/* Change the following  line to
- * 'extern struct cfs_psdev_ops obd_psdev_ops;'
- * when common class_obd.c is compiled in lsutrefs */
-struct cfs_psdev_ops obd_psdev_ops;
 
 #define LIBCFS_MAX_IOCTL_BUFFER 8192
 
@@ -158,11 +153,7 @@ lustrefs_psdev_open(dev_t *devp, int flag, int otyp, cred_t *cred)
          * doesn't save any kernel state from open to close for any
          * of its ioctls */
         if (getminor(*devp) == LUSTREFS_OBD_MINOR_NUMBER) {
-
-                if (obd_psdev_ops.p_open != NULL)
-                        return obd_psdev_ops.p_open(0, NULL);
-
-                return (-EPERM);
+                return (0);
         }
         
         /* allocate a new minor number starting with 2 */
@@ -205,11 +196,7 @@ lustrefs_psdev_close(dev_t dev, int flag, int otyp, cred_t *cred)
 
         /* see comment about /dev/obd in lustrefs_psdev_open */
         if (mn == LUSTREFS_OBD_MINOR_NUMBER) {
-
-                if (obd_psdev_ops.p_close != NULL)
-                        return obd_psdev_ops.p_close(0, NULL);
-
-                return (-EPERM);
+                return (0);
         }
 
         pdu = (struct libcfs_device_userstate **)
@@ -249,17 +236,15 @@ lustrefs_psdev_ioctl(dev_t dev, int cmd, intptr_t arg, int mode, cred_t *c,
          * lustre h-files. See also comment about /dev/obd in
          * lustrefs_psdev_open */
         if (mn == LUSTREFS_OBD_MINOR_NUMBER) {
-                /* obd on linux does: 'if (current->fsuid != 0) ...', but
-                /* permissions are already checked above with drv_priv() */
+                extern int class_handle_ioctl(unsigned int cmd,
+                                              unsigned long arg);
 
                 /* ignore all tty ioctls */
                 if ((cmd & 0xffffff00) == ((int)'T') << 8)
                         return (-ENOTTY);
 
-                if (obd_psdev_ops.p_ioctl != NULL)
-                        return obd_psdev_ops.p_ioctl(NULL, cmd, (void *)arg);
+                return class_handle_ioctl(cmd, (unsigned long)arg);
 
-                return (-EPERM);
         }        
         
 	if ( (cmd & IOCTYPE) >> 8 != IOC_LIBCFS_TYPE ) {
@@ -342,6 +327,10 @@ extern cfs_lumodule_desc_t libcfs_module_desc;
 extern cfs_lumodule_desc_t lnet_module_desc;
 extern cfs_lumodule_desc_t ksocknal_module_desc;
 extern cfs_lumodule_desc_t lnet_selftest_module_desc;
+extern cfs_lumodule_desc_t ptlrpc_module_desc;
+extern cfs_lumodule_desc_t obdclass_module_desc;
+extern cfs_lumodule_desc_t ost_module_desc;
+extern cfs_lumodule_desc_t obdecho_module_desc;
 
 static int
 libcfs_all_modules_init(void)
@@ -350,38 +339,87 @@ libcfs_all_modules_init(void)
 
         rc = libcfs_module_desc.mdesc_init();
 
-        if (rc != 0)
-                return rc;
+        if (rc != 0) {
+                CDEBUG(D_ERROR, "libcfs module init failed\n");
+                goto libcfs_fail;
+        }
 
         rc = lnet_module_desc.mdesc_init();
 
         if (rc != 0) {
-                libcfs_module_desc.mdesc_fini();
-                return rc;
+                CDEBUG(D_ERROR, "lnet module init failed\n");
+                goto lnet_fail;
         }
-        
+
         rc = ksocknal_module_desc.mdesc_init();
 
         if (rc != 0) {
-                lnet_module_desc.mdesc_fini();
-                libcfs_module_desc.mdesc_fini();
-                return rc;
+                CDEBUG(D_ERROR, "ksocknal module init failed\n");
+                goto ksocknal_fail;
         }
 
         rc = lnet_selftest_module_desc.mdesc_init();
 
         if (rc != 0) {
-                ksocknal_module_desc.mdesc_fini();
-                lnet_module_desc.mdesc_fini();
-                libcfs_module_desc.mdesc_fini();
+                CDEBUG(D_ERROR, "lnetselftest module init failed\n");
+                goto lnetselftest_fail;
         }
 
-        return rc;
+        rc = obdclass_module_desc.mdesc_init();
+
+        if (rc != 0) {
+                CDEBUG(D_ERROR, "obdclass module init failed\n");
+                goto obdclass_fail;
+        }
+
+        rc = ptlrpc_module_desc.mdesc_init();
+
+        if (rc != 0) {
+                CDEBUG(D_ERROR, "ptlrpc module init failed\n");
+                goto ptlrpc_fail;
+        }
+
+        rc = ost_module_desc.mdesc_init();
+
+        if (rc != 0) {
+                CDEBUG(D_ERROR, "ost module init failed\n");
+                goto ost_fail;
+        }
+
+        rc = obdecho_module_desc.mdesc_init();
+
+        if (rc != 0) {
+                CDEBUG(D_ERROR, "obdecho module init failed\n");
+                goto obdecho_fail;
+        }
+
+        return (0);
+
+obdecho_fail:
+        ost_module_desc.mdesc_fini();
+ost_fail:
+        ptlrpc_module_desc.mdesc_fini();
+ptlrpc_fail:
+        obdclass_module_desc.mdesc_fini();
+obdclass_fail:
+        lnet_selftest_module_desc.mdesc_fini();
+lnetselftest_fail:
+        ksocknal_module_desc.mdesc_fini();
+ksocknal_fail:
+        lnet_module_desc.mdesc_fini();
+lnet_fail:
+        libcfs_module_desc.mdesc_fini();
+libcfs_fail:
+        return (rc);
 }
 
 static void
 libcfs_all_modules_fini(void)
 {
+        obdecho_module_desc.mdesc_fini();
+        ost_module_desc.mdesc_fini();
+        ptlrpc_module_desc.mdesc_fini();
+        obdclass_module_desc.mdesc_fini();
         lnet_selftest_module_desc.mdesc_fini();
         ksocknal_module_desc.mdesc_fini();
         lnet_module_desc.mdesc_fini();
@@ -508,7 +546,8 @@ static struct dev_ops dev_ops = {
         nodev,                 /* devo_reset */
         &cb_ops,               /* devo_cb_ops */
         (struct bus_ops *)0,   /* devo_bus_ops */
-        NULL                   /* devo_power */
+        NULL,                  /* devo_power */
+        NULL                   /* devo_quiesce */ 
 };
 
 static struct modldrv modldrv = {
@@ -518,7 +557,9 @@ static struct modldrv modldrv = {
 };
 
 static struct modlinkage modlinkage = {
-        MODREV_1, &modldrv, NULL
+        MODREV_1,
+        &modldrv,
+        NULL
 };
 
 int _init(void)

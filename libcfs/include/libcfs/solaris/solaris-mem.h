@@ -58,6 +58,8 @@ typedef void *cfs_mem_cache_t;
 
 #define cfs_num_physpages               physinstalled
 
+#define CFS_NUM_CACHEPAGES              physinstalled
+
 #define CFS_SLAB_HWCACHE_ALIGN          1
 #define CFS_SLAB_DESTROY_BY_RCU         0
 
@@ -101,6 +103,7 @@ struct cfs_shrinker {
 };
 
 #define CFS_DEFAULT_SEEKS (0)
+#define __GFP_FS (1)
 
 typedef int (*cfs_shrinker_t)(int, unsigned int);
 
@@ -113,5 +116,8 @@ static inline struct cfs_shrinker *cfs_set_shrinker(int seeks,
 static inline void cfs_remove_shrinker(struct cfs_shrinker *shrinker)
 {
 }
+
+#define libcfs_memory_pressure_set() do {} while (0)
+#define libcfs_memory_pressure_clr() do {} while (0)
 
 #endif /* __LIBCFS_SOLARIS_SOLARIS_MEM_H__ */

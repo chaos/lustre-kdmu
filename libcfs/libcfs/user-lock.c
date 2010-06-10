@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright  2009 Sun Microsystems, Inc. All rights reserved
  * Use is subject to license terms.
  */
 /*
@@ -72,6 +72,12 @@
  */
 
 void cfs_spin_lock_init(cfs_spinlock_t *lock)
+{
+        LASSERT(lock != NULL);
+        (void)lock;
+}
+
+void cfs_spin_lock_done(cfs_spinlock_t *lock)
 {
         LASSERT(lock != NULL);
         (void)lock;
@@ -124,6 +130,12 @@ void cfs_sema_init(cfs_semaphore_t *s, int val)
         LASSERT(s != NULL);
         (void)s;
         (void)val;
+}
+
+void cfs_sema_fini(cfs_semaphore_t *s)
+{
+        LASSERT(s != NULL);
+        (void)s;
 }
 
 void __down(cfs_semaphore_t *s)

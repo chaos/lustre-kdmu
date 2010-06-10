@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright  2009 Sun Microsystems, Inc. All rights reserved
  * Use is subject to license terms.
  */
 /*
@@ -38,8 +38,8 @@
  * Author: Lai Siyao <lsy@clusterfs.com>
  */
 
-#ifndef __LINUX_CAPA_H_
-#define __LINUX_CAPA_H_
+#ifndef __LUSTRE_CAPA_H_
+#define __LUSTRE_CAPA_H_
 
 /** \defgroup capa capa
  *
@@ -49,7 +49,7 @@
 /*
  * capability
  */
-#ifdef __KERNEL__
+#if defined(__KERNEL__) && defined(__linux__)
 #include <linux/crypto.h>
 #endif
 #include <lustre/lustre_idl.h>
@@ -71,7 +71,9 @@ struct capa_hmac_alg {
 }
 
 struct client_capa {
+#if !defined(__sun__)
         struct inode             *inode;
+#endif
         cfs_list_t                lli_list;     /* link to lli_oss_capas */
 };
 
@@ -244,7 +246,7 @@ static inline void capa_put(struct obd_capa *ocapa)
                         cfs_hlist_node_t *hnode;
 
                         hnode = &ocapa->u.tgt.c_hash;
-                        LASSERT(!hnode->next && !hnode->pprev);
+                        LASSERT(!hnode->next && !hnode->prev);
                 }
                 OBD_SLAB_FREE(ocapa, capa_cachep, sizeof(*ocapa));
         }
@@ -305,4 +307,4 @@ enum {
 
 /** @} capa */
 
-#endif /* __LINUX_CAPA_H_ */
+#endif /* __LUSTRE_CAPA_H_ */

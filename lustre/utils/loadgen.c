@@ -983,12 +983,17 @@ static int loadgen_init(int argc, char **argv)
 
         /* Test to make sure obdecho module is loaded */
         args[0] = cmdname;
+#if !defined(SOLARIS_LSERVER)
         args[1] = "echo_client";
         args[2] = args[3] = "ecc_test";
+#else
+        args[1] = "obdecho";
+        args[2] = args[3] = ecsname;
+#endif
         rc = jt_lcfg_attach(4, args);
         if (rc) {
-                fprintf(stderr, "%s: can't attach echo client (%d)\n",
-                        cmdname, rc);
+                fprintf(stderr, "%s: can't attach %s (%d)\n",
+                        cmdname, args[1], rc);
                 if (rc == ENODEV)
                         fprintf(stderr, "%s: is the obdecho module loaded?\n",
                                 cmdname);

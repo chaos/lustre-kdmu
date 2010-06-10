@@ -142,7 +142,7 @@ extern void cfs_complete_and_exit(cfs_completion_t *cmpl, int ecode);
 #define cfs_down_interruptible(sem)     \
         (sema_p_sig(&(sem)->cfssem_sem) ? -EINTR : 0)
 #define cfs_down_trylock(sem)           (!sema_tryp(&(sem)->cfssem_sem))
-#define cfs_sem_is_locked()             sema_held(&(sem)->cfssem_sem)
+#define cfs_sem_is_locked(sem)          (sema_held(&(sem)->cfssem_sem))
 
 #define cfs_init_mutex(s)               cfs_sema_init(s, 1)
 #define cfs_init_mutex_locked(s)        cfs_sema_init(s, 0)
@@ -189,14 +189,18 @@ extern void cfs_complete_and_exit(cfs_completion_t *cmpl, int ecode);
 
 #define cfs_atomic_inc_return(a)        cfs_atomic_add_return(1, a)
 #define cfs_atomic_dec_return(a)        cfs_atomic_sub_return(1, a)
+#define cfs_atomic_inc_not_zero(v)      cfs_atomic_add_unless((v), 1, 0)
+
+extern int cfs_atomic_dec_and_lock(cfs_atomic_t *, cfs_spinlock_t *);
+extern int cfs_atomic_add_unless(cfs_atomic_t *, int, int);
 
 /*
  * Lockdep "implementation"
  */
 
-struct cfs_lock_class_key {
+typedef struct cfs_lock_class_key {
         int foo;
-};
+} cfs_lock_class_key_t;
 
 static inline void cfs_lockdep_set_class(void *lock, struct cfs_lock_class_key *key)
 {

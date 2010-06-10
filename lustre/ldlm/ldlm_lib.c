@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright  2009 Sun Microsystems, Inc. All rights reserved
  * Use is subject to license terms.
  */
 /*
@@ -1713,10 +1713,12 @@ static int target_recovery_thread(void *arg)
 
         cfs_daemonize_ctxt("tgt_recov");
 
+#if !defined(__sun__)
         SIGNAL_MASK_LOCK(current, flags);
         sigfillset(&current->blocked);
         RECALC_SIGPENDING;
         SIGNAL_MASK_UNLOCK(current, flags);
+#endif /* __sun__ */
 
         rc = lu_context_init(&env.le_ctx, LCT_MD_THREAD);
         if (rc)

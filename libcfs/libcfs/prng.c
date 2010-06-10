@@ -43,11 +43,18 @@
 
 #include <libcfs/libcfs.h>
 
+#ifndef min
 #define min(x,y) ((x)<(y) ? (x) : (y))
+#endif
 
 #ifndef __KERNEL__
 #define cfs_get_random_bytes(val, size)     (*val) = 0
 #endif
+
+#if defined(HAVE_LINUX_RANDOM_H)
+#include <linux/random.h>
+#endif
+
 
 /*
 From: George Marsaglia <geo@stat.fsu.edu>

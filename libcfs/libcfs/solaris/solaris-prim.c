@@ -62,14 +62,10 @@ int cfs_need_resched()
         return 0;
 }
 
-void cfs_our_cond_resched(void)
-{
-	delay(1);
-}
-
 void
 cfs_cond_resched(void)
 {
+        delay(1);
 }
 
 cfs_sigset_t
@@ -130,47 +126,21 @@ cfs_signal_pending(void)
 }
 
 /*
- * Filled with LUSTRE_FATAL_SIGS on startup
+ * Filled with the inverse of LUSTRE_FATAL_SIGS on startup
  */
-static k_sigset_t cfs_lfatalsigs;
+k_sigset_t cfs_invlfatalsigs;
 
-static inline void
-cfs_int_to_sigset(int sigs, cfs_sigset_t *sigset)
+inline void
+cfs_int_to_invsigset(int sigs, cfs_sigset_t *invsigset)
 {
         int i;
         
-        sigemptyset(sigset);
+        sigfillset(invsigset);
         for (i = 0; i <= 31; i++) {
                 if (sigs & (1 << i)) {
-                        sigaddset(sigset, i + 1);
+                        sigdelset(invsigset, i + 1);
                 }
         }
-}
-
-/*
- * Block all signals except the ones specified by sigs argument.
- */
-cfs_sigset_t
-l_w_e_set_sigs(int sigs)
-{
-        cfs_sigset_t old;
-        k_sigset_t   fatalsigs;
-
-        if (ttolwp(curthread) == NULL) {
-                sigfillset(&old);
-                return (old);
-        }
-
-        if (sigs == 0) {
-                sigfillset(&fatalsigs);
-        } else if (sigs == LUSTRE_FATAL_SIGS) {
-                fatalsigs = cfs_lfatalsigs;
-        } else {
-                cfs_int_to_sigset(sigs, &fatalsigs);
-        }
-
-        sigreplace(&fatalsigs, &old);
-        return (old);
 }
 
 void
@@ -179,16 +149,13 @@ cfs_clear_sigpending(void)
         return;
 }
 
-extern void lc_watchdog_init();
-extern void lc_watchdog_fini();
-
 extern kmutex_t cfsd_lock;
 
 int
 libcfs_arch_init(void)
 {
         libcfs_panic_on_lbug = 1;
-        cfs_int_to_sigset(LUSTRE_FATAL_SIGS, &cfs_lfatalsigs);
+        cfs_int_to_invsigset(LUSTRE_FATAL_SIGS, &cfs_invlfatalsigs);
         mutex_init(&cfsd_lock, NULL, MUTEX_DEFAULT, NULL);
 
         return 0;
@@ -419,16 +386,20 @@ cfs_kthread_run(int (*fn)(void *), void *arg, const char *namefmt, ...)
 struct cfs_group_info *
 cfs_groups_alloc(int gidsetsize)
 {
-    return (struct cfs_group_info *)cfs_alloc(sizeof(struct cfs_group_info),
+        cfs_group_info_t *ginfo;
+
+        ginfo = (cfs_group_info_t *)cfs_alloc(sizeof(struct cfs_group_info),
                                               CFS_ALLOC_ZERO);
+        cfs_atomic_set(&ginfo->usage, 1);
+
+        return (ginfo);
 }
 
 void
 cfs_groups_free(struct cfs_group_info *group_info)
 {
-    cfs_free(group_info);
+        cfs_free(group_info);
 }
-
 
 static
 void cfs_timer_handler(void *arg)
@@ -468,7 +439,7 @@ cfs_timer_arm(cfs_timer_t *t, cfs_time_t deadline)
         clock_t delta;
 
         mutex_enter(&t->cfstim_lock);
-        if (cid = t->cfstim_cid) {
+        if ((cid = t->cfstim_cid)) {
                 if (untimeout_default(cid, 1) >= 0) {
                         LASSERT(t->cfstim_count);
                         t->cfstim_count--;
@@ -488,7 +459,7 @@ cfs_timer_disarm(cfs_timer_t *t)
         callout_id_t cid;
 
         mutex_enter(&t->cfstim_lock);
-        if (cid = t->cfstim_cid) {
+        if ((cid = t->cfstim_cid)) {
                 if (untimeout_default(cid, 1) >= 0) {
                         LASSERT(t->cfstim_count);
                         t->cfstim_count--;

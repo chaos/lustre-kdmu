@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright  2009 Sun Microsystems, Inc. All rights reserved
  * Use is subject to license terms.
  */
 /*
@@ -44,7 +44,11 @@
 #ifdef __KERNEL__
 # include <libcfs/libcfs.h>
 # ifndef HAVE_VFS_INTENT_PATCHES
-# include <linux/lustre_intent.h>
+#  if defined(__linux__)
+#   include <linux/lustre_intent.h>
+#  elif defined(__sun__)
+#   include <solaris/lustre_intent.h>
+#  endif
 # endif
 #else
 # include <liblustre.h>

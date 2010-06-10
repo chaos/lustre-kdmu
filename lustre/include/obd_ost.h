@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright  2009 Sun Microsystems, Inc. All rights reserved
  * Use is subject to license terms.
  */
 /*
@@ -55,7 +55,9 @@ struct osc_brw_async_args {
         struct client_obd *aa_cli;
         cfs_list_t         aa_oaps;
         struct obd_capa   *aa_ocapa;
+#if !defined(SOLARIS_LSERVER)
         struct cl_req     *aa_clerq;
+#endif
 };
 
 #define osc_grant_args osc_brw_async_args
@@ -105,4 +107,4 @@ static inline int osc_res_name_eq(__u64 id, __u64 gr, struct ldlm_res_id *name)
         return name->name[0] == id && name->name[1] == gr;
 }
 
-#endif
+#endif /* _LUSTRE_OST_H */

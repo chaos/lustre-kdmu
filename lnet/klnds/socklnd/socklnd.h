@@ -88,7 +88,7 @@ typedef struct
 {
         unsigned char     ksni_valid;           /* been set yet? */
         unsigned char     ksni_bound;           /* bound to a cpu yet? */
-        unsigned short    ksni_sched;           /* which scheduler (assumes < 64) */
+        unsigned short    ksni_sched;           /* which scheduler */
 } ksock_irqinfo_t;
 
 typedef struct                                  /* in-use interface */

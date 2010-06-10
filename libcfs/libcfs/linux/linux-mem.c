@@ -77,7 +77,8 @@ cfs_alloc(size_t nr_bytes, u_int32_t flags)
 	void *ptr = NULL;
 
         LASSERT(!cfs_in_interrupt() ||
-                (size <= LIBCFS_VMALLOC_SIZE && flags == CFS_ALLOC_ATOMIC));
+                (nr_bytes <= LIBCFS_VMALLOC_SIZE &&
+                (flags & CFS_ALLOC_ATOMIC)));
 
 	ptr = kmalloc(nr_bytes, cfs_alloc_flags_to_gfp(flags));
 	if (ptr != NULL && (flags & CFS_ALLOC_ZERO))

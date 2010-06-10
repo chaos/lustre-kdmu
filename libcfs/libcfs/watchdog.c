@@ -43,25 +43,6 @@
 #include <libcfs/libcfs.h>
 #include "tracefile.h"
 
-struct lc_watchdog {
-        cfs_timer_t           lcw_timer; /* kernel timer */
-        cfs_list_t            lcw_list;
-        cfs_time_t            lcw_last_touched;
-        cfs_task_t           *lcw_task;
-        cfs_atomic_t          lcw_refcount;
-
-        void                (*lcw_callback)(pid_t, void *);
-        void                 *lcw_data;
-
-        pid_t                 lcw_pid;
-
-        enum {
-                LC_WATCHDOG_DISABLED,
-                LC_WATCHDOG_ENABLED,
-                LC_WATCHDOG_EXPIRED
-        } lcw_state;
-};
-
 #ifdef WITH_WATCHDOG
 /*
  * The dispatcher will complete lcw_start_completion when it starts,
@@ -100,7 +81,6 @@ static cfs_list_t lcw_pending_timers = \
 /* Last time a watchdog expired */
 static cfs_time_t lcw_last_watchdog_time;
 static int lcw_recent_watchdog_count;
-static cfs_spinlock_t lcw_last_watchdog_lock;
 
 extern void lcw_dump(struct lc_watchdog *lcw);
 
@@ -200,7 +180,6 @@ static void lcw_dump_stack(struct lc_watchdog *lcw)
 static int lcw_dispatch_main(void *data)
 {
         int                 rc = 0;
-        unsigned long       flags;
         struct lc_watchdog *lcw, *lcwcb;
 
         ENTRY;
@@ -441,14 +420,12 @@ void lc_watchdog_init(void)
 {
         cfs_sema_init(&lcw_refcount_sem, 1);
         cfs_spin_lock_init(&lcw_pending_timers_lock);
-        cfs_spin_lock_init(&lcw_last_watchdog_lock);
 }
 
 void lc_watchdog_fini(void)
 {
         cfs_sema_fini(&lcw_refcount_sem);
         cfs_spin_lock_done(&lcw_pending_timers_lock);
-        cfs_spin_lock_done(&lcw_last_watchdog_lock);
 }
 
 #else   /* !defined(WITH_WATCHDOG) */

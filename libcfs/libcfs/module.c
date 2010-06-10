@@ -403,11 +403,14 @@ MODULE_LICENSE("GPL");
 extern cfs_psdev_t libcfs_dev;
 extern cfs_rw_semaphore_t cfs_tracefile_sem;
 extern cfs_semaphore_t cfs_trace_thread_sem;
-extern struct cfs_rw_semaphore _lprocfs_lock;
+extern cfs_rw_semaphore_t _lprocfs_lock;
 
 extern void libcfs_init_nidstrings(void);
 extern int libcfs_arch_init(void);
 extern void libcfs_arch_cleanup(void);
+
+extern void lc_watchdog_init(void);
+extern void lc_watchdog_fini(void);
 
 static int init_libcfs_module(void)
 {

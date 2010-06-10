@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright  2009 Sun Microsystems, Inc. All rights reserved
  * Use is subject to license terms.
  */
 /*
@@ -37,7 +37,9 @@
 #ifndef __LUSTRE_LU_OBJECT_H
 #define __LUSTRE_LU_OBJECT_H
 
+#if !(defined(__sun__) && defined(__KERNEL__))
 #include <stdarg.h>
+#endif
 
 /*
  * struct lu_fid

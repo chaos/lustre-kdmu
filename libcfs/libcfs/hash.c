@@ -468,8 +468,8 @@ cfs_hash_lookup(cfs_hash_t *hs, void *key)
         if (key == NULL) {
                 cfs_hash_for_each_bucket(hs, hsb, i) {
                         cfs_read_lock(&hsb->hsb_rwlock);
-                        if (hsb->hsb_head.first) {
-                                hnode = hsb->hsb_head.first;
+                        if (hsb->hsb_head.next) {
+                                hnode = hsb->hsb_head.next;
                                 obj = cfs_hash_get(hs, hnode);
                                 cfs_read_unlock(&hsb->hsb_rwlock);
                                 break;
@@ -599,7 +599,7 @@ restart:
         cfs_hash_for_each_bucket_restart(hs, hsb, i) {
                 cfs_write_lock(&hsb->hsb_rwlock);
                 while (!cfs_hlist_empty(&hsb->hsb_head)) {
-                        hnode =  hsb->hsb_head.first;
+                        hnode =  hsb->hsb_head.next;
                         __cfs_hash_bucket_validate(hs, hsb, hnode);
                         obj = cfs_hash_get(hs, hnode);
                         cfs_write_unlock(&hsb->hsb_rwlock);

@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright  2009 Sun Microsystems, Inc. All rights reserved
  * Use is subject to license terms.
  */
 /*
@@ -704,7 +704,8 @@ out_free:
         return rc;
 }
 
-#else /* !__KERNEL__ */
+#else /* __KERNEL__ && LUSTRE_LOG_SERVER */
+
 int llog_origin_handle_create(struct ptlrpc_request *req)
 {
         LBUG();
@@ -742,4 +743,4 @@ int llog_origin_handle_cancel(struct ptlrpc_request *req)
         LBUG();
         return 0;
 }
-#endif
+#endif /* __KERNEL__ && LUSTRE_LOG_SERVER */

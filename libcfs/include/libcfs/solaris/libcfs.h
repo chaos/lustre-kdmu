@@ -64,6 +64,7 @@
 #include <sys/bitmap.h>
 #include <sys/fcntl.h>
 #include <sys/file.h>
+#include <sys/ioccom.h>
 #include <sys/param.h>
 #include <sys/random.h>  /* for random_get_pseudo_bytes() */
 #include <sys/cmn_err.h> /* for panic() */

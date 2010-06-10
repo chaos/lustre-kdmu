@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright  2009 Sun Microsystems, Inc. All rights reserved
  * Use is subject to license terms.
  */
 /*
@@ -49,7 +49,11 @@
 # include <cygwin-ioctl.h>
 #endif
 #ifdef HAVE_SYS_IOCTL_H
-# include <sys/ioctl.h>
+# if defined(__sun__)
+#  include <sys/ioccom.h>
+# else
+#  include <sys/ioctl.h>
+# endif
 #endif
 #ifndef _IOWR
 # include "ioctl.h"

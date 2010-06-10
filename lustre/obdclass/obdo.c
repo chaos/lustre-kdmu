@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright  2009 Sun Microsystems, Inc. All rights reserved
  * Use is subject to license terms.
  */
 /*
@@ -141,6 +141,8 @@ void obdo_to_ioobj(struct obdo *oa, struct obd_ioobj *ioobj)
         ioobj->ioo_type = oa->o_mode;
 }
 EXPORT_SYMBOL(obdo_to_ioobj);
+
+#if !defined(SOLARIS_LSERVER)
 
 void obdo_from_iattr(struct obdo *oa, struct iattr *attr, unsigned int ia_valid)
 {
@@ -257,3 +259,5 @@ void obdo_from_md(struct obdo *oa, struct md_op_data *op_data,
         }
 }
 EXPORT_SYMBOL(obdo_from_md);
+
+#endif /* !SOLARIS_LSERVER */

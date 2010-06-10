@@ -126,3 +126,39 @@ cfs_complete_and_exit(cfs_completion_t *cmpl, int ecode)
         sema_v(&cmpl->cfscmpl_sem);
         thread_exit();
 }
+
+int
+cfs_atomic_dec_and_lock(cfs_atomic_t *atomic, cfs_spinlock_t *lock)
+{
+        int ctr = atomic->cfsatm_counter;
+
+        while (ctr != 1) {
+                if (cas32((uint32_t *)&atomic->cfsatm_counter, ctr,
+                    ctr-1) == ctr) {
+                        return (0);
+                }
+                ctr = atomic->cfsatm_counter;
+        }
+
+        mutex_enter(&lock->cfssl_lock);
+        if (!atomic_add_32_nv(&atomic->cfsatm_counter, -1)) {
+                return (1);
+        }
+        mutex_exit(&lock->cfssl_lock);
+        return (0);
+}
+
+int
+cfs_atomic_add_unless(cfs_atomic_t *atomic, int a, int u)
+{
+        int ctr = atomic->cfsatm_counter;
+
+        while (ctr != u) {
+                if (cas32((uint32_t *)&atomic->cfsatm_counter, ctr,
+                    ctr+a) == ctr) {
+                        return (1);
+                }
+                ctr = atomic->cfsatm_counter;
+        }
+        return (0);
+}
