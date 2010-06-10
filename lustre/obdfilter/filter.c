@@ -209,13 +209,33 @@ void f_dput(struct dentry *dentry)
         dput(dentry);
 }
 
-void init_brw_stats(struct brw_stats *brw_stats)
+static void init_brw_stats(struct brw_stats *brw_stats)
 {
         int i;
         for (i = 0; i < BRW_LAST; i++)
                 cfs_spin_lock_init(&brw_stats->hist[i].oh_lock);
 }
 
+
+static int lprocfs_init_rw_stats(struct obd_device *obd,
+                                 struct lprocfs_stats **stats)
+{
+        int num_stats;
+
+        num_stats = (sizeof(*obd->obd_type->typ_dt_ops) / sizeof(void *)) +
+                                                        LPROC_FILTER_LAST - 1;
+        *stats = lprocfs_alloc_stats(num_stats, LPROCFS_STATS_FLAG_NOPERCPU);
+        if (*stats == NULL)
+                return -ENOMEM;
+
+        lprocfs_init_ops_stats(LPROC_FILTER_LAST, *stats);
+        lprocfs_counter_init(*stats, LPROC_FILTER_READ_BYTES,
+                             LPROCFS_CNTR_AVGMINMAX, "read_bytes", "bytes");
+        lprocfs_counter_init(*stats, LPROC_FILTER_WRITE_BYTES,
+                             LPROCFS_CNTR_AVGMINMAX, "write_bytes", "bytes");
+
+        return(0);
+}
 
 /* brw_stats are 2128, ops are 3916, ldlm are 204, so 6248 bytes per client,
    plus the procfs overhead :( */
@@ -239,8 +259,13 @@ static int filter_export_stats_init(struct obd_device *obd,
                 RETURN(rc);
         }
 
-        if (newnid)
-                rc = filter_nid_proc_stats_add(obd, exp);
+        if (newnid) {
+                struct nid_stat *tmp = exp->exp_nid_stats;
+                LASSERT(tmp != NULL);
+
+                OBD_ALLOC(tmp->nid_brw_stats, sizeof(struct brw_stats));
+                if (tmp->nid_brw_stats == NULL)
+                        GOTO(clean, rc = -ENOMEM);
 
                 init_brw_stats(tmp->nid_brw_stats);
                 rc = lprocfs_seq_create(exp->exp_nid_stats->nid_proc, "brw_stats",

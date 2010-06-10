@@ -216,8 +216,6 @@ void filter_tally(struct obd_export *exp, struct page **pages, int nr_pages,
                   unsigned long *blocks, int blocks_per_page, int wr);
 int lproc_filter_attach_seqstat(struct obd_device *dev);
 void lprocfs_filter_init_vars(struct lprocfs_static_vars *lvars);
-int filter_nid_proc_stats_add(struct obd_device *obd, struct obd_export *exp);
-void init_brw_stats(struct brw_stats *brw_stats);
 
 /* Quota stuff */
 extern quota_interface_t *filter_quota_interface_ref;
