@@ -322,6 +322,7 @@ static struct ptlrpc_request *mdc_intent_open_pack(struct obd_export *exp,
                              op_data->op_namelen + 1);
         req_capsule_set_size(&req->rq_pill, &RMF_EADATA, RCL_CLIENT,
                              max(lmmsize, obddev->u.cli.cl_default_mds_easize));
+        printk("expect up to %u bytes\n", max(lmmsize, obddev->u.cli.cl_default_mds_easize));
 
         rc = ldlm_prep_enqueue_req(exp, req, &cancels, count);
         if (rc) {

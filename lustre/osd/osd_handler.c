@@ -1864,7 +1864,7 @@ static int osd_declare_object_destroy(const struct lu_env *env,
         oh = container_of0(th, struct osd_thandle, ot_super);
         LASSERT(oh->ot_handle == NULL);
         LASSERT(inode);
-        LASSERT(!osd_inode_unlinked(inode));
+        LASSERT(!test_bit(LU_OBJECT_HEARD_BANSHEE, &dt->do_lu.lo_header->loh_flags));
 
         OSD_DECLARE_OP(oh, destroy);
         OSD_DECLARE_OP(oh, delete);
