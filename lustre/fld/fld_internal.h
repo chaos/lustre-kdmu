@@ -41,10 +41,11 @@
 #ifndef __FLD_INTERNAL_H
 #define __FLD_INTERNAL_H
 
+#include <libcfs/libcfs.h>
+
 #include <lustre/lustre_idl.h>
 #include <dt_object.h>
 
-#include <libcfs/libcfs.h>
 #include <lustre_req_layout.h>
 #include <lustre_fld.h>
 

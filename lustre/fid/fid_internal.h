@@ -40,10 +40,10 @@
 #ifndef __FID_INTERNAL_H
 #define __FID_INTERNAL_H
 
+#include <libcfs/libcfs.h>
+
 #include <lustre/lustre_idl.h>
 #include <dt_object.h>
-
-#include <libcfs/libcfs.h>
 
 #ifdef __KERNEL__
 struct seq_thread_info {

@@ -45,6 +45,7 @@
 #include <linux/random.h>
 #include <linux/version.h>
 #include <linux/mm.h>
+#include <linux/statfs.h>
 
 #include <lustre_lite.h>
 #include <lustre_ha.h>
@@ -1364,11 +1365,11 @@ int ll_statfs(struct dentry *de, struct kstatfs *sfs)
 
         /* We need to downshift for all 32-bit kernels, because we can't
          * tell if the kernel is being called via sys_statfs64() or not.
-         * Stop before overflowing f_bsize - in which case it is better
+         * Stop before overflowing f_frsize - in which case it is better
          * to just risk EOVERFLOW if caller is using old sys_statfs(). */
-        if (sizeof(long) < 8) {
-                while (osfs.os_blocks > ~0UL && sfs->f_bsize < 0x40000000) {
-                        sfs->f_bsize <<= 1;
+        if (unlikely(cfs_curproc_is_32bit())) {
+                while (osfs.os_blocks > ~0UL && sfs->f_frsize < 0x40000000) {
+                        sfs->f_frsize <<= 1;
 
                         osfs.os_blocks >>= 1;
                         osfs.os_bfree >>= 1;
@@ -1376,6 +1377,9 @@ int ll_statfs(struct dentry *de, struct kstatfs *sfs)
                 }
         }
 
+        /* XXX we need to return the same value on Linux otherwise userspace
+         * will be broken, see bug 22246. */
+        sfs->f_bsize = sfs->f_frsize;
         sfs->f_blocks = osfs.os_blocks;
         sfs->f_bfree = osfs.os_bfree;
         sfs->f_bavail = osfs.os_bavail;
