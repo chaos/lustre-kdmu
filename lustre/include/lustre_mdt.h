@@ -42,11 +42,12 @@
  * @{
  */
 
+#include <libcfs/libcfs.h>
+
 #include <lustre/lustre_idl.h>
 #include <lustre_req_layout.h>
 #include <md_object.h>
 #include <dt_object.h>
-#include <libcfs/libcfs.h>
 
 /*
  * Common thread info for mdt, seq and fld

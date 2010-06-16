@@ -46,14 +46,14 @@
  * @{
  */
 
+#include <libcfs/libcfs.h>
+
 /*
  * struct lu_fid
  */
 #include <lustre/lustre_idl.h>
 #include <lustre_req_layout.h>
 #include <lustre_mdt.h>
-
-#include <libcfs/libcfs.h>
 
 struct lu_site;
 struct lu_context;

@@ -49,6 +49,8 @@ extern "C" {
 
 #include <libcfs/libcfs.h>
 
+#define DMU_RESERVED_MAX (64ULL << 20)
+
 #define LUSTRE_ZPL_VERSION 1ULL
 
 #ifndef DMU_AT_TYPE
@@ -81,8 +83,6 @@ extern "C" {
 
 #define S_IFDOOR        0xD000  /* door */
 #define S_IFPORT        0xE000  /* event port */
-
-struct statfs64;
 
 /* Data structures required for Solaris ZFS compatability */
 #if !defined(__sun__)
@@ -176,13 +176,9 @@ void udmu_debug(int level);
 /* udmu object-set API */
 
 int udmu_objset_open(char *osname, udmu_objset_t *uos);
-
 void udmu_objset_close(udmu_objset_t *uos);
-
-int udmu_objset_statfs(udmu_objset_t *uos, struct statfs64 *statp);
-
+int udmu_objset_statfs(udmu_objset_t *uos, struct obd_statfs *osfs);
 int udmu_objset_root(udmu_objset_t *uos, dmu_buf_t **dbp, void *tag);
-
 void udmu_wait_synced(udmu_objset_t *uos, dmu_tx_t *tx);
 void udmu_wait_txg_synced(udmu_objset_t *uos, uint64_t txg);
 uint64_t udmu_get_txg(udmu_objset_t *uos, dmu_tx_t *tx);

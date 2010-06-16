@@ -27,10 +27,9 @@ ALWAYS_EXCEPT="$ALWAYS_EXCEPT 76"
 # 52  -- immutable/append flags aren't implemented
 # 54c -- (bug 22525) e2fsck lookups mntdev in osd/, doesn't support osd-{ldiskfs/zfs}
 # 56a -- FAIL: lfs getstripe --obd wrong: found 6, expected 3 
-# 60  -- llog is broken
 # 160 -- (bug 22448) changelogs don't work yet
 # 180 -- ofd doesn't work with obdecho 
-ALWAYS_EXCEPT="$ALWAYS_EXCEPT 52 54c 56a 60 160 180"
+ALWAYS_EXCEPT="$ALWAYS_EXCEPT 52 54c 56a 160 180"
 
 # 57a -- (bug 22607) can't determine dnode size in ZFS yet
 # 57b -- (bug 14113) don't have large dnodes yet

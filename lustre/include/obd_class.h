@@ -1170,7 +1170,7 @@ static inline int obd_statfs_async(struct obd_device *obd,
                        obd->obd_osfs.os_bavail, obd->obd_osfs.os_blocks,
                        obd->obd_osfs.os_ffree, obd->obd_osfs.os_files);
                 cfs_spin_lock(&obd->obd_osfs_lock);
-                memcpy(oinfo->oi_osfs, &obd->obd_osfs, sizeof(*oinfo->oi_osfs));
+                *oinfo->oi_osfs = obd->obd_osfs;
                 cfs_spin_unlock(&obd->obd_osfs_lock);
                 oinfo->oi_flags |= OBD_STATFS_FROM_CACHE;
                 if (oinfo->oi_cb_up)
@@ -1222,7 +1222,7 @@ static inline int obd_statfs(struct obd_device *obd, struct obd_statfs *osfs,
                 rc = OBP(obd, statfs)(obd, osfs, max_age, flags);
                 if (rc == 0) {
                         cfs_spin_lock(&obd->obd_osfs_lock);
-                        memcpy(&obd->obd_osfs, osfs, sizeof(obd->obd_osfs));
+                        obd->obd_osfs = *osfs;
                         obd->obd_osfs_age = cfs_time_current_64();
                         cfs_spin_unlock(&obd->obd_osfs_lock);
                 }
@@ -1233,7 +1233,7 @@ static inline int obd_statfs(struct obd_device *obd, struct obd_statfs *osfs,
                        obd->obd_osfs.os_bavail, obd->obd_osfs.os_blocks,
                        obd->obd_osfs.os_ffree, obd->obd_osfs.os_files);
                 cfs_spin_lock(&obd->obd_osfs_lock);
-                memcpy(osfs, &obd->obd_osfs, sizeof(*osfs));
+                *osfs = obd->obd_osfs;
                 cfs_spin_unlock(&obd->obd_osfs_lock);
         }
         RETURN(rc);

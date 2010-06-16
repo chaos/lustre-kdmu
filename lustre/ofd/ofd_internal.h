@@ -276,9 +276,9 @@ struct filter_thread_info {
         struct ldlm_res_id         fti_resid;
 
         union {
-                char               ns_name[48];   /* for obdfilter_init0()     */
-                struct lustre_cfg_bufs bufs;      /* for obdfilter_stack_fini()*/
-                cfs_kstatfs_t      ksfs;          /* for obdfilter_statfs()    */
+                char               ns_name[48];  /* for obdfilter_init0()     */
+                struct lustre_cfg_bufs bufs;     /* for obdfilter_stack_fini()*/
+                struct obd_statfs  osfs;         /* for obdfilter_statfs()    */
         } fti_u;
 
         /* server and client data buffers */

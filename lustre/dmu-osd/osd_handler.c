@@ -646,44 +646,28 @@ static int osd_object_print(const struct lu_env *env, void *cookie,
  * Concurrency: shouldn't matter.
  */
 int osd_statfs(const struct lu_env *env, struct dt_device *d,
-               cfs_kstatfs_t *sfs)
+               struct obd_statfs *osfs)
 {
         struct osd_device *osd = osd_dt_dev(d);
-        cfs_kstatfs_t *kfs = &osd->od_kstatfs;
+        struct obd_statfs *stats = &osd->od_osfs;
         int rc = 0;
-        __u64 reserve;
+        ENTRY;
 
         /* XXX: do we really need a cache here? -bzzz */
-        kfs = sfs;
+        stats = osfs;
 #if 0
         /* XXX: we can't use spinlock here as DMU uses semaphores inside */
         cfs_spin_lock(&osd->od_osfs_lock);
         /* cache 1 second */
         if (cfs_time_before_64(osd->od_osfs_age, cfs_time_shift_64(-1))) {
 #endif
-                rc = udmu_objset_statfs(&osd->od_objset, (struct statfs64 *) kfs);
-
-                /* Reserve same space so we don't run into ENOSPC due to grants
-                 * not accounting for metadata overhead in ZFS.  This is just a
-                 * short-term fix for testing and it can go away once we fix
-                 * grants to account for metadata overhead.
-                 *
-                 * This is what we do here: if the filesystem size is greater
-                 * than 1GB, we reserve 64MB, if less than 1GB we reserve
-                 * proportionately less. */
-                if (likely((kfs->f_blocks * kfs->f_frsize) >= 1ULL << 30))
-                        reserve = DMU_RESERVED_MAX / kfs->f_frsize;
-                else
-                        reserve = (DMU_RESERVED_MAX * kfs->f_blocks) >> 30;
-
-                LASSERT(reserve < kfs->f_blocks);
-
-                kfs->f_blocks -= reserve;
-                kfs->f_bfree  -= min(reserve, kfs->f_bfree);
-                kfs->f_bavail -= min(reserve, kfs->f_bavail);
+                rc = udmu_objset_statfs(&osd->od_objset, stats);
 #if 0
+                if (likely(rc == 0))
+                        osd->od_osfs_age = cfs_time_current_64();
         }
-        *sfs = *kfs;
+        if (likely(rc == 0))
+                *osfs = *stats;
         cfs_spin_unlock(&osd->od_osfs_lock);
 #endif
 
@@ -1168,16 +1152,16 @@ static void osd_ah_init(const struct lu_env *env, struct dt_allocation_hint *ah,
 
 static int osd_check_for_reserved_space(struct osd_device *osd)
 {
-        cfs_kstatfs_t kfs;
-        int           rc;
+        struct obd_statfs osfs;
+        int               rc;
 
         if (osd->od_reserved_fraction == 0)
                 return 0;
 
-        rc = udmu_objset_statfs(&osd->od_objset, (struct statfs64 *) &kfs);
+        rc = udmu_objset_statfs(&osd->od_objset, &osfs);
         if (rc == 0) {
-                kfs.f_blocks = kfs.f_blocks / osd->od_reserved_fraction;
-                if (kfs.f_bavail < kfs.f_blocks)
+                osfs.os_blocks = osfs.os_blocks / osd->od_reserved_fraction;
+                if (osfs.os_bavail < osfs.os_blocks)
                         rc = -ENOSPC;
         }
         return rc;
@@ -2302,7 +2286,7 @@ static struct dt_object_operations osd_obj_ops = {
  *
  *         - does a lot of extra work like balance_dirty_pages(),
  *
- * which doesn't work for globally shared files like /last-received.
+ * which doesn't work for globally shared files like /last_rcvd.
  */
 static ssize_t osd_read(const struct lu_env *env, struct dt_object *dt,
                         struct lu_buf *buf, loff_t *pos,
@@ -2766,6 +2750,11 @@ static int osd_mount(const struct lu_env *env,
 
         if (o->od_objset.os != NULL)
                 RETURN(0);
+
+        if (strlen(dev) >= sizeof(o->od_mntdev))
+                RETURN(-E2BIG);
+
+        strcpy(o->od_mntdev, dev);
 
         rc = udmu_objset_open(dev, &o->od_objset); 
         if (rc) {
