@@ -478,6 +478,7 @@ int llog_obd_origin_declare_add(struct llog_ctxt *ctxt,
         int rc;
         ENTRY;
 
+        LASSERT(ctxt);
         cathandle = ctxt->loc_handle;
         LASSERT(cathandle != NULL);
         rc = llog_cat_declare_add_rec(cathandle, rec, th);
