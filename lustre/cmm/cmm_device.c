@@ -81,14 +81,13 @@ int cmm_root_get(const struct lu_env *env, struct md_device *md,
 }
 
 static int cmm_statfs(const struct lu_env *env, struct md_device *md,
-                      cfs_kstatfs_t *sfs)
+                      struct obd_statfs *osfs)
 {
         struct cmm_device *cmm_dev = md2cmm_dev(md);
         int rc;
 
         ENTRY;
-        rc = cmm_child_ops(cmm_dev)->mdo_statfs(env,
-                                                cmm_dev->cmm_child, sfs);
+        rc = cmm_child_ops(cmm_dev)->mdo_statfs(env, cmm_dev->cmm_child, osfs);
         RETURN (rc);
 }
 
