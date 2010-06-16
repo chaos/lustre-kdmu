@@ -32,16 +32,13 @@ ALWAYS_EXCEPT="$ALWAYS_EXCEPT 76"
 # 180 -- ofd doesn't work with obdecho 
 ALWAYS_EXCEPT="$ALWAYS_EXCEPT 52 54c 56a 60 160 180"
 
-# 24v -- (bug 22803) space reservation for unlinks
 # 57a -- (bug 22607) can't determine dnode size in ZFS yet
-# 57b -- large inodes are specific to ldiskfs
+# 57b -- (bug 14113) don't have large dnodes yet
 # 66  -- blocks counting should be done properly with zfs
 # 129 -- ldiskfs specific test
 # 155 -- we don't control cache via ZFS OSD yet
 # 156 -- we don't control cache via ZFS OSD yet
 # 162 -- support for LMA in dmu osd
-#[ "$FSTYPE" = "zfs" -o "$OSTFSTYPE" = "zfs" -o "$MDSFSTYPE" = "zfs" ] && \
-#	ALWAYS_EXCEPT="$ALWAYS_EXCEPT 24v"
 
 [ "$FSTYPE" = "zfs" -o "$OSTFSTYPE" = "zfs" ] && \
 	ALWAYS_EXCEPT="$ALWAYS_EXCEPT 155 156"
