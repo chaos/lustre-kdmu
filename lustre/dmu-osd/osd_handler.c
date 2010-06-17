@@ -649,27 +649,22 @@ int osd_statfs(const struct lu_env *env, struct dt_device *d,
                struct obd_statfs *osfs)
 {
         struct osd_device *osd = osd_dt_dev(d);
-        struct obd_statfs *stats = &osd->od_osfs;
-        int rc = 0;
+        unsigned long long reserved = 0;
+        int                rc = 0;
         ENTRY;
 
         /* XXX: do we really need a cache here? -bzzz */
-        stats = osfs;
-#if 0
-        /* XXX: we can't use spinlock here as DMU uses semaphores inside */
-        cfs_spin_lock(&osd->od_osfs_lock);
-        /* cache 1 second */
-        if (cfs_time_before_64(osd->od_osfs_age, cfs_time_shift_64(-1))) {
-#endif
-                rc = udmu_objset_statfs(&osd->od_objset, stats);
-#if 0
-                if (likely(rc == 0))
-                        osd->od_osfs_age = cfs_time_current_64();
-        }
-        if (likely(rc == 0))
-                *osfs = *stats;
-        cfs_spin_unlock(&osd->od_osfs_lock);
-#endif
+        rc = udmu_objset_statfs(&osd->od_objset, osfs);
+        if (likely(osd->od_reserved_fraction))
+                reserved = osfs->os_blocks / osd->od_reserved_fraction;
+        if (osfs->os_bfree < reserved)
+                osfs->os_bfree = 0;
+        else
+                osfs->os_bfree -= reserved;
+        if (osfs->os_bavail < reserved)
+                osfs->os_bavail = 0;
+        else
+                osfs->os_bavail -= reserved;
 
         RETURN (rc);
 }
