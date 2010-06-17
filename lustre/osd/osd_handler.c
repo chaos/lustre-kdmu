@@ -795,6 +795,7 @@ int osd_statfs(const struct lu_env *env, struct dt_device *d,
         if (cfs_time_before_64(osd->od_osfs_age, cfs_time_shift_64(-1))) {
                 cfs_kstatfs_t kfs;
 
+                kfs.f_frsize = 0;
                 result = ll_do_statfs(sb, &kfs);
                 if (likely(result == 0)) { /* N.B. statfs can't really fail */
                        osd->od_osfs_age = cfs_time_current_64();
