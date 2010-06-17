@@ -6490,7 +6490,7 @@ run_test 150 "truncate/append tests"
 function roc_hit() {
     local list=$(comma_list $(osts_nodes))
 
-    ACCNUM=$(do_nodes $list $LCTL get_param -n osd*.*.stats | \
+    ACCNUM=$(do_nodes $list $LCTL get_param -n osd*.*OST*.stats | \
         awk '/'cache_hit'/ {sum+=$2} END {print sum}')
     echo $ACCNUM
 }
@@ -6502,7 +6502,7 @@ function set_cache() {
         on=0;
     fi
     local list=$(comma_list $(osts_nodes))
-    do_nodes $list lctl set_param osd*.*.${1}_cache_enable $on
+    do_nodes $list lctl set_param osd*.*OST*.${1}_cache_enable $on
 
     cancel_lru_locks osc
 }
@@ -6513,19 +6513,19 @@ test_151() {
         local CPAGES=3
         local list=$(comma_list $(osts_nodes))
 
-        # check whether obdfilter is cache capable at all
-        if ! do_nodes $list $LCTL get_param -n osd*.*.read_cache_enable > /dev/null; then
-                echo "not cache-capable obdfilter"
+        # check whether osd is cache capable at all
+        if ! do_nodes $list $LCTL get_param -n osd*.*OST*.read_cache_enable > /dev/null; then
+                echo "not cache-capable osd"
                 return 0
         fi
 
-        # check cache is enabled on all obdfilters
-        if do_nodes $list $LCTL get_param -n osd*.*.read_cache_enable | grep 0 >&/dev/null; then
+        # check cache is enabled on all osd
+        if do_nodes $list $LCTL get_param -n osd*.*OST*.read_cache_enable | grep 0 >&/dev/null; then
                 echo "oss cache is disabled"
                 return 0
         fi
 
-        do_nodes $list $LCTL set_param -n osd*.*.writethrough_cache_enable 1
+        do_nodes $list $LCTL set_param -n osd*.*OST*.writethrough_cache_enable 1
 
         # pages should be in the case right after write
         dd if=/dev/urandom of=$DIR/$tfile bs=4k count=$CPAGES || error "dd failed"
@@ -6539,7 +6539,7 @@ test_151() {
 
         # the following read invalidates the cache
         cancel_lru_locks osc
-        do_nodes $list $LCTL set_param -n osd*.*.read_cache_enable 0
+        do_nodes $list $LCTL set_param -n osd*.*OST*.read_cache_enable 0
         cat $DIR/$tfile >/dev/null
 
         # now data shouldn't be found in the cache
@@ -6551,7 +6551,7 @@ test_151() {
                 error "IN CACHE: before: $BEFORE, after: $AFTER"
         fi
 
-        do_nodes $list $LCTL set_param -n osd*.*.read_cache_enable 1
+        do_nodes $list $LCTL set_param -n osd*.*OST*.read_cache_enable 1
         rm -f $DIR/$tfile
 }
 run_test 151 "test cache on oss and controls ==============================="
