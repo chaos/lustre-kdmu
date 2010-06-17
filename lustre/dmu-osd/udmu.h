@@ -249,6 +249,7 @@ int udmu_object_punch(udmu_objset_t *uos, dmu_buf_t *db, dmu_tx_t *tx,
 
 void udmu_declare_object_delete(udmu_objset_t *uos, dmu_tx_t *tx, dmu_buf_t *db);
 int udmu_object_delete(udmu_objset_t *uos, dmu_buf_t **db, dmu_tx_t *tx, void *tag);
+int udmu_object_set_blocksize(udmu_objset_t *os, uint64_t oid, unsigned bsize, dmu_tx_t *tx);
 
 /*udmu transaction API */
 

@@ -452,6 +452,12 @@ int udmu_zap_lookup(udmu_objset_t *uos, dmu_buf_t *zap_db, const char *name,
                            value_size / intsize, value));
 }
 
+int udmu_object_set_blocksize(udmu_objset_t *uos, uint64_t oid,
+                              unsigned bsize, dmu_tx_t *tx)
+{
+        return dmu_object_set_blocksize(uos->os, oid, bsize, 0, tx);
+}
+
 /*
  * The transaction passed to this routine must have
  * udmu_tx_hold_bonus(tx, DMU_NEW_OBJECT) called and then assigned

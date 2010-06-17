@@ -1249,9 +1249,23 @@ static dmu_buf_t* osd_mkreg(struct osd_thread_info *info, struct osd_device  *os
                      struct lu_attr *attr,
                      struct osd_thandle *oh)
 {
-        dmu_buf_t * db;
+        dmu_buf_t *db;
+        int        rc;
+
         LASSERT(S_ISREG(attr->la_mode));
         udmu_object_create(&osd->od_objset, &db, oh->ot_tx, osd_object_tag);
+
+        /*
+         * XXX: a hack, OST to use bigger blocksize. we need
+         * a method in OSD API to control this from OFD/MDD
+         */
+        if (!lu_device_is_md(osd2lu_dev(osd))) {
+                rc = udmu_object_set_blocksize(&osd->od_objset, udmu_object_get_id(db),
+                                               128 << 10, oh->ot_tx);
+                if (unlikely(rc))
+                        CERROR("can't change blocksize: %d\n", rc);
+        }
+
         return db;
 }
 
