@@ -365,9 +365,9 @@ struct lprocfs_vars lprocfs_osd_obd_vars[] = {
         { "filesfree",       lprocfs_osd_rd_filesfree,   0, 0 },
         { "fstype",          lprocfs_osd_rd_fstype,      0, 0 },
         { "mntdev",          lprocfs_osd_rd_mntdev,      0, 0 },
+#ifndef DMU_OSD_BUILD
         { "read_cache_enable",lprocfs_osd_rd_cache,
                              lprocfs_osd_wr_cache,          0 },
-#ifndef DMU_OSD_BUILD
         { "writethrough_cache_enable",lprocfs_osd_rd_wcache,
                              lprocfs_osd_wr_wcache,         0 },
 #endif
