@@ -987,7 +987,7 @@ test_27l() {
 run_test 27l "check setstripe permissions (should return error)"
 
 sleep_maxage() {
-        local DELAY=$(do_facet mds lctl get_param -n lov.*.qos_maxage | head -n 1 | awk '{print $1 * 2}')
+        local DELAY=$(do_facet mds lctl get_param -n lo[vd].*.qos_maxage | head -n 1 | awk '{print $1 * 2}')
         sleep $DELAY
 }
 
