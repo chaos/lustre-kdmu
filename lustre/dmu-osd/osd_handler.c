@@ -2325,10 +2325,9 @@ static ssize_t osd_read(const struct lu_env *env, struct dt_object *dt,
 static ssize_t osd_declare_write(const struct lu_env *env, struct dt_object *dt,
                                  const loff_t size, loff_t pos, struct thandle *th)
 {
-        struct osd_object *obj  = osd_dt_obj(dt);
+        struct osd_object  *obj  = osd_dt_obj(dt);
         struct osd_thandle *oh;
-        uint64_t oid;
-        vnattr_t va;
+        uint64_t            oid;
         ENTRY;
 
         oh = container_of0(th, struct osd_thandle, ot_super);
@@ -2337,9 +2336,12 @@ static ssize_t osd_declare_write(const struct lu_env *env, struct dt_object *dt,
                 LASSERT(dt_object_exists(dt));
 
                 oid = udmu_object_get_id(obj->oo_db);
-                udmu_object_getattr(obj->oo_db, &va);
-                if (va.va_size < pos + size)
-                        udmu_tx_hold_bonus(oh->ot_tx, oid);
+
+                /*
+                 * declare possible size change. notice we can't check current
+                 * size here as another thread can change it
+                 */
+                udmu_tx_hold_bonus(oh->ot_tx, oid);
         } else {
                 LASSERT(!dt_object_exists(dt));
 
