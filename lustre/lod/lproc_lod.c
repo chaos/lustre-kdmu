@@ -363,7 +363,7 @@ static int lod_tgt_seq_show(struct seq_file *p, void *v)
         struct lod_device   *d;
         int                  idx, rc;
         struct dt_device    *next;
-        cfs_kstatfs_t        sfs;
+        struct obd_statfs    sfs;
 
         LASSERT(obd->obd_lu_dev);
         d = lu2lod_dev(obd->obd_lu_dev);
@@ -382,7 +382,7 @@ static int lod_tgt_seq_show(struct seq_file *p, void *v)
         tgt = lov->lov_tgts[idx];
         return seq_printf(p, "%d: %s %sACTIVE\n", idx,
                           obd_uuid2str(&tgt->ltd_uuid), 
-                          sfs.f_blocks > 0 ? "" : "IN");
+                          sfs.os_blocks > 0 ? "" : "IN");
 }
 
 struct seq_operations lod_tgt_sops = {

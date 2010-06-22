@@ -111,7 +111,7 @@ static int osp_statfs_interpret(const struct lu_env *env,
                 GOTO(out, rc = -EPROTO);
         }
 
-        statfs_unpack(&d->opd_statfs, msfs);
+        d->opd_statfs = *msfs;
 
         osp_pre_update_status(d, rc);
 
@@ -442,25 +442,25 @@ out_req:
  */
 void osp_pre_update_status(struct osp_device *d, int rc)
 {
-        cfs_kstatfs_t *msfs = &d->opd_statfs;
-        int            old = d->opd_pre_status;
-        __u64          used;
+        struct obd_statfs *msfs = &d->opd_statfs;
+        int                old = d->opd_pre_status;
+        __u64              used;
 
         d->opd_pre_status = rc;
         if (rc)
                 goto out;
 
-        if (likely(msfs->f_type)) {
-                used = min_t(__u64,(msfs->f_blocks - msfs->f_bfree) >> 10, 1 << 30);
-                if ((msfs->f_ffree < 32) || (msfs->f_bavail < used)) {
+        if (likely(msfs->os_type)) {
+                used = min_t(__u64,(msfs->os_blocks - msfs->os_bfree) >> 10, 1 << 30);
+                if ((msfs->os_ffree < 32) || (msfs->os_bavail < used)) {
                         d->opd_pre_status = -ENOSPC;
                         if (old != -ENOSPC)
                         CERROR("%s: rc %d, %lu blocks, %lu free, %lu used, "
                                "%lu avail -> %d\n", d->opd_obd->obd_name, rc,
-                               (unsigned long) msfs->f_blocks,
-                               (unsigned long) msfs->f_bfree,
+                               (unsigned long) msfs->os_blocks,
+                               (unsigned long) msfs->os_bfree,
                                (unsigned long) used,
-                               (unsigned long) msfs->f_bavail,
+                               (unsigned long) msfs->os_bavail,
                                d->opd_pre_status);
                 } else if (old == -ENOSPC) {
                         d->opd_pre_status = 0;
@@ -469,10 +469,10 @@ void osp_pre_update_status(struct osp_device *d, int rc)
                         cfs_waitq_signal(&d->opd_pre_waitq);
                         CERROR("%s: rc %d, %lu blocks, %lu free, %lu used, "
                                "%lu avail -> %d\n", d->opd_obd->obd_name, rc,
-                               (unsigned long) msfs->f_blocks,
-                               (unsigned long) msfs->f_bfree,
+                               (unsigned long) msfs->os_blocks,
+                               (unsigned long) msfs->os_bfree,
                                (unsigned long) used,
-                               (unsigned long) msfs->f_bavail,
+                               (unsigned long) msfs->os_bavail,
                                d->opd_pre_status);
                 }
         }

@@ -144,7 +144,7 @@ struct osp_device {
         /*
          * statfs related fields: OSP maintains it on its own
          */
-        cfs_kstatfs_t                   opd_statfs;
+        struct obd_statfs               opd_statfs;
         cfs_time_t                      opd_statfs_fresh_till;
         cfs_timer_t                     opd_statfs_timer;
         /* how often to update statfs data */

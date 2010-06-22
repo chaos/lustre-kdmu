@@ -216,7 +216,7 @@ static int lod_root_get(const struct lu_env *env,
 }
 
 static int lod_statfs(const struct lu_env *env,
-                      struct dt_device *dev, struct kstatfs *sfs)
+                      struct dt_device *dev, struct obd_statfs *sfs)
 {
         struct lod_device *d = dt2lod_dev(dev);
         struct dt_device  *next = d->lod_child;

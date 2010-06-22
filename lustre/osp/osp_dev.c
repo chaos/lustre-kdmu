@@ -189,7 +189,7 @@ const struct lu_device_operations osp_lu_ops = {
  *
  */
 static int osp_statfs(const struct lu_env *env,
-                       struct dt_device *dev, cfs_kstatfs_t *sfs)
+                       struct dt_device *dev, struct obd_statfs *sfs)
 {
         struct osp_device *d = dt2osp_dev(dev);
         ENTRY;
@@ -204,6 +204,7 @@ static int osp_statfs(const struct lu_env *env,
                  * just few specific fields with zeroes? 
                  */
                 memset(sfs, 0, sizeof(*sfs));
+                sfs->os_bsize = 4096;
                 RETURN(0);
         }
 
@@ -215,14 +216,14 @@ static int osp_statfs(const struct lu_env *env,
          * how many objects are available for immediate creation
          */
         cfs_spin_lock(&d->opd_pre_lock);
-        sfs->f_ffree = d->opd_pre_last_created - d->opd_pre_next;
+        sfs->os_ffree = d->opd_pre_last_created - d->opd_pre_next;
         cfs_spin_unlock(&d->opd_pre_lock);
 
         CDEBUG(D_OTHER, "%s: %lu blocks, %lu free, %lu avail, "
                "%lu files, %lu free files\n", d->opd_obd->obd_name,
-               (unsigned long) sfs->f_blocks, (unsigned long) sfs->f_bfree,
-               (unsigned long) sfs->f_bavail, (unsigned long) sfs->f_files,
-               (unsigned long) sfs->f_ffree);
+               (unsigned long) sfs->os_blocks, (unsigned long) sfs->os_bfree,
+               (unsigned long) sfs->os_bavail, (unsigned long) sfs->os_files,
+               (unsigned long) sfs->os_ffree);
         RETURN(0);
 }
 

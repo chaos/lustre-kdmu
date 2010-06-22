@@ -176,8 +176,7 @@ static void lod_qos_statfs_update(const struct lu_env *env,
         struct lov_obd    *lov = &obd->u.lov;
         struct ost_pool   *osts = &(lov->lov_packed);
         int                i, idx, rc = 0;
-        struct kstatfs     sfs;
-        __u64              max_age;
+        __u64              max_age, avail;
         ENTRY;
 
         max_age = cfs_time_shift_64(-2*lov->desc.ld_qos_maxage);
@@ -192,17 +191,17 @@ static void lod_qos_statfs_update(const struct lu_env *env,
 
         for (i = 0; i < osts->op_count; i++) {
                 idx = osts->op_array[i];
-                rc = dt_statfs(env, m->lod_ost[i], &sfs);
+                avail = lov->lov_tgts[idx]->ltd_statfs.os_bavail;
+                rc = dt_statfs(env, m->lod_ost[i], &lov->lov_tgts[idx]->ltd_statfs);
                 if (rc) {
                         /* XXX: disable this OST till next refresh? */
                         CERROR("can't refresh statfs: %d\n", rc);
                         break;
                 }
-                if (lov->lov_tgts[idx]->ltd_statfs.os_bavail != sfs.f_bavail) {
+                if (lov->lov_tgts[idx]->ltd_statfs.os_bavail != avail) {
                         /* recalculate weigths */
                         lov->lov_qos.lq_dirty = 1;
                 }
-                statfs_pack(&lov->lov_tgts[idx]->ltd_statfs, &sfs);
         }
 
         obd->obd_osfs_age = cfs_time_current_64();
@@ -571,14 +570,14 @@ static int min_stripe_count(int stripe_cnt, int flags)
                 stripe_cnt - (stripe_cnt / 4) : stripe_cnt);
 }
 
-static int inline lod_qos_dev_is_full(cfs_kstatfs_t *msfs)
+static int inline lod_qos_dev_is_full(struct obd_statfs *msfs)
 {
         __u64          used;
 
-        LASSERT(msfs->f_type);
+        LASSERT(msfs->os_type);
 
-        used = min_t(__u64,(msfs->f_blocks - msfs->f_bfree) >> 10, 1 << 30);
-        if ((msfs->f_bfree < 32) || (msfs->f_bavail < used))
+        used = min_t(__u64,(msfs->os_blocks - msfs->os_bfree) >> 10, 1 << 30);
+        if ((msfs->os_bfree < 32) || (msfs->os_bavail < used))
                 return 1;
         return 0;
 }
@@ -604,7 +603,7 @@ static int lod_alloc_rr(const struct lu_env *env, struct lod_object *lo,
         struct pool_desc *pool = NULL;
         struct ost_pool *osts;
         struct lov_qos_rr *lqr;
-        cfs_kstatfs_t sfs;
+        struct obd_statfs sfs;
         ENTRY;
 
         if (lo->mbo_pool && (pool = lov_find_pool(lov, lo->mbo_pool))) {
@@ -675,7 +674,7 @@ repeat_find:
                 /*
                  * skip empty devices - usually it means inactive device 
                  */
-                if (sfs.f_blocks == 0)
+                if (sfs.os_blocks == 0)
                         continue;
 
                 /*
@@ -690,13 +689,13 @@ repeat_find:
                  * We expect number of precreated objects in f_ffree at
                  * the first iteration, skip OSPs with no objects ready
                  */
-                if (sfs.f_ffree == 0 && speed == 0)
+                if (sfs.os_ffree == 0 && speed == 0)
                         continue;
 
                 /*
                  * try to use another OSP if this one is degraded
                  */
-                if (sfs.f_spare[0] == OS_STATE_DEGRADED  && speed == 0)
+                if (sfs.os_spare1 == OS_STATE_DEGRADED  && speed == 0)
                         continue;
 
                 o = lod_qos_declare_object_on(env, m, ost_idx, th);
@@ -757,7 +756,7 @@ static int lod_alloc_specific(const struct lu_env *env, struct lod_object *lo,
         int speed = 0;
         struct pool_desc *pool = NULL;
         struct ost_pool *osts;
-        cfs_kstatfs_t sfs;
+        struct obd_statfs sfs;
         ENTRY;
 
         if (lo->mbo_pool && (pool = lov_find_pool(lov, lo->mbo_pool))) {
@@ -814,7 +813,7 @@ repeat_find:
                 /*
                  * skip empty devices - usually it means inactive device 
                  */
-                if (sfs.f_blocks == 0)
+                if (sfs.os_blocks == 0)
                         continue;
 
                 /*
@@ -822,7 +821,7 @@ repeat_find:
                  * the first iteration, skip OSPs with no objects ready
                  * don't apply this logic to OST specified with stripe_offset
                  */
-                if (i != 0 && sfs.f_ffree == 0 && speed == 0)
+                if (i != 0 && sfs.os_ffree == 0 && speed == 0)
                         continue;
 
                 o = lod_qos_declare_object_on(env, m, ost_idx, th);
@@ -904,7 +903,7 @@ static int lod_alloc_qos(const struct lu_env *env, struct lod_object *lo,
         struct pool_desc *pool = NULL;
         struct ost_pool *osts;
         struct lov_qos_rr *lqr;
-        cfs_kstatfs_t sfs;
+        struct obd_statfs sfs;
         ENTRY;
 
         if (stripe_cnt_min < 1)
@@ -958,7 +957,7 @@ static int lod_alloc_qos(const struct lu_env *env, struct lod_object *lo,
                 /*
                  * skip empty devices - usually it means inactive device 
                  */
-                if (sfs.f_blocks == 0)
+                if (sfs.os_blocks == 0)
                         continue;
 
                 /*
