@@ -784,7 +784,7 @@ static int osd_object_print(const struct lu_env *env, void *cookie,
  * Concurrency: shouldn't matter.
  */
 int osd_statfs(const struct lu_env *env, struct dt_device *d,
-               cfs_kstatfs_t *sfs)
+               struct obd_statfs *osfs)
 {
         struct osd_device *osd = osd_dt_dev(d);
         struct super_block *sb = osd_sb(osd);
@@ -793,13 +793,18 @@ int osd_statfs(const struct lu_env *env, struct dt_device *d,
         cfs_spin_lock(&osd->od_osfs_lock);
         /* cache 1 second */
         if (cfs_time_before_64(osd->od_osfs_age, cfs_time_shift_64(-1))) {
-                result = ll_do_statfs(sb, &osd->od_kstatfs);
-                if (likely(result == 0)) /* N.B. statfs can't really fail */
-                        osd->od_osfs_age = cfs_time_current_64();
+                cfs_kstatfs_t kfs;
+
+                kfs.f_frsize = 0;
+                result = ll_do_statfs(sb, &kfs);
+                if (likely(result == 0)) { /* N.B. statfs can't really fail */
+                       osd->od_osfs_age = cfs_time_current_64();
+                       statfs_pack(&osd->od_osfs, &kfs);
+                }
         }
 
         if (likely(result == 0))
-                *sfs = osd->od_kstatfs;
+                *osfs = osd->od_osfs;
         cfs_spin_unlock(&osd->od_osfs_lock);
 
         return result;

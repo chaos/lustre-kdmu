@@ -121,6 +121,8 @@ typedef unsigned long long cfs_cycles_t;
 
 typedef struct file cfs_file_t;
 typedef struct dentry cfs_dentry_t;
+typedef struct statfs cfs_kstatfs_t;
+
 #ifdef __linux__
 typedef struct dirent64 cfs_dirent_t;
 #endif

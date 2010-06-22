@@ -47,8 +47,6 @@
 struct inode;
 
 #define OSD_COUNTERS (0)
-#define DMU_RESERVED_MIN (1<<20)
-#define DMU_RESERVED_MAX (64ULL * DMU_RESERVED_MIN)
 
 #define DMU_RESERVED_FRACTION   25      /* default reserved fraction 1/25 = 4% */
 /**
@@ -107,8 +105,8 @@ struct osd_device {
         /*
          * statfs optimization: we cache a bit.
          */
+        struct obd_statfs         od_osfs;
         cfs_time_t                od_osfs_age;
-        cfs_kstatfs_t             od_kstatfs;
         cfs_spinlock_t            od_osfs_lock;
 
         struct libcfs_param_entry *od_proc_entry;
@@ -118,15 +116,33 @@ struct osd_device {
         dmu_buf_t                *od_objdir_db;
 
         unsigned int              od_rdonly:1;
+        char                      od_mntdev[128];
         char                      od_label[MAXNAMELEN];
 
         int                       od_reserved_fraction;
 };
 
-int osd_statfs(const struct lu_env *env, struct dt_device *d, cfs_kstatfs_t *sfs);
+int osd_statfs(const struct lu_env *env, struct dt_device *d, struct obd_statfs *osfs);
 
+#ifdef LPROCFS
+enum {
+        LPROC_OSD_READ_BYTES = 0,
+        LPROC_OSD_WRITE_BYTES = 1,
+        LPROC_OSD_GET_PAGE = 2,
+        LPROC_OSD_NO_PAGE = 3,
+        LPROC_OSD_CACHE_ACCESS = 4,
+        LPROC_OSD_CACHE_HIT = 5,
+        LPROC_OSD_CACHE_MISS = 6,
+        LPROC_OSD_LAST,
+};
+
+/* osd_lproc.c */
 void lprocfs_osd_init_vars(struct lprocfs_static_vars *lvars);
-int osd_procfs_fini(struct osd_device *osd);
 int osd_procfs_init(struct osd_device *osd, const char *name);
+int osd_procfs_fini(struct osd_device *osd);
+void osd_lprocfs_time_start(const struct lu_env *env);
+void osd_lprocfs_time_end(const struct lu_env *env,
+                          struct osd_device *osd, int op);
+#endif
 
 #endif /* _OSD_INTERNAL_H */

@@ -646,46 +646,25 @@ static int osd_object_print(const struct lu_env *env, void *cookie,
  * Concurrency: shouldn't matter.
  */
 int osd_statfs(const struct lu_env *env, struct dt_device *d,
-               cfs_kstatfs_t *sfs)
+               struct obd_statfs *osfs)
 {
         struct osd_device *osd = osd_dt_dev(d);
-        cfs_kstatfs_t *kfs = &osd->od_kstatfs;
-        int rc = 0;
-        __u64 reserve;
+        unsigned long long reserved = 0;
+        int                rc = 0;
+        ENTRY;
 
         /* XXX: do we really need a cache here? -bzzz */
-        kfs = sfs;
-#if 0
-        /* XXX: we can't use spinlock here as DMU uses semaphores inside */
-        cfs_spin_lock(&osd->od_osfs_lock);
-        /* cache 1 second */
-        if (cfs_time_before_64(osd->od_osfs_age, cfs_time_shift_64(-1))) {
-#endif
-                rc = udmu_objset_statfs(&osd->od_objset, (struct statfs64 *) kfs);
-
-                /* Reserve same space so we don't run into ENOSPC due to grants
-                 * not accounting for metadata overhead in ZFS.  This is just a
-                 * short-term fix for testing and it can go away once we fix
-                 * grants to account for metadata overhead.
-                 *
-                 * This is what we do here: if the filesystem size is greater
-                 * than 1GB, we reserve 64MB, if less than 1GB we reserve
-                 * proportionately less. */
-                if (likely((kfs->f_blocks * kfs->f_frsize) >= 1ULL << 30))
-                        reserve = DMU_RESERVED_MAX / kfs->f_frsize;
-                else
-                        reserve = (DMU_RESERVED_MAX * kfs->f_blocks) >> 30;
-
-                LASSERT(reserve < kfs->f_blocks);
-
-                kfs->f_blocks -= reserve;
-                kfs->f_bfree  -= min(reserve, kfs->f_bfree);
-                kfs->f_bavail -= min(reserve, kfs->f_bavail);
-#if 0
-        }
-        *sfs = *kfs;
-        cfs_spin_unlock(&osd->od_osfs_lock);
-#endif
+        rc = udmu_objset_statfs(&osd->od_objset, osfs);
+        if (likely(osd->od_reserved_fraction))
+                reserved = osfs->os_blocks / osd->od_reserved_fraction;
+        if (osfs->os_bfree < reserved)
+                osfs->os_bfree = 0;
+        else
+                osfs->os_bfree -= reserved;
+        if (osfs->os_bavail < reserved)
+                osfs->os_bavail = 0;
+        else
+                osfs->os_bavail -= reserved;
 
         RETURN (rc);
 }
@@ -1168,16 +1147,16 @@ static void osd_ah_init(const struct lu_env *env, struct dt_allocation_hint *ah,
 
 static int osd_check_for_reserved_space(struct osd_device *osd)
 {
-        cfs_kstatfs_t kfs;
-        int           rc;
+        struct obd_statfs osfs;
+        int               rc;
 
         if (osd->od_reserved_fraction == 0)
                 return 0;
 
-        rc = udmu_objset_statfs(&osd->od_objset, (struct statfs64 *) &kfs);
+        rc = udmu_objset_statfs(&osd->od_objset, &osfs);
         if (rc == 0) {
-                kfs.f_blocks = kfs.f_blocks / osd->od_reserved_fraction;
-                if (kfs.f_bavail < kfs.f_blocks)
+                osfs.os_blocks = osfs.os_blocks / osd->od_reserved_fraction;
+                if (osfs.os_bavail < osfs.os_blocks)
                         rc = -ENOSPC;
         }
         return rc;
@@ -1270,9 +1249,23 @@ static dmu_buf_t* osd_mkreg(struct osd_thread_info *info, struct osd_device  *os
                      struct lu_attr *attr,
                      struct osd_thandle *oh)
 {
-        dmu_buf_t * db;
+        dmu_buf_t *db;
+        int        rc;
+
         LASSERT(S_ISREG(attr->la_mode));
         udmu_object_create(&osd->od_objset, &db, oh->ot_tx, osd_object_tag);
+
+        /*
+         * XXX: a hack, OST to use bigger blocksize. we need
+         * a method in OSD API to control this from OFD/MDD
+         */
+        if (!lu_device_is_md(osd2lu_dev(osd))) {
+                rc = udmu_object_set_blocksize(&osd->od_objset, udmu_object_get_id(db),
+                                               128 << 10, oh->ot_tx);
+                if (unlikely(rc))
+                        CERROR("can't change blocksize: %d\n", rc);
+        }
+
         return db;
 }
 
@@ -2302,7 +2295,7 @@ static struct dt_object_operations osd_obj_ops = {
  *
  *         - does a lot of extra work like balance_dirty_pages(),
  *
- * which doesn't work for globally shared files like /last-received.
+ * which doesn't work for globally shared files like /last_rcvd.
  */
 static ssize_t osd_read(const struct lu_env *env, struct dt_object *dt,
                         struct lu_buf *buf, loff_t *pos,
@@ -2332,10 +2325,9 @@ static ssize_t osd_read(const struct lu_env *env, struct dt_object *dt,
 static ssize_t osd_declare_write(const struct lu_env *env, struct dt_object *dt,
                                  const loff_t size, loff_t pos, struct thandle *th)
 {
-        struct osd_object *obj  = osd_dt_obj(dt);
+        struct osd_object  *obj  = osd_dt_obj(dt);
         struct osd_thandle *oh;
-        uint64_t oid;
-        vnattr_t va;
+        uint64_t            oid;
         ENTRY;
 
         oh = container_of0(th, struct osd_thandle, ot_super);
@@ -2344,9 +2336,12 @@ static ssize_t osd_declare_write(const struct lu_env *env, struct dt_object *dt,
                 LASSERT(dt_object_exists(dt));
 
                 oid = udmu_object_get_id(obj->oo_db);
-                udmu_object_getattr(obj->oo_db, &va);
-                if (va.va_size < pos + size)
-                        udmu_tx_hold_bonus(oh->ot_tx, oid);
+
+                /*
+                 * declare possible size change. notice we can't check current
+                 * size here as another thread can change it
+                 */
+                udmu_tx_hold_bonus(oh->ot_tx, oid);
         } else {
                 LASSERT(!dt_object_exists(dt));
 
@@ -2766,6 +2761,11 @@ static int osd_mount(const struct lu_env *env,
 
         if (o->od_objset.os != NULL)
                 RETURN(0);
+
+        if (strlen(dev) >= sizeof(o->od_mntdev))
+                RETURN(-E2BIG);
+
+        strcpy(o->od_mntdev, dev);
 
         rc = udmu_objset_open(dev, &o->od_objset); 
         if (rc) {

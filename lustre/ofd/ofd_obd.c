@@ -578,7 +578,7 @@ static int filter_statfs(struct obd_device *obd,
         struct filter_device      *ofd = filter_dev(obd->obd_lu_dev);
         struct filter_thread_info *info;
         struct lu_env env;
-        int rc, blockbits = ofd->ofd_dt_conf.ddp_block_shift;
+        int rc, blockbits;
         ENTRY;
 
         rc = lu_env_init(&env, LCT_DT_THREAD);
@@ -589,11 +589,14 @@ static int filter_statfs(struct obd_device *obd,
         /* at least try to account for cached pages.  its still racey and
          * might be under-reporting if clients haven't announced their
          * caches with brw recently */
-        rc = dt_statfs(&env, ofd->ofd_osd, &info->fti_u.ksfs);//flags?
+        rc = dt_statfs(&env, ofd->ofd_osd, &info->fti_u.osfs);
         if (rc)
                 GOTO(out, rc);
 
-        statfs_pack(osfs, &info->fti_u.ksfs);
+        *osfs = info->fti_u.osfs;
+
+        LASSERTF(IS_PO2(osfs->os_bsize), "%u\n", osfs->os_bsize);
+        blockbits = cfs_fls(osfs->os_bsize) - 1;
 
         CDEBUG(D_SUPER | D_CACHE, "blocks cached "LPU64" granted "LPU64
                " pending "LPU64" free "LPU64" avail "LPU64"\n",

@@ -42,11 +42,11 @@
  * @{
  */
 
+#include <libcfs/libcfs.h>
+
 #include <lustre/lustre_idl.h>
 #include <lustre_mdt.h>
 #include <dt_object.h>
-
-#include <libcfs/libcfs.h>
 
 struct lu_client_fld;
 struct lu_server_fld;

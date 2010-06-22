@@ -227,8 +227,8 @@ struct osd_device {
         /*
          * statfs optimization: we cache a bit.
          */
+        struct obd_statfs         od_osfs;
         cfs_time_t                od_osfs_age;
-        cfs_kstatfs_t             od_kstatfs;
         cfs_spinlock_t            od_osfs_lock;
 
         /**
@@ -397,6 +397,17 @@ struct osd_thread_info {
         char                   oti_ldp2[OSD_FID_REC_SZ];
 };
 
+enum {
+        LPROC_OSD_READ_BYTES = 0,
+        LPROC_OSD_WRITE_BYTES = 1,
+        LPROC_OSD_GET_PAGE = 2,
+        LPROC_OSD_NO_PAGE = 3,
+        LPROC_OSD_CACHE_ACCESS = 4,
+        LPROC_OSD_CACHE_HIT = 5,
+        LPROC_OSD_CACHE_MISS = 6,
+        LPROC_OSD_LAST,
+};
+
 /* osd_lproc.c */
 void lprocfs_osd_init_vars(struct lprocfs_static_vars *lvars);
 int osd_procfs_init(struct osd_device *osd, const char *name);
@@ -405,7 +416,7 @@ void osd_lprocfs_time_start(const struct lu_env *env);
 void osd_lprocfs_time_end(const struct lu_env *env,
                           struct osd_device *osd, int op);
 int osd_statfs(const struct lu_env *env, struct dt_device *dev,
-               cfs_kstatfs_t *sfs);
+               struct obd_statfs *osfs);
 
 extern struct inode *ldiskfs_create_inode(handle_t *handle,
                                           struct inode * dir, int mode);
@@ -470,17 +481,6 @@ static struct super_block *osd_sb(const struct osd_device *dev)
 {
         return dev->od_mnt->mnt_sb;
 }
-
-enum {
-        LPROC_OSD_READ_BYTES = 0,
-        LPROC_OSD_WRITE_BYTES = 1,
-        LPROC_OSD_GET_PAGE = 2,
-        LPROC_OSD_NO_PAGE = 3,
-        LPROC_OSD_CACHE_ACCESS = 4,
-        LPROC_OSD_CACHE_HIT = 5,
-        LPROC_OSD_CACHE_MISS = 6,
-        LPROC_OSD_LAST,
-};
 
 #define OSD_MAX_CACHE_SIZE OBD_OBJECT_EOF
 

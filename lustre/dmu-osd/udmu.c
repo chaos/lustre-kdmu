@@ -53,8 +53,11 @@
 #include <sys/dmu_tx.h>
 #include <sys/dmu_objset.h>
 #include <sys/dsl_prop.h>
+
+#include <lustre/lustre_idl.h>  /* OBD_OBJECT_EOF */
+#include <lustre/lustre_user.h> /* struct obd_statfs */
+
 #include "udmu.h"
-#include <linux/statfs.h>
 
 enum vtype iftovt_tab[] = {
         VNON, VFIFO, VCHR, VNON, VDIR, VNON, VBLK, VNON,
@@ -220,60 +223,64 @@ void udmu_objset_close(udmu_objset_t *uos)
         uos->os = NULL;
 }
 
-int udmu_objset_statfs(udmu_objset_t *uos, struct statfs64 *statp)
+int udmu_objset_statfs(udmu_objset_t *uos, struct obd_statfs *osfs)
 {
         uint64_t refdbytes, availbytes, usedobjs, availobjs;
+        uint64_t reserved;
 
         dmu_objset_space(uos->os, &refdbytes, &availbytes, &usedobjs,
                          &availobjs);
 
-        /*
-         * The underlying storage pool actually uses multiple block sizes.
-         * We report the fragsize as the smallest block size we support,
-         * and we report our blocksize as the filesystem's maximum blocksize.
-         */
-        statp->f_frsize = 1ULL << SPA_MINBLOCKSHIFT;
+        /* The underlying storage pool actually uses multiple block sizes.
+         * We report the blocksize as the largest block size we support. */
+        osfs->os_bsize = 1ULL << SPA_MAXBLOCKSHIFT;
 
-        /* XXX temporary fix until bug 22246 is fixed - in Linux, bsize is
-         * interpreted as frsize.
-        statp->f_bsize = 1ULL << SPA_MAXBLOCKSHIFT;*/
-        statp->f_bsize = 1ULL << SPA_MINBLOCKSHIFT;
-
-        /*
-         * The following report "total" blocks of various kinds in the
+        /* The following report "total" blocks of various kinds in the
          * file system, but reported in terms of f_frsize - the
-         * "fragment" size.
-         */
+         * "fragment" size. */
+        osfs->os_blocks = (refdbytes + availbytes) >> SPA_MAXBLOCKSHIFT;
+        osfs->os_bfree = availbytes >> SPA_MAXBLOCKSHIFT;
+        osfs->os_bavail = osfs->os_bfree; /* no root reservation */
 
-        statp->f_blocks = (refdbytes + availbytes) >> SPA_MINBLOCKSHIFT;
-        statp->f_bfree = availbytes >> SPA_MINBLOCKSHIFT;
-        statp->f_bavail = statp->f_bfree; /* no root reservation */
+        /* Reserve some space so we don't run into ENOSPC due to grants not
+         * accounting for metadata overhead in ZFS.  This is just a short-term
+         * fix for testing and it can go away once we fix grants to account for
+         * metadata overhead.
+         *
+         * This is what we do here: if the filesystem size is greater than 1GB,
+         * we reserve 64MB, if less than 1GB we reserve proportionately less. */
+        if (likely(osfs->os_blocks >= 1ULL << (30 - SPA_MAXBLOCKSHIFT)))
+                reserved = DMU_RESERVED_MAX >> SPA_MAXBLOCKSHIFT;
+        else
+                reserved = (DMU_RESERVED_MAX * osfs->os_blocks) >> 30;
+        CLASSERT(SPA_MAXBLOCKSHIFT <= 30);
+        CLASSERT(DMU_RESERVED_MAX > (1ULL << SPA_MAXBLOCKSHIFT));
 
-        /*
-         * statvfs() should really be called statufs(), because it assumes
+        osfs->os_blocks -= reserved;
+        osfs->os_bfree  -= MIN(reserved, osfs->os_bfree);
+        osfs->os_bavail -= MIN(reserved, osfs->os_bavail);
+
+        /* statvfs() should really be called statufs(), because it assumes
          * static metadata.  ZFS doesn't preallocate files, so the best
-         * we can do is report the max that could possibly fit in f_files,
-         * and that minus the number actually used in f_ffree.
-         * For f_ffree, report the smaller of the number of object available
-         * and the number of blocks (each object will take at least a block).
-         */
-        statp->f_ffree = MIN(availobjs, statp->f_bfree);
-        //statp->f_favail = statp->f_ffree; /* no "root reservation" */
-        statp->f_files = statp->f_ffree + uos->objects;
+         * we can do is report the max that could possibly fit in os_files,
+         * and that minus the number actually used in os_ffree.For
+         * os_ffree, report the smaller of the number of objects available and
+         * the number of blocks (each object will take at least a block). */
+        osfs->os_ffree = min(availobjs, osfs->os_bfree);
+        //osfs->os_favail = osfs->os_ffree; /* no "root reservation" */
+        osfs->os_files = osfs->os_ffree + uos->objects;
 
-        /* ZFSFUSE: not necessary? see 'man statfs' */
-        /*(void) cmpldev(&d32, vfsp->vfs_dev);
-        statp->f_fsid = d32;*/
+        /* ZFS XXX: fill in backing dataset FSID/UUID
+        memcpy(osfs->os_fsid, .... );*/
 
-        /*
-         * We're a zfs filesystem.
-         */
-        /* ZFSFUSE: not necessary */
-        /*(void) strcpy(statp->f_basetype, vfssw[vfsp->vfs_fstype].vsw_name);
+        /* We're a zfs filesystem. */
+        osfs->os_type = UBERBLOCK_MAGIC;
 
-        statp->f_flag = vf_to_stf(vfsp->vfs_flag);*/
+        /* ZFS XXX: fill in appropriate OS_STATE_{DEGRADED,READONLY} flags
+        osfs->os_state = vf_to_stf(vfsp->vfs_flag);*/
 
-        statp->f_namelen = 256;
+        osfs->os_namelen = 256;
+        osfs->os_maxbytes = OBD_OBJECT_EOF;
 
         return 0;
 }
@@ -443,6 +450,12 @@ int udmu_zap_lookup(udmu_objset_t *uos, dmu_buf_t *zap_db, const char *name,
         ASSERT(value_size % intsize == 0);
         return (zap_lookup(uos->os, oid, name, intsize,
                            value_size / intsize, value));
+}
+
+int udmu_object_set_blocksize(udmu_objset_t *uos, uint64_t oid,
+                              unsigned bsize, dmu_tx_t *tx)
+{
+        return dmu_object_set_blocksize(uos->os, oid, bsize, 0, tx);
 }
 
 /*

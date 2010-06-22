@@ -1825,13 +1825,42 @@ zfs_modules () {
     lsmod | grep -q ^zfs || sh $ZFS_SH $1
 }
 
+#default size for virtual zfs volume, in MBs
+ZDEVSIZE=256
+
+zfs_create_vdev() {
+    local vdev=$1
+    local size
+    local osize
+    local asize
+    local bsize
+
+    let "size=ZDEVSIZE*1024*1024"
+
+    if [ -f $vdev ]; then
+        osize=`stat -c \%s $vdev`
+        if let "osize == size"; then
+
+            asize=`stat -c \%B $vdev`
+            bsize=`stat -c \%b $vdev`
+            let "asize = asize*bsize"
+
+            if let "asize*bsize >= size"; then
+                return
+            fi
+        fi
+    fi
+
+    dd if=/dev/zero of=$vdev bs=1M count=$ZDEVSIZE
+}
+
 zfs_create_pool () {
     local pool=$1
     local vdev=$2
 
     $ZPOOL list | grep -w $pool && echo $pool exist, skip creation && return 0
 
-    test -b $vdev || dd if=/dev/zero of=$vdev bs=1M count=256
+    test -b $vdev || zfs_create_vdev $vdev
     zfs_modules
     $ZPOOL create -f $pool $vdev
 }
