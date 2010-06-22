@@ -1,10 +1,13 @@
 
 * all
    - negotiate proper connect data
-   - error handling
+!  - error handling
    - a way to find lu_site
 !  - save on tx allocations
    - pass next device in all the methods (like cursor, lod_trans_stop(), etc)
+
+* MDT
+!  - explicitly call mdd's attr_get(), xattr_get() to fill attributes in a reply
 
 * MDD, OSD
    - ->do_create() to set initial attributes
@@ -14,7 +17,7 @@
 !  - don't start processing till configuration is completed
 
 * LOD TODO
-   - support for >1K OSTs (dynamic lod_ost in struct lod_device)
+!  - support for >1K OSTs (dynamic lod_ost in struct lod_device)
 !  - ost removal
    - lod_qos_prep_create() to extend striping if file size is too big
    - improve locking in lod_qos_statfs_update()
@@ -22,6 +25,7 @@
 !  - qos_add_tgt() to learn configuration (how OSTs map OSSs)
    - lod_xattr_set() to make sure new striping is sane
    - check all users of ld_active_tgt_count/ltd_active, remove using of that
+!  - create on truncate
 
 * OSP TODO
    - support for CMD (group = mds #) (where do we take mds #? encoded in config?)
