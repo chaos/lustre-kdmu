@@ -1223,7 +1223,7 @@ static int llu_statfs(struct llu_sb_info *sbi, struct statfs *sfs)
 
         if (sizeof(sfs->f_blocks) == 4) {
                 while (osfs.os_blocks > ~0UL) {
-                        sfs->f_bsize <<= 1;
+                        sfs->f_frsize <<= 1;
 
                         osfs.os_blocks >>= 1;
                         osfs.os_bfree >>= 1;
@@ -1231,6 +1231,9 @@ static int llu_statfs(struct llu_sb_info *sbi, struct statfs *sfs)
                 }
         }
 
+        sfs->f_bsize = sfs->f_frsize; /* XXX we need to return the same value
+                                       * otherwise userspace will be broken, see
+                                       * bug 22246. */
         sfs->f_blocks = osfs.os_blocks;
         sfs->f_bfree = osfs.os_bfree;
         sfs->f_bavail = osfs.os_bavail;
@@ -1255,16 +1258,16 @@ static int llu_iop_statvfs(struct pnode *pno,
                 RETURN(rc);
 
         /* from native driver */
-        buf->f_bsize = fs.f_bsize;  /* file system block size */
-        buf->f_frsize = fs.f_bsize; /* file system fundamental block size */
-        buf->f_blocks = fs.f_blocks;
-        buf->f_bfree = fs.f_bfree;
-        buf->f_bavail = fs.f_bavail;
-        buf->f_files = fs.f_files;  /* Total number serial numbers */
-        buf->f_ffree = fs.f_ffree;  /* Number free serial numbers */
-        buf->f_favail = fs.f_ffree; /* Number free ser num for non-privileged*/
+        buf->f_bsize = fs.f_bsize;   /* Optimal transfer size */
+        buf->f_frsize = fs.f_frsize; /* Fragment size (bytes per block) */
+        buf->f_blocks = fs.f_blocks; /* Total number of blocks */
+        buf->f_bfree = fs.f_bfree;   /* Number of free blocks */
+        buf->f_bavail = fs.f_bavail; /* Free blocks avail to non-root user */
+        buf->f_files = fs.f_files;   /* Total number serial numbers */
+        buf->f_ffree = fs.f_ffree;   /* Number free serial numbers */
+        buf->f_favail = fs.f_ffree;  /* Number free ser num for non-privileged*/
         buf->f_fsid = fs.f_fsid.__val[1];
-        buf->f_flag = 0;            /* No equiv in statfs; maybe use type? */
+        buf->f_flag = 0;             /* No equiv in statfs; maybe use type? */
         buf->f_namemax = fs.f_namelen;
 #endif
 

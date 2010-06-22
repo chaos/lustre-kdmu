@@ -88,6 +88,7 @@
 #include <mntent.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/statvfs.h>
 #include <sys/vfs.h>
 #include <gnu/stubs.h>
 #include <gnu/stubs.h>
@@ -711,11 +712,11 @@ int main(int argc, char **argv)
 		goto guess;
 #endif
 		if (0) { /* ugh */
-			struct statfs64 statbuf;
+			struct statvfs64 statbuf;
 guess:
-			if (statfs64(testdir, &statbuf) == 0) {
+			if (statvfs64(testdir, &statbuf) == 0) {
 				num_dirs = (long long)statbuf.f_blocks *
-					statbuf.f_bsize / (128ULL << 20);
+					statbuf.f_frsize / (128ULL << 20);
 				if (verbose)
 					printf("dirs: %u, fs blocks: %llu\n",
 					       num_dirs,

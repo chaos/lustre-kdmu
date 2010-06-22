@@ -90,8 +90,10 @@ static int llog_cat_new_log(struct llog_handle *cathandle,
         /* if llog is already created, no need to initialize it */
         if (rc == -EEXIST)
                 RETURN(0);
-        if (rc)
+        if (rc) {
+                CERROR("can't create new plain llog: %d\n", rc);
                 RETURN(rc);
+        }
 
         rc = llog_init_handle(loghandle,
                               LLOG_F_IS_PLAIN | LLOG_F_ZAP_WHEN_EMPTY,
@@ -337,8 +339,8 @@ int llog_cat_add_rec_2(struct llog_handle *cathandle, struct llog_rec_hdr *rec,
                 cfs_down_write_nested(&cathandle->lgh_lock, LLOGH_CAT);
                 loghandle = cathandle->u.chd.chd_next_log;
                 if (loghandle && !llog_exist_2(loghandle)) {
-                        cfs_list_del(&loghandle->u.phd.phd_entry);
-                        llog_cat_new_log(cathandle, loghandle,th);
+                        cfs_list_del_init(&loghandle->u.phd.phd_entry);
+                        llog_cat_new_log(cathandle, loghandle, th);
                 }
                 cfs_up_write(&cathandle->lgh_lock);
         }

@@ -1379,8 +1379,8 @@ parse_out:
 int class_manual_cleanup(struct obd_device *obd)
 {
         char                    flags[3] = "";
-        struct lustre_cfg      *lcfg;
-        struct lustre_cfg_bufs  bufs;
+        struct lustre_cfg      *lcfg = NULL;
+        struct lustre_cfg_bufs *bufs = NULL;
         int                     rc;
         ENTRY;
 
@@ -1388,6 +1388,10 @@ int class_manual_cleanup(struct obd_device *obd)
                 CERROR("empty cleanup\n");
                 RETURN(-EALREADY);
         }
+
+        OBD_ALLOC_PTR(bufs);
+        if (bufs == NULL)
+                GOTO(out, rc = -ENOMEM);
 
         if (obd->obd_force)
                 strcat(flags, "F");
@@ -1397,11 +1401,11 @@ int class_manual_cleanup(struct obd_device *obd)
         CDEBUG(D_CONFIG, "Manual cleanup of %s (flags='%s')\n",
                obd->obd_name, flags);
 
-        lustre_cfg_bufs_reset(&bufs, obd->obd_name);
-        lustre_cfg_bufs_set_string(&bufs, 1, flags);
-        lcfg = lustre_cfg_new(LCFG_CLEANUP, &bufs);
+        lustre_cfg_bufs_reset(bufs, obd->obd_name);
+        lustre_cfg_bufs_set_string(bufs, 1, flags);
+        lcfg = lustre_cfg_new(LCFG_CLEANUP, bufs);
         if (!lcfg)
-                RETURN(-ENOMEM);
+                GOTO(out, rc = -ENOMEM);
 
         rc = class_process_config(lcfg);
         if (rc) {
@@ -1415,7 +1419,10 @@ int class_manual_cleanup(struct obd_device *obd)
         if (rc)
                 CERROR("detach failed %d: %s\n", rc, obd->obd_name);
 out:
-        lustre_cfg_free(lcfg);
+        if (lcfg)
+                lustre_cfg_free(lcfg);
+        if (bufs)
+                OBD_FREE_PTR(bufs);
         RETURN(rc);
 }
 

@@ -39,12 +39,12 @@
 
 #include <stdarg.h>
 
+#include <libcfs/libcfs.h>
+
 /*
  * struct lu_fid
  */
 #include <lustre/lustre_idl.h>
-
-#include <libcfs/libcfs.h>
 
 #include <lu_ref.h>
 

@@ -364,8 +364,8 @@ static int mdt_statfs(struct mdt_thread_info *info)
         } else {
                 osfs = req_capsule_server_get(info->mti_pill, &RMF_OBD_STATFS);
                 rc = next->md_ops->mdo_statfs(info->mti_env, next,
-                                              &info->mti_u.ksfs);
-                statfs_pack(osfs, &info->mti_u.ksfs);
+                                              &info->mti_u.osfs);
+                *osfs = info->mti_u.osfs;
         }
         RETURN(rc);
 }

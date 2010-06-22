@@ -279,8 +279,8 @@ obd_size filter_grant_space_left(const struct lu_env *env,
         if (cfs_time_before_64(obd->obd_osfs_age,
                                cfs_time_current_64() - CFS_HZ)) {
 restat:
-                dt_statfs(env, ofd->ofd_osd, &info->fti_u.ksfs);
-                statfs_pack(&obd->obd_osfs, &info->fti_u.ksfs);
+                dt_statfs(env, ofd->ofd_osd, &info->fti_u.osfs);
+                obd->obd_osfs = info->fti_u.osfs;
                 statfs_done = 1;
         }
         frsize = obd->obd_osfs.os_bsize;

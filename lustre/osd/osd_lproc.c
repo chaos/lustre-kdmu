@@ -36,14 +36,20 @@
  * lustre/osd/osd_lproc.c
  *
  * Author: Mikhail Pershin <tappro@sun.com>
+ * Author: Alex Zhuravlev <bzzz@sun.com>
  */
 
 #define DEBUG_SUBSYSTEM S_CLASS
 
+#include <obd.h>
 #include <lprocfs_status.h>
 #include <lu_time.h>
 
 #include <lustre/lustre_idl.h>
+
+#ifdef DMU_OSD_BUILD
+#include "udmu.h"
+#endif
 
 #include "osd_internal.h"
 
@@ -107,8 +113,7 @@ int osd_procfs_init(struct osd_device *osd, const char *name)
                                               lvars.obd_vars, osd);
         if (IS_ERR(osd->od_proc_entry)) {
                 rc = PTR_ERR(osd->od_proc_entry);
-                CERROR("Error %d setting up lprocfs for %s\n",
-                       rc, name);
+                CERROR("Error %d setting up lprocfs for %s\n", rc, name);
                 osd->od_proc_entry = NULL;
                 GOTO(out, rc);
         }
@@ -119,20 +124,21 @@ int osd_procfs_init(struct osd_device *osd, const char *name)
 out:
         if (rc)
                osd_procfs_fini(osd);
-	return rc;
+        return rc;
 }
 
 int osd_procfs_fini(struct osd_device *osd)
 {
-        if (osd->od_stats) {
+        ENTRY;
+
+        if (osd->od_stats)
                 lprocfs_free_stats(&osd->od_stats);
-                osd->od_stats = NULL;
-        }
 
         if (osd->od_proc_entry) {
-                 lprocfs_remove(&osd->od_proc_entry);
-                 osd->od_proc_entry = NULL;
+                lprocfs_remove(&osd->od_proc_entry);
+                osd->od_proc_entry = NULL;
         }
+
         RETURN(0);
 }
 
@@ -147,16 +153,15 @@ void osd_lprocfs_time_end(const struct lu_env *env, struct osd_device *osd,
         lu_lprocfs_time_end(env, osd->od_stats, idx);
 }
 
-
-
 int lprocfs_osd_rd_blksize(char *page, char **start, off_t off, int count,
                            int *eof, void *data)
 {
         struct osd_device *osd = data;
-        int rc = osd_statfs(NULL, &osd->od_dt_dev, &osd->od_kstatfs);
+        int rc = osd_statfs(NULL, &osd->od_dt_dev, &osd->od_osfs);
         if (!rc) {
                 *eof = 1;
-                rc = snprintf(page, count, "%ld\n", osd->od_kstatfs.f_bsize);
+                rc = snprintf(page, count, "%d\n",
+                              (unsigned) osd->od_osfs.os_bsize);
         }
         return rc;
 }
@@ -165,10 +170,10 @@ int lprocfs_osd_rd_kbytestotal(char *page, char **start, off_t off, int count,
                                int *eof, void *data)
 {
         struct osd_device *osd = data;
-        int rc = osd_statfs(NULL, &osd->od_dt_dev, &osd->od_kstatfs);
+        int rc = osd_statfs(NULL, &osd->od_dt_dev, &osd->od_osfs);
         if (!rc) {
-                __u32 blk_size = osd->od_kstatfs.f_bsize >> 10;
-                __u64 result = osd->od_kstatfs.f_blocks;
+                __u32 blk_size = osd->od_osfs.os_bsize >> 10;
+                __u64 result = osd->od_osfs.os_blocks;
 
                 while (blk_size >>= 1)
                         result <<= 1;
@@ -183,10 +188,10 @@ int lprocfs_osd_rd_kbytesfree(char *page, char **start, off_t off, int count,
                               int *eof, void *data)
 {
         struct osd_device *osd = data;
-        int rc = osd_statfs(NULL, &osd->od_dt_dev, &osd->od_kstatfs);
+        int rc = osd_statfs(NULL, &osd->od_dt_dev, &osd->od_osfs);
         if (!rc) {
-                __u32 blk_size = osd->od_kstatfs.f_bsize >> 10;
-                __u64 result = osd->od_kstatfs.f_bfree;
+                __u32 blk_size = osd->od_osfs.os_bsize >> 10;
+                __u64 result = osd->od_osfs.os_bfree;
 
                 while (blk_size >>= 1)
                         result <<= 1;
@@ -201,10 +206,10 @@ int lprocfs_osd_rd_kbytesavail(char *page, char **start, off_t off, int count,
                                int *eof, void *data)
 {
         struct osd_device *osd = data;
-        int rc = osd_statfs(NULL, &osd->od_dt_dev, &osd->od_kstatfs);
+        int rc = osd_statfs(NULL, &osd->od_dt_dev, &osd->od_osfs);
         if (!rc) {
-                __u32 blk_size = osd->od_kstatfs.f_bsize >> 10;
-                __u64 result = osd->od_kstatfs.f_bavail;
+                __u32 blk_size = osd->od_osfs.os_bsize >> 10;
+                __u64 result = osd->od_osfs.os_bavail;
 
                 while (blk_size >>= 1)
                         result <<= 1;
@@ -219,10 +224,10 @@ int lprocfs_osd_rd_filestotal(char *page, char **start, off_t off, int count,
                               int *eof, void *data)
 {
         struct osd_device *osd = data;
-        int rc = osd_statfs(NULL, &osd->od_dt_dev, &osd->od_kstatfs);
+        int rc = osd_statfs(NULL, &osd->od_dt_dev, &osd->od_osfs);
         if (!rc) {
                 *eof = 1;
-                rc = snprintf(page, count, LPU64"\n", osd->od_kstatfs.f_files);
+                rc = snprintf(page, count, LPU64"\n", osd->od_osfs.os_files);
         }
 
         return rc;
@@ -232,10 +237,10 @@ int lprocfs_osd_rd_filesfree(char *page, char **start, off_t off, int count,
                              int *eof, void *data)
 {
         struct osd_device *osd = data;
-        int rc = osd_statfs(NULL, &osd->od_dt_dev, &osd->od_kstatfs);
+        int rc = osd_statfs(NULL, &osd->od_dt_dev, &osd->od_osfs);
         if (!rc) {
                 *eof = 1;
-                rc = snprintf(page, count, LPU64"\n", osd->od_kstatfs.f_ffree);
+                rc = snprintf(page, count, LPU64"\n", osd->od_osfs.os_ffree);
         }
         return rc;
 }
@@ -246,7 +251,11 @@ int lprocfs_osd_rd_fstype(char *page, char **start, off_t off, int count,
         struct obd_device *osd = data;
 
         LASSERT(osd != NULL);
+#ifdef DMU_OSD_BUILD
+        return snprintf(page, count, "zfs\n");
+#else
         return snprintf(page, count, "ldiskfs\n");
+#endif
 }
 
 static int lprocfs_osd_rd_mntdev(char *page, char **start, off_t off, int count,
@@ -266,12 +275,22 @@ static int lprocfs_osd_rd_cache(char *page, char **start, off_t off,
         struct osd_device *osd = data;
         LASSERT(osd != NULL);
 
+#ifdef DMU_OSD_BUILD
+        /* FIXME For the DMU we should get the primarycache property */
+        return snprintf(page, count, "1\n");
+#else
         return snprintf(page, count, "%u\n", osd->od_read_cache);
+#endif
 }
 
 static int lprocfs_osd_wr_cache(struct file *file, const char *buffer,
                      unsigned long count, void *data)
 {
+#ifdef DMU_OSD_BUILD
+        /* FIXME enabling/disabling read cache is not supported in the
+         * DMU-OSD yet. We should set the primarycache property here */
+        return -EINVAL;
+#else
         struct osd_device *osd = data;
         int val, rc;
         LASSERT(osd != NULL);
@@ -283,9 +302,11 @@ static int lprocfs_osd_wr_cache(struct file *file, const char *buffer,
 
         osd->od_read_cache = !!val;
         return count;
+#endif
 }
 
 
+#ifndef DMU_OSD_BUILD
 static int lprocfs_osd_rd_wcache(char *page, char **start, off_t off,
                                    int count, int *eof, void *data)
 {
@@ -310,7 +331,35 @@ static int lprocfs_osd_wr_wcache(struct file *file, const char *buffer,
         osd->od_writethrough_cache = !!val;
         return count;
 }
+#endif
 
+#ifdef DMU_OSD_BUILD
+static int lprocfs_osd_rd_reserved(char *page, char **start, off_t off,
+                                   int count, int *eof, void *data)
+{
+        struct osd_device *osd = data;
+        int rc;
+
+        rc = snprintf(page, count, "%u\n", osd->od_reserved_fraction);
+        return rc;
+}
+
+static int lprocfs_osd_wr_reserved(struct file *file, const char *buffer,
+                                   unsigned long count, void *data)
+{
+        struct osd_device *osd = data;
+        int                val, rc;
+
+        rc = lprocfs_write_helper(buffer, count, &val);
+        if (rc)
+                return rc;
+        if (val < 0)
+                return -EINVAL;
+
+        osd->od_reserved_fraction = val;
+        return count;
+}
+#endif
 
 struct lprocfs_vars lprocfs_osd_obd_vars[] = {
         { "blocksize",       lprocfs_osd_rd_blksize,     0, 0 },
@@ -321,10 +370,16 @@ struct lprocfs_vars lprocfs_osd_obd_vars[] = {
         { "filesfree",       lprocfs_osd_rd_filesfree,   0, 0 },
         { "fstype",          lprocfs_osd_rd_fstype,      0, 0 },
         { "mntdev",          lprocfs_osd_rd_mntdev,      0, 0 },
+#ifndef DMU_OSD_BUILD
         { "read_cache_enable",lprocfs_osd_rd_cache,
                              lprocfs_osd_wr_cache,          0 },
         { "writethrough_cache_enable",lprocfs_osd_rd_wcache,
                              lprocfs_osd_wr_wcache,         0 },
+#endif
+#ifdef DMU_OSD_BUILD
+        { "reserved_space",  lprocfs_osd_rd_reserved,
+                             lprocfs_osd_wr_reserved,       0 },
+#endif
         { 0 }
 };
 

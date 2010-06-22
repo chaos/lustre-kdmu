@@ -98,6 +98,8 @@ void lut_client_free(struct obd_export *exp)
         struct tg_export_data *ted = &exp->exp_target_data;
         struct lu_target *lut = class_exp2tgt(exp);
 
+        LASSERT(lut);
+        LASSERT(ted);
         OBD_FREE_PTR(ted->ted_lcd);
         ted->ted_lcd = NULL;
 
@@ -105,6 +107,7 @@ void lut_client_free(struct obd_export *exp)
         if (ted->ted_lr_idx < 0)
                 return;
         /* Clear bit when lcd is freed */
+        LASSERT(lut->lut_client_bitmap);
         spin_lock(&lut->lut_client_bitmap_lock);
         if (!test_and_clear_bit(ted->ted_lr_idx, lut->lut_client_bitmap)) {
                 CERROR("%s: client %u bit already clear in bitmap\n",
