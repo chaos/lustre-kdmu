@@ -732,14 +732,12 @@ static int mds_lov_update_desc(struct obd_device *obd, int idx,
         if (rc != 0)
                 GOTO(out, rc );
 
-        if (obd->obd_lvfs_ctxt.magic == OBD_RUN_CTXT_MAGIC) {
         /* If we added a target we have to reconnect the llogs */
         /* We only _need_ to do this at first add (idx), or the first time
            after recovery.  However, it should now be safe to call anytime. */
         rc = obd_llog_init(obd, &obd->obd_olg, obd, &idx);
         if (rc)
                 GOTO(out, rc);
-        }
 
         /*XXX this notifies the MDD until lov handling use old mds code */
         if (obd->obd_upcall.onu_owner) {
