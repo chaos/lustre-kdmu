@@ -379,7 +379,7 @@ ptlrpc_lprocfs_wr_threads_max(libcfs_file_t *file, const char *buffer,
         int                    rc;
         int                    flag = 0;
 
-        LIBCFS_PARAM_GET_DATA(svc, data, NULL);
+        LIBCFS_PARAM_GET_DATA(svc, data, &flag);
         rc = lprocfs_write_helper(buffer, count, &val, flag);
         if (rc < 0)
                 return rc;
