@@ -763,11 +763,19 @@ static int filter_punch(struct obd_export *exp, struct obd_info *oinfo,
         info->fti_attr.la_mode = S_IFREG | 0666;
 
         fo = filter_object_find(env, ofd, &info->fti_fid);
+
         if (IS_ERR(fo)) {
+                CERROR("error finding object %lu:%llu: %ld\n",
+                       (unsigned long) info->fti_fid.f_oid,
+                       info->fti_fid.f_seq, PTR_ERR(fo));
+                GOTO(out_env, rc = PTR_ERR(fo));
+        }
+
+        if (!filter_object_exists(fo)) {
                 CERROR("can't find object %lu:%llu\n",
                        (unsigned long) info->fti_fid.f_oid,
                        info->fti_fid.f_seq);
-                GOTO(out_env, rc = PTR_ERR(fo));
+                GOTO(out, rc = -ENOENT);
         }
 
         LASSERT(oinfo->oi_policy.l_extent.end == OBD_OBJECT_EOF);
