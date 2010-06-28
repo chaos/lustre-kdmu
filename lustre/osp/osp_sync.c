@@ -343,6 +343,8 @@ static int osp_sync_interpret(const struct lu_env *env,
         struct osp_device    *d = req->rq_cb_data;
 
         /* XXX: error handling here */
+        if (req->rq_svc_thread != (void *) OSP_JOB_MAGIC)
+                DEBUG_REQ(D_ERROR, req, "bad magic %p\n", req->rq_svc_thread);
         LASSERT(req->rq_svc_thread == (void *) OSP_JOB_MAGIC);
         LASSERT(d);
 
