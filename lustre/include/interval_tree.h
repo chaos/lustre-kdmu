@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2008, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -108,10 +108,6 @@ void interval_erase(struct interval_node *node, struct interval_node **root);
  * extents. */
 enum interval_iter interval_search(struct interval_node *root,
                                    struct interval_node_extent *ex,
-                                   interval_callback_t func, void *data);
-enum interval_iter interval_search_expand_extent(struct interval_node *root,
-                                   struct interval_node_extent *ex,
-                                   struct interval_node_extent *result_ext,
                                    interval_callback_t func, void *data);
 
 /* Iterate every node in the tree - by reverse order or regular order. */

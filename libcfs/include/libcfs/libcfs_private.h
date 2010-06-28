@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2008, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -290,7 +290,7 @@ int libcfs_debug_cleanup(void);
 #define CFS_ALLOC_PTR(ptr)      LIBCFS_ALLOC(ptr, sizeof (*(ptr)));
 #define CFS_FREE_PTR(ptr)       LIBCFS_FREE(ptr, sizeof (*(ptr)));
 
-/** Compile-time assertion. 
+/** Compile-time assertion.
 
  * Check an invariant described by a constant expression at compile time by
  * forcing a compiler error if it does not hold.  \a cond must be a constant

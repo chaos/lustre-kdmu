@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2003, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -231,8 +231,8 @@ check_obdo(void)
         CHECK_STRUCT(obdo);
         CHECK_MEMBER(obdo, o_valid);
         CHECK_MEMBER(obdo, o_id);
-        CHECK_MEMBER(obdo, o_gr);
-        CHECK_MEMBER(obdo, o_fid);
+        CHECK_MEMBER(obdo, o_seq);
+        CHECK_MEMBER(obdo, o_parent_seq);
         CHECK_MEMBER(obdo, o_size);
         CHECK_MEMBER(obdo, o_mtime);
         CHECK_MEMBER(obdo, o_atime);
@@ -245,14 +245,15 @@ check_obdo(void)
         CHECK_MEMBER(obdo, o_gid);
         CHECK_MEMBER(obdo, o_flags);
         CHECK_MEMBER(obdo, o_nlink);
-        CHECK_MEMBER(obdo, o_generation);
+        CHECK_MEMBER(obdo, o_parent_oid);
         CHECK_MEMBER(obdo, o_misc);
         CHECK_MEMBER(obdo, o_ioepoch);
         CHECK_MEMBER(obdo, o_stripe_idx);
-        CHECK_MEMBER(obdo, o_padding_1);
+        CHECK_MEMBER(obdo, o_parent_ver);
         CHECK_MEMBER(obdo, o_handle);
         CHECK_MEMBER(obdo, o_lcookie);
-        CHECK_MEMBER(obdo, o_padding_2);
+        CHECK_MEMBER(obdo, o_uid_h);
+        CHECK_MEMBER(obdo, o_gid_h);
         CHECK_MEMBER(obdo, o_padding_3);
         CHECK_MEMBER(obdo, o_padding_4);
         CHECK_MEMBER(obdo, o_padding_5);
@@ -319,7 +320,7 @@ check_lov_mds_md_v1(void)
         CHECK_MEMBER(lov_mds_md_v1, lmm_magic);
         CHECK_MEMBER(lov_mds_md_v1, lmm_pattern);
         CHECK_MEMBER(lov_mds_md_v1, lmm_object_id);
-        CHECK_MEMBER(lov_mds_md_v1, lmm_object_gr);
+        CHECK_MEMBER(lov_mds_md_v1, lmm_object_seq);
         CHECK_MEMBER(lov_mds_md_v1, lmm_stripe_size);
         CHECK_MEMBER(lov_mds_md_v1, lmm_stripe_count);
         CHECK_MEMBER(lov_mds_md_v1, lmm_objects);
@@ -327,7 +328,7 @@ check_lov_mds_md_v1(void)
         BLANK_LINE();
         CHECK_STRUCT(lov_ost_data_v1);
         CHECK_MEMBER(lov_ost_data_v1, l_object_id);
-        CHECK_MEMBER(lov_ost_data_v1, l_object_gr);
+        CHECK_MEMBER(lov_ost_data_v1, l_object_seq);
         CHECK_MEMBER(lov_ost_data_v1, l_ost_gen);
         CHECK_MEMBER(lov_ost_data_v1, l_ost_idx);
 
@@ -345,7 +346,7 @@ check_lov_mds_md_v3(void)
         CHECK_MEMBER(lov_mds_md_v3, lmm_magic);
         CHECK_MEMBER(lov_mds_md_v3, lmm_pattern);
         CHECK_MEMBER(lov_mds_md_v3, lmm_object_id);
-        CHECK_MEMBER(lov_mds_md_v3, lmm_object_gr);
+        CHECK_MEMBER(lov_mds_md_v3, lmm_object_seq);
         CHECK_MEMBER(lov_mds_md_v3, lmm_stripe_size);
         CHECK_MEMBER(lov_mds_md_v3, lmm_stripe_count);
         CHECK_MEMBER(lov_mds_md_v3, lmm_pool_name);
@@ -354,7 +355,7 @@ check_lov_mds_md_v3(void)
         BLANK_LINE();
         CHECK_STRUCT(lov_ost_data_v1);
         CHECK_MEMBER(lov_ost_data_v1, l_object_id);
-        CHECK_MEMBER(lov_ost_data_v1, l_object_gr);
+        CHECK_MEMBER(lov_ost_data_v1, l_object_seq);
         CHECK_MEMBER(lov_ost_data_v1, l_ost_gen);
         CHECK_MEMBER(lov_ost_data_v1, l_ost_idx);
 
@@ -395,7 +396,7 @@ check_obd_ioobj(void)
         BLANK_LINE();
         CHECK_STRUCT(obd_ioobj);
         CHECK_MEMBER(obd_ioobj, ioo_id);
-        CHECK_MEMBER(obd_ioobj, ioo_gr);
+        CHECK_MEMBER(obd_ioobj, ioo_seq);
         CHECK_MEMBER(obd_ioobj, ioo_type);
         CHECK_MEMBER(obd_ioobj, ioo_bufcnt);
 }
@@ -834,7 +835,7 @@ check_llog_logid(void)
         BLANK_LINE();
         CHECK_STRUCT(llog_logid);
         CHECK_MEMBER(llog_logid, lgl_oid);
-        CHECK_MEMBER(llog_logid, lgl_ogr);
+        CHECK_MEMBER(llog_logid, lgl_oseq);
         CHECK_MEMBER(llog_logid, lgl_ogen);
 
         CHECK_CVALUE(OST_SZ_REC);
@@ -903,8 +904,9 @@ check_llog_create_rec(void)
         CHECK_MEMBER(llog_create_rec, lcr_hdr);
         CHECK_MEMBER(llog_create_rec, lcr_fid);
         CHECK_MEMBER(llog_create_rec, lcr_oid);
-        CHECK_MEMBER(llog_create_rec, lcr_ogr);
+        CHECK_MEMBER(llog_create_rec, lcr_oseq);
         CHECK_MEMBER(llog_create_rec, padding);
+        CHECK_MEMBER(llog_create_rec, lcr_tail);
 }
 
 static void
@@ -926,7 +928,7 @@ check_llog_unlink_rec(void)
         CHECK_STRUCT(llog_unlink_rec);
         CHECK_MEMBER(llog_unlink_rec, lur_hdr);
         CHECK_MEMBER(llog_unlink_rec, lur_oid);
-        CHECK_MEMBER(llog_unlink_rec, lur_ogr);
+        CHECK_MEMBER(llog_unlink_rec, lur_oseq);
         CHECK_MEMBER(llog_unlink_rec, lur_count);
         CHECK_MEMBER(llog_unlink_rec, lur_tail);
 }
@@ -938,7 +940,7 @@ check_llog_setattr_rec(void)
         CHECK_STRUCT(llog_setattr_rec);
         CHECK_MEMBER(llog_setattr_rec, lsr_hdr);
         CHECK_MEMBER(llog_setattr_rec, lsr_oid);
-        CHECK_MEMBER(llog_setattr_rec, lsr_ogr);
+        CHECK_MEMBER(llog_setattr_rec, lsr_oseq);
         CHECK_MEMBER(llog_setattr_rec, lsr_uid);
         CHECK_MEMBER(llog_setattr_rec, lsr_gid);
         CHECK_MEMBER(llog_setattr_rec, padding);
@@ -952,7 +954,7 @@ check_llog_setattr64_rec(void)
         CHECK_STRUCT(llog_setattr64_rec);
         CHECK_MEMBER(llog_setattr64_rec, lsr_hdr);
         CHECK_MEMBER(llog_setattr64_rec, lsr_oid);
-        CHECK_MEMBER(llog_setattr64_rec, lsr_ogr);
+        CHECK_MEMBER(llog_setattr64_rec, lsr_oseq);
         CHECK_MEMBER(llog_setattr64_rec, padding);
         CHECK_MEMBER(llog_setattr64_rec, lsr_uid);
         CHECK_MEMBER(llog_setattr64_rec, lsr_uid_h);

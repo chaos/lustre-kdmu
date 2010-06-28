@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2003, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -198,8 +198,10 @@ static int client_common_fill_super(struct super_block *sb, char *md, char *dt)
                                   OBD_CONNECT_OSS_CAPA | OBD_CONNECT_CANCELSET|
                                   OBD_CONNECT_FID      | OBD_CONNECT_AT |
                                   OBD_CONNECT_LOV_V3 | OBD_CONNECT_RMT_CLIENT |
-                                  OBD_CONNECT_VBR      | OBD_CONNECT_SOM |
-                                  OBD_CONNECT_FULL20;
+                                  OBD_CONNECT_VBR      | OBD_CONNECT_FULL20;
+
+        if (sbi->ll_flags & LL_SBI_SOM_PREVIEW)
+                data->ocd_connect_flags |= OBD_CONNECT_SOM;
 
 #ifdef HAVE_LRU_RESIZE_SUPPORT
         if (sbi->ll_flags & LL_SBI_LRU_RESIZE)
@@ -340,7 +342,10 @@ static int client_common_fill_super(struct super_block *sb, char *md, char *dt)
                                   OBD_CONNECT_SRVLOCK   | OBD_CONNECT_TRUNCLOCK|
                                   OBD_CONNECT_AT | OBD_CONNECT_RMT_CLIENT |
                                   OBD_CONNECT_OSS_CAPA | OBD_CONNECT_VBR|
-                                  OBD_CONNECT_SOM | OBD_CONNECT_FULL20;
+                                  OBD_CONNECT_FULL20;
+
+        if (sbi->ll_flags & LL_SBI_SOM_PREVIEW)
+                data->ocd_connect_flags |= OBD_CONNECT_SOM;
 
         if (!OBD_FAIL_CHECK(OBD_FAIL_OSC_CONNECT_CKSUM)) {
                 /* OBD_CONNECT_CKSUM should always be set, even if checksums are
@@ -706,17 +711,25 @@ static int ll_options(char *options, int *flags)
                         *flags &= ~tmp;
                         goto next;
                 }
+#if LUSTRE_VERSION_CODE < OBD_OCD_VERSION(2,5,50,0)
                 tmp = ll_set_opt("acl", s1, LL_SBI_ACL);
                 if (tmp) {
                         /* Ignore deprecated mount option.  The client will
                          * always try to mount with ACL support, whether this
                          * is used depends on whether server supports it. */
+                        LCONSOLE_ERROR_MSG(0x152, "Ignoring deprecated "
+                                                  "mount option 'acl'.\n");
                         goto next;
                 }
                 tmp = ll_set_opt("noacl", s1, LL_SBI_ACL);
                 if (tmp) {
+                        LCONSOLE_ERROR_MSG(0x152, "Ignoring deprecated "
+                                                  "mount option 'noacl'.\n");
                         goto next;
                 }
+#else
+#warning "{no}acl options have been deprecated since 1.8, please remove them"
+#endif
                 tmp = ll_set_opt("remote_client", s1, LL_SBI_RMT_CLIENT);
                 if (tmp) {
                         *flags |= tmp;
@@ -751,6 +764,11 @@ static int ll_options(char *options, int *flags)
                 tmp = ll_set_opt("nolazystatfs", s1, LL_SBI_LAZYSTATFS);
                 if (tmp) {
                         *flags &= ~tmp;
+                        goto next;
+                }
+                tmp = ll_set_opt("som_preview", s1, LL_SBI_SOM_PREVIEW);
+                if (tmp) {
+                        *flags |= tmp;
                         goto next;
                 }
 
@@ -834,6 +852,7 @@ int ll_fill_super(struct super_block *sb)
                 GOTO(out_free, err);
         }
 
+        /* Profile set with LCFG_MOUNTOPT so we can find our mdc and osc obds */
         lprof = class_get_profile(profilenm);
         if (lprof == NULL) {
                 LCONSOLE_ERROR_MSG(0x156, "The client profile '%s' could not be"
@@ -1731,14 +1750,13 @@ int ll_iocontrol(struct inode *inode, struct file *file,
                 }
 
                 oinfo.oi_oa->o_id = lsm->lsm_object_id;
-                oinfo.oi_oa->o_gr = lsm->lsm_object_gr;
+                oinfo.oi_oa->o_seq = lsm->lsm_object_seq;
                 oinfo.oi_oa->o_flags = flags;
                 oinfo.oi_oa->o_valid = OBD_MD_FLID | OBD_MD_FLFLAGS |
                                        OBD_MD_FLGROUP;
                 oinfo.oi_capa = ll_mdscapa_get(inode);
-
                 obdo_from_inode(oinfo.oi_oa, inode,
-                                OBD_MD_FLFID | OBD_MD_FLGENER);
+                                &ll_i2info(inode)->lli_fid, 0);
                 rc = obd_setattr_rqset(sbi->ll_dt_exp, &oinfo, NULL);
                 capa_put(oinfo.oi_capa);
                 OBDO_FREE(oinfo.oi_oa);
@@ -2071,9 +2089,6 @@ int ll_show_options(struct seq_file *seq, struct vfsmount *vfs)
 
         if (sbi->ll_flags & LL_SBI_USER_XATTR)
                 seq_puts(seq, ",user_xattr");
-
-        if (sbi->ll_flags & LL_SBI_ACL)
-                seq_puts(seq, ",acl");
 
         if (sbi->ll_flags & LL_SBI_LAZYSTATFS)
                 seq_puts(seq, ",lazystatfs");

@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2008, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -75,7 +75,7 @@
 #include <unistd.h>
 #endif
 
-#ifdef HAVE_LIBPTHREAD
+#ifdef HAVE_PTHREAD
 #include <pthread.h>
 #endif
 

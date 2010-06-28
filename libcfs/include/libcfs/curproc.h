@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2008, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -72,6 +72,9 @@ char  *cfs_curproc_comm(void);
  *
  * cfs_kernel_cap_t
  */
+
+/* check if task is running in compat mode.*/
+int cfs_curproc_is_32bit(void);
 #endif
 
 typedef __u32 cfs_cap_t;

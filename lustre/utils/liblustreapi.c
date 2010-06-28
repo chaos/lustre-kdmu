@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2003, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -1361,11 +1361,18 @@ static int cb_ostlist(char *path, DIR *parent, DIR *d, void *data,
                       struct dirent64 *de)
 {
         struct find_param *param = (struct find_param *)data;
+        int ret;
 
         LASSERT(parent != NULL || d != NULL);
 
         /* Prepare odb. */
-        return setup_obd_uuid(d ? d : parent, path, param);
+        ret = setup_obd_uuid(d ? d : parent, path, param);
+
+        /* We don't want to actually traverse the directory tree,
+         * so return a positive value from sem_init to terminate
+         * the traversal before it starts.
+         */
+        return ret == 0 ? 1 : ret;
 }
 
 int llapi_ostlist(char *path, struct find_param *param)
@@ -1374,14 +1381,15 @@ int llapi_ostlist(char *path, struct find_param *param)
 }
 
 static void lov_dump_user_lmm_header(struct lov_user_md *lum, char *path,
+                                     struct lov_user_ost_data_v1 *objects,
                                      int is_dir, int verbose, int depth,
                                      char *pool_name)
 {
         char *prefix = is_dir ? "" : "lmm_";
         char nl = is_dir ? ' ' : '\n';
 
-        if (is_dir && lum->lmm_object_gr == LOV_OBJECT_GROUP_DEFAULT) {
-                lum->lmm_object_gr = LOV_OBJECT_GROUP_CLEAR;
+        if (is_dir && lum->lmm_object_seq == LOV_OBJECT_GROUP_DEFAULT) {
+                lum->lmm_object_seq = LOV_OBJECT_GROUP_CLEAR;
                 if (verbose & VERBOSE_DETAIL)
                         llapi_printf(LLAPI_MSG_NORMAL, "(Default) ");
         }
@@ -1392,8 +1400,8 @@ static void lov_dump_user_lmm_header(struct lov_user_md *lum, char *path,
         if ((verbose & VERBOSE_DETAIL) && !is_dir) {
                 llapi_printf(LLAPI_MSG_NORMAL, "lmm_magic:          0x%08X\n",
                              lum->lmm_magic);
-                llapi_printf(LLAPI_MSG_NORMAL, "lmm_object_gr:      "LPX64"\n",
-                             lum->lmm_object_gr);
+                llapi_printf(LLAPI_MSG_NORMAL, "lmm_seq:            "LPX64"\n",
+                             lum->lmm_object_seq);
                 llapi_printf(LLAPI_MSG_NORMAL, "lmm_object_id:      "LPX64"\n",
                              lum->lmm_object_id);
         }
@@ -1424,7 +1432,7 @@ static void lov_dump_user_lmm_header(struct lov_user_md *lum, char *path,
                         llapi_printf(LLAPI_MSG_NORMAL, "%sstripe_offset:  ",
                                      prefix);
                 llapi_printf(LLAPI_MSG_NORMAL, "%u%c",
-                             lum->lmm_objects[0].l_ost_idx, nl);
+                             objects[0].l_ost_idx, nl);
         }
 
         if ((verbose & VERBOSE_POOL) && (pool_name != NULL)) {
@@ -1453,7 +1461,7 @@ void lov_dump_user_lmm_v1v3(struct lov_user_md *lum, char *pool_name,
         }
 
         if (obdstripe == 1)
-                lov_dump_user_lmm_header(lum, path, is_dir, header, depth,
+                lov_dump_user_lmm_header(lum, path, objects, is_dir, header, depth,
                                          pool_name);
 
         if (!is_dir && (header & VERBOSE_OBJID)) {
@@ -1464,7 +1472,7 @@ void lov_dump_user_lmm_v1v3(struct lov_user_md *lum, char *pool_name,
                 for (i = 0; i < lum->lmm_stripe_count; i++) {
                         int idx = objects[i].l_ost_idx;
                         long long oid = objects[i].l_object_id;
-                        long long gr = objects[i].l_object_gr;
+                        long long gr = objects[i].l_object_seq;
                         if ((obdindex == OBD_NOT_FOUND) || (obdindex == idx))
                                 llapi_printf(LLAPI_MSG_NORMAL,
                                            "\t%6u\t%14llu\t%#13llx\t%14llu%s\n",

@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -62,7 +62,7 @@ lnet_page2phys (struct page *p)
         case 8:
                 /* page_to_phys returns a 64 bit physical address :) */
                 return page_to_phys(p);
-                
+
         default:
                 LBUG();
                 return 0;
@@ -72,7 +72,7 @@ lnet_page2phys (struct page *p)
 #else  /* __KERNEL__ */
 # include <libcfs/list.h>
 # include <string.h>
-# ifdef HAVE_LIBPTHREAD
+# ifdef HAVE_PTHREAD
 #  include <pthread.h>
 # endif
 #endif
