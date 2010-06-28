@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2003, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -85,7 +85,7 @@ lnet_enq_event_locked (lnet_eq_t *eq, lnet_event_t *ev)
         if (cfs_waitq_active(&the_lnet.ln_waitq))
                 cfs_waitq_broadcast(&the_lnet.ln_waitq);
 #else
-# ifndef HAVE_LIBPTHREAD
+# ifndef HAVE_PTHREAD
         /* LNetEQPoll() calls into _the_ LND to wait for action */
 # else
         /* Wake anyone waiting in LNetEQPoll() */

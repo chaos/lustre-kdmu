@@ -425,8 +425,8 @@ run_test 9 "test ptldebug and subsystem for mkfs"
 # LOGS/PENDING do not exist anymore since CMD3
 test_16() {
         local TMPMTPT="${TMP}/conf16"
-        local dev=${SINGLEMDS}_dev
-        local MDSDEV=${!dev}
+        local MDSDEV=$(mdsdevname ${SINGLEMDS//mds/})
+
         if [ ! -e "$MDSDEV" ]; then
             log "no $MDSDEV existing, so mount Lustre to create one"
 	    setup
@@ -459,8 +459,7 @@ test_16() {
 run_test 16 "verify that lustre will correct the mode of OBJECTS"
 
 test_17() {
-        local dev=${SINGLEMDS}_dev
-        local MDSDEV=${!dev}
+        local MDSDEV=$(mdsdevname ${SINGLEMDS//mds/})
 
         if [ ! -e "$MDSDEV" ]; then
             echo "no $MDSDEV existing, so mount Lustre to create one"
@@ -481,8 +480,7 @@ run_test 17 "Verify failed mds_postsetup won't fail assertion (2936) (should ret
 test_18() {
         [ "$FSTYPE" != "ldiskfs" ] && skip "not needed for FSTYPE=$FSTYPE" && return
 
-        local dev=${SINGLEMDS}_dev
-        local MDSDEV=${!dev}
+        local MDSDEV=$(mdsdevname ${SINGLEMDS//mds/})
 
         local MIN=2000000
 
@@ -714,7 +712,10 @@ cleanup_24a() {
 test_24a() {
 	#set up fs1
 	gen_config
+
 	#set up fs2
+	local MDSDEV=$(mdsdevname ${SINGLEMDS//mds/})
+
 	[ -n "$ost1_HOST" ] && fs2ost_HOST=$ost1_HOST
 	if [ -z "$fs2ost_DEV" -o -z "$fs2mds_DEV" ]; then
 		do_facet $SINGLEMDS [ -b "$MDSDEV" ] && \
@@ -762,6 +763,8 @@ test_24a() {
 run_test 24a "Multiple MDTs on a single node"
 
 test_24b() {
+	local MDSDEV=$(mdsdevname ${SINGLEMDS//mds/})
+
 	if [ -z "$fs2mds_DEV" ]; then
 		do_facet $SINGLEMDS [ -b "$MDSDEV" ] && \
 		skip_env "mixed loopback and real device not working" && return
@@ -926,7 +929,7 @@ test_29() {
 }
 run_test 29 "permanently remove an OST"
 
-test_30() {
+test_30a() {
 	setup
 
 	echo Big config llog
@@ -939,7 +942,7 @@ test_30() {
 	# make sure client restart still works
  	umount_client $MOUNT
 	mount_client $MOUNT || return 4
-	[ "$($TEST)" -ne "$i" ] && return 5
+	[ "$($TEST)" -ne "$i" ] && error "Param didn't stick across restart $($TEST) != $i"
 	pass
 
 	echo Erase parameter setting
@@ -953,7 +956,40 @@ test_30() {
 
 	cleanup
 }
-run_test 30 "Big config llog and conf_param deletion"
+run_test 30a "Big config llog and conf_param deletion"
+
+test_30b() {
+	setup
+
+	# Make a fake nid.  Use the OST nid, and add 20 to the least significant
+	# numerical part of it. Hopefully that's not already a failover address for
+	# the server.
+	OSTNID=$(do_facet ost1 "$LCTL get_param nis" | tail -1 | awk '{print $1}')
+	ORIGVAL=$(echo $OSTNID | egrep -oi "[0-9]*@")
+	NEWVAL=$((($(echo $ORIGVAL | egrep -oi "[0-9]*") + 20) % 256))
+	NEW=$(echo $OSTNID | sed "s/$ORIGVAL/$NEWVAL@/")
+	echo "Using fake nid $NEW"
+
+	TEST="$LCTL get_param -n osc.$FSNAME-OST0000-osc-[^M]*.import | grep failover_nids | sed -n 's/.*\($NEW\).*/\1/p'"
+	set_and_check client "$TEST" "$FSNAME-OST0000.failover.node" $NEW || error "didn't add failover nid $NEW"
+	NIDS=$($LCTL get_param -n osc.$FSNAME-OST0000-osc-[^M]*.import | grep failover_nids)
+	echo $NIDS
+	NIDCOUNT=$(($(echo "$NIDS" | wc -w) - 1))
+	echo "should have 2 failover nids: $NIDCOUNT"
+	[ $NIDCOUNT -eq 2 ] || error "Failover nid not added"
+	do_facet mgs "$LCTL conf_param -d $FSNAME-OST0000.failover.node" || error "conf_param delete failed"
+	umount_client $MOUNT
+	mount_client $MOUNT || return 3
+
+	NIDS=$($LCTL get_param -n osc.$FSNAME-OST0000-osc-[^M]*.import | grep failover_nids)
+	echo $NIDS
+	NIDCOUNT=$(($(echo "$NIDS" | wc -w) - 1))
+	echo "only 1 final nid should remain: $NIDCOUNT"
+	[ $NIDCOUNT -eq 1 ] || error "Failover nids not removed"
+
+	cleanup
+}
+run_test 30b "Remove failover nids"
 
 test_31() { # bug 10734
         # ipaddr must not exist
@@ -1141,6 +1177,8 @@ run_test 32b "Upgrade from 1.8 with writeconf"
 test_33a() { # bug 12333, was test_33
         local rc=0
         local FSNAME2=test-123
+        local MDSDEV=$(mdsdevname ${SINGLEMDS//mds/})
+
         [ -n "$ost1_HOST" ] && fs2ost_HOST=$ost1_HOST
 
         if [ -z "$fs2ost_DEV" -o -z "$fs2mds_DEV" ]; then
@@ -1350,6 +1388,7 @@ test_36() { # 12743
         local rc
         local FSNAME2=test1234
         local fs3ost_HOST=$ost_HOST
+        local MDSDEV=$(mdsdevname ${SINGLEMDS//mds/})
 
         [ -n "$ost1_HOST" ] && fs2ost_HOST=$ost1_HOST && fs3ost_HOST=$ost1_HOST
         rc=0
@@ -1462,8 +1501,7 @@ test_38() { # bug 14222
 	log "rename lov_objid file on MDS"
 	rm -f $TMP/lov_objid.orig
 
-	local dev=${SINGLEMDS}_dev
-	local MDSDEV=${!dev}
+	local MDSDEV=$(mdsdevname ${SINGLEMDS//mds/})
 	do_facet $SINGLEMDS "$DEBUGFS -c -R \\\"dump lov_objid $TMP/lov_objid.orig\\\" $MDSDEV"
 	do_facet $SINGLEMDS "$DEBUGFS -w -R \\\"rm lov_objid\\\" $MDSDEV"
 
@@ -1524,8 +1562,7 @@ run_test 40 "race during service thread startup"
 
 test_41() { #bug 14134
         local rc
-        local dev=${SINGLEMDS}_dev
-        local MDSDEV=${!dev}
+        local MDSDEV=$(mdsdevname ${SINGLEMDS//mds/})
 
         start $SINGLEMDS $MDSDEV $MDS_MOUNT_OPTS -o nosvc -n
         start ost1 `ostdevname 1` $OST_MOUNT_OPTS

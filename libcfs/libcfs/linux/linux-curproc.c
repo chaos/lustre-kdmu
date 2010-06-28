@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2008, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -218,7 +218,7 @@ int cfs_capable(cfs_cap_t cap)
  * 32-bit system call. */
 int cfs_curproc_is_32bit(void)
 {
-#if HAVE_IS_COMPAT_TASK
+#ifdef HAVE_IS_COMPAT_TASK
         return is_compat_task();
 #else
         return (BITS_PER_LONG == 32);

@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -68,7 +68,7 @@ const char fld_index_name[] = "fld";
 
 static const struct lu_seq_range IGIF_FLD_RANGE = {
         .lsr_start = 1,
-        .lsr_end   = IDIF_SEQ_START,
+        .lsr_end   = FID_SEQ_IDIF,
         .lsr_mdt   = 0
 };
 
