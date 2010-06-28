@@ -172,6 +172,7 @@ int llog_setup_named(struct obd_device *obd,  struct obd_llog_group *olg,
         ctxt = llog_new_ctxt(obd);
         if (!ctxt)
                 RETURN(-ENOMEM);
+        ctxt->loc_flags = LLOG_CTXT_FLAG_UNINITIALIZED;
 
         ctxt->loc_obd = obd;
         ctxt->loc_olg = olg;
@@ -179,7 +180,6 @@ int llog_setup_named(struct obd_device *obd,  struct obd_llog_group *olg,
         ctxt->loc_logops = op;
         cfs_sema_init(&ctxt->loc_sem, 1);
         ctxt->loc_exp = class_export_get(disk_obd->obd_self_export);
-        ctxt->loc_flags = LLOG_CTXT_FLAG_UNINITIALIZED;
 
         rc = llog_group_set_ctxt(olg, ctxt, index);
         if (rc) {

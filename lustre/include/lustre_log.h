@@ -916,6 +916,11 @@ static inline int llog_declare_add_2(struct llog_ctxt *ctxt,
                 RETURN(-ENODEV);
         }
 
+        if (ctxt->loc_flags & LLOG_CTXT_FLAG_UNINITIALIZED) {
+                CERROR("llog is not ready\n");
+                RETURN(-ENXIO);
+        }
+
         if (ctxt->loc_logops->lop_declare_add_2 == NULL)
                 dump_stack();
         raised = cfs_cap_raised(CFS_CAP_SYS_RESOURCE);

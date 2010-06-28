@@ -550,7 +550,7 @@ static int llog_osd_declare_write_rec_2(struct llog_handle *loghandle,
         LASSERT(th);
         /* XXX: LASSERT(rec); */
         LASSERT(loghandle);
-        
+
         o = loghandle->lgh_obj;
         LASSERT(o);
 
@@ -566,10 +566,10 @@ static int llog_osd_declare_write_rec_2(struct llog_handle *loghandle,
                         GOTO(out, rc = -ENOMEM);
                 rc = dt_attr_get(&env, o, attr, BYPASS_CAPA);
                 pos = attr->la_size;
+                LASSERT(rc != 0 || attr->la_valid & LA_SIZE);
                 OBD_FREE_PTR(attr);
                 if (rc)
                         GOTO(out, rc);
-                LASSERT(attr->la_valid & LA_SIZE);
         } else
                 pos = 0;
 
