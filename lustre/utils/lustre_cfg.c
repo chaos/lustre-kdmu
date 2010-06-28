@@ -613,7 +613,7 @@ static char *display_name(char *filename, mode_t mode, int show_type)
 static void params_show(int show_path, char *buf)
 {
         char outbuf[CFS_PAGE_SIZE];
-        int rc =0, pos = 0;
+        int rc = 0, pos = 0;
 
         memset(outbuf, 0, CFS_PAGE_SIZE);
         while ((rc = params_unpack(buf + pos, outbuf, sizeof(outbuf)))) {

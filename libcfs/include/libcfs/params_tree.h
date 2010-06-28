@@ -416,8 +416,5 @@ extern int libcfs_param_copy(int flag, char *dest, const char *src, int count);
         libcfs_param_snprintf_common(page, count, cb_data, type,        \
                                      NULL, NULL,                        \
                                      format, ## __VA_ARGS__)
-extern int libcfs_param_packlen(struct libcfs_param_data *data);
-extern int libcfs_param_unpack(struct libcfs_param_data *data, char *buf);
-extern void libcfs_param_free_value(struct libcfs_param_data *data);
 
 #endif  /* __PARAMS_TREE_H__ */
