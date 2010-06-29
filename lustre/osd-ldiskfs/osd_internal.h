@@ -328,6 +328,7 @@ struct osd_thread_info {
 
         struct lu_fid          oti_fid;
         struct osd_inode_id    oti_id;
+        struct ost_id          oti_ostid;
         /*
          * XXX temporary: for ->i_op calls.
          */

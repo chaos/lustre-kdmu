@@ -507,20 +507,16 @@ void filter_grant_commit(struct obd_export *exp, int niocount,
 
 /* IDIF stuff */
 #include <lustre_fid.h>
-static inline void lu_idif_build(struct lu_fid *fid, obd_id id, obd_seq seq)
-{
-        LASSERT((id >> 48) == 0);
-        fid->f_seq = (FID_SEQ_IDIF | id >> 32);
-        fid->f_oid = (__u32)(id & 0xffffffff);
-        fid->f_ver = seq;
-}
-
+/* The same as osc_build_res_name() */
 static inline struct ldlm_res_id * lu_idif_resid(const struct lu_fid *fid,
                                                  struct ldlm_res_id *name)
 {
-        name->name[LUSTRE_RES_ID_SEQ_OFF] = lu_idif_id(fid);
-        name->name[LUSTRE_RES_ID_OID_OFF] = 0;
-        name->name[LUSTRE_RES_ID_VER_OFF] = lu_idif_seq(fid);
+        struct ost_id ostid;
+
+        fid_ostid_pack(fid, &ostid);
+        name->name[LUSTRE_RES_ID_SEQ_OFF] = ostid.oi_id;
+        name->name[LUSTRE_RES_ID_OID_OFF] = ostid.oi_seq;
+        name->name[LUSTRE_RES_ID_VER_OFF] = 0;
         name->name[LUSTRE_RES_ID_HSH_OFF] = 0;
         return name;
 }
@@ -528,8 +524,11 @@ static inline struct ldlm_res_id * lu_idif_resid(const struct lu_fid *fid,
 static inline void lu_idif_from_resid(struct lu_fid *fid,
                                       const struct ldlm_res_id *name)
 {
-        lu_idif_build(fid, name->name[LUSTRE_RES_ID_SEQ_OFF],
-                      name->name[LUSTRE_RES_ID_VER_OFF]);
+        struct ost_id ostid;
+
+        ostid.oi_id = name->name[LUSTRE_RES_ID_SEQ_OFF];
+        ostid.oi_seq = name->name[LUSTRE_RES_ID_OID_OFF];
+        fid_ostid_unpack(fid, &ostid, 0);
 }
 
 static inline void filter_oti2info(struct filter_thread_info *info,

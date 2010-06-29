@@ -136,11 +136,14 @@ int filter_precreate_object(const struct lu_env *env, struct filter_device *ofd,
         struct thandle          *th;
         struct lu_buf            buf;
         struct lu_fid            fid;
+        struct ost_id            ostid;
         obd_id                   tmp;
         loff_t                   off;
         int                      rc;
 
-        lu_idif_build(&fid, id, group);
+        ostid.oi_id = id;
+        ostid.oi_seq = group;
+        fid_ostid_unpack(&fid, &ostid, 0);
 
         fo = filter_object_find(env, ofd, &fid);
         if (IS_ERR(fo))

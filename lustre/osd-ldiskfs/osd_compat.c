@@ -460,8 +460,7 @@ int osd_compat_objid_lookup(struct osd_thread_info *info, struct osd_device *dev
         struct osd_compat_objid *map;
         struct dentry           *d;
         struct dentry           *o;
-        __u64                    group;
-        __u64                    objid;
+        struct ost_id           *ostid = &info->oti_ostid;
         int                      rc = 0;
         int                      dirn;
         char                     name[32];
@@ -477,23 +476,22 @@ int osd_compat_objid_lookup(struct osd_thread_info *info, struct osd_device *dev
         LASSERT(map->root);
         LASSERT(map->subdir_count);
 
-        group = lu_idif_seq(fid);
-        objid = lu_idif_id(fid);
-        LASSERT(group < MAX_OBJID_GROUP);
+        fid_ostid_pack(fid, ostid);
+        LASSERT(ostid->oi_seq < MAX_OBJID_GROUP);
 
-        rc = osd_compat_load_group(dev, group);
+        rc = osd_compat_load_group(dev, ostid->oi_seq);
         if (rc)
                 RETURN(rc);
 
-        dirn = objid & (map->subdir_count - 1);
-        rc = osd_compat_load_dir(dev, group, dirn);
+        dirn = ostid->oi_id & (map->subdir_count - 1);
+        rc = osd_compat_load_dir(dev, ostid->oi_seq, dirn);
         if (rc)
                 RETURN(rc);
 
-        d = map->groups[group].dirs[dirn];
+        d = map->groups[ostid->oi_seq].dirs[dirn];
         LASSERT(d);
 
-        sprintf(name, "%Lu", objid);
+        sprintf(name, "%Lu", ostid->oi_id);
         o = &info->oti_child_dentry;
         o->d_parent = d;
         o->d_name.hash = 0;
@@ -535,8 +533,7 @@ int osd_compat_objid_insert(struct osd_thread_info *info,
 {
         struct osd_compat_objid        *map;
         struct dentry                  *d;
-        obd_id                          objid;
-        obd_seq                         group ;
+        struct ost_id                  *ostid = &info->oti_ostid;
         int                             dirn, rc = 0;
         char                            name[32];
         ENTRY;
@@ -547,22 +544,21 @@ int osd_compat_objid_insert(struct osd_thread_info *info,
         LASSERT(map->subdir_count);
 
         /* map fid to group:objid */
-        group = lu_idif_seq(fid);
-        objid = lu_idif_id(fid);
+        fid_ostid_pack(fid, ostid);
 
-        rc = osd_compat_load_or_make_group(osd, group);
-        if (rc)
-                GOTO(cleanup, rc);
-        
-        dirn = objid & (map->subdir_count - 1);
-        rc = osd_compat_load_or_make_dir(osd, group, dirn);
+        rc = osd_compat_load_or_make_group(osd, ostid->oi_seq);
         if (rc)
                 GOTO(cleanup, rc);
 
-        d = map->groups[group].dirs[dirn];
+        dirn = ostid->oi_id & (map->subdir_count - 1);
+        rc = osd_compat_load_or_make_dir(osd, ostid->oi_seq, dirn);
+        if (rc)
+                GOTO(cleanup, rc);
+
+        d = map->groups[ostid->oi_seq].dirs[dirn];
         LASSERT(d);
 
-        sprintf(name, "%Lu", objid);
+        sprintf(name, "%Lu", ostid->oi_id);
         rc = osd_compat_add_entry(info, osd, d, name, id, th);
 
 cleanup:
@@ -574,8 +570,7 @@ int osd_compat_objid_delete(struct osd_thread_info *info, struct osd_device *osd
 {
         struct osd_compat_objid        *map;
         struct dentry                  *d;
-        obd_id                          objid;
-        obd_seq                         group ;
+        struct ost_id                  *ostid = &info->oti_ostid;
         int                             dirn, rc = 0;
         char                            name[32];
         ENTRY;
@@ -586,22 +581,21 @@ int osd_compat_objid_delete(struct osd_thread_info *info, struct osd_device *osd
         LASSERT(map->subdir_count);
 
         /* map fid to group:objid */
-        group = lu_idif_seq(fid);
-        objid = lu_idif_id(fid);
+        fid_ostid_pack(fid, ostid);
 
-        rc = osd_compat_load_group(osd, group);
+        rc = osd_compat_load_group(osd, ostid->oi_seq);
         if (rc)
                 GOTO(cleanup, rc);
 
-        dirn = objid & (map->subdir_count - 1);
-        rc = osd_compat_load_dir(osd, group, dirn);
+        dirn = ostid->oi_id & (map->subdir_count - 1);
+        rc = osd_compat_load_dir(osd, ostid->oi_seq, dirn);
         if (rc)
                 GOTO(cleanup, rc);
 
-        d = map->groups[group].dirs[dirn];
+        d = map->groups[ostid->oi_seq].dirs[dirn];
         LASSERT(d);
 
-        sprintf(name, "%Lu", objid);
+        sprintf(name, "%Lu", ostid->oi_id);
         rc = osd_compat_del_entry(info, osd, d, name, th);
 
 cleanup:

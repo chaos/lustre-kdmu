@@ -499,17 +499,6 @@ static inline obd_id fid_idif_id(obd_seq seq, __u32 oid, __u32 ver)
         return ((__u64)ver << 48) | ((seq & 0xffff) << 32) | oid;
 }
 
-//XXX: merging issue
-static inline obd_id lu_idif_id(const struct lu_fid *fid)
-{
-        return ((fid->f_seq & 0xffff) << 32) | fid->f_oid;
-}
-//XXX:merging issue
-static inline obd_seq lu_idif_seq(const struct lu_fid * fid)
-{
-        return fid->f_ver;
-}
-
 /* unpack an ostid (id/seq) from a wire/disk structure into an IDIF FID */
 static inline void ostid_idif_unpack(struct ost_id *ostid,
                                      struct lu_fid *fid, __u32 ost_idx)
@@ -589,21 +578,22 @@ static inline int fid_ostid_unpack(struct lu_fid *fid, struct ost_id *ostid,
 }
 
 /* pack an IDIF FID into an ostid (id/seq) for the wire/disk */
-static inline void ostid_idif_pack(struct lu_fid *fid, struct ost_id *ostid)
+static inline void ostid_idif_pack(const struct lu_fid *fid, struct ost_id *ostid)
 {
         ostid->oi_seq = FID_SEQ_OST_MDT0;
         ostid->oi_id  = fid_idif_id(fid->f_seq, fid->f_oid, fid->f_ver);
 }
 
 /* pack a non-IDIF FID into an ostid (id/seq) for the wire/disk */
-static inline void ostid_fid_pack(struct lu_fid *fid, struct ost_id *ostid)
+static inline void ostid_fid_pack(const struct lu_fid *fid, struct ost_id *ostid)
 {
         ostid->oi_seq = fid_seq(fid);
         ostid->oi_id  = fid_ver_oid(fid);
 }
 
 /* pack any OST FID into an ostid (id/seq) for the wire/disk */
-static inline int fid_ostid_pack(struct lu_fid *fid, struct ost_id *ostid)
+static inline int fid_ostid_pack(const struct lu_fid *fid,
+                                 struct ost_id *ostid)
 {
         if (unlikely(fid_seq_is_igif(fid->f_seq))) {
                 CERROR("bad IGIF, "DFID"\n", PFID(fid));

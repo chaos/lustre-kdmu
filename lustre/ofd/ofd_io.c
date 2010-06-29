@@ -193,8 +193,7 @@ int filter_preprw(int cmd, struct obd_export *exp, struct obdo *oa, int objcount
         LASSERT(objcount == 1);
         LASSERT(obj->ioo_bufcnt > 0);
 
-        lu_idif_build(&info->fti_fid, obj->ioo_id, obj->ioo_seq);
-
+        fid_ostid_unpack(&info->fti_fid, &oa->o_oi, 0);
         if (cmd == OBD_BRW_WRITE) {
                 rc = filter_auth_capa(ofd, &info->fti_fid, oa->o_seq,
                                       capa, CAPA_OPC_OSS_WRITE);
@@ -342,7 +341,7 @@ int filter_commitrw(int cmd, struct obd_export *exp,
 
         LASSERT(npages > 0);
 
-        lu_idif_build(&info->fti_fid, obj->ioo_id, obj->ioo_seq);
+        fid_ostid_unpack(&info->fti_fid, &oa->o_oi, 0);
         if (cmd == OBD_BRW_WRITE) {
                 /* Don't update timestamps if this write is older than a
                  * setattr which modifies the timestamps. b=10150 */

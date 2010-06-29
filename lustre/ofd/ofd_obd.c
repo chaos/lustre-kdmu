@@ -656,7 +656,7 @@ int filter_setattr(struct obd_export *exp,
         info->fti_no_need_trans = 0;
         filter_oti2info(info, oti);
 
-        lu_idif_build(&info->fti_fid, oinfo->oi_oa->o_id, oinfo->oi_oa->o_seq);
+        fid_ostid_unpack(&info->fti_fid, &oinfo->oi_oa->o_oi, 0);
         lu_idif_resid(&info->fti_fid, &info->fti_resid);
 
         rc = filter_auth_capa(ofd, &info->fti_fid, oa->o_seq,
@@ -746,7 +746,7 @@ static int filter_punch(struct obd_export *exp, struct obd_info *oinfo,
         info->fti_no_need_trans = 0;
         filter_oti2info(info, oti);
 
-        lu_idif_build(&info->fti_fid, oinfo->oi_oa->o_id, oinfo->oi_oa->o_seq);
+        fid_ostid_unpack(&info->fti_fid, &oinfo->oi_oa->o_oi, 0);
         lu_idif_resid(&info->fti_fid, &info->fti_resid);
 
         CDEBUG(D_INODE, "calling punch for object "LPU64", valid = "LPX64
@@ -868,7 +868,7 @@ int filter_destroy(struct obd_export *exp,
         if (!(oa->o_valid & OBD_MD_FLGROUP))
                 oa->o_seq = 0;
 
-        lu_idif_build(&info->fti_fid, oa->o_id, oa->o_seq);
+        fid_ostid_unpack(&info->fti_fid, &oa->o_oi, 0);
         rc = filter_destroy_by_fid(env, ofd, &info->fti_fid);
         if (rc == -ENOENT) {
                 CDEBUG(D_INODE, "destroying non-existent object "LPU64"\n",
@@ -933,7 +933,7 @@ static int filter_orphans_destroy(const struct lu_env *env,
               filter_obd(ofd)->obd_name, mds_id + 1, last);
 
         for (id = last; id > mds_id; id--) {
-                lu_idif_build(&info->fti_fid, id, gr);
+                fid_ostid_unpack(&info->fti_fid, &oa->o_oi, 0);
                 rc = filter_destroy_by_fid(env, ofd, &info->fti_fid);
                 if (rc && rc != -ENOENT) /* this is pretty fatal... */
                         CEMERG("error destroying precreated id "LPU64": %d\n",
@@ -1085,7 +1085,7 @@ int filter_getattr(struct obd_export *exp, struct obd_info *oinfo)
                 RETURN(rc);
         info = filter_info_init(&env, exp);
 
-        lu_idif_build(&info->fti_fid, oinfo->oi_oa->o_id, oinfo->oi_oa->o_seq);
+        fid_ostid_unpack(&info->fti_fid, &oinfo->oi_oa->o_oi, 0);
         rc = filter_auth_capa(ofd, &info->fti_fid, oinfo->oi_oa->o_seq,
                               oinfo_capa(oinfo), CAPA_OPC_META_READ);
         if (rc)
