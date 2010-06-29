@@ -358,14 +358,18 @@ int lprocfs_filter_wr_degraded(libcfs_file_t *file, const char *buffer,
 int lprocfs_filter_rd_fstype(char *page, char **start, off_t off, int count,
                              int *eof, void *data)
 {
-        struct obd_device *obd = data;
-        struct filter_device *ofd = filter_dev(obd->obd_lu_dev);
+        struct obd_device *obd;
+        struct filter_device *ofd;
         struct lu_device *d;
 
+        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        ofd = filter_dev(obd->obd_lu_dev);
         LASSERT(ofd->ofd_osd);
         d = &ofd->ofd_osd->dd_lu_dev;
         LASSERT(d->ld_type);
-        return snprintf(page, count, "%s\n", d->ld_type->ldt_name);
+
+        return libcfs_param_snprintf(page, count, data, LP_STR,
+			             "%s\n", d->ld_type->ldt_name);
 }
 
 static struct lprocfs_vars lprocfs_filter_obd_vars[] = {
