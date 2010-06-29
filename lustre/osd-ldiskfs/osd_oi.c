@@ -262,13 +262,10 @@ int osd_oi_lookup(struct osd_thread_info *info, struct osd_device *osd,
         struct lu_fid *oi_fid = &info->oti_fid;
         int rc;
 
-#if 0
         if (fid_is_idif(fid)) {
                 /* old OSD obj id */
                 rc = osd_compat_objid_lookup(info, osd, fid, id);
-        } else if (fid_is_igif(fid)) {
-#endif
-        if (osd_fid_is_igif(fid)) {
+        } else if (osd_fid_is_igif(fid)) {
                 lu_igif_to_id(fid, id);
                 rc = 0;
         } else {

@@ -444,12 +444,12 @@ int filter_fs_setup(const struct lu_env *env, struct filter_device *ofd,
 void filter_fs_cleanup(const struct lu_env *env, struct filter_device *ofd);
 
 /* filter_fs.c */
-obd_id filter_last_id(struct filter_device *ofd, obd_gr group);
-void filter_last_id_set(struct filter_device *ofd, obd_id id, obd_gr group);
+obd_id filter_last_id(struct filter_device *ofd, obd_seq seq);
+void filter_last_id_set(struct filter_device *ofd, obd_id id, obd_seq seq);
 int filter_last_id_write(const struct lu_env *env, struct filter_device *ofd,
-                         obd_gr group, struct thandle *th);
+                         obd_seq seq, struct thandle *th);
 int filter_last_id_read(const struct lu_env *env, struct filter_device *ofd,
-                        obd_gr group);
+                        obd_seq seq);
 int filter_groups_init(const struct lu_env *env, struct filter_device *ofd);
 int filter_last_rcvd_header_write(const struct lu_env *env,
                                   struct filter_device *ofd,
@@ -476,7 +476,7 @@ filter_object *filter_object_find_or_create(const struct lu_env *env,
                                             const struct lu_fid *fid,
                                             struct lu_attr *attr);
 int filter_precreate_object(const struct lu_env *env, struct filter_device *ofd,
-                            obd_id id, obd_gr group);
+                            obd_id id, obd_seq seq);
 
 void filter_object_put(const struct lu_env *env, struct filter_object *fo);
 int filter_attr_set(const struct lu_env *env, struct filter_object *fo,
@@ -507,22 +507,12 @@ void filter_grant_commit(struct obd_export *exp, int niocount,
 
 /* IDIF stuff */
 #include <lustre_fid.h>
-static inline void lu_idif_build(struct lu_fid *fid, obd_id id, obd_gr gr)
+static inline void lu_idif_build(struct lu_fid *fid, obd_id id, obd_seq seq)
 {
         LASSERT((id >> 48) == 0);
-        fid->f_seq = (IDIF_SEQ_START| id >> 32);
+        fid->f_seq = (FID_SEQ_IDIF | id >> 32);
         fid->f_oid = (__u32)(id & 0xffffffff);
-        fid->f_ver = gr;
-}
-
-static inline obd_id lu_idif_id(const struct lu_fid *fid)
-{
-        return ((fid->f_seq & 0xffff) << 32) | fid->f_oid;
-}
-
-static inline obd_gr lu_idif_gr(const struct lu_fid * fid)
-{
-        return fid->f_ver;
+        fid->f_ver = seq;
 }
 
 static inline struct ldlm_res_id * lu_idif_resid(const struct lu_fid *fid,
@@ -530,7 +520,7 @@ static inline struct ldlm_res_id * lu_idif_resid(const struct lu_fid *fid,
 {
         name->name[LUSTRE_RES_ID_SEQ_OFF] = lu_idif_id(fid);
         name->name[LUSTRE_RES_ID_OID_OFF] = 0;
-        name->name[LUSTRE_RES_ID_VER_OFF] = lu_idif_gr(fid);
+        name->name[LUSTRE_RES_ID_VER_OFF] = lu_idif_seq(fid);
         name->name[LUSTRE_RES_ID_HSH_OFF] = 0;
         return name;
 }

@@ -858,7 +858,7 @@ int mdd_declare_finish_unlink(const struct lu_env *env,
         if (rc || !(ma->ma_valid & MA_LOV))
                 RETURN(rc);
 
-        rc = obd_unpackmd(mds->mds_osc_exp, &lsm, ma->ma_lmm, ma->ma_lmm_size);
+        rc = obd_unpackmd(mds->mds_lov_exp, &lsm, ma->ma_lmm, ma->ma_lmm_size);
         if (rc < 0)
                 RETURN(rc);
 
@@ -868,7 +868,7 @@ int mdd_declare_finish_unlink(const struct lu_env *env,
 
         GOTO(out, rc);
 out:
-        obd_free_memmd(mds->mds_osc_exp, &lsm);
+        obd_free_memmd(mds->mds_lov_exp, &lsm);
 
         RETURN(rc);
 }

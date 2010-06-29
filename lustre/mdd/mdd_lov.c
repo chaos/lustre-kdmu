@@ -685,14 +685,14 @@ int mdd_declare_setattr_log(const struct lu_env *env, struct mdd_object *obj,
         int rc;
         ENTRY;
 
-        if (IS_ERR(mds->mds_osc_obd))
-                RETURN(PTR_ERR(mds->mds_osc_obd));
+        if (IS_ERR(mds->mds_lov_obd))
+                RETURN(PTR_ERR(mds->mds_lov_obd));
 
         /* should we llog this change? */
         if (lmm_size == 0)
                 RETURN(0);
 
-        rc = obd_unpackmd(mds->mds_osc_exp, &lsm, lmm, lmm_size);
+        rc = obd_unpackmd(mds->mds_lov_exp, &lsm, lmm, lmm_size);
         if (rc < 0)
                 RETURN(rc);
 
@@ -701,7 +701,7 @@ int mdd_declare_setattr_log(const struct lu_env *env, struct mdd_object *obj,
         rc = llog_declare_add_2(ctxt, NULL, lsm, th);
         llog_ctxt_put(ctxt);
 
-        obd_free_memmd(mds->mds_osc_exp, &lsm);
+        obd_free_memmd(mds->mds_lov_exp, &lsm);
         RETURN(rc);
 }
 

@@ -41,8 +41,6 @@
 #define DEBUG_SUBSYSTEM S_FILTER
 
 #include <libcfs/libcfs.h>
-#include <obd_class.h>
-
 #include "ofd_internal.h"
 
 static int filter_preprw_read(const struct lu_env *env,
@@ -195,10 +193,10 @@ int filter_preprw(int cmd, struct obd_export *exp, struct obdo *oa, int objcount
         LASSERT(objcount == 1);
         LASSERT(obj->ioo_bufcnt > 0);
 
-        lu_idif_build(&info->fti_fid, obj->ioo_id, obj->ioo_gr);
+        lu_idif_build(&info->fti_fid, obj->ioo_id, obj->ioo_seq);
 
         if (cmd == OBD_BRW_WRITE) {
-                rc = filter_auth_capa(ofd, &info->fti_fid, obdo_mdsno(oa),
+                rc = filter_auth_capa(ofd, &info->fti_fid, oa->o_seq,
                                       capa, CAPA_OPC_OSS_WRITE);
                 if (rc == 0) {
                         LASSERT(oa != NULL);
@@ -213,7 +211,7 @@ int filter_preprw(int cmd, struct obd_export *exp, struct obdo *oa, int objcount
                                                  res);
                 }
         } else if (cmd == OBD_BRW_READ) {
-                rc = filter_auth_capa(ofd, &info->fti_fid, obdo_mdsno(oa),
+                rc = filter_auth_capa(ofd, &info->fti_fid, oa->o_seq,
                                       capa, CAPA_OPC_OSS_READ);
                 if (rc == 0) {
                         if (oa && oa->o_valid & OBD_MD_FLGRANT) {
@@ -344,7 +342,7 @@ int filter_commitrw(int cmd, struct obd_export *exp,
 
         LASSERT(npages > 0);
 
-        lu_idif_build(&info->fti_fid, obj->ioo_id, obj->ioo_gr);
+        lu_idif_build(&info->fti_fid, obj->ioo_id, obj->ioo_seq);
         if (cmd == OBD_BRW_WRITE) {
                 /* Don't update timestamps if this write is older than a
                  * setattr which modifies the timestamps. b=10150 */

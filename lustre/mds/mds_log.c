@@ -79,7 +79,7 @@ static int mds_llog_origin_declare_add(struct llog_ctxt *ctxt,
                                        struct thandle *th)
 {
         struct obd_device *obd = ctxt->loc_obd;
-        struct obd_device *lov_obd = obd->u.mds.mds_osc_obd;
+        struct obd_device *lov_obd = obd->u.mds.mds_lov_obd;
         struct llog_ctxt *lctxt;
         int rc;
         ENTRY;

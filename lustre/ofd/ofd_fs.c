@@ -43,6 +43,7 @@
 
 #define DEBUG_SUBSYSTEM S_FILTER
 
+#include <libcfs/libcfs.h>
 #include "ofd_internal.h"
 
 int filter_record_write(const struct lu_env *env, struct filter_device *ofd,
@@ -86,7 +87,7 @@ int filter_record_write(const struct lu_env *env, struct filter_device *ofd,
         RETURN(rc);
 }
 
-obd_id filter_last_id(struct filter_device *ofd, obd_gr group)
+obd_id filter_last_id(struct filter_device *ofd, obd_seq group)
 {
         obd_id id;
 
@@ -99,7 +100,7 @@ obd_id filter_last_id(struct filter_device *ofd, obd_gr group)
         return id;
 }
 
-void filter_last_id_set(struct filter_device *ofd, obd_id id, obd_gr group)
+void filter_last_id_set(struct filter_device *ofd, obd_id id, obd_seq group)
 {
         LASSERT(group <= ofd->ofd_max_group);
         cfs_spin_lock(&ofd->ofd_objid_lock);
@@ -109,7 +110,7 @@ void filter_last_id_set(struct filter_device *ofd, obd_id id, obd_gr group)
 }
 
 int filter_last_id_write(const struct lu_env *env, struct filter_device *ofd,
-                         obd_gr group, struct thandle *th)
+                         obd_seq group, struct thandle *th)
 {
         obd_id          tmp;
         int             rc;

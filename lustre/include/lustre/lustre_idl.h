@@ -499,6 +499,17 @@ static inline obd_id fid_idif_id(obd_seq seq, __u32 oid, __u32 ver)
         return ((__u64)ver << 48) | ((seq & 0xffff) << 32) | oid;
 }
 
+//XXX: merging issue
+static inline obd_id lu_idif_id(const struct lu_fid *fid)
+{
+        return ((fid->f_seq & 0xffff) << 32) | fid->f_oid;
+}
+//XXX:merging issue
+static inline obd_seq lu_idif_seq(const struct lu_fid * fid)
+{
+        return fid->f_ver;
+}
+
 /* unpack an ostid (id/seq) from a wire/disk structure into an IDIF FID */
 static inline void ostid_idif_unpack(struct ost_id *ostid,
                                      struct lu_fid *fid, __u32 ost_idx)

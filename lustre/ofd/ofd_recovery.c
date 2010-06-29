@@ -42,6 +42,7 @@
 
 #define DEBUG_SUBSYSTEM S_FILTER
 
+#include <libcfs/libcfs.h>
 #include "ofd_internal.h"
 
 struct thandle *filter_trans_create0(const struct lu_env *env,

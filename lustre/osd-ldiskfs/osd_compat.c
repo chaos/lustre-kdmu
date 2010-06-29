@@ -257,16 +257,6 @@ int osd_compat_add_entry(struct osd_thread_info *info,
         RETURN(rc);
 }
 
-static inline obd_id lu_idif_id(const struct lu_fid *fid)
-{
-        return ((fid->f_seq & 0xffff) << 32) | fid->f_oid;
-}
-
-static inline obd_gr lu_idif_gr(const struct lu_fid * fid)
-{
-        return fid->f_ver;
-}
-
 /* external locking is required */
 int __osd_compat_load_group(struct osd_device *osd, int group)
 {
@@ -487,7 +477,7 @@ int osd_compat_objid_lookup(struct osd_thread_info *info, struct osd_device *dev
         LASSERT(map->root);
         LASSERT(map->subdir_count);
 
-        group = lu_idif_gr(fid);
+        group = lu_idif_seq(fid);
         objid = lu_idif_id(fid);
         LASSERT(group < MAX_OBJID_GROUP);
 
@@ -546,7 +536,7 @@ int osd_compat_objid_insert(struct osd_thread_info *info,
         struct osd_compat_objid        *map;
         struct dentry                  *d;
         obd_id                          objid;
-        obd_gr                          group ;
+        obd_seq                         group ;
         int                             dirn, rc = 0;
         char                            name[32];
         ENTRY;
@@ -557,7 +547,7 @@ int osd_compat_objid_insert(struct osd_thread_info *info,
         LASSERT(map->subdir_count);
 
         /* map fid to group:objid */
-        group = lu_idif_gr(fid);
+        group = lu_idif_seq(fid);
         objid = lu_idif_id(fid);
 
         rc = osd_compat_load_or_make_group(osd, group);
@@ -585,7 +575,7 @@ int osd_compat_objid_delete(struct osd_thread_info *info, struct osd_device *osd
         struct osd_compat_objid        *map;
         struct dentry                  *d;
         obd_id                          objid;
-        obd_gr                          group ;
+        obd_seq                         group ;
         int                             dirn, rc = 0;
         char                            name[32];
         ENTRY;
@@ -596,13 +586,13 @@ int osd_compat_objid_delete(struct osd_thread_info *info, struct osd_device *osd
         LASSERT(map->subdir_count);
 
         /* map fid to group:objid */
-        group = lu_idif_gr(fid);
+        group = lu_idif_seq(fid);
         objid = lu_idif_id(fid);
 
         rc = osd_compat_load_group(osd, group);
         if (rc)
                 GOTO(cleanup, rc);
-        
+
         dirn = objid & (map->subdir_count - 1);
         rc = osd_compat_load_dir(osd, group, dirn);
         if (rc)
