@@ -3051,7 +3051,7 @@ void __exit osd_exit(void)
 }
 
 MODULE_AUTHOR("Sun Microsystems, Inc. <http://www.lustre.org/>");
-MODULE_DESCRIPTION("Lustre Object Storage Device over ZFS/DMU (no recovery) ("LUSTRE_ZFS_NAME")");
+MODULE_DESCRIPTION("Lustre Object Storage Device over ZFS/DMU ("LUSTRE_ZFS_NAME")");
 MODULE_LICENSE("GPL");
 
 cfs_module(osd, "0.0.2", osd_init, osd_exit);
