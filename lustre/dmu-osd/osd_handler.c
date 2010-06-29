@@ -445,7 +445,7 @@ static void osd_object_init0(struct osd_object *obj)
                 /*
                  * initialize object before marking it existing
                  */
-                mb();
+                cfs_mb();
                 obj->oo_dt.do_lu.lo_header->loh_attr |=
                         (LOHA_EXISTS | (obj->oo_mode & S_IFMT));
         } else {
