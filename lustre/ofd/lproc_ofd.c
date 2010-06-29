@@ -355,6 +355,19 @@ int lprocfs_filter_wr_degraded(libcfs_file_t *file, const char *buffer,
         return count;
 }
 
+int lprocfs_filter_rd_fstype(char *page, char **start, off_t off, int count,
+                             int *eof, void *data)
+{
+        struct obd_device *obd = data;
+        struct filter_device *ofd = filter_dev(obd->obd_lu_dev);
+        struct lu_device *d;
+
+        LASSERT(ofd->ofd_osd);
+        d = &ofd->ofd_osd->dd_lu_dev;
+        LASSERT(d->ld_type);
+        return snprintf(page, count, "%s\n", d->ld_type->ldt_name);
+}
+
 static struct lprocfs_vars lprocfs_filter_obd_vars[] = {
         { "uuid",         lprocfs_rd_uuid,          0, 0 },
         { "blocksize",    lprocfs_rd_blksize,       0, 0 },
@@ -364,7 +377,7 @@ static struct lprocfs_vars lprocfs_filter_obd_vars[] = {
         { "filestotal",   lprocfs_rd_filestotal,    0, 0 },
         { "filesfree",    lprocfs_rd_filesfree,     0, 0 },
         { "filegroups",   lprocfs_filter_rd_groups, 0, 0 },
-        { "fstype",       lprocfs_rd_fstype,        0, 0 },
+        { "fstype",       lprocfs_filter_rd_fstype, 0, 0 },
         { "mntdev",       lprocfs_filter_rd_mntdev, 0, 0 },
         { "tot_dirty",    lprocfs_filter_rd_tot_dirty,   0, 0 },
         { "tot_pending",  lprocfs_filter_rd_tot_pending, 0, 0 },

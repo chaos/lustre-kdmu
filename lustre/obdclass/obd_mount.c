@@ -1619,7 +1619,7 @@ static struct lu_device *start_osd(struct lustre_mount_data *lmd,
 /* XXX: to stop OSD used by standalone MGS */
 static void stop_osd(struct dt_device *dt)
 {
-        struct lustre_cfg_bufs   bufs;
+        struct lustre_cfg_bufs  *bufs;
         struct lustre_cfg       *lcfg;
         struct lu_device        *d;
         struct lu_device_type   *ldt;
@@ -1627,6 +1627,12 @@ static void stop_osd(struct dt_device *dt)
         struct lu_env            env;
         char                     flags[3]="";
         int                      rc;
+
+        OBD_ALLOC(bufs, sizeof(*bufs));
+        if (bufs == NULL) {
+                CERROR("Cannot alloc bufs!\n");
+                return;
+        }
 
         LASSERT(dt);
         d = &dt->dd_lu_dev;
@@ -1641,11 +1647,12 @@ static void stop_osd(struct dt_device *dt)
         LASSERT(rc == 0);
 
         /* process cleanup, pass mdt obd name to get obd umount flags */
-        lustre_cfg_bufs_reset(&bufs, NULL);
-        lustre_cfg_bufs_set_string(&bufs, 1, flags);
-        lcfg = lustre_cfg_new(LCFG_CLEANUP, &bufs);
+        lustre_cfg_bufs_reset(bufs, NULL);
+        lustre_cfg_bufs_set_string(bufs, 1, flags);
+        lcfg = lustre_cfg_new(LCFG_CLEANUP, bufs);
         if (!lcfg) {
                 CERROR("Cannot alloc lcfg!\n");
+                OBD_FREE(bufs, sizeof(*bufs));
                 return;
         }
 
@@ -1661,6 +1668,8 @@ static void stop_osd(struct dt_device *dt)
         lu_env_fini(&env);
 
         class_put_type(type);
+
+        OBD_FREE(bufs, sizeof(*bufs));
 }
 
 static int ldd_parse(struct mconf_device *mdev, struct lustre_disk_data *ldd)

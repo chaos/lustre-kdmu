@@ -46,6 +46,13 @@ init_logging
 
 [ "$SLOW" = "no" ] && EXCEPT_SLOW="12 16 23 33a"
 
+# 33a -- dmu osd doesn't support COS yet
+[ "$FSTYPE" = "zfs" -o "$OSTFSTYPE" = "zfs" ] && \
+	ALWAYS_EXCEPT="$ALWAYS_EXCEPT"
+
+[ "$FSTYPE" = "zfs" -o "$MDSFSTYPE" = "zfs" ] && \
+	ALWAYS_EXCEPT="$ALWAYS_EXCEPT 33a"
+
 SANITYLOG=${TESTSUITELOG:-$TMP/$(basename $0 .sh).log}
 FAIL_ON_ERROR=false
 
