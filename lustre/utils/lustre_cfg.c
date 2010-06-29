@@ -553,10 +553,10 @@ int jt_lcfg_mgsparam(int argc, char **argv)
 }
 
 struct params_opts{
-        int show_path;
-        int only_path;
-        int show_type;
-        int recursive;
+        int show_path:1;
+        int only_path:1;
+        int show_type:1;
+        int recursive:1;
 };
 
 static void strrpl(char *str, char src, char dst)

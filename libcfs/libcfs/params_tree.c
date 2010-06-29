@@ -1165,7 +1165,7 @@ int libcfs_param_intvec_read(char *page, char **start, off_t off, int count,
 int libcfs_param_string_write(libcfs_file_t *filp, const char *buffer,
                               unsigned long count, void *data)
 {
-        memcpy((lparcb_t *)data, buffer, count);
+        memcpy(((lparcb_t *)data)->cb_data, buffer, count);
         return 0;
 }
 

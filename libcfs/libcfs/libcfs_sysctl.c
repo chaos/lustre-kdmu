@@ -256,6 +256,14 @@ static int libcfs_param_memused_read(char *page, char **start, off_t off,
         return libcfs_param_snprintf(page, count, data, LP_D32, NULL, temp);
 }
 
+static int libcfs_param_force_lbug_write(libcfs_file_t *filp,
+                                         const char *buffer,
+                                         unsigned long count, void *data)
+{
+	LBUG();
+	return 0;
+}
+
 static struct libcfs_param_ctl_table libcfs_param_lnet_table[] = {
         {
                 .name   = "debug",
@@ -366,6 +374,11 @@ static struct libcfs_param_ctl_table libcfs_param_lnet_table[] = {
                 .mode   = 0644,
                 .read   = libcfs_param_intvec_read,
                 .write  = libcfs_param_watchdog_write
+        },
+        {
+                .name   = "force_lbug",
+                .mode   = 0200,
+                .write  = libcfs_param_force_lbug_write
         },
         {0}
 };
