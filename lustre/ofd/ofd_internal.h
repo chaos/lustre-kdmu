@@ -16,7 +16,8 @@
 #include <obd_cksum.h>
 #include <lprocfs_status.h>
 #include <lustre_fsfilt.h>
-
+#include <lustre_fid.h>
+#include <obd_ost.h>
 
 #define FILTER_GROUPS_FILE "groups"
 
@@ -505,30 +506,37 @@ long filter_grant(const struct lu_env *env, struct obd_export *exp,
 void filter_grant_commit(struct obd_export *exp, int niocount,
                          struct niobuf_local *res);
 
-/* IDIF stuff */
-#include <lustre_fid.h>
 /* The same as osc_build_res_name() */
-static inline struct ldlm_res_id * lu_idif_resid(const struct lu_fid *fid,
-                                                 struct ldlm_res_id *name)
+static inline void ofd_build_resid(const struct lu_fid *fid,
+                                   struct ldlm_res_id *resname)
 {
-        struct ost_id ostid;
+        if (fid_is_idif(fid)) {
+                /* get id/seq like ostid_idif_pack() does */
+                osc_build_res_name(fid_idif_id(fid_seq(fid), fid_oid(fid),
+                                               fid_ver(fid)),
+                                   FID_SEQ_OST_MDT0, resname);
+        } else {
+                /* In the future, where OSTs have FID sequences allocated. */
+                fid_build_reg_res_name(fid, resname);
+        }
 
-        fid_ostid_pack(fid, &ostid);
-        name->name[LUSTRE_RES_ID_SEQ_OFF] = ostid.oi_id;
-        name->name[LUSTRE_RES_ID_OID_OFF] = ostid.oi_seq;
-        name->name[LUSTRE_RES_ID_VER_OFF] = 0;
-        name->name[LUSTRE_RES_ID_HSH_OFF] = 0;
-        return name;
 }
 
-static inline void lu_idif_from_resid(struct lu_fid *fid,
+static inline void ofd_fid_from_resid(struct lu_fid *fid,
                                       const struct ldlm_res_id *name)
 {
-        struct ost_id ostid;
-
-        ostid.oi_id = name->name[LUSTRE_RES_ID_SEQ_OFF];
-        ostid.oi_seq = name->name[LUSTRE_RES_ID_OID_OFF];
-        fid_ostid_unpack(fid, &ostid, 0);
+        /* if seq is FID_SEQ_OST_MDT0 then we have IDIF and resid was built
+         * using osc_build_res_name function. */
+        if (fid_seq_is_mdt0(name->name[LUSTRE_RES_ID_OID_OFF])) {
+                struct ost_id ostid;
+                ostid.oi_id = name->name[LUSTRE_RES_ID_SEQ_OFF];
+                ostid.oi_seq = name->name[LUSTRE_RES_ID_OID_OFF];
+                fid_ostid_unpack(fid, &ostid, 0);
+        } else {
+                fid->f_seq = name->name[LUSTRE_RES_ID_SEQ_OFF];
+                fid->f_oid = name->name[LUSTRE_RES_ID_OID_OFF];
+                fid->f_ver = name->name[LUSTRE_RES_ID_VER_OFF];
+        }
 }
 
 static inline void filter_oti2info(struct filter_thread_info *info,

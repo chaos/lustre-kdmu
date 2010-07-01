@@ -390,7 +390,7 @@ int filter_commitrw(int cmd, struct obd_export *exp,
                 if (oa && ns && ns->ns_lvbo && ns->ns_lvbo->lvbo_update) {
                          struct ldlm_resource *rs = NULL;
 
-                        lu_idif_resid(&info->fti_fid, &info->fti_resid);
+                        ofd_build_resid(&info->fti_fid, &info->fti_resid);
                         rs = ldlm_resource_get(ns, NULL, &info->fti_resid,
                                                LDLM_EXTENT, 0);
                         if (rs != NULL) {

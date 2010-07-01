@@ -657,7 +657,7 @@ int filter_setattr(struct obd_export *exp,
         filter_oti2info(info, oti);
 
         fid_ostid_unpack(&info->fti_fid, &oinfo->oi_oa->o_oi, 0);
-        lu_idif_resid(&info->fti_fid, &info->fti_resid);
+        ofd_build_resid(&info->fti_fid, &info->fti_resid);
 
         rc = filter_auth_capa(ofd, &info->fti_fid, oa->o_seq,
                               oinfo_capa(oinfo), CAPA_OPC_META_WRITE);
@@ -747,7 +747,7 @@ static int filter_punch(struct obd_export *exp, struct obd_info *oinfo,
         filter_oti2info(info, oti);
 
         fid_ostid_unpack(&info->fti_fid, &oinfo->oi_oa->o_oi, 0);
-        lu_idif_resid(&info->fti_fid, &info->fti_resid);
+        ofd_build_resid(&info->fti_fid, &info->fti_resid);
 
         CDEBUG(D_INODE, "calling punch for object "LPU64", valid = "LPX64
                ", start = "LPD64", end = "LPD64"\n", oinfo->oi_oa->o_id,
@@ -823,7 +823,7 @@ static int filter_destroy_by_fid(const struct lu_env *env,
 
         /* Tell the clients that the object is gone now and that they should
          * throw away any cached pages. */
-        lu_idif_resid(fid, &info->fti_resid);
+        ofd_build_resid(fid, &info->fti_resid);
         rc = ldlm_cli_enqueue_local(ofd->ofd_namespace, &info->fti_resid,
                                     LDLM_EXTENT, &policy, LCK_PW, &flags,
                                     ldlm_blocking_ast, ldlm_completion_ast,
