@@ -247,7 +247,7 @@ init_test_env() {
             f) CONFIG=$OPTARG;;
             r) REFORMAT=--reformat;;
             v) VERBOSE=true;;
-            w) WRITECONF=writeconf;;
+            w) WRITECONF="-o writeconf";;
             \?) usage;;
         esac
     done
@@ -631,7 +631,7 @@ start() {
     fi
 
     do_facet ${facet} mkdir -p ${MOUNT%/*}/${facet}
-    mount_facet ${facet}
+    mount_facet ${facet} $WRITECONF
     RC=$?
     return $RC
 }
@@ -2032,6 +2032,10 @@ formatall() {
             add ost$num $OST_MKFS_OPTS $OSTFSTYPE_OPT --reformat `ostdevname $num` > /dev/null || exit 10
         fi
     done
+
+    # We always need to writeconf the first time we start up after format.
+    # This is used in setupall
+    WRITECONF="-o writeconf"
 }
 
 mount_client() {
@@ -2079,25 +2083,6 @@ remount_client()
         zconf_mount `hostname` $1 || error "mount failed"
 }
 
-writeconf_facet () {
-    local facet=$1
-    local dev=$2
-
-    do_facet $facet "$TUNEFS --writeconf $dev"
-}
-
-writeconf_all () {
-    for num in `seq $MDSCOUNT`; do
-        DEVNAME=$(mdsdevname $num)
-        writeconf_facet mds$num $DEVNAME
-    done
-
-    for num in `seq $OSTCOUNT`; do
-        DEVNAME=$(ostdevname $num)
-        writeconf_facet ost$num $DEVNAME
-    done
-}
-
 setupall() {
     nfs_client_mode && return
 
@@ -2108,8 +2093,6 @@ setupall() {
 
     if [ -z "$CLIENTONLY" ]; then
         echo Setup mgs, mdt, osts
-        echo $WRITECONF | grep -q "writeconf" && \
-            writeconf_all
         if ! combined_mgs_mds ; then
             start mgs $MGSDEV $mgs_MOUNT_OPTS
         fi
@@ -2136,13 +2119,15 @@ setupall() {
 
             # We started ost$num, now we should set ost${num}failover variable properly.
             # Set ost${num}failover_HOST if it is not set (the default failnode).
-            varname=ost${num}failover_HOST
+            local varname=ost${num}failover_HOST
             if [ -z "${!varname}" ]; then
                 eval ost${num}failover_HOST=$(facet_host ost${num})
             fi
-
         done
     fi
+
+    # don't writeconf next time we start
+    WRITECONF=""
 
     init_gss
 

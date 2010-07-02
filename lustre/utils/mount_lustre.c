@@ -715,7 +715,7 @@ int main(int argc, char *const argv[])
                                 " (%s)\n", usource);
                 if (errno == ENXIO)
                         fprintf(stderr, "The target service failed to start "
-                                "(bad config log?) (%s).  "
+                                "(needs -o writeconf?  bad config log?) (%s)."
                                 "See /var/log/messages.\n", usource);
                 if (errno == EIO)
                         fprintf(stderr, "Is the MGS running?\n");
