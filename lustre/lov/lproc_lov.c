@@ -66,7 +66,7 @@ static int lov_wr_stripesize(libcfs_file_t *file, const char *buffer,
         int   flag = 0;
         int rc;
 
-        LIBCFS_PARAM_GET_DATA(dev, data, NULL);
+        LIBCFS_PARAM_GET_DATA(dev, data, &flag);
         LASSERT(dev != NULL);
         desc = &dev->u.lov.desc;
         rc = lprocfs_write_u64_helper(buffer, count, &val, flag);
@@ -101,7 +101,7 @@ static int lov_wr_stripeoffset(libcfs_file_t *file, const char *buffer,
         int flag = 0;
         int rc;
 
-        LIBCFS_PARAM_GET_DATA(dev, data, NULL);
+        LIBCFS_PARAM_GET_DATA(dev, data, &flag);
         LASSERT(dev != NULL);
         desc = &dev->u.lov.desc;
         rc = lprocfs_write_u64_helper(buffer, count, &val, flag);
