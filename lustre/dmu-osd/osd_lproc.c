@@ -1,1 +1,1 @@
-../osd/osd_lproc.c
+../osd-ldiskfs/osd_lproc.c
