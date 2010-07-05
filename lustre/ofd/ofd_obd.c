@@ -618,7 +618,7 @@ static int filter_statfs(struct obd_device *obd,
 
                 if (obd_fail_val == -1 ||
                     index == obd_fail_val)
-                        osfs->os_bfree = osfs->os_bavail = 2;
+                        osfs->os_bfree = osfs->os_bavail = 1;
                 else if (obd_fail_loc & OBD_FAIL_ONCE)
                         obd_fail_loc &= ~OBD_FAILED; /* reset flag */
         }
