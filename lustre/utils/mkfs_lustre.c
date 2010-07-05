@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -145,6 +145,7 @@ void usage(FILE *out)
                 */
                 "\t\t--comment=<user comment>: arbitrary user string (%d bytes)\n"
                 "\t\t--mountfsoptions=<opts> : permanent mount options\n"
+                "\t\t--network=<net>[,<...>] : network(s) to restrict this ost/mdt to\n"
 #ifndef TUNEFS
                 "\t\t--backfstype=<fstype> : backing fs type (zfs, ext3, ldiskfs)\n"
                 "\t\t--device-size=#N(KB) : device size for loop devices\n"
@@ -537,33 +538,28 @@ static int is_e2fsprogs_feature_supp(const char *feature)
         return ret;
 }
 
-static void disp_old_kernel_msg(char *feature)
-{
-       fprintf(stderr, "WARNING: ldiskfs filesystem does not support \"%s\" "
-               "feature.\n\n", feature);
-}
-
 static void enable_default_backfs_features(struct mkfs_opts *mop)
 {
         struct utsname uts;
-        int maj_high, maj_low, min;
         int ret;
 
-        if (IS_MDT(&mop->mo_ldd))
-                strscat(mop->mo_mkfsopts, " -O dir_index,extents,dirdata",
-                                sizeof(mop->mo_mkfsopts));
-        else
+        if (IS_OST(&mop->mo_ldd))
                 strscat(mop->mo_mkfsopts, " -O dir_index,extents",
-                                sizeof(mop->mo_mkfsopts));
-
+                        sizeof(mop->mo_mkfsopts));
+        else if (IS_MDT(&mop->mo_ldd))
+                strscat(mop->mo_mkfsopts, " -O dir_index,dirdata",
+                        sizeof(mop->mo_mkfsopts));
+        else
+                strscat(mop->mo_mkfsopts, " -O dir_index",
+                        sizeof(mop->mo_mkfsopts));
 
         /* Upstream e2fsprogs called our uninit_groups feature uninit_bg,
          * check for both of them when testing e2fsprogs features. */
-        if (is_e2fsprogs_feature_supp("uninit_groups") == 0)
-                strscat(mop->mo_mkfsopts, ",uninit_groups",
-                        sizeof(mop->mo_mkfsopts));
-        else if (is_e2fsprogs_feature_supp("uninit_bg") == 0)
+        if (is_e2fsprogs_feature_supp("uninit_bg") == 0)
                 strscat(mop->mo_mkfsopts, ",uninit_bg",
+                        sizeof(mop->mo_mkfsopts));
+        else if (is_e2fsprogs_feature_supp("uninit_groups") == 0)
+                strscat(mop->mo_mkfsopts, ",uninit_groups",
                         sizeof(mop->mo_mkfsopts));
         else
                 disp_old_e2fsprogs_msg("uninit_bg", 1);
@@ -572,22 +568,14 @@ static void enable_default_backfs_features(struct mkfs_opts *mop)
         if (ret)
                 return;
 
-        sscanf(uts.release, "%d.%d.%d", &maj_high, &maj_low, &min);
-        printf("%d %d %d\n", maj_high, maj_low, min);
-
         /* Multiple mount protection is enabled only if failover node is
          * specified and if kernel version is higher than 2.6.9 */
         if (failover) {
-                if (KERNEL_VERSION(maj_high, maj_low, min) >=
-                    KERNEL_VERSION(2,6,9)) {
-                        if (is_e2fsprogs_feature_supp("mmp") == 0)
-                                strscat(mop->mo_mkfsopts, ",mmp",
-                                        sizeof(mop->mo_mkfsopts));
-                        else
-                                disp_old_e2fsprogs_msg("mmp", 1);
-                } else {
-                        disp_old_kernel_msg("mmp");
-                }
+                if (is_e2fsprogs_feature_supp("mmp") == 0)
+                        strscat(mop->mo_mkfsopts, ",mmp",
+                                sizeof(mop->mo_mkfsopts));
+                else
+                        disp_old_e2fsprogs_msg("mmp", 1);
         }
 }
 /* Build fs according to type */
@@ -1370,6 +1358,7 @@ int parse_opts(int argc, char *const argv[], struct mkfs_opts *mop,
                 {"verbose", 0, 0, 'v'},
                 {"writeconf", 0, 0, 'w'},
                 {"upgrade_to_18", 0, 0, 'U'},
+                {"network", 1, 0, 't'},
                 {0, 0, 0, 0}
         };
         char *optstring = "b:c:C:d:ef:Ghi:k:L:m:MnNo:Op:Pqru:vw";
@@ -1527,6 +1516,22 @@ int parse_opts(int argc, char *const argv[], struct mkfs_opts *mop,
                         break;
                 case 'r':
                         mop->mo_flags |= MO_FORCEFORMAT;
+                        break;
+                case 't':
+                        if (!IS_MDT(&mop->mo_ldd) && !IS_OST(&mop->mo_ldd)) {
+                                badopt(long_opt[longidx].name, "MDT,OST");
+                                return 1;
+                        }
+
+                        if (!optarg)
+                                return 1;
+
+                        rc = add_param(mop->mo_ldd.ldd_params,
+                                       PARAM_NETWORK, optarg);
+                        if (rc != 0)
+                                return rc;
+                        /* Must update the mgs logs */
+                        mop->mo_ldd.ldd_flags |= LDD_F_UPDATE;
                         break;
                 case 'u':
                         strscpy(mop->mo_ldd.ldd_userdata, optarg,

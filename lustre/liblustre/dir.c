@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2004, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -49,17 +49,6 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <sys/queue.h>
-
-#include <sysio.h>
-#ifdef HAVE_XTIO_H
-#include <xtio.h>
-#endif
-#include <fs.h>
-#include <mount.h>
-#include <inode.h>
-#ifdef HAVE_FILE_H
-#include <file.h>
-#endif
 
 #ifdef HAVE_LINUX_UNISTD_H
 #include <linux/unistd.h>
@@ -249,7 +238,7 @@ ssize_t llu_iop_filldirentries(struct inode *dir, _SYSIO_OFF_T *basep,
                                 char          *name;
                                 int            namelen;
                                 struct lu_fid  fid;
-                                ino_t          ino;
+                                __u64          ino;
 
                                 hash    = le64_to_cpu(ent->lde_hash);
                                 namelen = le16_to_cpu(ent->lde_namelen);

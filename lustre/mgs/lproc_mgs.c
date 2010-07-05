@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -196,7 +196,7 @@ static int mgs_live_seq_show(struct seq_file *seq, void *v)
         cfs_down(&fsdb->fsdb_sem);
 
         seq_printf(seq, "fsname: %s\n", fsdb->fsdb_name);
-        seq_printf(seq, "flags: %#x     gen: %d\n",
+        seq_printf(seq, "flags: %#lx     gen: %d\n",
                    fsdb->fsdb_flags, fsdb->fsdb_gen);
         for (i = 0; i < INDEX_MAP_SIZE * 8; i++)
                  if (cfs_test_bit(i, fsdb->fsdb_mdt_index_map))

@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2008, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -255,7 +255,7 @@ void cfs_fini_rwsem(cfs_rw_semaphore_t *s)
         (void)s;
 }
 
-#ifdef HAVE_LIBPTHREAD
+#ifdef HAVE_PTHREAD
 
 /*
  * Multi-threaded user space completion
@@ -356,7 +356,7 @@ void cfs_mt_atomic_sub(int b, cfs_mt_atomic_t *a)
         pthread_mutex_unlock(&atomic_guard_lock);
 }
 
-#endif /* HAVE_LIBPTHREAD */
+#endif /* HAVE_PTHREAD */
 
 
 /* !__KERNEL__ */

@@ -482,7 +482,7 @@ static int filter_set_info_async(struct obd_export *exp, __u32 keylen,
         /* setup llog imports */
         if (val != NULL) {
                 group = (int)(*(__u32 *)val);
-                LASSERT(group >= FILTER_GROUP_MDS0);
+                LASSERT(group >= FID_SEQ_OST_MDT0);
                 cfs_sema_init(&ofd->ofd_create_locks[group], 1);
                 cfs_spin_lock(&ofd->ofd_objid_lock);
                 if (group > ofd->ofd_max_group)
@@ -656,10 +656,10 @@ int filter_setattr(struct obd_export *exp,
         info->fti_no_need_trans = 0;
         filter_oti2info(info, oti);
 
-        lu_idif_build(&info->fti_fid, oinfo->oi_oa->o_id, oinfo->oi_oa->o_gr);
-        lu_idif_resid(&info->fti_fid, &info->fti_resid);
+        fid_ostid_unpack(&info->fti_fid, &oinfo->oi_oa->o_oi, 0);
+        ofd_build_resid(&info->fti_fid, &info->fti_resid);
 
-        rc = filter_auth_capa(ofd, &info->fti_fid, oa->o_gr,
+        rc = filter_auth_capa(ofd, &info->fti_fid, oa->o_seq,
                               oinfo_capa(oinfo), CAPA_OPC_META_WRITE);
         if (rc)
                 GOTO(out, rc);
@@ -672,8 +672,8 @@ int filter_setattr(struct obd_export *exp,
 
                 if (oinfo->oi_oa->o_valid & OBD_MD_FLFID)
                         snprintf(mdsinum, sizeof(mdsinum) - 1,
-                                 " of inode "LPU64"/%u", oinfo->oi_oa->o_fid,
-                                 oinfo->oi_oa->o_generation);
+                                 " of inode "LPU64"/%u", oinfo->oi_oa->o_parent_seq,
+                                 oinfo->oi_oa->o_parent_oid);
                 else
                         mdsinum[0] = '\0';
 
@@ -746,15 +746,15 @@ static int filter_punch(struct obd_export *exp, struct obd_info *oinfo,
         info->fti_no_need_trans = 0;
         filter_oti2info(info, oti);
 
-        lu_idif_build(&info->fti_fid, oinfo->oi_oa->o_id, oinfo->oi_oa->o_gr);
-        lu_idif_resid(&info->fti_fid, &info->fti_resid);
+        fid_ostid_unpack(&info->fti_fid, &oinfo->oi_oa->o_oi, 0);
+        ofd_build_resid(&info->fti_fid, &info->fti_resid);
 
         CDEBUG(D_INODE, "calling punch for object "LPU64", valid = "LPX64
                ", start = "LPD64", end = "LPD64"\n", oinfo->oi_oa->o_id,
                oinfo->oi_oa->o_valid, oinfo->oi_policy.l_extent.start,
                oinfo->oi_policy.l_extent.end);
 
-        rc = filter_auth_capa(ofd, &info->fti_fid, oinfo->oi_oa->o_gr,
+        rc = filter_auth_capa(ofd, &info->fti_fid, oinfo->oi_oa->o_seq,
                               oinfo_capa(oinfo), CAPA_OPC_OSS_TRUNC);
         if (rc)
                 GOTO(out_env, rc);
@@ -823,7 +823,7 @@ static int filter_destroy_by_fid(const struct lu_env *env,
 
         /* Tell the clients that the object is gone now and that they should
          * throw away any cached pages. */
-        lu_idif_resid(fid, &info->fti_resid);
+        ofd_build_resid(fid, &info->fti_resid);
         rc = ldlm_cli_enqueue_local(ofd->ofd_namespace, &info->fti_resid,
                                     LDLM_EXTENT, &policy, LCK_PW, &flags,
                                     ldlm_blocking_ast, ldlm_completion_ast,
@@ -866,9 +866,9 @@ int filter_destroy(struct obd_export *exp,
         filter_oti2info(info, oti);
 
         if (!(oa->o_valid & OBD_MD_FLGROUP))
-                oa->o_gr = 0;
+                oa->o_seq = 0;
 
-        lu_idif_build(&info->fti_fid, oa->o_id, oa->o_gr);
+        fid_ostid_unpack(&info->fti_fid, &oa->o_oi, 0);
         rc = filter_destroy_by_fid(env, ofd, &info->fti_fid);
         if (rc == -ENOENT) {
                 CDEBUG(D_INODE, "destroying non-existent object "LPU64"\n",
@@ -878,7 +878,7 @@ int filter_destroy(struct obd_export *exp,
                         struct llog_ctxt *ctxt;
                         struct obd_llog_group *olg;
                         fcc = &oa->o_lcookie;
-                        olg = filter_find_olg(filter_obd(ofd), oa->o_gr);
+                        olg = filter_find_olg(filter_obd(ofd), oa->o_seq);
                         if (IS_ERR(olg))
                                 GOTO(out, rc = PTR_ERR(olg));
                         llog_group_set_export(olg, exp);
@@ -919,7 +919,7 @@ static int filter_orphans_destroy(const struct lu_env *env,
         int                        skip_orphan;
         int                        rc = 0;
         obd_id                     mds_id = oa->o_id;
-        obd_gr                     gr = oa->o_gr;
+        obd_seq                    gr = oa->o_seq;
         ENTRY;
 
         info->fti_no_need_trans = 1;
@@ -933,7 +933,7 @@ static int filter_orphans_destroy(const struct lu_env *env,
               filter_obd(ofd)->obd_name, mds_id + 1, last);
 
         for (id = last; id > mds_id; id--) {
-                lu_idif_build(&info->fti_fid, id, gr);
+                fid_ostid_unpack(&info->fti_fid, &oa->o_oi, 0);
                 rc = filter_destroy_by_fid(env, ofd, &info->fti_fid);
                 if (rc && rc != -ENOENT) /* this is pretty fatal... */
                         CEMERG("error destroying precreated id "LPU64": %d\n",
@@ -967,7 +967,7 @@ static int filter_create(struct obd_export *exp,
         struct lu_env *env = oti->oti_thread->t_env;
         struct filter_thread_info *info;
         int rc = 0, diff;
-        obd_gr group = oa->o_gr;
+        obd_seq group = oa->o_seq;
         ENTRY;
 
         rc = lu_env_refill(env);
@@ -978,10 +978,10 @@ static int filter_create(struct obd_export *exp,
         filter_oti2info(info, oti);
 
         LASSERT(ea == NULL);
-        LASSERT(group >= FILTER_GROUP_MDS0);
+        LASSERT(group >= FID_SEQ_OST_MDT0);
         LASSERT(oa->o_valid & OBD_MD_FLGROUP);
 
-        CDEBUG(D_INFO, "filter_create(oa->o_gr="LPU64",oa->o_id="LPU64")\n",
+        CDEBUG(D_INFO, "filter_create(oa->o_seq="LPU64",oa->o_id="LPU64")\n",
                group, oa->o_id);
 
         if ((oa->o_valid & OBD_MD_FLFLAGS) &&
@@ -1032,7 +1032,7 @@ static int filter_create(struct obd_export *exp,
                         GOTO(out, rc = 0);
                 }
                 /* only precreate if group == 0 and o_id is specfied */
-                if (group < FILTER_GROUP_MDS0 || oa->o_id == 0) {
+                if (group < FID_SEQ_OST_MDT0 || oa->o_id == 0) {
                         LBUG();
                         diff = 1; /* shouldn't we create this right now? */
                 } else {
@@ -1061,7 +1061,7 @@ static int filter_create(struct obd_export *exp,
                 } else
                         CERROR("unable to precreate: %d\n", rc);
 
-                LASSERT(oa->o_gr == group);
+                LASSERT(oa->o_seq == group);
                 oa->o_valid = OBD_MD_FLID | OBD_MD_FLGROUP;
         }
 
@@ -1085,8 +1085,8 @@ int filter_getattr(struct obd_export *exp, struct obd_info *oinfo)
                 RETURN(rc);
         info = filter_info_init(&env, exp);
 
-        lu_idif_build(&info->fti_fid, oinfo->oi_oa->o_id, oinfo->oi_oa->o_gr);
-        rc = filter_auth_capa(ofd, &info->fti_fid, oinfo->oi_oa->o_gr,
+        fid_ostid_unpack(&info->fti_fid, &oinfo->oi_oa->o_oi, 0);
+        rc = filter_auth_capa(ofd, &info->fti_fid, oinfo->oi_oa->o_seq,
                               oinfo_capa(oinfo), CAPA_OPC_META_READ);
         if (rc)
                 GOTO(out, rc);

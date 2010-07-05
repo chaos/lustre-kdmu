@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2002, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -75,7 +75,7 @@
 #define MAX_STRING_SIZE 128
 #define DEVICES_LIST "/proc/fs/lustre/devices"
 
-#if HAVE_LIBPTHREAD
+#if HAVE_PTHREAD
 #include <sys/ipc.h>
 #include <sys/shm.h>
 #include <pthread.h>
@@ -207,7 +207,7 @@ char *obdo_print(struct obdo *obd)
                 "\nctime: "LPU64"\nsize: "LPU64"\nblocks: "LPU64
                 "\nblksize: %u\nmode: %o\nuid: %d\ngid: %d\nflags: %x\n"
                 "misc: %x\nnlink: %d,\nvalid "LPX64"\n",
-                obd->o_id, obd->o_gr, obd->o_atime, obd->o_mtime, obd->o_ctime,
+                obd->o_id, obd->o_seq, obd->o_atime, obd->o_mtime, obd->o_ctime,
                 obd->o_size, obd->o_blocks, obd->o_blksize, obd->o_mode,
                 obd->o_uid, obd->o_gid, obd->o_flags, obd->o_misc,
                 obd->o_nlink, obd->o_valid);
@@ -1089,9 +1089,9 @@ int jt_obd_create(int argc, char **argv)
                         return CMD_HELP;
         }
 
-        if (argc < 5)
+        if (argc < 5) {
                 reset_lsmb (&lsm_buffer);       /* will set default */
-        else {
+        } else {
                 rc = parse_lsm (&lsm_buffer, argv[4]);
                 if (rc != 0) {
                         fprintf(stderr, "error: %s: invalid lsm '%s'\n",

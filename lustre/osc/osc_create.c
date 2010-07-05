@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2003, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -95,7 +95,7 @@ static int osc_interpret_create(const struct lu_env *env,
         switch (rc) {
         case 0: {
                 if (body) {
-                        int diff = body->oa.o_id - oscc->oscc_last_id;
+                        int diff =ostid_id(&body->oa.o_oi)- oscc->oscc_last_id;
 
                         /* oscc_internal_create() stores the original value of
                          * grow_count in rq_async_args.space[0].
@@ -117,7 +117,7 @@ static int osc_interpret_create(const struct lu_env *env,
                                  * next time if needed */
                                 oscc->oscc_flags &= ~OSCC_FLAG_LOW;
                         }
-                        oscc->oscc_last_id = body->oa.o_id;
+                        oscc->oscc_last_id = ostid_id(&body->oa.o_oi);
                 }
                 cfs_spin_unlock(&oscc->oscc_lock);
                 break;
@@ -196,8 +196,8 @@ static int oscc_internal_create(struct osc_creator *oscc)
 
         LASSERT_SPIN_LOCKED(&oscc->oscc_lock);
 
-        if ((oscc->oscc_flags & OSCC_FLAG_RECOVERING) ||
-            (oscc->oscc_flags & OSCC_FLAG_DEGRADED)) {
+        /* Do not check for a degraded OST here - bug21563/bug18539 */
+        if (oscc->oscc_flags & OSCC_FLAG_RECOVERING) {
                 cfs_spin_unlock(&oscc->oscc_lock);
                 RETURN(0);
         }
@@ -238,9 +238,18 @@ static int oscc_internal_create(struct osc_creator *oscc)
         body = req_capsule_client_get(&request->rq_pill, &RMF_OST_BODY);
 
         cfs_spin_lock(&oscc->oscc_lock);
-        body->oa.o_id = oscc->oscc_last_id + oscc->oscc_grow_count;
-        body->oa.o_gr = oscc->oscc_oa.o_gr;
-        LASSERT_MDS_GROUP(body->oa.o_gr);
+
+        if (likely(fid_seq_is_mdt(oscc->oscc_oa.o_seq))) {
+                body->oa.o_oi.oi_seq = oscc->oscc_oa.o_seq;
+                body->oa.o_oi.oi_id  = oscc->oscc_last_id +
+                                       oscc->oscc_grow_count;
+        } else {
+                /*Just warning here currently, since not sure how fid-on-ost
+                 *will be implemented here */
+                CWARN("o_seq: "LPU64" is not indicate any MDTs.\n",
+                       oscc->oscc_oa.o_seq);
+        }
+
         body->oa.o_valid |= OBD_MD_FLID | OBD_MD_FLGROUP;
         request->rq_async_args.space[0] = oscc->oscc_grow_count;
         cfs_spin_unlock(&oscc->oscc_lock);
@@ -352,8 +361,8 @@ int osc_precreate(struct obd_export *exp)
                 RETURN(1000);
         }
 
-        if (oscc->oscc_flags & OSCC_FLAG_RECOVERING ||
-            oscc->oscc_flags & OSCC_FLAG_DEGRADED) {
+        if ((oscc->oscc_flags & OSCC_FLAG_RECOVERING) ||
+            (oscc->oscc_flags & OSCC_FLAG_DEGRADED)) {
                 cfs_spin_unlock(&oscc->oscc_lock);
                 RETURN(2);
         }
@@ -363,8 +372,10 @@ int osc_precreate(struct obd_export *exp)
                 RETURN(0);
         }
 
-        if ((oscc->oscc_flags & OSCC_FLAG_SYNC_IN_PROGRESS) ||
-            (oscc->oscc_flags & OSCC_FLAG_CREATING)) {
+        /* Do not check for OSCC_FLAG_CREATING flag here, let
+         * osc_precreate() call oscc_internal_create() and
+         * adjust oscc_grow_count bug21563 */
+        if (oscc->oscc_flags & OSCC_FLAG_SYNC_IN_PROGRESS) {
                 cfs_spin_unlock(&oscc->oscc_lock);
                 RETURN(1);
         }
@@ -450,7 +461,7 @@ int osc_create_async(struct obd_export *exp, struct obd_info *oinfo,
         struct obdo *oa = oinfo->oi_oa;
         ENTRY;
 
-        if ((oa->o_valid & OBD_MD_FLGROUP) && !filter_group_is_mds(oa->o_gr)) {
+        if ((oa->o_valid & OBD_MD_FLGROUP) && !fid_seq_is_mdt(oa->o_seq)) {
                 rc = osc_real_create(exp, oinfo->oi_oa, ea, oti);
                 rc = oinfo->oi_cb_up(oinfo, rc);
                 RETURN(rc);
@@ -524,7 +535,7 @@ int osc_create(struct obd_export *exp, struct obdo *oa,
                 RETURN(osc_real_create(exp, oa, ea, oti));
         }
 
-        if (!filter_group_is_mds(oa->o_gr))
+        if (!fid_seq_is_mdt(oa->o_seq))
                 RETURN(osc_real_create(exp, oa, ea, oti));
 
         /* this is the special case where create removes orphans */
@@ -633,6 +644,18 @@ int osc_create(struct obd_export *exp, struct obdo *oa,
 
                 // Should we report -EIO error ?
                 if (oscc->oscc_flags & OSCC_FLAG_EXITING) {
+                        cfs_spin_unlock(&oscc->oscc_lock);
+                        break;
+                }
+
+                /**
+                 * If this is DELORPHAN process, no need create object here,
+                 * otherwise this will create a gap of object id, and MDS
+                 * might create some orphan log (mds_lov_update_objids), then
+                 * remove objects wrongly on OST. Bug 21379.
+                 */
+                if (oa->o_valid & OBD_MD_FLFLAGS &&
+                        oa->o_flags == OBD_FL_DELORPHAN) {
                         cfs_spin_unlock(&oscc->oscc_lock);
                         break;
                 }
