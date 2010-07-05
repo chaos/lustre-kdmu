@@ -167,9 +167,9 @@ init_test_env() {
     if ! echo $PATH | grep -q $LUSTRE/tests/mpi; then
         export PATH=$PATH:$LUSTRE/tests/mpi
     fi
-    export LCTL=${LCTL:-"$LUSTRE/utils/lctl"}
+    export LCTL=${LCTL:-"$LUSTRE/utils/pthread/lctl"}
     [ ! -f "$LCTL" ] && export LCTL=$(which lctl)
-    export LFS=${LFS:-"$LUSTRE/utils/lfs"}
+    export LFS=${LFS:-"$LUSTRE/utils/pthread/lfs"}
     [ ! -f "$LFS" ] && export LFS=$(which lfs)
     export L_GETIDENTITY=${L_GETIDENTITY:-"$LUSTRE/utils/l_getidentity"}
     if [ ! -f "$L_GETIDENTITY" ]; then
