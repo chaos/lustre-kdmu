@@ -228,8 +228,10 @@ struct brw_page {
 
 struct ost_server_data;
 
+#define OBT_MAGIC       0xBDDECEAE
 /* hold common fields for "target" device */
 struct obd_device_target {
+        __u32                     obt_magic;
         struct super_block       *obt_sb;
         /** last_rcvd file */
         struct file              *obt_rcvd_filp;
@@ -626,6 +628,9 @@ struct lov_qos_rr {
         struct ost_pool     lqr_pool;        /* round-robin optimized list */
         unsigned long       lqr_dirty:1;     /* recalc round-robin list */
 };
+
+/* allow statfs data caching for 1 second */
+#define OBD_STATFS_CACHE_SECONDS 1
 
 struct lov_statfs_data {
         struct obd_info   lsd_oi;
