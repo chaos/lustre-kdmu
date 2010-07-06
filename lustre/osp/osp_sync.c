@@ -638,7 +638,6 @@ static void osp_sync_process_committed(struct osp_device *d)
         cfs_list_for_each_entry_safe(req, tmp, &list, rq_exp_list) {
                
                 LASSERT(req->rq_svc_thread == (void *) OSP_JOB_MAGIC);
-                req->rq_svc_thread = NULL;
                 cfs_list_del_init(&req->rq_exp_list);
 
                 body = req_capsule_client_get(&req->rq_pill, &RMF_OST_BODY);
