@@ -533,7 +533,7 @@ static int osd_declare_write_commit(const struct lu_env *env, struct dt_object *
         const struct osd_device *osd = osd_obj2dev(osd_dt_obj(dt));
         struct inode            *inode = osd_dt_obj(dt)->oo_inode;
         struct osd_thandle      *oh;
-        int                      extents = 1, depth, i, newblocks, maxleaves, sp;
+        int                      extents = 1, depth, i, newblocks;
         int                      old;
 
         LASSERT(handle != NULL);
@@ -558,7 +558,8 @@ static int osd_declare_write_commit(const struct lu_env *env, struct dt_object *
                  * many concurrent threads may grow tree by the time
                  * our transaction starts. so, consider 2 is a min depth
                  */
-                depth == max(ext_depth(inode), 1) + 1;
+                depth = ext_depth(inode);
+                depth = max(depth, 1) + 1;
                 newblocks += depth;
                 oh->ot_credits++; /* inode */
                 oh->ot_credits += depth * 2 * extents;
