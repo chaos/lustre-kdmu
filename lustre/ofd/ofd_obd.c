@@ -277,9 +277,14 @@ static int filter_obd_disconnect(struct obd_export *exp)
 
         if (!(exp->exp_flags & OBD_OPT_FORCE))
                 filter_grant_sanity_check(filter_obd(ofd), __FUNCTION__);
-        filter_grant_discard(exp);
 
         rc = server_disconnect_export(exp);
+
+        /*
+         * discard grants once we're sure no more
+         * interaction with the client is possible
+         */
+        filter_grant_discard(exp);
 
         /* Do not erase record for recoverable client. */
         rc = lu_env_init(&env, LCT_DT_THREAD);
@@ -361,10 +366,9 @@ static int filter_destroy_export(struct obd_export *exp)
         if (!obd->obd_replayable)
                 dt_sync(&env, ofd->ofd_osd);
 
-        filter_grant_discard(exp);
         /* FIXME Check if cleanup is required here once complete
          * UOSS functionality is implemented. */
-         filter_fmd_cleanup(exp);
+        filter_fmd_cleanup(exp);
 
         if (exp->exp_connect_flags & OBD_CONNECT_GRANT_SHRINK) {
                 if (ofd->ofd_tot_granted_clients > 0)
