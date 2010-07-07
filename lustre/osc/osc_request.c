@@ -3543,7 +3543,7 @@ static int osc_statfs_interpret(const struct lu_env *env,
          * if their is less than 1 GB left.                             */
         used = min_t(__u64,(msfs->os_blocks - msfs->os_bfree) >> 10, 1 << 30);
         if (unlikely(((cli->cl_oscc.oscc_flags & OSCC_FLAG_NOSPC) == 0) &&
-                     ((msfs->os_ffree < 32) || (msfs->os_bavail < used))))
+                     ((msfs->os_ffree < 32) || (msfs->os_bavail <= used))))
                 cli->cl_oscc.oscc_flags |= OSCC_FLAG_NOSPC;
         else if (unlikely(((cli->cl_oscc.oscc_flags & OSCC_FLAG_NOSPC) != 0) &&
                 (msfs->os_ffree > 64) && (msfs->os_bavail > (used << 1))))

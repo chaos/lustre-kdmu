@@ -960,9 +960,11 @@ build_lustre() {
     fi
     cp lustre-ldiskfs*.tar.gz $TOPDIR/SOURCES
 
+    gen_lustre_version
+
     local ldiskfs_spec=lustre-ldiskfs.spec
     [ -f "$ldiskfs_spec" ] && sed \
-    -e "s^Release: .*$^Release: $(gen_lustre_version)^" \
+    -e "s^Release: .*$^Release: $LUSTRE_EXTRA_VERSION^" \
     < $ldiskfs_spec \
     > ../lustre-ldiskfs.spec
 

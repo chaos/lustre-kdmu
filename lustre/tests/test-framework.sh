@@ -1866,7 +1866,7 @@ zfs_create_vdev() {
             bsize=`stat -c \%b $vdev`
             let "asize = asize*bsize"
 
-            if let "asize*bsize >= size"; then
+            if let "asize >= size"; then
                 return
             fi
         fi
@@ -3115,7 +3115,9 @@ run_one() {
     umask 0022
 
     banner "test $testnum: $message"
+    df $DIR
     test_${testnum} || error "test_$testnum failed with $?"
+    df $DIR
     cd $SAVE_PWD
     reset_fail_loc
     check_grant ${testnum} || error "check_grant $testnum failed with $?"
