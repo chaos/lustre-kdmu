@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2002, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -69,6 +69,7 @@ void request_out_callback(lnet_event_t *ev)
                   "type %d, status %d", ev->type, ev->status);
 
         sptlrpc_request_out_callback(req);
+        req->rq_real_sent = cfs_time_current_sec();
 
         if (ev->type == LNET_EVENT_UNLINK || ev->status != 0) {
 
@@ -473,8 +474,6 @@ int ptlrpc_uuid_to_peer (struct obd_uuid *uuid,
         }
 
         CDEBUG(D_NET,"%s->%s\n", uuid->uuid, libcfs_id2str(*peer));
-        if (rc != 0)
-                CERROR("No NID found for %s\n", uuid->uuid);
         return rc;
 }
 

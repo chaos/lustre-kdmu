@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -38,14 +38,8 @@
 #define __LUSTRE_LU_OBJECT_H
 
 #include <stdarg.h>
-
 #include <libcfs/libcfs.h>
-
-/*
- * struct lu_fid
- */
 #include <lustre/lustre_idl.h>
-
 #include <lu_ref.h>
 
 struct seq_file;

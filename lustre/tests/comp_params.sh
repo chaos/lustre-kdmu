@@ -4,7 +4,7 @@
 # also used in sanity.sh (test_217). 
 
 LUSTRE=${LUSTRE:-$(cd $(dirname $0)/..; echo $PWD)}
-LCTL=${LCTL:-"$LUSTRE/utils/lctl"}
+LCTL=${LCTL:-"$LUSTRE/utils/pthread/lctl"}
 [ ! -f $LCTL ] && LCTL=`which lctl 2>/dev/null`
 difflog=$1
 

@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -894,6 +894,11 @@ static inline struct obd_uuid *obd_get_uuid(struct obd_export *exp)
         RETURN(uuid);
 }
 
+/** Create a new /a exp on device /a obd for the uuid /a cluuid
+ * @param exp New export handle
+ * @param d Connect data, supported flags are set, flags also understood
+ *    by obd are returned.
+ */
 static inline int obd_connect(const struct lu_env *env,
                               struct obd_export **exp,struct obd_device *obd,
                               struct obd_uuid *cluuid,
@@ -2171,7 +2176,7 @@ extern cfs_mem_cache_t *obdo_cachep;
 
 #define OBDO_ALLOC(ptr)                                                       \
 do {                                                                          \
-        OBD_SLAB_ALLOC_PTR((ptr), obdo_cachep);                               \
+        OBD_SLAB_ALLOC_PTR_GFP((ptr), obdo_cachep, CFS_ALLOC_IO);             \
 } while(0)
 
 #define OBDO_FREE(ptr)                                                        \

@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright 2008 Sun Microsystems, Inc.  All rights reserved.
+ * Copyright (c) 2008, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -354,7 +354,8 @@ void cl_inode_fini(struct inode *inode);
 int cl_local_size(struct inode *inode);
 
 __u16 ll_dirent_type_get(struct lu_dirent *ent);
-ino_t cl_fid_build_ino(const struct lu_fid *fid);
+__u64 cl_fid_build_ino(const struct lu_fid *fid);
+__u32 cl_fid_build_ino32(const struct lu_fid *fid);
 __u32 cl_fid_build_gen(const struct lu_fid *fid);
 
 #ifdef INVARIANT_CHECK

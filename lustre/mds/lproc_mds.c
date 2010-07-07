@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2002, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -108,7 +108,7 @@ static int lprocfs_mds_wr_evict_client(libcfs_file_t *file,
                 return -ENOMEM;
 
         if (obd->u.mds.mds_evict_ost_nids) {
-                rc = obd_set_info_async(mds->mds_osc_exp,
+                rc = obd_set_info_async(mds->mds_lov_exp,
                                         sizeof(KEY_EVICT_BY_NID),
                                         KEY_EVICT_BY_NID, strlen(tmpbuf + 4) + 1,
                                         tmpbuf + 4, set);

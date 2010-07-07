@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2003, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -95,7 +95,7 @@ static inline int lnet_md_unlinkable (lnet_libmd_t *md)
 #define LNET_MUTEX_DOWN(m) cfs_mutex_down(m)
 #define LNET_MUTEX_UP(m)   cfs_mutex_up(m)
 #else
-# ifndef HAVE_LIBPTHREAD
+# ifndef HAVE_PTHREAD
 #define LNET_SINGLE_THREADED_LOCK(l)            \
 do {                                            \
         LASSERT ((l) == 0);                     \
@@ -665,7 +665,7 @@ int lnet_acceptor_port(void);
 void lnet_router_checker(void);
 #endif
 
-#ifdef HAVE_LIBPTHREAD
+#ifdef HAVE_PTHREAD
 int lnet_count_acceptor_nis(void);
 int lnet_acceptor_port(void);
 #endif
