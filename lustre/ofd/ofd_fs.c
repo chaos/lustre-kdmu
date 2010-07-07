@@ -503,6 +503,7 @@ int filter_server_data_init(const struct lu_env *env,
         }
 
         fsd->lsd_mount_count++;
+        obd->u.obt.obt_mount_count = fsd->lsd_mount_count;
         ofd->ofd_subdir_count = fsd->lsd_subdir_count;
 
         if (fsd->lsd_feature_incompat & ~FILTER_INCOMPAT_SUPP) {

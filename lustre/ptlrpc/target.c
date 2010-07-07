@@ -288,6 +288,7 @@ int lut_init(const struct lu_env *env, struct lu_target *lut,
         lut->lut_bottom = dt;
         lut->lut_last_rcvd = NULL;
         obd->u.obt.obt_lut = lut;
+        obd->u.obt.obt_magic = OBT_MAGIC;
 
         cfs_spin_lock_init(&lut->lut_translock);
         cfs_spin_lock_init(&lut->lut_client_bitmap_lock);
