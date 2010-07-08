@@ -892,6 +892,8 @@ build_lustre() {
         CONFIGURE_FLAGS="--with-$pkg=$(ls -d $TOPDIR/usr/src/$pkg-*/*) ${CONFIGURE_FLAGS}"
     done
 
+    # Disable kmem debugging by default
+    CONFIGURE_FLAGS="--disable-debug-kmem $CONFIGURE_FLAGS"
     # kDMU build requires --disable-liblustre --disable-quota (for now?)
     CONFIGURE_FLAGS="$CONFIGURE_FLAGS --disable-liblustre --disable-quota"
     # and it also needs to be told to build the DMU (for silly reasons)
