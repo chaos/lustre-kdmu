@@ -282,7 +282,7 @@ int lod_generate_and_set_lovea(const struct lu_env *env,
         lmm->lmm_magic = cpu_to_le32(magic);
         lmm->lmm_pattern = cpu_to_le32(LOV_PATTERN_RAID0);
         lmm->lmm_object_id = cpu_to_le64(fid_flatten(fid)); /* XXX: what? */
-        lmm->lmm_object_gr = 0; /* XXX: what? */
+        lmm->lmm_object_seq = LOV_OBJECT_GROUP_DEFAULT; /* XXX: what? */
         lmm->lmm_stripe_size = cpu_to_le32(mo->mbo_stripe_size);
         lmm->lmm_stripe_count = cpu_to_le32(mo->mbo_stripenr);
         if (magic == LOV_MAGIC_V1) {
@@ -295,14 +295,19 @@ int lod_generate_and_set_lovea(const struct lu_env *env,
 
         for (i = 0; i < mo->mbo_stripenr; i++) {
                 const struct lu_fid *fid;
+                struct ost_id        ostid = { 0 };
 
                 LASSERT(mo->mbo_stripe[i]);
                 fid = lu_object_fid(&mo->mbo_stripe[i]->do_lu);
 
-                objs[i].l_object_id  = cpu_to_le64(lu_idif_id(fid));
-                objs[i].l_object_gr  = cpu_to_le64(mdt_to_obd_objgrp(0));
+                rc = fid_ostid_pack(fid, &ostid);
+                LASSERT(rc == 0);
+                LASSERT(ostid.oi_seq == FID_SEQ_OST_MDT0);
+
+                objs[i].l_object_id  = cpu_to_le64(ostid.oi_id);
+                objs[i].l_object_seq = cpu_to_le64(ostid.oi_seq);
                 objs[i].l_ost_gen    = cpu_to_le32(1); /* XXX */
-                objs[i].l_ost_idx    = cpu_to_le32(lu_idif_gr(fid));
+                objs[i].l_ost_idx    = cpu_to_le32(fid_idif_ost_idx(fid));
         }
         
         rc = dt_xattr_set(env, next, &buf, XATTR_NAME_LOV, 0, th, BYPASS_CAPA);
@@ -375,6 +380,7 @@ int lod_parse_striping(const struct lu_env *env, struct lod_object *mo,
         struct lov_ost_data_v1 *objs;
         struct lu_device       *nd;
         struct lu_object       *o, *n;
+        struct ost_id           ostid;
         struct lu_fid           fid;
         __u32                   magic;
         int                     rc = 0, i, idx;
@@ -412,8 +418,11 @@ int lod_parse_striping(const struct lu_env *env, struct lod_object *mo,
 
         for (i = 0; i < mo->mbo_stripenr; i++) {
 
+                ostid.oi_id = le64_to_cpu(objs[i].l_object_id);
+                /* XXX: support for CMD? */
+                ostid.oi_seq = le64_to_cpu(objs[i].l_object_seq);
                 idx = le64_to_cpu(objs[i].l_ost_idx);
-                lu_idif_build(&fid, le64_to_cpu(objs[i].l_object_id), idx);
+                fid_ostid_unpack(&fid, &ostid, idx);
 
                 LASSERTF(md->lod_ost[idx], "idx %d\n", idx);
                 nd = &md->lod_ost[idx]->dd_lu_dev;

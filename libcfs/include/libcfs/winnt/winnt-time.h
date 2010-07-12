@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2008, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -262,14 +262,14 @@ static inline int cfs_time_beforeq_64(__u64 t1, __u64 t2)
 #else   /* !__KERNEL__ */
 
 #include <time.h>
-#ifdef HAVE_LIBPTHREAD
+#ifdef HAVE_PTHREAD
 #include <pthread.h>
 #else
 struct timespec {
     unsigned long tv_sec;
     unsigned long tv_nsec;
 };
-#endif /* HAVE_LIBPTHREAD */
+#endif /* HAVE_THREAD */
 
 #include "../user-time.h"
 

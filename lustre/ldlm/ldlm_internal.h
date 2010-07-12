@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2003, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -229,7 +229,7 @@ typedef enum ldlm_policy_res ldlm_policy_res_t;
                 int rc;                                                     \
                                                                             \
                 rc = lprocfs_wr_uint(file, buffer, count, &tmp);            \
-                if (rc) {                                                   \
+                if (rc < 0) {                                               \
                         CERROR("Can't parse user input, rc = %d\n", rc);    \
                         return rc;                                          \
                 }                                                           \

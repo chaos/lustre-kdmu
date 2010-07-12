@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -248,6 +248,7 @@ static int mdd_lov_set_stripe_md(const struct lu_env *env,
         int rc;
         ENTRY;
 
+#if 0
         if (obd && ((lov_exp = obd->u.mds.mds_osc_exp) != NULL)) {
                 /* XXX: who'll be doing swabbing in the new model? *? */
                 LASSERT(S_ISDIR(mdd_object_type(obj)) || S_ISREG(mdd_object_type(obj)));
@@ -257,6 +258,7 @@ static int mdd_lov_set_stripe_md(const struct lu_env *env,
                         RETURN(rc);
                 obd_free_memmd(lov_exp, &lsm);
         }
+#endif
 
         rc = mdd_xattr_set_txn(env, obj, buf, XATTR_NAME_LOV, 0, handle);
 

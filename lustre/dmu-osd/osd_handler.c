@@ -445,7 +445,7 @@ static void osd_object_init0(struct osd_object *obj)
                 /*
                  * initialize object before marking it existing
                  */
-                mb();
+                cfs_mb();
                 obj->oo_dt.do_lu.lo_header->loh_attr |=
                         (LOHA_EXISTS | (obj->oo_mode & S_IFMT));
         } else {
@@ -3064,7 +3064,7 @@ void __exit osd_exit(void)
 }
 
 MODULE_AUTHOR("Sun Microsystems, Inc. <http://www.lustre.org/>");
-MODULE_DESCRIPTION("Lustre Object Storage Device over ZFS/DMU (no recovery) ("LUSTRE_ZFS_NAME")");
+MODULE_DESCRIPTION("Lustre Object Storage Device over ZFS/DMU ("LUSTRE_ZFS_NAME")");
 MODULE_LICENSE("GPL");
 
 cfs_module(osd, "0.0.2", osd_init, osd_exit);

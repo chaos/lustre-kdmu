@@ -42,6 +42,7 @@
 
 #define DEBUG_SUBSYSTEM S_FILTER
 
+#include <libcfs/libcfs.h>
 #include "ofd_internal.h"
 
 struct filter_object *filter_object_find(const struct lu_env *env,
@@ -126,7 +127,7 @@ void filter_object_put(const struct lu_env *env, struct filter_object *fo)
 }
 
 int filter_precreate_object(const struct lu_env *env, struct filter_device *ofd,
-                            obd_id id, obd_gr group)
+                            obd_id id, obd_seq group)
 {
         struct dt_object_format  dof;
         struct filter_object    *fo;
@@ -135,11 +136,14 @@ int filter_precreate_object(const struct lu_env *env, struct filter_device *ofd,
         struct thandle          *th;
         struct lu_buf            buf;
         struct lu_fid            fid;
+        struct ost_id            ostid;
         obd_id                   tmp;
         loff_t                   off;
         int                      rc;
 
-        lu_idif_build(&fid, id, group);
+        ostid.oi_id = id;
+        ostid.oi_seq = group;
+        fid_ostid_unpack(&fid, &ostid, 0);
 
         fo = filter_object_find(env, ofd, &fid);
         if (IS_ERR(fo))

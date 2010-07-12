@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright 2008 Sun Microsystems, Inc.  All rights reserved.
+ * Copyright (c) 2008, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -117,7 +117,7 @@ static int osc_object_print(const struct lu_env *env, void *cookie,
         (*p)(env, cookie, "id: "LPU64" gr: "LPU64" "
              "idx: %d gen: %d kms_valid: %u kms "LPU64" "
              "rc: %d force_sync: %d min_xid: "LPU64" ",
-             oinfo->loi_id, oinfo->loi_gr, oinfo->loi_ost_idx,
+             oinfo->loi_id, oinfo->loi_seq, oinfo->loi_ost_idx,
              oinfo->loi_ost_gen, oinfo->loi_kms_valid, oinfo->loi_kms,
              ar->ar_rc, ar->ar_force_sync, ar->ar_min_xid);
         osc_lvb_print(env, cookie, p, &oinfo->loi_lvb);

@@ -64,10 +64,15 @@
 static __u64 osp_object_assign_id(const struct lu_env *env,
                                   struct osp_device *d, struct osp_object *o)
 {
-        struct lu_fid   fid;
-        __u64           objid;
+        const struct lu_fid *f;
+        struct lu_fid        fid;
+        struct ost_id        ostid;
+        __u64                objid;
 
-        LASSERT(lu_idif_id(lu_object_fid(&o->opo_obj.do_lu)) == 0);
+        f = lu_object_fid(&o->opo_obj.do_lu);
+        LASSERT(f->f_oid == 0);
+        LASSERT(f->f_seq == 0);
+        LASSERT(f->f_ver == 0);
 
         LASSERT(o->opo_reserved);
         o->opo_reserved = 0;
@@ -75,8 +80,9 @@ static __u64 osp_object_assign_id(const struct lu_env *env,
         objid = osp_precreate_get_id(d);
 
         /* assign fid to anonymous object */
-        /* XXX: mds number to support CMD? */
-        lu_idif_build(&fid, objid, d->opd_index);
+        ostid.oi_id = objid;
+        ostid.oi_seq = FID_SEQ_OST_MDT0; /* XXX: mds number to support CMD? */
+        fid_ostid_unpack(&fid, &ostid, d->opd_index);
         lu_object_assign_fid(env, &o->opo_obj.do_lu, &fid);
 
         return objid;
@@ -174,14 +180,16 @@ static int osp_declare_object_create(const struct lu_env *env,
                                       struct dt_object_format *dof,
                                       struct thandle *th)
 {
-        struct osp_device  *d = lu2osp_dev(dt->do_lu.lo_dev);
-        struct osp_object  *o = dt2osp_obj(dt);
-        int                 rc = 0;
+        struct osp_device   *d = lu2osp_dev(dt->do_lu.lo_dev);
+        struct osp_object   *o = dt2osp_obj(dt);
+        const struct lu_fid *fid;
+        int                  rc = 0;
         ENTRY;
 
         LASSERT(d->opd_last_used_file);
+        fid = lu_object_fid(&dt->do_lu);
 
-        if (unlikely(lu_idif_id(lu_object_fid(&dt->do_lu)))) {
+        if (unlikely((fid_oid(fid) || fid_seq(fid)))) {
                 LASSERT(d->opd_recovery_completed == 0);
                 /* XXX: for compatibility use common for all OSPs file */
                 rc = dt_declare_record_write(env, d->opd_last_used_file, 8, 0, th);
@@ -238,7 +246,10 @@ static int osp_object_create(const struct lu_env *env,
         } else {
                 /* special case, id was assigned outside of transaction
                  * see comments in osp_declare_attr_set */
-                objid = lu_idif_id(lu_object_fid(&dt->do_lu));
+                struct ost_id   ostid = { 0 };
+                rc = fid_ostid_pack(lu_object_fid(&dt->do_lu), &ostid);
+                LASSERT(rc == 0);
+                objid = ostid_id(&ostid);
         }
 
         LASSERT(objid);

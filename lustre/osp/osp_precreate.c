@@ -261,7 +261,7 @@ static int osp_precreate_send(struct osp_device *d)
         body = req_capsule_client_get(&req->rq_pill, &RMF_OST_BODY);
         LASSERT(body);
         body->oa.o_id = d->opd_pre_last_created + grow;
-        body->oa.o_gr = mdt_to_obd_objgrp(0);
+        body->oa.o_seq = FID_SEQ_OST_MDT0; /* XXX: support for CMD? */
         body->oa.o_valid = OBD_MD_FLGROUP;
 
         ptlrpc_request_set_replen(req);
@@ -342,7 +342,7 @@ static int osp_precreate_connection_from_mds(struct osp_device *d)
         
         tmp = req_capsule_client_get(&req->rq_pill, &RMF_SETINFO_KEY);
         memcpy(tmp, KEY_MDS_CONN, sizeof(KEY_MDS_CONN));
-        group = mdt_to_obd_objgrp(0); /* XXX: what about CMD? */
+        group = FID_SEQ_OST_MDT0; /* XXX: what about CMD? */
         tmp = req_capsule_client_get(&req->rq_pill, &RMF_SETINFO_VAL);
         memcpy(tmp, &group, sizeof(group));
 
@@ -387,7 +387,7 @@ static int osp_precreate_cleanup_orphans(struct osp_device *d)
 
         body->oa.o_flags = OBD_FL_DELORPHAN;
         body->oa.o_valid = OBD_MD_FLFLAGS | OBD_MD_FLGROUP;
-        body->oa.o_gr = mdt_to_obd_objgrp(0); /* XXX: CMD support? */
+        body->oa.o_seq = FID_SEQ_OST_MDT0; /* XXX: CMD support? */
 
         /* remove from NEXT after used one */
         body->oa.o_id = d->opd_last_used_id + 1;
@@ -689,6 +689,7 @@ int osp_object_truncate(const struct lu_env *env, struct dt_object *dt, __u64 si
         struct obd_import      *imp;
         struct ost_body        *body;
         struct obdo            *oa = NULL;
+        struct ost_id           ostid = { 0 };
         int                     rc;
         ENTRY;
 
@@ -719,8 +720,10 @@ int osp_object_truncate(const struct lu_env *env, struct dt_object *dt, __u64 si
         if (oa == NULL)
                 GOTO(out, rc = -ENOMEM);
 
-        oa->o_id = lu_idif_id(fid);
-        oa->o_gr = 0; /* XXX: support for CMD? */
+        rc = fid_ostid_pack(fid, &ostid);
+        LASSERT(rc == 0);
+        oa->o_id = ostid.oi_id;
+        oa->o_seq = ostid.oi_seq;
         oa->o_size = size;
         oa->o_blocks = OBD_OBJECT_EOF;
         oa->o_valid = OBD_MD_FLSIZE | OBD_MD_FLBLOCKS |

@@ -343,7 +343,7 @@ static int lod_xattr_get(const struct lu_env *env, struct dt_object *dt,
                 rc = sizeof(struct lov_mds_md);
                 if (buf->lb_len >= sizeof(struct lov_mds_md)) {
                         lmm->lmm_magic = LOV_MAGIC_V1;
-                        lmm->lmm_object_gr = LOV_OBJECT_GROUP_DEFAULT;
+                        lmm->lmm_object_seq = LOV_OBJECT_GROUP_DEFAULT;
                         lmm->lmm_pattern = desc->ld_pattern;
                         lmm->lmm_stripe_size = desc->ld_default_stripe_size;
                         lmm->lmm_stripe_count = desc->ld_default_stripe_count;
@@ -413,7 +413,6 @@ static int lod_xattr_set(const struct lu_env *env,
                          struct lustre_capa *capa)
 {
         struct dt_object   *next = dt_object_child(dt);
-        struct lod_device  *d = lu2lod_dev(dt->do_lu.lo_dev);
         struct lod_object  *l = lod_dt_obj(dt);
         __u32               attr;
         int                 rc;

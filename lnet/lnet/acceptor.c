@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -37,7 +37,7 @@
 #define DEBUG_SUBSYSTEM S_LNET
 #include <lnet/lib-lnet.h>
 
-#if defined(__KERNEL__) || defined(HAVE_LIBPTHREAD)
+#if defined(__KERNEL__) || defined(HAVE_PTHREAD)
 
 static int   accept_port    = 988;
 static int   accept_backlog = 127;
@@ -594,4 +594,4 @@ void
 lnet_acceptor_stop(void)
 {
 }
-#endif /* defined(__KERNEL__) || defined(HAVE_LIBPTHREAD) */
+#endif /* defined(__KERNEL__) || defined(HAVE_PTHREAD) */

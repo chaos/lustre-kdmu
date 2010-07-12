@@ -54,6 +54,8 @@
 #include <sys/dmu_objset.h>
 #include <sys/dsl_prop.h>
 
+#include <libcfs/libcfs.h>      /* XXX temp fix for compil. errors in
+                                   lustre_idl.h, bug 23267 */
 #include <lustre/lustre_idl.h>  /* OBD_OBJECT_EOF */
 #include <lustre/lustre_user.h> /* struct obd_statfs */
 

@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -113,6 +113,12 @@ void lu_object_put(const struct lu_env *env, struct lu_object *o)
                         -- site->ls_total;
                         kill_it = 1;
                 }
+        } else if (lu_object_is_dying(top)) {
+                /*
+                 * somebody may be waiting for this, currently only used
+                 * for cl_object, see cl_object_put_last().
+                 */
+                cfs_waitq_broadcast(&site->ls_marche_funebre);
         }
         cfs_write_unlock(&site->ls_guard);
         if (kill_it)

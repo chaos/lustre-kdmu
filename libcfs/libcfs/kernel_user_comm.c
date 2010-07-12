@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2009 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -165,7 +165,11 @@ int libcfs_kkuc_msg_put(cfs_file_t *filp, void *payload)
         }
 
 #ifdef __KERNEL__
-        rc = cfs_user_write(filp, (char *)payload, kuch->kuc_msglen, 0);
+        {
+                loff_t offset = 0;
+                rc = cfs_user_write(filp, (char *)payload, kuch->kuc_msglen, 
+                                    &offset);
+        }
 #endif
 
         if (rc < 0)

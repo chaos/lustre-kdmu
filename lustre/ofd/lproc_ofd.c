@@ -112,7 +112,7 @@ static int lprocfs_filter_rd_last_id(char *page, char **start, off_t off,
         if (obd == NULL)
                 return 0;
 
-        for (i = FILTER_GROUP_MDS0; i < filter->fo_group_count; i++) {
+        for (i = FID_SEQ_OST_MDT0; i < filter->fo_group_count; i++) {
                 rc = snprintf(page, count, LPU64"\n", filter_last_id(ofd, i));
                 if (rc < 0) {
                         retval = rc;

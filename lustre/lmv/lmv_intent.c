@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2004, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -54,8 +54,8 @@
 #include <liblustre.h>
 #endif
 
-#include <lustre/lustre_idl.h>
 #include <obd_support.h>
+#include <lustre/lustre_idl.h>
 #include <lustre_lib.h>
 #include <lustre_net.h>
 #include <lustre_dlm.h>

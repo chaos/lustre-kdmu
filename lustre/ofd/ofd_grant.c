@@ -149,10 +149,6 @@ void filter_grant_discard(struct obd_export *exp)
         struct filter_export_data *fed = &exp->exp_filter_data;
 
         cfs_mutex_down(&ofd->ofd_grant_sem);
-        cfs_spin_lock(&obd->obd_dev_lock);
-        cfs_list_del_init(&exp->exp_obd_chain);
-        cfs_spin_unlock(&obd->obd_dev_lock);
-
         LASSERTF(ofd->ofd_tot_granted >= fed->fed_grant,
                  "%s: tot_granted "LPU64" cli %s/%p fed_grant %ld\n",
                  obd->obd_name, ofd->ofd_tot_granted,

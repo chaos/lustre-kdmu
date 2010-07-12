@@ -227,6 +227,7 @@ int osp_sync_add(const struct lu_env *env, struct osp_object *o,
         struct llog_cookie  cookie;
         struct llog_ctxt    *ctxt;
         struct osp_txn_info *txn;
+        struct ost_id        ostid = { 0 };
         union {
                 struct llog_unlink_rec          unlink;
                 struct llog_setattr64_rec       setattr;
@@ -239,20 +240,23 @@ int osp_sync_add(const struct lu_env *env, struct osp_object *o,
          * but we can do this as a sanity check, for a while */
         LASSERT(th->th_dev == d->opd_storage);
 
+        rc = fid_ostid_pack(fid, &ostid);
+        LASSERT(rc == 0);
+
         switch (type) {
                 case MDS_UNLINK_REC:
                         u.unlink.lur_hdr.lrh_len = sizeof(u.unlink);
                         u.unlink.lur_hdr.lrh_type = MDS_UNLINK_REC;
-                        u.unlink.lur_oid = lu_idif_id(fid);
-                        u.unlink.lur_ogr = 0; /* XXX: support for CMD? */
+                        u.unlink.lur_oid  = ostid.oi_id;
+                        u.unlink.lur_oseq = ostid.oi_seq;
                         u.unlink.lur_count = 1;
                         break;
 
                 case MDS_SETATTR64_REC:
                         u.setattr.lsr_hdr.lrh_len = sizeof(u.setattr);
                         u.setattr.lsr_hdr.lrh_type = MDS_SETATTR64_REC;
-                        u.setattr.lsr_oid = lu_idif_id(fid);
-                        u.setattr.lsr_ogr = 0; /* XXX: support for CMD? */
+                        u.setattr.lsr_oid  = ostid.oi_id;
+                        u.setattr.lsr_oseq = ostid.oi_seq;
                         break;
 
                 default:
@@ -274,7 +278,7 @@ int osp_sync_add(const struct lu_env *env, struct osp_object *o,
         CDEBUG(D_OTHER, "%s: new record %lu:%lu:%lu/%lu: %d\n",
                 d->opd_obd->obd_name,
                 (unsigned long) cookie.lgc_lgl.lgl_oid,
-                (unsigned long) cookie.lgc_lgl.lgl_ogr,
+                (unsigned long) cookie.lgc_lgl.lgl_oseq,
                 (unsigned long) cookie.lgc_lgl.lgl_ogen,
                 (unsigned long) cookie.lgc_index, rc);
 
@@ -482,7 +486,7 @@ static int osp_sync_new_setattr_job(struct osp_device *d,
         body = req_capsule_client_get(&req->rq_pill, &RMF_OST_BODY);
         LASSERT(body);
         body->oa.o_id  = rec->lsr_oid;
-        body->oa.o_gr  = rec->lsr_ogr;
+        body->oa.o_seq = rec->lsr_oseq;
         body->oa.o_uid = rec->lsr_uid;
         body->oa.o_gid = rec->lsr_gid;
         body->oa.o_valid = OBD_MD_FLGROUP | OBD_MD_FLID |
@@ -510,8 +514,8 @@ static int osp_sync_new_unlink_job(struct osp_device *d,
 
         body = req_capsule_client_get(&req->rq_pill, &RMF_OST_BODY);
         LASSERT(body);
-        body->oa.o_id = rec->lur_oid;
-        body->oa.o_gr = rec->lur_ogr;
+        body->oa.o_id  = rec->lur_oid;
+        body->oa.o_seq = rec->lur_oseq;
         body->oa.o_valid = OBD_MD_FLGROUP | OBD_MD_FLID;
 
         rc = osp_sync_send_new_rpc(d, req);
@@ -840,7 +844,7 @@ static int osp_sync_llog_init(struct osp_device *d)
         
         CDEBUG(D_INFO, "%s: Init llog for %d - catid "LPX64"/"LPX64":%x\n",
                obd->obd_name, d->opd_index, catid.lci_logid.lgl_oid,
-               catid.lci_logid.lgl_ogr, catid.lci_logid.lgl_ogen);
+               catid.lci_logid.lgl_oseq, catid.lci_logid.lgl_ogen);
 
         osp_mds_ost_orig_logops = llog_osd_ops;
         osp_mds_ost_orig_logops.lop_setup = llog_obd_origin_setup;

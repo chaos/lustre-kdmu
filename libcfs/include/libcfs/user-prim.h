@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2008, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -145,7 +145,7 @@ static inline int cfs_psdev_deregister(cfs_psdev_t *foo)
 #define cfs_kernel_thread(l,m,n)        (LBUG(), l, 0)
 #define cfs_kthread_run(fn,d,fmt,...)   LBUG()
 
-#ifdef HAVE_LIBPTHREAD
+#ifdef HAVE_PTHREAD
 typedef int (*cfs_thread_t)(void *);
 int cfs_create_thread(cfs_thread_t func, void *arg);
 #else
