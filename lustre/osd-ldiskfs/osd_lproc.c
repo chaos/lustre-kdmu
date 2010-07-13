@@ -365,7 +365,7 @@ static int lprocfs_osd_rd_reserved(char *page, char **start, off_t off,
         return rc;
 }
 
-static int lprocfs_osd_wr_reserved(struct file *file, const char *buffer,
+static int lprocfs_osd_wr_reserved(libcfs_file_t *file, const char *buffer,
                                    unsigned long count, void *data)
 {
         struct osd_device *osd;

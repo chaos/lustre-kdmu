@@ -38,7 +38,7 @@
 
 #define FILTER_RECOVERY_TIMEOUT (obd_timeout * 5 * CFS_HZ / 2) /* *waves hands* */
 
-extern struct file_operations filter_per_export_stats_fops;
+extern libcfs_file_ops_t filter_per_export_stats_fops;
 
 /* Limit the returned fields marked valid to those that we actually might set */
 #define FILTER_VALID_FLAGS (LA_TYPE | LA_MODE | LA_SIZE | LA_BLOCKS | \
@@ -84,24 +84,10 @@ enum {
 //#define FILTER_MAX_CACHE_SIZE (32 * 1024 * 1024) /* was OBD_OBJECT_EOF */
 #define FILTER_MAX_CACHE_SIZE OBD_OBJECT_EOF
 
-#ifdef LPROCFS
 void filter_tally(struct obd_export *exp, struct page **pages, int nr_pages,
                   unsigned long *blocks, int blocks_per_page, int wr);
 int lproc_filter_attach_seqstat(struct obd_device *dev);
 void lprocfs_filter_init_vars(struct lprocfs_static_vars *lvars);
-#else
-static inline void filter_tally(struct obd_export *exp, struct page **pages,
-                                int nr_pages, unsigned long *blocks,
-                                int blocks_per_page, int wr) {}
-static inline int lproc_filter_attach_seqstat(struct obd_device *dev)
-{
-        return 0;
-}
-static inline void lprocfs_filter_init_vars(struct lprocfs_static_vars *lvars)
-{
-        memset(lvars, 0, sizeof(*lvars));
-}
-#endif
 
 /* Quota stuff */
 extern quota_interface_t *filter_quota_interface_ref;

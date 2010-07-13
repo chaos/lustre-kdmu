@@ -3041,7 +3041,6 @@ int __init osd_init(void)
         lprocfs_osd_init_vars(&lvars);
         return class_register_type(&osd_obd_device_ops, NULL, lvars.module_vars,
                                    LUSTRE_ZFS_NAME, &osd_device_type);
-        
 }
 
 #ifdef __KERNEL__

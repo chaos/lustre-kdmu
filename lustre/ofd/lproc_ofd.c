@@ -571,7 +571,7 @@ void lprocfs_filter_init_vars(struct lprocfs_static_vars *lvars)
     lvars->obd_vars     = lprocfs_filter_obd_vars;
 }
 
-static int filter_per_nid_stats_seq_show(struct seq_file *seq, void *v)
+static int filter_per_nid_stats_seq_show(libcfs_seq_file_t *seq, void *v)
 {
         nid_stat_t *tmp = LIBCFS_SEQ_PRIVATE(seq);
 
@@ -581,7 +581,7 @@ static int filter_per_nid_stats_seq_show(struct seq_file *seq, void *v)
         return 0;
 }
 
-static ssize_t filter_per_nid_stats_seq_write(struct file *file,
+static ssize_t filter_per_nid_stats_seq_write(libcfs_file_t *file,
                                               const char *buf, size_t len,
                                               loff_t *off)
 {

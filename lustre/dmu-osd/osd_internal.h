@@ -124,7 +124,6 @@ struct osd_device {
 
 int osd_statfs(const struct lu_env *env, struct dt_device *d, struct obd_statfs *osfs);
 
-#ifdef LPROCFS
 enum {
         LPROC_OSD_READ_BYTES = 0,
         LPROC_OSD_WRITE_BYTES = 1,
@@ -143,6 +142,5 @@ int osd_procfs_fini(struct osd_device *osd);
 void osd_lprocfs_time_start(const struct lu_env *env);
 void osd_lprocfs_time_end(const struct lu_env *env,
                           struct osd_device *osd, int op);
-#endif
 
 #endif /* _OSD_INTERNAL_H */
