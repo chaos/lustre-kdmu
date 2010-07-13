@@ -1683,7 +1683,7 @@ int mdd_object_initialize(const struct lu_env *env, const struct lu_fid *pfid,
         /*
          * in case of replay we just set LOVEA provided by the client
          */
-        if (spec->no_create) {
+        if (spec->no_create || (spec->sp_cr_flags & MDS_OPEN_HAS_EA)) {
                 struct lu_buf buf;
                 buf.lb_buf = (void *) spec->u.sp_ea.eadata;
                 buf.lb_len = spec->u.sp_ea.eadatalen;
@@ -1838,7 +1838,8 @@ mdd_start_and_declare_create(const struct lu_env *env,
                                         name, S_ISDIR(attr->la_mode), handle);
         if (rc)
                 GOTO(cleanup, rc);
-        if (dof->dof_type == DFT_REGULAR && spec->no_create) {
+        if (dof->dof_type == DFT_REGULAR &&
+                        (spec->no_create || spec->sp_cr_flags & MDS_OPEN_HAS_EA)) {
                 buf.lb_buf = (void *) spec->u.sp_ea.eadata;
                 buf.lb_len = spec->u.sp_ea.eadatalen;
                 rc = mdo_declare_xattr_set(env, son, &buf, XATTR_NAME_LOV,0,handle);

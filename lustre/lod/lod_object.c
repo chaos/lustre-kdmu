@@ -727,7 +727,7 @@ int lod_declare_striped_object(const struct lu_env *env,
         if (OBD_FAIL_CHECK(OBD_FAIL_MDS_ALLOC_OBDO)) {
                 /* failed to create striping, let's reset
                  * config so that others don't get confused */
-                lod_object_free_striping(mo);
+                lod_object_free_striping(env, mo);
                 GOTO(out, rc = -ENOMEM);
         }
 
@@ -741,7 +741,7 @@ int lod_declare_striped_object(const struct lu_env *env,
         if (rc) {
                 /* failed to create striping, let's reset
                  * config so that others don't get confused */
-                lod_object_free_striping(mo);
+                lod_object_free_striping(env, mo);
                 GOTO(out, rc);
         }
 
@@ -1156,12 +1156,18 @@ static int lod_object_init(const struct lu_env *env, struct lu_object *o,
         RETURN(0);
 }
 
-void lod_object_free_striping(struct lod_object *o)
+void lod_object_free_striping(const struct lu_env *env, struct lod_object *o)
 {
         int i;
 
         if (o->mbo_stripe) {
                 LASSERT(o->mbo_stripes_allocated > 0);
+
+                for (i = 0; i < o->mbo_stripenr; i++) {
+                        if (o->mbo_stripe[i])
+                                lu_object_put(env, &o->mbo_stripe[i]->do_lu);
+                }
+
                 i = sizeof(struct dt_object *) * o->mbo_stripes_allocated;
                 OBD_FREE(o->mbo_stripe, i);
                 o->mbo_stripe = NULL;
@@ -1191,12 +1197,7 @@ static void lod_object_free(const struct lu_env *env, struct lu_object *o)
          * release all underlying object pinned
          */
 
-        for (i = 0; i < mo->mbo_stripenr; i++) {
-                if (mo->mbo_stripe[i])
-                        lu_object_put(env, &mo->mbo_stripe[i]->do_lu);
-        }
-
-        lod_object_free_striping(mo);
+        lod_object_free_striping(env, mo);
 
         lod_object_set_pool(mo, NULL);
 

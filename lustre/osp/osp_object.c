@@ -365,6 +365,7 @@ static void osp_object_release(const struct lu_env *env, struct lu_object *o)
 {
         struct osp_object *po = lu2osp_obj(o);
         struct osp_device *d  = lu2osp_dev(o->lo_dev);
+        ENTRY;
 
         /*
          * release reservation if object was declared but not created
@@ -378,24 +379,25 @@ static void osp_object_release(const struct lu_env *env, struct lu_object *o)
 
                 /* not needed in cache any more */
                 set_bit(LU_OBJECT_HEARD_BANSHEE, &o->lo_header->loh_flags);
-        } else {
-                /*
-                 * XXX: this is a small dirty hack to deal with objects
-                 * allocated with lu_object_anon() and not put into lu_site
-                 * we want to release such objects with lu_object_put():
-                 * we manipulate site's internals to keep is consistent
-                 * ls_guard is already taken by lu_object_put()
-                 */
-                if (fid_seq(lu_object_fid(o)) == 0
-                                && fid_oid(lu_object_fid(o)) == 0
-                                && fid_ver(lu_object_fid(o)) == 0) {
-                        struct lu_site *s = o->lo_dev->ld_site;
-                        LASSERT(s);
-                        CFS_INIT_HLIST_NODE(&o->lo_header->loh_hash);
-                        CFS_INIT_LIST_HEAD(&o->lo_header->loh_lru);
-                        s->ls_busy++;
-                        s->ls_total++;
-                }
+        }
+
+        /*
+         * XXX: this is a small dirty hack to deal with objects
+         * allocated with lu_object_anon() and not put into lu_site
+         * we want to release such objects with lu_object_put():
+         * we manipulate site's internals to keep is consistent
+         * ls_guard is already taken by lu_object_put()
+         */
+        CDEBUG(D_OTHER, "tweak "DFID"\n", PFID(lu_object_fid(o)));
+        if (fid_seq(lu_object_fid(o)) == 0
+                        && fid_oid(lu_object_fid(o)) == 0
+                        && fid_ver(lu_object_fid(o)) == 0) {
+                struct lu_site *s = o->lo_dev->ld_site;
+                LASSERT(s);
+                CFS_INIT_HLIST_NODE(&o->lo_header->loh_hash);
+                CFS_INIT_LIST_HEAD(&o->lo_header->loh_lru);
+                s->ls_busy++;
+                s->ls_total++;
         }
 }
 

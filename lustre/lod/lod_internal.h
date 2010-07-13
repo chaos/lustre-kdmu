@@ -233,7 +233,7 @@ int lod_declare_striped_object(const struct lu_env *env, struct dt_object *dt,
 int lod_striping_create(const struct lu_env *env, struct dt_object *dt,
                         struct lu_attr *attr, struct dt_object_format *dof,
                         struct thandle *th);
-void lod_object_free_striping(struct lod_object *o);
+void lod_object_free_striping(const struct lu_env *env, struct lod_object *o);
 
 #endif
 
