@@ -533,6 +533,7 @@ static inline int obd_setup(struct obd_device *obd, struct lustre_cfg *cfg)
                 rc = lu_env_init(&env, ldt->ldt_ctx_tags);
                 if (rc == 0) {
                         env.le_ses = &session_ctx;
+                        ldt->ldt_obd_type = obd->obd_type;
                         d = ldt->ldt_ops->ldto_device_alloc(&env, ldt, cfg);
                         lu_env_fini(&env);
                         if (!IS_ERR(d)) {

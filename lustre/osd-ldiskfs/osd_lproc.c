@@ -98,9 +98,8 @@ int osd_procfs_init(struct osd_device *osd, const char *name)
         ENTRY;
 
         type = ld->ld_type->ldt_obd_type;
-        CERROR("FIXME!\n");
-        if (type == NULL)
-                RETURN(0);
+        LASSERT(type);
+
         if (osd->od_proc_entry)
                 RETURN(0);
 
