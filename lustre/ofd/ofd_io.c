@@ -260,13 +260,17 @@ filter_commitrw_read(const struct lu_env *env, struct filter_device *ofd,
 
 static int
 filter_commitrw_write(const struct lu_env *env, struct filter_device *ofd,
-                      struct lu_fid *fid, struct lu_attr *la, int objcount,
+                      struct lu_fid *fid, struct lu_attr *la,
+                      struct filter_fid *ff, int objcount,
                       int niocount, struct niobuf_local *res, int old_rc)
 {
         struct filter_thread_info *info = filter_info(env);
         struct filter_object *fo;
-        struct thandle *th;
-        int rc = 0;
+        struct dt_object     *o;
+        struct lu_attr       *ln = &info->fti_attr2;
+        struct lu_buf         buf;
+        struct thandle       *th;
+        int                   rc = 0;
         ENTRY;
 
         LASSERT(objcount == 1);
@@ -278,39 +282,67 @@ filter_commitrw_write(const struct lu_env *env, struct filter_device *ofd,
         LASSERT(filter_object_exists(fo));
         if (old_rc)
                 GOTO(out, rc = old_rc);
+        o = filter_object_child(fo);
 
         /* XXX: need 1 here until support on client for async writes */
 #if 0
         info->fti_txn_param.tp_sync = 0;
 #endif
 
+        rc = dt_attr_get(env, o, ln, BYPASS_CAPA);
+        if (rc)
+                GOTO(out, rc = PTR_ERR(th));
+        LASSERT(ln->la_valid & LA_MODE);
+
         th = filter_trans_create(env, ofd);
         if (IS_ERR(th))
                 GOTO(out, rc = PTR_ERR(th));
 
-        rc = dt_declare_write_commit(env, filter_object_child(fo),
-                                     res, niocount, th);
-        LASSERT(rc == 0);
+        buf.lb_buf = NULL;
+
+        if (ln->la_mode & S_ISUID || ln->la_mode & S_ISGID) {
+                la->la_valid |= LA_MODE;
+                la->la_mode = ln->la_mode & ~(S_ISUID | S_ISGID);
+
+                buf.lb_len = sizeof(*ff);
+                buf.lb_buf = ff;
+
+                rc = dt_declare_xattr_set(env, o, buf.lb_len,
+                                          XATTR_NAME_FID, 0, th);
+                if (rc)
+                        GOTO(out_stop, rc);
+        }
+
+        rc = dt_declare_write_commit(env, o, res, niocount, th);
+        if (rc)
+                GOTO(out_stop, rc);
 
         if (la->la_valid) {
-                rc = dt_declare_attr_set(env, filter_object_child(fo), la, th);
-                LASSERT(rc == 0);
+                rc = dt_declare_attr_set(env, o, la, th);
+                if (rc)
+                        GOTO(out_stop, rc);
         }
 
         rc = filter_trans_start(env, ofd, th);
         if (rc)
                 GOTO(out_stop, rc);
 
-        rc = dt_write_commit(env, filter_object_child(fo), res, niocount, th);
+        rc = dt_write_commit(env, o, res, niocount, th);
+        if (rc)
+                GOTO(out_stop, rc);
 
-        if (rc == 0 && la->la_valid) {
-                rc = dt_attr_set(env, filter_object_child(fo), la, th,
-                                 filter_object_capa(env, fo));
-                LASSERT(rc == 0);
-        }
+        if (la->la_valid)
+                rc = dt_attr_set(env, o, la, th, filter_object_capa(env, fo));
+        if (rc)
+                GOTO(out_stop, rc);
+
+        if (buf.lb_buf)
+                rc = dt_xattr_set(env, o, &buf, XATTR_NAME_FID, 0, th, BYPASS_CAPA);
+        if (rc)
+                GOTO(out_stop, rc);
 
         /* get attr to return */
-        dt_attr_get(env, filter_object_child(fo), la,
+        dt_attr_get(env, o, la,
                          filter_object_capa(env, fo));
 
 out_stop:
@@ -318,11 +350,27 @@ out_stop:
 
 out:
         filter_grant_commit(info->fti_exp, niocount, res);
-        dt_bufs_put(env, filter_object_child(fo), res, niocount);
+        dt_bufs_put(env, o, res, niocount);
         filter_read_unlock(env, fo);
         filter_object_put(env, fo);
 
         RETURN(rc);
+}
+
+void filter_prepare_fidea(struct filter_fid *ff, struct obdo *oa)
+{
+        if (!(oa->o_valid & OBD_MD_FLGROUP))
+                oa->o_seq = 0;
+        /* packing fid and converting it to LE for storing into EA.
+         * Here ->o_stripe_idx should be filled by LOV and rest of
+         * fields - by client. */
+        ff->ff_parent.f_seq = cpu_to_le64(oa->o_parent_seq);
+        ff->ff_parent.f_oid = cpu_to_le32(oa->o_parent_oid);
+        /* XXX: we are ignoring o_parent_ver here, since this should
+         *      be the same for all objects in this fileset. */
+        ff->ff_parent.f_ver = cpu_to_le32(oa->o_stripe_idx);
+        ff->ff_objid = cpu_to_le64(oa->o_id);
+        ff->ff_seq = cpu_to_le64(oa->o_seq);
 }
 
 int filter_commitrw(int cmd, struct obd_export *exp,
@@ -330,11 +378,12 @@ int filter_commitrw(int cmd, struct obd_export *exp,
                     struct niobuf_remote *nb, int npages, struct niobuf_local *res,
                     struct obd_trans_info *oti, int old_rc)
 {
-        struct filter_device *ofd = filter_exp(exp);
-        struct lu_env *env = oti->oti_thread->t_env;
+        struct filter_device      *ofd = filter_exp(exp);
+        struct lu_env             *env = oti->oti_thread->t_env;
         struct filter_thread_info *info;
-        struct filter_mod_data *fmd;
-        int rc = 0;
+        struct filter_mod_data    *fmd;
+        __u64                       valid;
+        int                         rc = 0;
 
         info = filter_info_init(env, exp);
         filter_oti2info(info, oti);
@@ -350,19 +399,19 @@ int filter_commitrw(int cmd, struct obd_export *exp,
                  * to be changed to filter_fmd_get() to create the fmd if it
                  * doesn't already exist so we can store the reservation handle
                  * there. */
+                valid = OBD_MD_FLUID | OBD_MD_FLGID;
                 fmd = filter_fmd_find(exp, &info->fti_fid);
-                if (!fmd || fmd->fmd_mactime_xid < info->fti_xid) {
-                        la_from_obdo(&info->fti_attr, oa,
-                                     OBD_MD_FLATIME | OBD_MD_FLMTIME |
-                                     OBD_MD_FLCTIME);
-                } else {
-                        info->fti_attr.la_valid = 0;
-                }
+                if (!fmd || fmd->fmd_mactime_xid < info->fti_xid)
+                        valid |= OBD_MD_FLATIME | OBD_MD_FLMTIME |
+                                 OBD_MD_FLCTIME | OBD_MD_FLUID | OBD_MD_FLGID;
                 filter_fmd_put(exp, fmd);
+                la_from_obdo(&info->fti_attr, oa, valid);
+
+                filter_prepare_fidea(&info->fti_mds_fid, oa);
 
                 rc = filter_commitrw_write(env, ofd, &info->fti_fid,
-                                           &info->fti_attr, objcount,
-                                           npages, res, old_rc);
+                                           &info->fti_attr, &info->fti_mds_fid,
+                                           objcount, npages, res, old_rc);
                 if (rc == 0)
                         obdo_from_la(oa, &info->fti_attr,
                                      FILTER_VALID_FLAGS | LA_GID | LA_UID);
