@@ -695,7 +695,7 @@ repeat_find:
                 /*
                  * try to use another OSP if this one is degraded
                  */
-                if (sfs.os_spare1 == OS_STATE_DEGRADED  && speed == 0)
+                if (sfs.os_state == OS_STATE_DEGRADED && speed == 0)
                         continue;
 
                 o = lod_qos_declare_object_on(env, m, ost_idx, th);
