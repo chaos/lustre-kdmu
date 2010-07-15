@@ -45,7 +45,6 @@
 #include "tracefile.h"
 
 #include <libcfs/libcfs.h>
-#include <libcfs/params_tree.h>
 
 /* XXX move things up to the top, comment */
 union cfs_trace_data_union (*cfs_trace_data[TCD_MAX_TYPES])[CFS_NR_CPUS] __cacheline_aligned;

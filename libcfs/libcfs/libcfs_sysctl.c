@@ -47,7 +47,6 @@
 # define DEBUG_SUBSYSTEM S_LNET
 
 #include <libcfs/libcfs.h>
-#include <libcfs/params_tree.h>
 #include "tracefile.h"
 
 extern char lnet_upcall[1024];

@@ -70,10 +70,10 @@ EXPORT_SYMBOL(lprocfs_seq_release);
 
 /* lprocfs API calls */
 
-struct libcfs_param_entry *
-lprocfs_srch(struct libcfs_param_entry *root, const char *name)
+libcfs_param_entry_t *
+lprocfs_srch(libcfs_param_entry_t *root, const char *name)
 {
-        struct libcfs_param_entry *lpe = NULL;
+        libcfs_param_entry_t *lpe = NULL;
 
         if (root == NULL)
                 return NULL;
@@ -116,12 +116,12 @@ static ssize_t lprocfs_fops_read(struct file *f, char __user *buf,
         if (*ppos >= CFS_PAGE_SIZE)
                 return 0;
 
+        if (LPROCFS_ENTRY_AND_CHECK(dp))
+                return -ENOENT;
+
         page = (char *)__get_free_page(GFP_KERNEL);
         if (page == NULL)
                 return -ENOMEM;
-
-        if (LPROCFS_ENTRY_AND_CHECK(dp))
-                return -ENOENT;
 
         OBD_FAIL_TIMEOUT(OBD_FAIL_LPROC_REMOVE, 10);
         if (dp->read_proc)
@@ -178,13 +178,13 @@ static libcfs_file_ops_t lprocfs_generic_fops = {
 };
 #endif /* LPROCFS */
 
-struct libcfs_param_entry *
-lprocfs_add_simple(struct libcfs_param_entry *parent, char *name,
+libcfs_param_entry_t *
+lprocfs_add_simple(libcfs_param_entry_t *parent, char *name,
                    libcfs_param_read_t *read_proc,
                    libcfs_param_write_t *write_proc,
                    void *data, libcfs_file_ops_t *fops)
 {
-        struct libcfs_param_entry *lpe = NULL;
+        libcfs_param_entry_t *lpe = NULL;
         lparcb_t *param_data = NULL;
         mode_t mode = 0;
 
@@ -238,11 +238,11 @@ lprocfs_add_simple(struct libcfs_param_entry *parent, char *name,
         return lpe;
 }
 
-struct libcfs_param_entry *
-lprocfs_add_symlink(const char *name, struct libcfs_param_entry *parent,
+libcfs_param_entry_t *
+lprocfs_add_symlink(const char *name, libcfs_param_entry_t *parent,
                     const char *format, ...)
 {
-        struct libcfs_param_entry *lpe_sym;
+        libcfs_param_entry_t *lpe_sym;
         char *dest;
         va_list ap;
 
@@ -282,7 +282,7 @@ lprocfs_add_symlink(const char *name, struct libcfs_param_entry *parent,
  * \retval 0   on success
  *         < 0 on error
  */
-int lprocfs_add_vars(struct libcfs_param_entry *parent,
+int lprocfs_add_vars(libcfs_param_entry_t *parent,
                      struct lprocfs_vars *list, void *data)
 {
         void *cb_data = list->data ? list->data : data;
@@ -292,7 +292,7 @@ int lprocfs_add_vars(struct libcfs_param_entry *parent,
                 return -EINVAL;
 
         while (list->name != NULL) {
-                struct libcfs_param_entry *cur_lpe, *lpe = NULL;
+                libcfs_param_entry_t *cur_lpe, *lpe = NULL;
                 char *pathcopy, *cur, *next, pathbuf[64];
                 int pathsize = strlen(list->name) + 1;
 
@@ -363,9 +363,9 @@ out:
         return 0;
 }
 
-void lprocfs_remove(struct libcfs_param_entry **rooth)
+void lprocfs_remove(libcfs_param_entry_t **rooth)
 {
-        struct libcfs_param_entry *root = *rooth;
+        libcfs_param_entry_t *root = *rooth;
 
         if (!root)
                 return;
@@ -412,7 +412,7 @@ void lprocfs_remove(struct libcfs_param_entry **rooth)
 }
 
 void lprocfs_remove_proc_entry(const char *name,
-                               struct libcfs_param_entry *parent)
+                               libcfs_param_entry_t *parent)
 {
         if (parent) {
                 libcfs_param_get(parent);
@@ -439,17 +439,17 @@ void lprocfs_remove_proc_entry(const char *name,
         }
 }
 
-void lprocfs_put_lperef(struct libcfs_param_entry *entry)
+void lprocfs_put_lperef(libcfs_param_entry_t *entry)
 {
         if (entry != NULL)
                 libcfs_param_put(entry);
 }
 
-struct libcfs_param_entry *
-lprocfs_register(const char *name, struct libcfs_param_entry *parent,
+libcfs_param_entry_t *
+lprocfs_register(const char *name, libcfs_param_entry_t *parent,
                  struct lprocfs_vars *list, void *data)
 {
-        struct libcfs_param_entry *newchild;
+        libcfs_param_entry_t *newchild;
 
         /* we have done lookup in params_add_entry, so here we only
          * check for proc
@@ -1449,10 +1449,10 @@ libcfs_file_ops_t lprocfs_stats_seq_fops = {
 };
 
 
-int lprocfs_register_stats(struct libcfs_param_entry *parent, const char *name,
+int lprocfs_register_stats(libcfs_param_entry_t *parent, const char *name,
                            struct lprocfs_stats *stats)
 {
-        struct libcfs_param_entry *lpe = NULL;
+        libcfs_param_entry_t *lpe = NULL;
 
         if (parent == NULL)
                 return -EINVAL;
@@ -1877,7 +1877,7 @@ int lprocfs_exp_setup(struct obd_export *exp, lnet_nid_t *nid, int *newnid)
 {
         struct nid_stat *new_stat, *old_stat;
         struct obd_device *obd = NULL;
-        struct libcfs_param_entry *entry;
+        libcfs_param_entry_t *entry;
         char *buffer = NULL;
         int rc = 0;
         ENTRY;
@@ -2177,10 +2177,10 @@ int lprocfs_write_frac_u64_helper(const char *buffer, unsigned long count,
         return 0;
 }
 
-int lprocfs_seq_create(struct libcfs_param_entry *parent, char *name,
+int lprocfs_seq_create(libcfs_param_entry_t *parent, char *name,
                        mode_t mode, libcfs_file_ops_t *seq_fops, void *data)
 {
-        struct libcfs_param_entry *lpe = NULL;
+        libcfs_param_entry_t *lpe = NULL;
         ENTRY;
 
         if (parent == NULL)

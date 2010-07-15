@@ -43,7 +43,7 @@
 
 #include "llite_internal.h"
 
-struct libcfs_param_entry *proc_lustre_fs_root;
+libcfs_param_entry_t *proc_lustre_fs_root;
 
 #ifdef __KERNEL__
 /* /proc/lustre/llite mount point registration */

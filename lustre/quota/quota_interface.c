@@ -1015,7 +1015,7 @@ quota_interface_t lov_quota_interface = {
 
 #ifdef __KERNEL__
 
-struct libcfs_param_entry *lquota_type_proc_dir = NULL;
+libcfs_param_entry_t *lquota_type_proc_dir = NULL;
 
 static int __init init_lustre_quota(void)
 {

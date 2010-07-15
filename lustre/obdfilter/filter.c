@@ -2197,7 +2197,7 @@ static int filter_setup(struct obd_device *obd, struct lustre_cfg* lcfg)
                 }
         }
         if (obd->obd_proc_exports_entry) {
-                struct libcfs_param_entry *temp;
+                libcfs_param_entry_t *temp;
                 temp = lprocfs_add_simple(obd->obd_proc_exports_entry, "clear",
                                           lprocfs_nid_stats_clear_read,
                                           lprocfs_nid_stats_clear_write,

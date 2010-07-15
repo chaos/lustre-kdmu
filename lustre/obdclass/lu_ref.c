@@ -47,7 +47,6 @@
 
 #ifdef __KERNEL__
 # include <libcfs/libcfs.h>
-# include <libcfs/params_tree.h>
 #else
 # include <liblustre.h>
 #endif

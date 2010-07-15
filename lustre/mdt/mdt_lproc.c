@@ -106,7 +106,7 @@ int mdt_procfs_init(struct mdt_device *mdt, const char *name)
                                                        obd->obd_proc_entry,
                                                        NULL, NULL);
         if (obd->obd_proc_exports_entry) {
-                struct libcfs_param_entry *temp;
+                libcfs_param_entry_t *temp;
 
                 temp = lprocfs_add_simple(obd->obd_proc_exports_entry, "clear",
                                           lprocfs_nid_stats_clear_read,

@@ -3852,7 +3852,7 @@ static int mdt_start_ptlrpc_service(struct mdt_device *m)
 {
         int rc;
         static struct ptlrpc_service_conf conf;
-        struct libcfs_param_entry *procfs_entry;
+        libcfs_param_entry_t *procfs_entry;
         ENTRY;
 
         procfs_entry = m->mdt_md_dev.md_lu_dev.ld_obd->obd_proc_entry;

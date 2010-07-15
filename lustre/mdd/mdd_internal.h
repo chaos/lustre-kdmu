@@ -123,7 +123,7 @@ struct mdd_device {
         struct dt_device_param           mdd_dt_conf;
         struct dt_object                *mdd_orphans;
         struct dt_txn_callback           mdd_txn_cb;
-        struct libcfs_param_entry       *mdd_proc_entry;
+        libcfs_param_entry_t            *mdd_proc_entry;
         struct lprocfs_stats            *mdd_stats;
         struct mdd_txn_op_descr          mdd_tod[MDD_TXN_LAST_OP];
         struct mdd_changelog             mdd_cl;

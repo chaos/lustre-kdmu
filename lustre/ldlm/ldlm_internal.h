@@ -166,8 +166,8 @@ int ldlm_process_inodebits_lock(struct ldlm_lock *lock, int *flags,
 void l_check_ns_lock(struct ldlm_namespace *ns);
 void l_check_no_ns_lock(struct ldlm_namespace *ns);
 
-extern struct libcfs_param_entry *ldlm_svc_proc_dir;
-extern struct libcfs_param_entry *ldlm_type_proc_dir;
+extern libcfs_param_entry_t *ldlm_svc_proc_dir;
+extern libcfs_param_entry_t *ldlm_type_proc_dir;
 
 struct ldlm_state {
         struct ptlrpc_service *ldlm_cb_service;

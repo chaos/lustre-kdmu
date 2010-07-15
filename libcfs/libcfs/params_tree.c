@@ -51,9 +51,9 @@ CFS_DECLARE_RWSEM(_lprocfs_lock);
 EXPORT_SYMBOL(_lprocfs_lock);
 
 static cfs_rw_semaphore_t libcfs_param_sem;
-struct libcfs_param_entry *libcfs_param_lnet_root;
+libcfs_param_entry_t *libcfs_param_lnet_root;
 
-static void free_param(struct libcfs_param_entry *lpe)
+static void free_param(libcfs_param_entry_t *lpe)
 {
         if (S_ISLNK(lpe->lpe_mode)) {
                 LIBCFS_FREE(lpe->lpe_data, strlen(lpe->lpe_data) + 1);
@@ -71,7 +71,7 @@ static void free_param(struct libcfs_param_entry *lpe)
                 LIBCFS_FREE(lpe, sizeof(*lpe));
 }
 
-struct libcfs_param_entry *libcfs_param_get(struct libcfs_param_entry *lpe)
+libcfs_param_entry_t *libcfs_param_get(libcfs_param_entry_t *lpe)
 {
         LASSERT(lpe != NULL);
         LASSERT(cfs_atomic_read(&lpe->lpe_refcount) > 0);
@@ -84,7 +84,7 @@ struct libcfs_param_entry *libcfs_param_get(struct libcfs_param_entry *lpe)
 /**
  * derefer the entry and free it automatically if (refcount == 0)
  */
-void libcfs_param_put(struct libcfs_param_entry *lpe)
+void libcfs_param_put(libcfs_param_entry_t *lpe)
 {
         LASSERT(lpe != NULL);
         LASSERTF(cfs_atomic_read(&lpe->lpe_refcount) > 0,
@@ -96,18 +96,18 @@ void libcfs_param_put(struct libcfs_param_entry *lpe)
 
 static void *lpe_hash_get(cfs_hlist_node_t *hnode)
 {
-        struct libcfs_param_entry *lpe;
+        libcfs_param_entry_t *lpe;
 
-        lpe = cfs_hlist_entry(hnode, struct libcfs_param_entry, lpe_hash_n);
+        lpe = cfs_hlist_entry(hnode, libcfs_param_entry_t, lpe_hash_n);
 
         return libcfs_param_get(lpe);
 }
 
 static void *lpe_hash_put(cfs_hlist_node_t *hnode)
 {
-        struct libcfs_param_entry *lpe;
+        libcfs_param_entry_t *lpe;
 
-        lpe = cfs_hlist_entry(hnode, struct libcfs_param_entry, lpe_hash_n);
+        lpe = cfs_hlist_entry(hnode, libcfs_param_entry_t, lpe_hash_n);
         libcfs_param_put(lpe);
 
         return lpe;
@@ -120,11 +120,11 @@ static unsigned lpe_hash(cfs_hash_t *hs, void *key, unsigned mask)
 
 static int lpe_hash_compare(void *key, cfs_hlist_node_t *compared_node)
 {
-        struct libcfs_param_entry *lpe;
+        libcfs_param_entry_t *lpe;
         char                      *lpe_name = key;
         int                        rc;
 
-        lpe = cfs_hlist_entry(compared_node, struct libcfs_param_entry,
+        lpe = cfs_hlist_entry(compared_node, libcfs_param_entry_t,
                               lpe_hash_n);
         rc = strncmp(lpe_name, lpe->lpe_name, lpe->lpe_name_len);
 
@@ -133,9 +133,9 @@ static int lpe_hash_compare(void *key, cfs_hlist_node_t *compared_node)
 
 static void *lpe_hash_key(cfs_hlist_node_t *hnode)
 {
-        struct libcfs_param_entry *lpe;
+        libcfs_param_entry_t *lpe;
 
-        lpe = cfs_hlist_entry(hnode, struct libcfs_param_entry, lpe_hash_n);
+        lpe = cfs_hlist_entry(hnode, libcfs_param_entry_t, lpe_hash_n);
 
         return ((void *)lpe->lpe_name);
 }
@@ -148,7 +148,7 @@ static cfs_hash_ops_t lpe_hash_ops = {
         .hs_get = lpe_hash_get,
 };
 
-static struct libcfs_param_entry libcfs_param_root = {
+static libcfs_param_entry_t libcfs_param_root = {
         .lpe_parent = &libcfs_param_root,
         .lpe_name = "params_root",
         .lpe_name_len = 11,
@@ -157,7 +157,7 @@ static struct libcfs_param_entry libcfs_param_root = {
         .lpe_proc = NULL,
 };
 
-struct libcfs_param_entry *libcfs_param_get_root(void)
+libcfs_param_entry_t *libcfs_param_get_root(void)
 {
         return (&libcfs_param_root);
 }
@@ -187,8 +187,7 @@ void libcfs_param_root_fini(void)
                 cfs_hash_putref(libcfs_param_root.lpe_hash_t);
 }
 
-struct libcfs_param_cb_data *
-libcfs_param_cb_data_alloc(void *data, int flag)
+struct libcfs_param_cb_data *libcfs_param_cb_data_alloc(void *data, int flag)
 {
         struct libcfs_param_cb_data *cb_data = NULL;
 
@@ -219,10 +218,10 @@ void libcfs_param_cb_data_free(struct libcfs_param_cb_data *cb_data, int flag)
  * Basic lookup function
  * Look up an entry by its parent entry and its name
  */
-static struct libcfs_param_entry *
-_lookup_param(const char *name, struct libcfs_param_entry *parent)
+static libcfs_param_entry_t *
+_lookup_param(const char *name, libcfs_param_entry_t *parent)
 {
-        struct libcfs_param_entry *lpe = NULL;
+        libcfs_param_entry_t *lpe = NULL;
 
         LASSERT(parent != NULL && name != NULL);
 
@@ -233,15 +232,15 @@ _lookup_param(const char *name, struct libcfs_param_entry *parent)
         return lpe;
 }
 
-static struct libcfs_param_entry *
-lookup_param_by_path(const char *pathname, struct libcfs_param_entry *entry);
+static libcfs_param_entry_t *
+lookup_param_by_path(const char *pathname, libcfs_param_entry_t *entry);
 /**
  * Find the target of a symbolic link entry
  */
-static struct libcfs_param_entry *
-find_symlink_target(struct libcfs_param_entry *lpe)
+static libcfs_param_entry_t *
+find_symlink_target(libcfs_param_entry_t *lpe)
 {
-        struct libcfs_param_entry *entry = NULL;
+        libcfs_param_entry_t *entry = NULL;
         char                      *path;
         char                      *path_temp = NULL;
 
@@ -273,11 +272,11 @@ find_symlink_target(struct libcfs_param_entry *lpe)
  * Lookup child entry according to its parent entry and its name.
  * If it's a symlink, return its target.
  */
-static struct libcfs_param_entry *
-lookup_param(const char *name, struct libcfs_param_entry *parent)
+static libcfs_param_entry_t *
+lookup_param(const char *name, libcfs_param_entry_t *parent)
 {
-        struct libcfs_param_entry *lpe;
-        struct libcfs_param_entry *syml_tgt = NULL;
+        libcfs_param_entry_t *lpe;
+        libcfs_param_entry_t *syml_tgt = NULL;
 
         LASSERT(name != NULL && parent != NULL);
 
@@ -300,11 +299,11 @@ lookup_param(const char *name, struct libcfs_param_entry *parent)
  * otherwise, it's a relative path.
  * If result entry is a symlink, return its target.
  */
-static struct libcfs_param_entry *
-lookup_param_by_path(const char *pathname, struct libcfs_param_entry *entry)
+static libcfs_param_entry_t *
+lookup_param_by_path(const char *pathname, libcfs_param_entry_t *entry)
 {
-        struct libcfs_param_entry *lpe;
-        struct libcfs_param_entry *parent;
+        libcfs_param_entry_t *lpe;
+        libcfs_param_entry_t *parent;
         char                      *path = (char *)pathname;
         char                      *temp;
 
@@ -337,11 +336,11 @@ lookup_param_by_path(const char *pathname, struct libcfs_param_entry *entry)
 /**
  * lookup interface for external use (lnet and lustre)
  */
-struct libcfs_param_entry *
-libcfs_param_lookup(const char *name, struct libcfs_param_entry *parent)
+libcfs_param_entry_t *
+libcfs_param_lookup(const char *name, libcfs_param_entry_t *parent)
 {
-        struct libcfs_param_entry *lpe;
-        struct libcfs_param_entry *syml_tgt = NULL;
+        libcfs_param_entry_t *lpe;
+        libcfs_param_entry_t *syml_tgt = NULL;
 
         LASSERT(name != NULL && parent != NULL);
 
@@ -362,10 +361,10 @@ libcfs_param_lookup(const char *name, struct libcfs_param_entry *parent)
 /**
  * Add an entry to params tree by it parent and its name.
  */
-static struct libcfs_param_entry *
-_add_param(const char *name, mode_t mode, struct libcfs_param_entry *parent)
+static libcfs_param_entry_t *
+_add_param(const char *name, mode_t mode, libcfs_param_entry_t *parent)
 {
-        struct libcfs_param_entry *lpe = NULL;
+        libcfs_param_entry_t *lpe = NULL;
         char                      *ptr;
         int                        len;
         int                        rc = 0;
@@ -428,11 +427,11 @@ fail:
         return lpe;
 }
 
-static struct libcfs_param_entry *
-add_param(const char *name, mode_t mode, struct libcfs_param_entry *parent)
+static libcfs_param_entry_t *
+add_param(const char *name, mode_t mode, libcfs_param_entry_t *parent)
 {
-        struct libcfs_param_entry *syml_tgt = NULL;
-        struct libcfs_param_entry *lpe;
+        libcfs_param_entry_t *syml_tgt = NULL;
+        libcfs_param_entry_t *lpe;
 
         LASSERT(name != NULL && parent != NULL);
 
@@ -449,9 +448,9 @@ add_param(const char *name, mode_t mode, struct libcfs_param_entry *parent)
         return lpe;
 }
 
-struct libcfs_param_entry *
+libcfs_param_entry_t *
 libcfs_param_create(const char *name, mode_t mode,
-                    struct libcfs_param_entry *parent)
+                    libcfs_param_entry_t *parent)
 {
         if ((mode & S_IFMT) == 0)
                  mode |= S_IFREG;
@@ -461,18 +460,18 @@ libcfs_param_create(const char *name, mode_t mode,
         return add_param(name, mode, parent);
 }
 
-struct libcfs_param_entry *
-libcfs_param_mkdir(const char *name, struct libcfs_param_entry *parent)
+libcfs_param_entry_t *
+libcfs_param_mkdir(const char *name, libcfs_param_entry_t *parent)
 {
         return add_param(name, S_IFDIR | S_IRUGO | S_IXUGO, parent);
 }
 
-static void _remove_param(struct libcfs_param_entry *lpe);
-struct libcfs_param_entry *
-libcfs_param_symlink(const char *name, struct libcfs_param_entry *parent,
+static void _remove_param(libcfs_param_entry_t *lpe);
+libcfs_param_entry_t *
+libcfs_param_symlink(const char *name, libcfs_param_entry_t *parent,
                      const char *dest)
 {
-        struct libcfs_param_entry *lpe;
+        libcfs_param_entry_t *lpe;
 
         lpe = add_param(name, S_IFLNK | S_IRUGO | S_IWUGO | S_IXUGO,
                                parent);
@@ -494,11 +493,11 @@ libcfs_param_symlink(const char *name, struct libcfs_param_entry *parent,
 /**
  * Remove an entry and all of its children from params_tree
  */
-static void _remove_param(struct libcfs_param_entry *lpe)
+static void _remove_param(libcfs_param_entry_t *lpe)
 {
-        struct libcfs_param_entry *parent;
-        struct libcfs_param_entry *rm_lpe;
-        struct libcfs_param_entry *temp = NULL;
+        libcfs_param_entry_t *parent;
+        libcfs_param_entry_t *rm_lpe;
+        libcfs_param_entry_t *temp = NULL;
 
         LASSERT(lpe != NULL);
 
@@ -536,9 +535,9 @@ static void _remove_param(struct libcfs_param_entry *lpe)
  * its parent and its name.
  * If it's a symlink, just remove it, we don't need to find its target.
  */
-static void remove_param(const char *name, struct libcfs_param_entry *parent)
+static void remove_param(const char *name, libcfs_param_entry_t *parent)
 {
-        struct libcfs_param_entry *child;
+        libcfs_param_entry_t *child;
 
         LASSERT(parent != NULL && name != NULL);
 
@@ -551,7 +550,7 @@ static void remove_param(const char *name, struct libcfs_param_entry *parent)
 /**
  * interfaces for external use
  */
-void libcfs_param_remove(const char *name, struct libcfs_param_entry *lpe)
+void libcfs_param_remove(const char *name, libcfs_param_entry_t *lpe)
 {
         LASSERT(lpe != NULL);
 
@@ -569,9 +568,9 @@ struct list_param_cb_data {
 
 static void list_param_cb(void *obj, void *data)
 {
-        struct libcfs_param_entry *lpe = obj;
+        libcfs_param_entry_t *lpe = obj;
         struct list_param_cb_data *lpcb = data;
-        struct libcfs_param_info *lpi;
+        libcfs_param_info_t  *lpi;
         int len = sizeof(struct libcfs_param_info);
 
         LASSERT(lpe != NULL);
@@ -580,7 +579,7 @@ static void list_param_cb(void *obj, void *data)
                 CERROR("Have no enough buffer for list_param.\n");
                 return;
         }
-        lpi = (struct libcfs_param_info *)(lpcb->buf + lpcb->pos);
+        lpi = (libcfs_param_info_t *)(lpcb->buf + lpcb->pos);
         /* copy name_len, name, mode */
         lpi->lpi_name_len = lpe->lpe_name_len;
         lpi->lpi_mode = lpe->lpe_mode;
@@ -592,7 +591,7 @@ static void list_param_cb(void *obj, void *data)
         CDEBUG(D_INFO, "copy \"%s\" out, pos=%d\n", lpe->lpe_name, lpcb->pos);
 }
 
-static int list_param(struct libcfs_param_entry *parent,
+static int list_param(libcfs_param_entry_t *parent,
                       char *kern_buf, int kern_buflen)
 {
         struct list_param_cb_data lpcd;
@@ -617,7 +616,7 @@ int libcfs_param_list(const char *parent_path, char *user_buf, int *buflen)
 {
         /* In kernel space, do like readdir
          * In user space, match these entries pathname with the pattern */
-        struct libcfs_param_entry *parent;
+        libcfs_param_entry_t *parent;
         char *kern_buf = NULL;
         int datalen = 0;
         int num;
@@ -783,7 +782,7 @@ out:
         RETURN(rc);
 }
 
-static int libcfs_param_seq_open(struct libcfs_param_entry *lpe,
+static int libcfs_param_seq_open(libcfs_param_entry_t *lpe,
                                  struct libcfs_param_seq_args *args,
                                  char *buf, int count)
 {
@@ -815,7 +814,7 @@ static int libcfs_param_seq_open(struct libcfs_param_entry *lpe,
 }
 
 static void
-libcfs_param_seq_release(struct libcfs_param_entry *lpe,
+libcfs_param_seq_release(libcfs_param_entry_t *lpe,
                          struct libcfs_param_seq_args *args)
 {
         libcfs_proc_inode_t     *proc_inode = args->lpsa_inode;
@@ -832,7 +831,7 @@ libcfs_param_seq_release(struct libcfs_param_entry *lpe,
         return;
 }
 
-static void *libcfs_param_seq_start(struct libcfs_param_entry *lpe,
+static void *libcfs_param_seq_start(libcfs_param_entry_t *lpe,
                                     struct libcfs_param_seq_args *args,
                                     loff_t *loff)
 {
@@ -845,7 +844,7 @@ static void *libcfs_param_seq_start(struct libcfs_param_entry *lpe,
         return args->lpsa_value;
 }
 
-static void libcfs_param_seq_stop(struct libcfs_param_entry *lpe,
+static void libcfs_param_seq_stop(libcfs_param_entry_t *lpe,
                                   struct libcfs_param_seq_args *args)
 {
         libcfs_seq_file_t *seqf = LIBCFS_FILE_PRIVATE(args->lpsa_file);
@@ -860,7 +859,7 @@ static void libcfs_param_seq_stop(struct libcfs_param_entry *lpe,
 static int libcfs_param_data_pack(char *buf, int buf_len,
                                   enum libcfs_param_value_type type,
                                   const char *name, const char *unit);
-static int libcfs_param_seq_show(struct libcfs_param_entry *lpe,
+static int libcfs_param_seq_show(libcfs_param_entry_t *lpe,
                                  struct libcfs_param_seq_args *args,
                                  char **output)
 {
@@ -886,7 +885,7 @@ static int libcfs_param_seq_show(struct libcfs_param_entry *lpe,
         return rc;
 }
 
-static void *libcfs_param_seq_next(struct libcfs_param_entry *lpe,
+static void *libcfs_param_seq_next(libcfs_param_entry_t *lpe,
                                    struct libcfs_param_seq_args *args,
                                    loff_t *loff)
 {
@@ -899,7 +898,7 @@ static void *libcfs_param_seq_next(struct libcfs_param_entry *lpe,
         return args->lpsa_value;
 }
 
-static int libcfs_param_seq_write(struct libcfs_param_entry *lpe,
+static int libcfs_param_seq_write(libcfs_param_entry_t *lpe,
                                   struct libcfs_param_seq_args *args,
                                   const char *buf, int count, loff_t *off)
 {
@@ -914,7 +913,7 @@ static int libcfs_param_seq_write(struct libcfs_param_entry *lpe,
 }
 
 static int libcfs_param_seq_read(char *ubuf, loff_t *loff, int count,
-                                 int *eof, struct libcfs_param_entry *lpe)
+                                 int *eof, libcfs_param_entry_t *lpe)
 {
         struct libcfs_param_seq_args args = {0};
         int left_bytes = count;
@@ -1000,7 +999,7 @@ free:
 #define IS_SEQ_LPE(lpe) (lpe->lpe_cb_sfops != NULL)
 static int libcfs_param_normal_read(char *buf, loff_t *ppos,
                                     int count, int *eof,
-                                    struct libcfs_param_entry *entry)
+                                    libcfs_param_entry_t *entry)
 {
         char  *page = NULL;
         char *start = NULL;
@@ -1046,7 +1045,7 @@ static int libcfs_param_normal_read(char *buf, loff_t *ppos,
 int libcfs_param_read(const char *path, char *buf, int nbytes, loff_t *ppos,
                       int *eof)
 {
-        struct libcfs_param_entry *entry;
+        libcfs_param_entry_t *entry;
         int                        rc = 0;
         int                        count;
 
@@ -1076,7 +1075,7 @@ int libcfs_param_read(const char *path, char *buf, int nbytes, loff_t *ppos,
 }
 
 static int libcfs_seq_file_write(char *buf, int count,
-                                 struct libcfs_param_entry *lpe)
+                                 libcfs_param_entry_t *lpe)
 {
         struct libcfs_param_seq_args args = {0};
         loff_t  off = 0;
@@ -1107,7 +1106,7 @@ free:
 
 int libcfs_param_write(const char *path, char *buf, int count)
 {
-        struct libcfs_param_entry *entry;
+        libcfs_param_entry_t *entry;
         int                        rc = 0;
 
         if (path == NULL) {
@@ -1194,7 +1193,7 @@ void libcfs_param_sysctl_init(char *mod_name,
         }
 }
 
-void libcfs_param_sysctl_fini(char *mod_name, struct libcfs_param_entry *parent)
+void libcfs_param_sysctl_fini(char *mod_name, libcfs_param_entry_t *parent)
 {
         libcfs_param_remove(mod_name, parent);
 }
@@ -1275,7 +1274,7 @@ void libcfs_param_sysctl_change(char *mod_name,
 }
 
 /*
-void libcfs_param_change_mode(struct libcfs_param_entry *lpe, mode_t mode)
+void libcfs_param_change_mode(libcfs_param_entry_t *lpe, mode_t mode)
 {
         LASSERT(lpe != NULL);
 
@@ -1288,11 +1287,11 @@ void libcfs_param_change_mode(struct libcfs_param_entry *lpe, mode_t mode)
         libcfs_param_put(entry);
 }
 
-int libcfs_param_change_mode(const char *name, struct libcfs_param_entry *lpe,
+int libcfs_param_change_mode(const char *name, libcfs_param_entry_t *lpe,
                              int flag)
 {
-        struct libcfs_param_entry *entry;
-        char                      *path = NULL;
+        libcfs_param_entry_t *entry;
+        char                 *path = NULL;
 
         LASSERT(lpe != NULL || name != NULL);
 
@@ -1453,7 +1452,7 @@ int libcfs_param_snprintf_common(char *page, int count, void *cb_data,
 /**
  * Validate libcfs_param_data
  */
-static int libcfs_param_is_invalid(struct libcfs_param_data *data)
+static int libcfs_param_is_invalid(libcfs_param_data_t *data)
 {
         if ((data->param_name != NULL) && !data->param_name_len) {
                 CERROR("pve_name pointer but 0 length\n");
@@ -1541,7 +1540,7 @@ static int libcfs_param_data_pack(char *buf, int buf_len,
         }
         /* create libcfs_param_data struct */
         memset(buf, 0, buf_len);
-        data = (struct libcfs_param_data *)buf;
+        data = (libcfs_param_data_t *)buf;
         ptr = data->param_bulk;
         data->param_type = type;
         if (name != NULL) {
@@ -1577,9 +1576,6 @@ out:
         return rc < 0 ? rc : data_len;
 }
 
-#endif /* __KERNEL__ */
-
-#ifdef __KERNEL__
 EXPORT_SYMBOL(libcfs_param_get_root);
 EXPORT_SYMBOL(libcfs_param_lnet_root);
 EXPORT_SYMBOL(libcfs_param_get);
@@ -1605,4 +1601,4 @@ EXPORT_SYMBOL(libcfs_param_seq_release_common);
 EXPORT_SYMBOL(libcfs_param_seq_print_common);
 EXPORT_SYMBOL(libcfs_param_seq_puts_common);
 EXPORT_SYMBOL(libcfs_param_seq_putc_common);
-#endif
+#endif /* __KERNEL__ */

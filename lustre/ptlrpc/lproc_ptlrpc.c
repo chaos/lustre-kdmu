@@ -174,11 +174,11 @@ const char* ll_eopcode2str(__u32 opcode)
 }
 
 #ifdef  __KERNEL__
-void ptlrpc_lprocfs_register(struct libcfs_param_entry *root, char *dir, 
-                           char *name, struct libcfs_param_entry **procroot_ret,
+void ptlrpc_lprocfs_register(libcfs_param_entry_t *root, char *dir,
+                           char *name, libcfs_param_entry_t **procroot_ret,
                              struct lprocfs_stats **stats_ret)
 {
-        struct libcfs_param_entry *svc_procroot;
+        libcfs_param_entry_t *svc_procroot;
         struct lprocfs_stats *svc_stats;
         int i, rc;
         unsigned int svc_counter_config = LPROCFS_CNTR_AVGMINMAX |
