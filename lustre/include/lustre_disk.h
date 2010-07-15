@@ -162,8 +162,6 @@ static inline int server_make_name(__u32 flags, __u16 index, char *fs,
         return 0;
 }
 
-/* Get the fsname from the obd name */
-int server_name2fsname(char *svname, char *fsname, char **endptr);
 /* Get the index from the obd name */
 int server_name2index(char *svname, __u32 *idx, char **endptr);
 
@@ -438,33 +436,34 @@ struct lustre_sb_info {
         struct lustre_mount_data *lsi_lmd;     /* mount command info */
         struct lustre_disk_data  *lsi_ldd;     /* mount info on-disk */
         struct ll_sb_info        *lsi_llsbi;   /* add'l client sbi info */
+        struct dt_device         *lsi_dt_dev;  /* dt device to access disk fs*/
+        void                     *lsi_vfsp;    /* ptr to OS specific vfs data*/
         cfs_atomic_t              lsi_mounts;  /* references to the srv_mnt */
         char                      lsi_osd_obdname[64];
         char                      lsi_osd_uuid[64];
         char                     *lsi_osd_type;
         char                      lsi_mconf_obdname[64];
         char                      lsi_mconf_uuid[64];
-        struct dt_device         *lsi_dt_dev; /* dt device to access disk fs*/
 };
 
 #define LSI_SERVER                       0x00000001
 #define LSI_UMOUNT_FORCE                 0x00000010
 #define LSI_UMOUNT_FAILOVER              0x00000020
 
+#if !defined(__sun__)
 #define     s2lsi(sb)        ((struct lustre_sb_info *)((sb)->s_fs_info))
-#define     s2lsi_nocast(sb) ((sb)->s_fs_info)
-
 #define     get_profile_name(sb)   (s2lsi(sb)->lsi_lmd->lmd_profile)
+#endif /* !__sun__ */
 
 #endif /* __KERNEL__ */
 
 /****************** mount lookup info *********************/
 
 struct lustre_mount_info {
-        char               *lmi_name;
-        struct super_block *lmi_sb;
-        struct dt_device   *lmi_dt;
-        cfs_list_t          lmi_list_chain;
+        char                  *lmi_name;
+        struct lustre_sb_info *lmi_lsi;
+        struct dt_device      *lmi_dt;
+        cfs_list_t            lmi_list_chain;
 };
 
 /****************** prototypes *********************/
@@ -472,17 +471,23 @@ struct lustre_mount_info {
 #ifdef __KERNEL__
 
 /* obd_mount.c */
+
+#if !defined (__sun__)
 void lustre_register_client_fill_super(int (*cfs)(struct super_block *sb));
 void lustre_register_kill_super_cb(void (*cfs)(struct super_block *sb));
+#endif /* !__sun__ */
 
+void lustre_server_umount(struct lustre_sb_info *lsi);
+int lustre_common_umount(struct lustre_sb_info *lsi);
+void lustre_umount_server_force_flag_set(struct lustre_sb_info *lsi);
+int lustre_server_statfs(struct lustre_sb_info *lsi, cfs_kstatfs_t *buf);
+int lustre_mount(void *osvfsp, void *data, unsigned long mflags);
 
-int lustre_common_put_super(struct super_block *sb);
 struct lustre_mount_info *server_find_mount_locked(const char *name);
 struct lustre_mount_info *server_get_mount(const char *name);
 struct lustre_mount_info *server_get_mount_2(const char *name);
 int server_put_mount(const char *name);
 int server_put_mount_2(const char *name);
-int server_register_target(struct super_block *sb);
 struct mgs_target_info;
 int server_mti_print(char *title, struct mgs_target_info *mti);
 

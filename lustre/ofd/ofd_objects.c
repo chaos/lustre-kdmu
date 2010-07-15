@@ -150,7 +150,7 @@ int filter_precreate_object(const struct lu_env *env, struct filter_device *ofd,
                 RETURN(PTR_ERR(fo));
 
         attr.la_valid = LA_TYPE | LA_MODE;
-        attr.la_mode = S_IFREG | 0666;
+        attr.la_mode = S_IFREG | S_ISUID | S_ISGID | 0666;
         dof.dof_type = dt_mode_to_dft(S_IFREG);
 
         next = filter_object_child(fo);
@@ -165,6 +165,9 @@ int filter_precreate_object(const struct lu_env *env, struct filter_device *ofd,
                 GOTO(out_unlock, rc = PTR_ERR(th));
 
         rc = dt_declare_create(env, next, &attr, NULL, &dof, th);
+        if (rc)
+                GOTO(trans_stop, rc);
+        rc = dt_declare_attr_set(env, next, &attr, th);
         if (rc)
                 GOTO(trans_stop, rc);
 
@@ -192,6 +195,11 @@ int filter_precreate_object(const struct lu_env *env, struct filter_device *ofd,
         if (rc)
                 GOTO(out_unlock, rc);
         LASSERT(filter_object_exists(fo));
+
+        attr.la_valid &= ~LA_TYPE;
+        rc = dt_attr_set(env, next, &attr, th, BYPASS_CAPA);
+        if (rc)
+                GOTO(out_unlock, rc);
 
         filter_last_id_set(ofd, id, group);
 

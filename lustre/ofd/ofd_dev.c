@@ -644,7 +644,7 @@ static int filter_init0(const struct lu_env *env, struct filter_device *m,
 
         lmi = server_get_mount(dev);
 #if 0
-        obd->obd_fsops = fsfilt_get_ops(MT_STR(s2lsi(lmi->lmi_sb)->lsi_ldd));
+        obd->obd_fsops = fsfilt_get_ops(MT_STR(lmi->lmi_lsi->lsi_ldd));
         if (IS_ERR(obd->obd_fsops)) {
                 obd->obd_fsops = NULL;
                 /* this filesystem doesn't support fsfilt */

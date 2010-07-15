@@ -933,9 +933,9 @@ static inline int llog_declare_add_2(struct llog_ctxt *ctxt,
 }
 
 
-int lustre_process_log(struct super_block *sb, char *logname,
+int lustre_log_process(struct lustre_sb_info *lsi, char *logname,
                        struct config_llog_instance *cfg);
-int lustre_end_log(struct super_block *sb, char *logname,
+int lustre_log_end(struct lustre_sb_info *lsi, char *logname,
                    struct config_llog_instance *cfg);
 
 /** @} log */

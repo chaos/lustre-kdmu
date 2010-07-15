@@ -230,17 +230,21 @@ struct ost_server_data;
 
 /* hold common fields for "target" device */
 struct obd_device_target {
+#if defined(__linux__)
         struct super_block       *obt_sb;
         /** last_rcvd file */
         struct file              *obt_rcvd_filp;
+#endif /* __linux__ */
         struct lu_target         *obt_lut;
         __u64                     obt_mount_count;
         cfs_semaphore_t           obt_quotachecking;
         struct lustre_quota_ctxt  obt_qctxt;
         lustre_quota_version_t    obt_qfmt;
         cfs_rw_semaphore_t        obt_rwsem;
+#if defined(__linux__)
         struct vfsmount          *obt_vfsmnt;
         struct file              *obt_health_check_filp;
+#endif /* __linux__ */
 };
 
 /* llog contexts */
@@ -484,10 +488,12 @@ struct client_obd {
 
 struct mgs_obd {
         struct ptlrpc_service           *mgs_service;
+#if defined(__linux__)
         struct vfsmount                 *mgs_vfsmnt;
         struct super_block              *mgs_sb;
         struct dentry                   *mgs_configs_dir;
         struct dentry                   *mgs_fid_de;
+#endif /* __linux__ */
         cfs_list_t                       mgs_fs_db_list;
         cfs_semaphore_t                  mgs_sem;
         cfs_proc_dir_entry_t            *mgs_proc_live;
@@ -525,7 +531,9 @@ struct mds_obd {
         /* array for store pages with obd_id */
         void                           **mds_lov_page_array;
         /* file for store objid */
+#if defined(__linux__)
         struct file                     *mds_lov_objid_filp;
+#endif /* __linux__ */
         __u32                            mds_lov_objid_count;
         __u32                            mds_lov_objid_max_index;
         __u32                            mds_lov_objid_lastpage;
@@ -1569,7 +1577,9 @@ static inline const struct lsm_operations *lsm_op_find(int magic)
         }
 }
 
+#if defined(__linux__)
 int lvfs_check_io_health(struct obd_device *obd, struct file *file);
+#endif
 
 /* Requests for obd_extent_calc() */
 #define OBD_CALC_STRIPE_START   1

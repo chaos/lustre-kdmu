@@ -378,25 +378,7 @@ out:
         RETURN(rc);
 }
 
-static int lustre_start_simple(char *obdname, char *type, char *uuid,
-                               char *s1, char *s2)
-{
-        int rc;
-        CDEBUG(D_MOUNT, "Starting obd %s (typ=%s)\n", obdname, type);
-
-        rc = do_lcfg(obdname, 0, LCFG_ATTACH, type, uuid, 0, 0);
-        if (rc) {
-                CERROR("%s attach error %d\n", obdname, rc);
-                return(rc);
-        }
-        rc = do_lcfg(obdname, 0, LCFG_SETUP, s1, s2, 0, 0);
-        if (rc) {
-                CERROR("%s setup error %d\n", obdname, rc);
-                do_lcfg(obdname, 0, LCFG_DETACH, 0, 0, 0, 0);
-        }
-        return rc;
-}
-
+extern int lustre_start_simple(char *, char *, char *, char *, char *);
 int mconf_start(struct lustre_sb_info *lsi)
 {
         struct obd_device   *obd;
@@ -435,5 +417,27 @@ void mconf_stop(struct lustre_sb_info *lsi)
         LASSERT(obd);
 
         class_manual_cleanup(obd);
+}
+
+static struct lprocfs_vars lprocfs_mconf_vars[] = {
+        { 0 }
+};
+
+
+void mconf_init(void)
+{
+        struct lprocfs_static_vars lvars;
+
+        lvars.module_vars = lprocfs_mconf_vars;
+        lvars.obd_vars = lprocfs_mconf_vars;
+
+        class_register_type(&mconf_obd_device_ops, NULL, lvars.module_vars,
+                            LUSTRE_MCF_NAME, &mconf_device_type);
+
+}
+
+void mconf_fini(void)
+{
+        class_unregister_type(LUSTRE_MCF_NAME);
 }
 
