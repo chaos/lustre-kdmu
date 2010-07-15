@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2009 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -737,6 +737,7 @@ static int ldlm_pool_proc_init(struct ldlm_pool *pl)
         snprintf(var_name, MAX_STRING_SIZE, "server_lock_volume");
         pool_vars[0].data = &pl->pl_server_lock_volume;
         pool_vars[0].read_fptr = lprocfs_rd_u64;
+        pool_vars[0].write_fptr = NULL;
         lprocfs_add_vars(pl->pl_proc_dir, pool_vars, 0);
 
         snprintf(var_name, MAX_STRING_SIZE, "limit");
@@ -748,26 +749,31 @@ static int ldlm_pool_proc_init(struct ldlm_pool *pl)
         snprintf(var_name, MAX_STRING_SIZE, "granted");
         pool_vars[0].data = &pl->pl_granted;
         pool_vars[0].read_fptr = lprocfs_rd_atomic;
+        pool_vars[0].write_fptr = NULL;
         lprocfs_add_vars(pl->pl_proc_dir, pool_vars, 0);
 
         snprintf(var_name, MAX_STRING_SIZE, "grant_speed");
         pool_vars[0].data = &pl->pl_grant_speed;
         pool_vars[0].read_fptr = lprocfs_rd_atomic;
+        pool_vars[0].write_fptr = NULL;
         lprocfs_add_vars(pl->pl_proc_dir, pool_vars, 0);
 
         snprintf(var_name, MAX_STRING_SIZE, "cancel_rate");
         pool_vars[0].data = &pl->pl_cancel_rate;
         pool_vars[0].read_fptr = lprocfs_rd_atomic;
+        pool_vars[0].write_fptr = NULL;
         lprocfs_add_vars(pl->pl_proc_dir, pool_vars, 0);
 
         snprintf(var_name, MAX_STRING_SIZE, "grant_rate");
         pool_vars[0].data = &pl->pl_grant_rate;
         pool_vars[0].read_fptr = lprocfs_rd_atomic;
+        pool_vars[0].write_fptr = NULL;
         lprocfs_add_vars(pl->pl_proc_dir, pool_vars, 0);
 
         snprintf(var_name, MAX_STRING_SIZE, "grant_plan");
         pool_vars[0].data = pl;
         pool_vars[0].read_fptr = lprocfs_rd_grant_plan;
+        pool_vars[0].write_fptr = NULL;
         lprocfs_add_vars(pl->pl_proc_dir, pool_vars, 0);
 
         snprintf(var_name, MAX_STRING_SIZE, "recalc_period");
@@ -785,6 +791,7 @@ static int ldlm_pool_proc_init(struct ldlm_pool *pl)
         snprintf(var_name, MAX_STRING_SIZE, "state");
         pool_vars[0].data = pl;
         pool_vars[0].read_fptr = lprocfs_rd_pool_state;
+        pool_vars[0].write_fptr = NULL;
         lprocfs_add_vars(pl->pl_proc_dir, pool_vars, 0);
 
         pl->pl_stats = lprocfs_alloc_stats(LDLM_POOL_LAST_STAT -

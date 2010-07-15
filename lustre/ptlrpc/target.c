@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2009 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2009, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -41,111 +41,6 @@
 
 #include <obd.h>
 #include <lustre_fsfilt.h>
-#include <obd_class.h>
-
-#if !defined(__sun__)
-
-/**
- * Update client data in last_rcvd file. An obd API
- */
-static int obt_client_data_update(struct obd_export *exp)
-{
-        struct tg_export_data *ted = &exp->exp_target_data;
-        struct obd_device_target *obt = &exp->exp_obd->u.obt;
-        struct lu_target *lut = class_exp2tgt(exp);
-        loff_t off = ted->ted_lr_off;
-        int rc = 0;
-
-        rc = fsfilt_write_record(exp->exp_obd, obt->obt_rcvd_filp,
-                                 ted->ted_lcd, sizeof(*ted->ted_lcd), &off, 0);
-
-        CDEBUG(D_INFO, "update client idx %u last_epoch %#x (%#x)\n",
-               ted->ted_lr_idx, le32_to_cpu(ted->ted_lcd->lcd_last_epoch),
-               le32_to_cpu(lut->lut_lsd.lsd_start_epoch));
-
-        return rc;
-}
-
-/**
- * Update server data in last_rcvd file. An obd API
- */
-int obt_server_data_update(struct lu_target *lut, int force_sync)
-{
-        struct obd_device_target *obt = &lut->lut_obd->u.obt;
-        loff_t off = 0;
-        int rc;
-        ENTRY;
-
-        CDEBUG(D_SUPER,
-               "%s: mount_count is "LPU64", last_transno is "LPU64"\n",
-               lut->lut_lsd.lsd_uuid,
-               le64_to_cpu(lut->lut_lsd.lsd_mount_count),
-               le64_to_cpu(lut->lut_lsd.lsd_last_transno));
-
-        rc = fsfilt_write_record(lut->lut_obd, obt->obt_rcvd_filp,
-                                 &lut->lut_lsd, sizeof(lut->lut_lsd),
-                                 &off, force_sync);
-        if (rc)
-                CERROR("error writing lr_server_data: rc = %d\n", rc);
-
-        RETURN(rc);
-}
-
-/**
- * Update client epoch with server's one
- */
-void obt_client_epoch_update(struct obd_export *exp)
-{
-        struct lsd_client_data *lcd = exp->exp_target_data.ted_lcd;
-        struct lu_target *lut = class_exp2tgt(exp);
-
-        /** VBR: set client last_epoch to current epoch */
-        if (le32_to_cpu(lcd->lcd_last_epoch) >=
-            le32_to_cpu(lut->lut_lsd.lsd_start_epoch))
-                return;
-        lcd->lcd_last_epoch = lut->lut_lsd.lsd_start_epoch;
-        obt_client_data_update(exp);
-}
-
-/**
- * Increment server epoch. An obd API
- */
-static void obt_boot_epoch_update(struct lu_target *lut)
-{
-        struct obd_device *obd = lut->lut_obd;
-        __u32 start_epoch;
-        struct ptlrpc_request *req;
-        cfs_list_t client_list;
-
-        cfs_spin_lock(&lut->lut_translock);
-        start_epoch = lr_epoch(le64_to_cpu(lut->lut_last_transno)) + 1;
-        lut->lut_last_transno = cpu_to_le64((__u64)start_epoch <<
-                                            LR_EPOCH_BITS);
-        lut->lut_lsd.lsd_start_epoch = cpu_to_le32(start_epoch);
-        cfs_spin_unlock(&lut->lut_translock);
-
-        CFS_INIT_LIST_HEAD(&client_list);
-        cfs_spin_lock_bh(&obd->obd_processing_task_lock);
-        cfs_list_splice_init(&obd->obd_final_req_queue, &client_list);
-        cfs_spin_unlock_bh(&obd->obd_processing_task_lock);
-
-        /**
-         * go through list of exports participated in recovery and
-         * set new epoch for them
-         */
-        cfs_list_for_each_entry(req, &client_list, rq_list) {
-                LASSERT(!req->rq_export->exp_delayed);
-                obt_client_epoch_update(req->rq_export);
-        }
-        /** return list back at once */
-        cfs_spin_lock_bh(&obd->obd_processing_task_lock);
-        cfs_list_splice_init(&client_list, &obd->obd_final_req_queue);
-        cfs_spin_unlock_bh(&obd->obd_processing_task_lock);
-        obt_server_data_update(lut, 1);
-}
-
-#endif /* __sun__ */
-
 
 /**
  * write data in last_rcvd file.
@@ -203,6 +98,8 @@ void lut_client_free(struct obd_export *exp)
         struct tg_export_data *ted = &exp->exp_target_data;
         struct lu_target *lut = class_exp2tgt(exp);
 
+        LASSERT(lut);
+        LASSERT(ted);
         OBD_FREE_PTR(ted->ted_lcd);
         ted->ted_lcd = NULL;
 
@@ -210,6 +107,7 @@ void lut_client_free(struct obd_export *exp)
         if (ted->ted_lr_idx < 0)
                 return;
         /* Clear bit when lcd is freed */
+        LASSERT(lut->lut_client_bitmap);
         cfs_spin_lock(&lut->lut_client_bitmap_lock);
         if (!cfs_test_and_clear_bit(ted->ted_lr_idx, lut->lut_client_bitmap)) {
                 CERROR("%s: client %u bit already clear in bitmap\n",
@@ -298,11 +196,8 @@ void lut_boot_epoch_update(struct lu_target *lut)
 
         if (lut->lut_obd->obd_stopping)
                 return;
-#if !defined(__sun__)
         /** Increase server epoch after recovery */
-        if (lut->lut_bottom == NULL)
-                return obt_boot_epoch_update(lut);
-#endif /* __sun__ */
+        LASSERT(lut->lut_bottom);
 
         rc = lu_env_init(&env, LCT_DT_THREAD);
         if (rc) {
@@ -405,9 +300,6 @@ int lut_init(const struct lu_env *env, struct lu_target *lut,
         if (dt == NULL)
                 RETURN(rc);
 
-        lut->lut_bottom = dt;
-        lut->lut_last_rcvd = NULL;
-
         o = dt_store_open(env, lut->lut_bottom, "", LAST_RCVD, &fid);
         if (!IS_ERR(o)) {
                 lut->lut_last_rcvd = o;
@@ -433,23 +325,27 @@ int lut_init2(const struct lu_env *env, struct lu_target *lut,
         LASSERT(fid);
 
         lut->lut_obd = obd;
+        lut->lut_bottom = dt;
+        lut->lut_last_rcvd = NULL;
+        obd->u.obt.obt_lut = lut;
 
         cfs_spin_lock_init(&lut->lut_translock);
         cfs_spin_lock_init(&lut->lut_client_bitmap_lock);
+
+        OBD_ALLOC(lut->lut_client_bitmap, LR_MAX_CLIENTS >> 3);
+        if (lut->lut_client_bitmap == NULL)
+                RETURN(-ENOMEM);
 
         /** obdfilter has no lu_device stack yet */
         if (dt == NULL)
                 RETURN(rc);
 
-        lut->lut_bottom = dt;
-        lut->lut_last_rcvd = NULL;
-        obd->u.obt.obt_lut = lut;
-
-
         o = dt_locate(env, lut->lut_bottom, fid);
         if (!IS_ERR(o)) {
                 lut->lut_last_rcvd = o;
         } else {
+                OBD_FREE(lut->lut_client_bitmap, LR_MAX_CLIENTS >> 3);
+                lut->lut_client_bitmap = NULL;
                 rc = PTR_ERR(o);
                 CERROR("cannot open %s: rc = %d\n", LAST_RCVD, rc);
         }
@@ -470,6 +366,10 @@ void lut_fini(const struct lu_env *env, struct lu_target *lut)
                 lu_object_put(env, &lut->lut_last_rcvd->do_lu);
                 lut->lut_last_rcvd = NULL;
         }
+
+        cfs_spin_lock_done(&lut->lut_translock);
+        cfs_spin_lock_done(&lut->lut_client_bitmap_lock);
+
         EXIT;
 }
 EXPORT_SYMBOL(lut_fini);

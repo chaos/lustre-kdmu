@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2002, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -51,18 +51,28 @@
 
 #include "cl_object.h"
 
-struct ll_file_data *ll_file_data_get(void)
+static struct ll_file_data *ll_file_data_get(int is_dir)
 {
         struct ll_file_data *fd;
 
         OBD_SLAB_ALLOC_PTR_GFP(fd, ll_file_data_slab, CFS_ALLOC_IO);
+        if (fd && is_dir) {
+                OBD_ALLOC(fd->fd_dir.lfd_name, LLITE_NAME_LEN);
+                if (unlikely(fd->fd_dir.lfd_name == NULL)) {
+                        OBD_SLAB_FREE_PTR(fd, ll_file_data_slab);
+                        fd = NULL;
+                }
+        }
         return fd;
 }
 
 static void ll_file_data_put(struct ll_file_data *fd)
 {
-        if (fd != NULL)
+        if (fd != NULL) {
+                if (fd->fd_dir.lfd_name)
+                        OBD_FREE(fd->fd_dir.lfd_name, LLITE_NAME_LEN);
                 OBD_SLAB_FREE_PTR(fd, ll_file_data_slab);
+        }
 }
 
 void ll_pack_inode2opdata(struct inode *inode, struct md_op_data *op_data,
@@ -314,7 +324,7 @@ int ll_file_release(struct inode *inode, struct file *file)
         LASSERT(fd != NULL);
 
         /* The last ref on @file, maybe not the the owner pid of statahead.
-         * Different processes can open the same dir, "ll_opendir_key" means:
+         * Different processes can open the same dir, "lli_opendir_key" means:
          * it is me that should stop the statahead thread. */
         if (lli->lli_opendir_key == fd && lli->lli_opendir_pid != 0)
                 ll_stop_statahead(inode, lli->lli_opendir_key);
@@ -509,7 +519,7 @@ int ll_file_open(struct inode *inode, struct file *file)
         file->private_data = NULL; /* prevent ll_local_open assertion */
 #endif
 
-        fd = ll_file_data_get();
+        fd = ll_file_data_get(S_ISDIR(inode->i_mode));
         if (fd == NULL)
                 RETURN(-ENOMEM);
 
@@ -702,7 +712,7 @@ static int ll_lsm_getattr(struct lov_stripe_md *lsm, struct obd_export *exp,
         oinfo.oi_md = lsm;
         oinfo.oi_oa = obdo;
         oinfo.oi_oa->o_id = lsm->lsm_object_id;
-        oinfo.oi_oa->o_gr = lsm->lsm_object_gr;
+        oinfo.oi_oa->o_seq = lsm->lsm_object_seq;
         oinfo.oi_oa->o_mode = S_IFREG;
         oinfo.oi_oa->o_ioepoch = ioepoch;
         oinfo.oi_oa->o_valid = OBD_MD_FLID | OBD_MD_FLTYPE |
@@ -1230,13 +1240,12 @@ static int ll_lov_recreate_obj(struct inode *inode, struct file *file,
                 GOTO(out, rc = -ENOMEM);
 
         oa->o_id = ucreatp.lrc_id;
-        oa->o_gr = ucreatp.lrc_group;
+        oa->o_seq = ucreatp.lrc_seq;
         oa->o_nlink = ucreatp.lrc_ost_idx;
         oa->o_flags |= OBD_FL_RECREATE_OBJS;
         oa->o_valid = OBD_MD_FLID | OBD_MD_FLFLAGS | OBD_MD_FLGROUP;
-        obdo_from_inode(oa, inode, OBD_MD_FLTYPE | OBD_MD_FLATIME |
-                        OBD_MD_FLMTIME | OBD_MD_FLCTIME);
-
+        obdo_from_inode(oa, inode, &ll_i2info(inode)->lli_fid, OBD_MD_FLTYPE |
+                        OBD_MD_FLATIME | OBD_MD_FLMTIME | OBD_MD_FLCTIME);
         memcpy(lsm2, lsm, lsm_size);
         rc = obd_create(exp, oa, &lsm2, &oti);
 
@@ -1589,12 +1598,11 @@ int ll_do_fiemap(struct inode *inode, struct ll_user_fiemap *fiemap,
                 return -EOPNOTSUPP;
 
         fm_key.oa.o_id = lsm->lsm_object_id;
-        fm_key.oa.o_gr = lsm->lsm_object_gr;
+        fm_key.oa.o_seq = lsm->lsm_object_seq;
         fm_key.oa.o_valid = OBD_MD_FLID | OBD_MD_FLGROUP;
 
-        obdo_from_inode(&fm_key.oa, inode, OBD_MD_FLFID | OBD_MD_FLGROUP |
+        obdo_from_inode(&fm_key.oa, inode, &ll_i2info(inode)->lli_fid,
                         OBD_MD_FLSIZE);
-
         /* If filesize is 0, then there would be no objects for mapping */
         if (fm_key.oa.o_size == 0) {
                 fiemap->fm_mapped_extents = 0;
@@ -1890,11 +1898,12 @@ int ll_fsync(struct file *file, struct dentry *dentry, int data)
                         RETURN(rc ? rc : -ENOMEM);
 
                 oa->o_id = lsm->lsm_object_id;
-                oa->o_gr = lsm->lsm_object_gr;
+                oa->o_seq = lsm->lsm_object_seq;
                 oa->o_valid = OBD_MD_FLID | OBD_MD_FLGROUP;
-                obdo_from_inode(oa, inode, OBD_MD_FLTYPE | OBD_MD_FLATIME |
-                                           OBD_MD_FLMTIME | OBD_MD_FLCTIME |
-                                           OBD_MD_FLGROUP);
+                obdo_from_inode(oa, inode, &ll_i2info(inode)->lli_fid,
+                                OBD_MD_FLTYPE | OBD_MD_FLATIME |
+                                OBD_MD_FLMTIME | OBD_MD_FLCTIME |
+                                OBD_MD_FLGROUP);
 
                 oc = ll_osscapa_get(inode, CAPA_OPC_OSS_WRITE);
                 err = obd_sync(ll_i2sbi(inode)->ll_dt_exp, oa, lsm,
@@ -2213,6 +2222,7 @@ int ll_getattr_it(struct vfsmount *mnt, struct dentry *de,
                   struct lookup_intent *it, struct kstat *stat)
 {
         struct inode *inode = de->d_inode;
+        struct ll_inode_info *lli = ll_i2info(inode);
         int res = 0;
 
         res = ll_inode_revalidate_it(de, it);
@@ -2222,7 +2232,11 @@ int ll_getattr_it(struct vfsmount *mnt, struct dentry *de,
                 return res;
 
         stat->dev = inode->i_sb->s_dev;
-        stat->ino = inode->i_ino;
+        if (cfs_curproc_is_32bit())
+                stat->ino = cl_fid_build_ino32(&lli->lli_fid);
+        else
+                stat->ino = inode->i_ino;
+
         stat->mode = inode->i_mode;
         stat->nlink = inode->i_nlink;
         stat->uid = inode->i_uid;

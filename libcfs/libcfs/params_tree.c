@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2009, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -857,9 +857,9 @@ static void libcfs_param_seq_stop(struct libcfs_param_entry *lpe,
         return;
 }
 
-static int libcfs_param_data_build(char *buf, int buf_len,
-                                   enum libcfs_param_value_type type,
-                                   const char *name, const char *unit);
+static int libcfs_param_data_pack(char *buf, int buf_len,
+                                  enum libcfs_param_value_type type,
+                                  const char *name, const char *unit);
 static int libcfs_param_seq_show(struct libcfs_param_entry *lpe,
                                  struct libcfs_param_seq_args *args,
                                  char **output)
@@ -876,8 +876,8 @@ static int libcfs_param_seq_show(struct libcfs_param_entry *lpe,
                 return rc;
 
         if (strlen(seqf->buf) > 0) {
-                rc = libcfs_param_data_build(seqf->buf, seqf->size, LP_STR,
-                                             NULL, NULL);
+                rc = libcfs_param_data_pack(seqf->buf, seqf->size, LP_STR,
+                                            NULL, NULL);
                 if ( rc < 0)
                         return rc;
         }
@@ -1165,7 +1165,7 @@ int libcfs_param_intvec_read(char *page, char **start, off_t off, int count,
 int libcfs_param_string_write(libcfs_file_t *filp, const char *buffer,
                               unsigned long count, void *data)
 {
-        memcpy((lparcb_t *)data, buffer, count);
+        memcpy(((lparcb_t *)data)->cb_data, buffer, count);
         return 0;
 }
 
@@ -1353,10 +1353,9 @@ static int get_value_len(enum libcfs_param_value_type type, char *buf)
                         return 4;
                 case LP_U64:
                         return 8;
-                case LP_STR:
-                        return strlen(buf);
                 case LP_DB:
-                        return strlen(buf);
+                case LP_STR:
+			return strlen(buf);
                 default:
                         return 0;
         }
@@ -1423,14 +1422,14 @@ int libcfs_param_snprintf_common(char *page, int count, void *cb_data,
                                 rc = libcfs_vsnprintf(page, count,
                                                       format, args);
                         if (done || rc > 0)
-                                rc = libcfs_param_data_build(page, count,
-                                                      LP_STR, name, unit);
+                                rc = libcfs_param_data_pack(page, count,
+                                                    LP_STR, name, unit);
                         break;
                 default:
                         /* else, they are numbers */
                         print_num(page, args, type);
-                        rc = libcfs_param_data_build(page, count, type,
-                                                     name, unit);
+                        rc = libcfs_param_data_pack(page, count, type,
+                                                    name, unit);
                         break;
                 }
         } else {
@@ -1480,82 +1479,71 @@ static int libcfs_param_is_invalid(struct libcfs_param_data *data)
                 CERROR("pve_value_len nozero but no value pointer\n");
                 return 1;
         }
+        if (data->param_name_len &&
+            data->param_name[data->param_name_len] != '\0') {
+                CERROR ("pve_name not 0 terminated\n");
+                return 1;
+        }
+        if (data->param_unit_len &&
+            data->param_unit[data->param_unit_len] != '\0') {
+                CERROR ("pve_unit not 0 terminated\n");
+                return 1;
+        }
+        if (data->param_type == LP_STR || data->param_type == LP_DB) {
+		if (data->param_value_len &&
+                    data->param_value[data->param_value_len] != '\0') {
+			CERROR ("pve_value(string) not 0 terminated\n");
+			return 1;
+		}
+        }
 
         return 0;
 }
 
 /**
- * Pack libcfs_param_data into the buffer
- */
-static int libcfs_param_pack(struct libcfs_param_data *data,
-                             char **pbuf, int max)
-{
-        struct libcfs_param_data  *overlay;
-        char                      *ptr;
-        int                        len;
-
-        len = libcfs_param_packlen(data);
-        if (len > max) {
-                CERROR("max_buflen(%d) < pvelen (%d)\n", max, len);
-                return -ENOMEM;
-        }
-        if (*pbuf == NULL)
-                return -ENOMEM;
-
-        overlay = (struct libcfs_param_data *)*pbuf;
-        memcpy(*pbuf, data, sizeof(*data));
-        ptr = overlay->param_bulk;
-
-        if (data->param_name != NULL) {
-                strncpy(ptr, data->param_name, data->param_name_len);
-                ptr += data->param_name_len;
-        }
-        if (data->param_unit != NULL) {
-                strncpy(ptr, data->param_unit, data->param_unit_len);
-                ptr += data->param_unit_len;
-        }
-        if (data->param_value != NULL) {
-                memcpy(ptr, data->param_value, data->param_value_len);
-                ptr += data->param_value_len;
-        }
-        if (libcfs_param_is_invalid(overlay))
-                return -EINVAL;
-
-        return len;
-}
-
-/**
  * Two steps:
- * 1) organize the param value into libcfs_param_data struct
- * 2) pack the data into the buffer
+ * 1) copy the param_value stored in buffer out
+ * 2) organize libcfs_param_data struct and pack it back into the buffer
  */
-static int libcfs_param_data_build(char *buf, int buf_len,
-                                   enum libcfs_param_value_type type,
-                                   const char *name, const char *unit)
+static int libcfs_param_data_pack(char *buf, int buf_len,
+                                  enum libcfs_param_value_type type,
+                                  const char *name, const char *unit)
 {
         struct libcfs_param_data  *data = NULL;
         char                      *ptr;
-        int                        len;
-        int                        rc = 0;
+        char                      *value = NULL;
+        int                        data_len = 0;
+        int                        value_len = 0;
+	int			   rc = 0;
 
+	/* we store param_value into buf, copy it out first */
         if (buf == NULL) {
                 CERROR("buf is null.\n");
                 return -ENOMEM;
         }
-        /* create libcfs_param_data struct */
-        len = sizeof(struct libcfs_param_data);
+        value_len = get_value_len(type, buf);
+	if (value_len) {
+		LIBCFS_ALLOC(value, value_len);
+		if (value == NULL)
+			return -ENOMEM;
+		memcpy(value, buf, value_len);
+	}
+	/* check buf_len */
+        data_len = sizeof(struct libcfs_param_data);
         if (name != NULL)
-                len += strlen(name) + 1;
+                data_len += strlen(name) + 1;
         if (unit != NULL)
-                len += strlen(unit) + 1;
-        len += get_value_len(type, buf) + 1;
-        LIBCFS_ALLOC(data, len);
-        if (data == NULL) {
-                CERROR("No memory for pve struct.\n");
-                return -ENOMEM;
+                data_len += strlen(unit) + 1;
+        data_len += value_len;
+        if (data_len > buf_len) {
+                CERROR("max_buflen(%d) < pvelen (%d)\n", buf_len, data_len);
+                GOTO(out, rc = -ENOMEM);
         }
-        /* copy name/unit to pve */
-        ptr = (char *)data + sizeof(*data);
+        /* create libcfs_param_data struct */
+        memset(buf, 0, buf_len);
+        data = (struct libcfs_param_data *)buf;
+        ptr = data->param_bulk;
+        data->param_type = type;
         if (name != NULL) {
                 data->param_name_len = strlen(name);
                 strcpy(ptr, name);
@@ -1574,88 +1562,22 @@ static int libcfs_param_data_build(char *buf, int buf_len,
                 data->param_unit = NULL;
                 data->param_unit_len = 0;
         }
-        data->param_type = type;
-        data->param_value_len = get_value_len(type, buf);
-        memcpy(ptr, buf, data->param_value_len);
-        if (data->param_value_len)
+        data->param_value_len = value_len;
+        if (value_len) {
+		memcpy(ptr, value, value_len);
                 data->param_value = ptr;
-        /* pack data */
-        memset(buf, 0, buf_len);
-        rc = libcfs_param_pack(data, &buf, buf_len);
-        LIBCFS_FREE(data, len);
+	}
 
-        return rc;
+        if (libcfs_param_is_invalid(data))
+                GOTO(out, rc = -EINVAL);
+out:
+	if (value_len)
+		LIBCFS_FREE(value, value_len);
+
+        return rc < 0 ? rc : data_len;
 }
 
 #endif /* __KERNEL__ */
-
-/**
- * Count libcfs_param_data len
- */
-int libcfs_param_packlen(struct libcfs_param_data *data)
-{
-        int len = sizeof(*data);
-
-        len += data->param_name_len;
-        len += data->param_unit_len;
-        len += data->param_value_len;
-
-        return len;
-}
-
-/**
- * Unpack libcfs_param_data from the buf
- */
-int libcfs_param_unpack(struct libcfs_param_data *data, char *buf)
-{
-        char *ptr;
-        struct libcfs_param_data *overlay;
-
-        if (!buf)
-                return 1;
-        overlay = (struct libcfs_param_data *)buf;
-
-        /* Preserve the caller's buffer pointers */
-        overlay->param_name = data->param_name;
-        overlay->param_unit = data->param_unit;
-        overlay->param_value = data->param_value;
-
-        memcpy(data, buf, sizeof(*data));
-        ptr = overlay->param_bulk;
-        if (data->param_name_len) {
-                LIBCFS_ALLOC(data->param_name, data->param_name_len + 1);
-                strncpy(data->param_name, ptr, data->param_name_len);
-                ptr += data->param_name_len;
-        } else {
-                data->param_name = NULL;
-        }
-        if (data->param_unit_len) {
-                LIBCFS_ALLOC(data->param_unit, data->param_unit_len + 1);
-                strncpy(data->param_unit, ptr, data->param_unit_len);
-                ptr += data->param_unit_len;
-        } else {
-                data->param_unit = NULL;
-        }
-        if (data->param_value_len) {
-                LIBCFS_ALLOC(data->param_value, data->param_value_len + 1);
-                memcpy(data->param_value, ptr, data->param_value_len);
-                ptr += data->param_value_len;
-        } else {
-                data->param_value = NULL;
-        }
-
-        return 0;
-}
-
-void libcfs_param_free_value(struct libcfs_param_data *data)
-{
-        if (data->param_name)
-                LIBCFS_FREE(data->param_name, data->param_name_len + 1);
-        if (data->param_unit)
-                LIBCFS_FREE(data->param_unit, data->param_unit_len + 1);
-        if (data->param_value)
-                LIBCFS_FREE(data->param_value, data->param_value_len + 1);
-}
 
 #ifdef __KERNEL__
 EXPORT_SYMBOL(libcfs_param_get_root);
@@ -1677,9 +1599,6 @@ EXPORT_SYMBOL(libcfs_param_sysctl_register);
 EXPORT_SYMBOL(libcfs_param_sysctl_change);
 EXPORT_SYMBOL(libcfs_param_snprintf_common);
 EXPORT_SYMBOL(libcfs_param_copy);
-EXPORT_SYMBOL(libcfs_param_unpack);
-EXPORT_SYMBOL(libcfs_param_free_value);
-EXPORT_SYMBOL(libcfs_param_packlen);
 EXPORT_SYMBOL(libcfs_param_cb_data_alloc);
 EXPORT_SYMBOL(libcfs_param_cb_data_free);
 EXPORT_SYMBOL(libcfs_param_seq_release_common);

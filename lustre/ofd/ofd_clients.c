@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2009, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -42,6 +42,7 @@
 
 #define DEBUG_SUBSYSTEM S_FILTER
 
+#include <libcfs/libcfs.h>
 #include "ofd_internal.h"
 
 /* Add client data to the FILTER.  We use a bitmap to locate a free space
@@ -52,7 +53,7 @@ int filter_client_new(const struct lu_env *env, struct filter_device *ofd,
                       struct filter_export_data *fed)
 {
         struct obd_device *obd = filter_obd(ofd);
-        unsigned long *bitmap = ofd->ofd_last_rcvd_slots;
+        unsigned long *bitmap = ofd->ofd_lut.lut_client_bitmap;
         struct tg_export_data *ted = &fed->fed_ted;
         struct lsd_client_data *lcd = ted->ted_lcd;
         loff_t off;
@@ -124,7 +125,7 @@ int filter_client_add(const struct lu_env *env, struct filter_device *ofd,
                       struct filter_export_data *fed, int cl_idx)
 {
         struct obd_device *obd = filter_obd(ofd);
-        unsigned long *bitmap = ofd->ofd_last_rcvd_slots;
+        unsigned long *bitmap = ofd->ofd_lut.lut_client_bitmap;
         struct tg_export_data *ted = &fed->fed_ted;
         ENTRY;
 
@@ -181,11 +182,11 @@ int filter_client_free(struct lu_env *env, struct obd_export *exp)
         CDEBUG(D_INFO, "freeing client at idx %u, offset %lld with UUID '%s'\n",
                ted->ted_lr_idx, ted->ted_lr_off, lcd->lcd_uuid);
 
-        LASSERT(ofd->ofd_last_rcvd_slots != NULL);
+        LASSERT(ofd->ofd_lut.lut_client_bitmap != NULL);
 
         /* Clear the bit _after_ zeroing out the client so we don't
            race with filter_client_add and zero out new clients.*/
-        if (!cfs_test_bit(ted->ted_lr_idx, ofd->ofd_last_rcvd_slots)) {
+        if (!cfs_test_bit(ted->ted_lr_idx, ofd->ofd_lut.lut_client_bitmap)) {
                 CERROR("FILTER client %u: bit already clear in bitmap!!\n",
                        ted->ted_lr_idx);
                 LBUG();
@@ -205,7 +206,7 @@ int filter_client_free(struct lu_env *env, struct obd_export *exp)
                 rc = filter_trans_start(env, ofd, th);
                 if (rc)
                         GOTO(free, rc);
-                memset(lcd, 0, sizeof(*lcd));
+                memset(lcd->lcd_uuid, 0, sizeof(lcd->lcd_uuid));
                 /* off is changed after write, use tmp value */
                 off = ted->ted_lr_off;
                 rc = filter_last_rcvd_write(env, ofd, lcd, &off, th);
@@ -221,18 +222,8 @@ int filter_client_free(struct lu_env *env, struct obd_export *exp)
                        lcd->lcd_uuid, ted->ted_lr_idx, ted->ted_lr_off,
                        LAST_RCVD, rc);
         }
-
-        if (!cfs_test_and_clear_bit(ted->ted_lr_idx, ofd->ofd_last_rcvd_slots)){
-                CERROR("FILTER client %u: bit already clear in bitmap!!\n",
-                       ted->ted_lr_idx);
-                LBUG();
-        }
-
         EXIT;
 free:
-        OBD_FREE(ted->ted_lcd, sizeof(*ted->ted_lcd));
-        ted->ted_lcd = NULL;
-
         return 0;
 }
 

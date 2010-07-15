@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2009, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -150,7 +150,7 @@ struct obd_llog_group *filter_find_olg(struct obd_device *obd, int group)
 
         cfs_spin_lock(&ofd->ofd_llog_list_lock);
         cfs_list_for_each_entry(olg, &ofd->ofd_llog_list, olg_list) {
-                if (olg->olg_group == group) {
+                if (olg->olg_seq == group) {
                         cfs_spin_unlock(&ofd->ofd_llog_list_lock);
                         RETURN(olg);
                 }
@@ -164,7 +164,7 @@ struct obd_llog_group *filter_find_olg(struct obd_device *obd, int group)
         llog_group_init(olg, group);
         cfs_spin_lock(&ofd->ofd_llog_list_lock);
         cfs_list_for_each_entry(nolg, &ofd->ofd_llog_list, olg_list) {
-                if (nolg->olg_group == group) {
+                if (nolg->olg_seq == group) {
                         cfs_spin_unlock(&ofd->ofd_llog_list_lock);
                         OBD_FREE_PTR(olg);
                         RETURN(nolg);
@@ -210,14 +210,14 @@ static int filter_recov_log_setattr_cb(struct llog_ctxt *ctxt,
                 struct llog_setattr_rec *lsr = (struct llog_setattr_rec *)rec;
 
                 oinfo.oi_oa->o_id = lsr->lsr_oid;
-                oinfo.oi_oa->o_gr = lsr->lsr_ogr;
+                oinfo.oi_oa->o_seq = lsr->lsr_oseq;
                 oinfo.oi_oa->o_uid = lsr->lsr_uid;
                 oinfo.oi_oa->o_gid = lsr->lsr_gid;
         } else {
                 struct llog_setattr64_rec *lsr = (struct llog_setattr64_rec *)rec;
 
                 oinfo.oi_oa->o_id = lsr->lsr_oid;
-                oinfo.oi_oa->o_gr = lsr->lsr_ogr;
+                oinfo.oi_oa->o_seq = lsr->lsr_oseq;
                 oinfo.oi_oa->o_uid = lsr->lsr_uid;
                 oinfo.oi_oa->o_gid = lsr->lsr_gid;
         }
@@ -264,7 +264,7 @@ int filter_recov_log_unlink_cb(struct llog_ctxt *ctxt,
                 RETURN(-ENOMEM);
         oa->o_valid |= OBD_MD_FLCOOKIE;
         oa->o_id = lur->lur_oid;
-        oa->o_gr = lur->lur_ogr;
+        oa->o_seq = lur->lur_oseq;
         oa->o_valid = OBD_MD_FLID | OBD_MD_FLGROUP;
         oa->o_lcookie = *cookie;
         oid = oa->o_id;
@@ -339,7 +339,7 @@ filter_find_olg_internal(struct filter_obd *filter, int group)
 
         LASSERT_SPIN_LOCKED(&filter->fo_llog_list_lock);
         cfs_list_for_each_entry(olg, &filter->fo_llog_list, olg_list) {
-                if (olg->olg_group == group)
+                if (olg->olg_seq == group)
                         RETURN(olg);
         }
         RETURN(NULL);
@@ -359,7 +359,7 @@ struct obd_llog_group *filter_find_create_olg(struct obd_device *obd, int group)
 
         filter = &obd->u.filter;
 
-        if (group == FILTER_GROUP_LLOG)
+        if (group == FID_SEQ_LLOG)
                 RETURN(&obd->obd_olg);
 
         cfs_spin_lock(&filter->fo_llog_list_lock);

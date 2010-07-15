@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2009, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -81,7 +81,7 @@ static int filter_lvbo_init(struct ldlm_resource *res)
 
 
         info = filter_info_init(&env, NULL);
-        lu_idif_from_resid(&info->fti_fid, &res->lr_name);
+        ofd_fid_from_resid(&info->fti_fid, &res->lr_name);
 
         fo = filter_object_find(&env, ofd, &info->fti_fid);
         if (IS_ERR(fo))
@@ -199,7 +199,7 @@ static int filter_lvbo_update(struct ldlm_resource *res,
         ofd = res->lr_namespace->ns_lvbp;
         LASSERT(ofd != NULL);
 
-        lu_idif_from_resid(&info->fti_fid, &res->lr_name);
+        ofd_fid_from_resid(&info->fti_fid, &res->lr_name);
 
         fo = filter_object_find(&env, ofd, &info->fti_fid);
         if (IS_ERR(fo))

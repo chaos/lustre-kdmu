@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2009, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -42,6 +42,7 @@
 
 #define DEBUG_SUBSYSTEM S_FILTER
 
+#include <libcfs/libcfs.h>
 #include "ofd_internal.h"
 
 struct filter_object *filter_object_find(const struct lu_env *env,
@@ -96,7 +97,7 @@ struct filter_object *filter_object_find_or_create(const struct lu_env *env,
         if (rc)
                 GOTO(trans_stop, rc);
 
-        filter_write_lock(env, fo, 0);
+        filter_write_lock(env, fo);
         if (filter_object_exists(fo))
                 GOTO(unlock, rc = 0);
 
@@ -126,7 +127,7 @@ void filter_object_put(const struct lu_env *env, struct filter_object *fo)
 }
 
 int filter_precreate_object(const struct lu_env *env, struct filter_device *ofd,
-                            obd_id id, obd_gr group)
+                            obd_id id, obd_seq group)
 {
         struct dt_object_format  dof;
         struct filter_object    *fo;
@@ -135,11 +136,14 @@ int filter_precreate_object(const struct lu_env *env, struct filter_device *ofd,
         struct thandle          *th;
         struct lu_buf            buf;
         struct lu_fid            fid;
+        struct ost_id            ostid;
         obd_id                   tmp;
         loff_t                   off;
         int                      rc;
 
-        lu_idif_build(&fid, id, group);
+        ostid.oi_id = id;
+        ostid.oi_seq = group;
+        fid_ostid_unpack(&fid, &ostid, 0);
 
         fo = filter_object_find(env, ofd, &fid);
         if (IS_ERR(fo))
@@ -173,7 +177,7 @@ int filter_precreate_object(const struct lu_env *env, struct filter_device *ofd,
         if (rc)
                 GOTO(trans_stop, rc);
 
-        filter_write_lock(env, fo, 0);
+        filter_write_lock(env, fo);
         if (filter_object_exists(fo)) {
                 /* underlying filesystem is broken - object must not exist */
                 CERROR("object %u/"LPD64" exists: "DFID"\n",
@@ -262,26 +266,36 @@ int filter_object_punch(const struct lu_env *env, struct filter_object *fo,
         attr.la_valid |= LA_SIZE;
         attr.la_valid &= ~LA_TYPE;
 
+        filter_write_lock(env, fo);
+
         th = filter_trans_create(env, ofd);
         if (IS_ERR(th))
-                RETURN(PTR_ERR(th));
+                GOTO(unlock, rc = PTR_ERR(th));
 
         rc = dt_declare_attr_set(env, dob, &attr, th);
-        LASSERT(rc == 0);
+        if (rc)
+                GOTO(stop, rc);
 
         rc = dt_declare_punch(env, dob, start, OBD_OBJECT_EOF, th);
-        LASSERT(rc == 0);
+        if (rc)
+                GOTO(stop, rc);
 
         rc = filter_trans_start(env, ofd, th);
         if (rc)
-                RETURN(rc);
+                GOTO(unlock, rc);
 
         rc = dt_punch(env, dob, start, OBD_OBJECT_EOF, th,
                       filter_object_capa(env, fo));
+        if (rc)
+                GOTO(unlock, rc);
 
         rc = dt_attr_set(env, dob, &attr, th, filter_object_capa(env, fo));
 
+stop:
         filter_trans_stop(env, ofd, th);
+
+unlock:
+        filter_write_unlock(env, fo);
 
         RETURN(rc);
 
@@ -303,7 +317,7 @@ int filter_object_destroy(const struct lu_env *env, struct filter_object *fo)
 
         filter_fmd_drop(filter_info(env)->fti_exp, &fo->ofo_header.loh_fid);
 
-        filter_write_lock(env, fo, 0);
+        filter_write_lock(env, fo);
         dt_ref_del(env, filter_object_child(fo), th);
         filter_write_unlock(env, fo);
 

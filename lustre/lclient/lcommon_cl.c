@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright 2008 Sun Microsystems, Inc.  All rights reserved.
+ * Copyright (c) 2008, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -60,16 +60,6 @@
 #include <sys/stat.h>
 #include <sys/queue.h>
 #include <fcntl.h>
-# include <sysio.h>
-# ifdef HAVE_XTIO_H
-#  include <xtio.h>
-# endif
-# include <fs.h>
-# include <mount.h>
-# include <inode.h>
-# ifdef HAVE_FILE_H
-#  include <file.h>
-# endif
 # include <liblustre.h>
 #endif
 
@@ -962,11 +952,13 @@ void ccc_req_completion(const struct lu_env *env,
  *
  *    - o_mode
  *
- *    - o_fid (filled with inode number?!)
+ *    - o_parent_seq
  *
  *    - o_[ug]id
  *
- *    - o_generation
+ *    - o_parent_oid
+ *
+ *    - o_parent_ver
  *
  *    - o_ioepoch,
  *
@@ -998,11 +990,11 @@ void ccc_req_attr_set(const struct lu_env *env,
                         oa->o_valid |= OBD_MD_FLEPOCH;
                         oa->o_ioepoch = cl_i2info(inode)->lli_ioepoch;
                         valid_flags |= OBD_MD_FLMTIME|OBD_MD_FLCTIME|
-                                OBD_MD_FLUID|OBD_MD_FLGID|
-                                OBD_MD_FLFID|OBD_MD_FLGENER;
+                                OBD_MD_FLUID|OBD_MD_FLGID;
                 }
         }
-        obdo_from_inode(oa, inode, valid_flags & flags);
+        obdo_from_inode(oa, inode, &cl_i2info(inode)->lli_fid,
+                        valid_flags & flags);
 }
 
 const struct cl_req_operations ccc_req_ops = {
@@ -1197,6 +1189,41 @@ int cl_inode_init(struct inode *inode, struct lustre_md *md)
         return result;
 }
 
+/**
+ * Wait for others drop their references of the object at first, then we drop
+ * the last one, which will lead to the object be destroyed immediately.
+ * Must be called after cl_object_kill() against this object.
+ *
+ * The reason we want to do this is: destroying top object will wait for sub
+ * objects being destroyed first, so we can't let bottom layer (e.g. from ASTs)
+ * to initiate top object destroying which may deadlock. See bz22520.
+ */
+static void cl_object_put_last(struct lu_env *env, struct cl_object *obj)
+{
+        struct lu_object_header *header = obj->co_lu.lo_header;
+        struct lu_site          *site;
+        cfs_waitlink_t           waiter;
+
+        if (unlikely(cfs_atomic_read(&header->loh_ref) != 1)) {
+                site = obj->co_lu.lo_dev->ld_site;
+
+                cfs_waitlink_init(&waiter);
+                cfs_waitq_add(&site->ls_marche_funebre, &waiter);
+
+                while (1) {
+                        cfs_set_current_state(CFS_TASK_UNINT);
+                        if (cfs_atomic_read(&header->loh_ref) == 1)
+                                break;
+                        cfs_waitq_wait(&waiter, CFS_TASK_UNINT);
+                }
+
+                cfs_set_current_state(CFS_TASK_RUNNING);
+                cfs_waitq_del(&site->ls_marche_funebre, &waiter);
+        }
+
+        cl_object_put(env, obj);
+}
+
 void cl_inode_fini(struct inode *inode)
 {
         struct lu_env           *env;
@@ -1224,7 +1251,7 @@ void cl_inode_fini(struct inode *inode)
                  */
                 cl_object_kill(env, clob);
                 lu_object_ref_del(&clob->co_lu, "inode", inode);
-                cl_object_put(env, clob);
+                cl_object_put_last(env, clob);
                 lli->lli_clob = NULL;
                 if (emergency) {
                         cl_env_unplant(ccc_inode_fini_env, &refcheck);
@@ -1258,26 +1285,22 @@ __u16 ll_dirent_type_get(struct lu_dirent *ent)
 }
 
 /**
- * build inode number from passed @fid */
-ino_t cl_fid_build_ino(const struct lu_fid *fid)
+ * for 32 bit inode numbers directly map seq+oid to 32bit number.
+ */
+__u32 cl_fid_build_ino32(const struct lu_fid *fid)
 {
-        ino_t ino;
-        ENTRY;
+        RETURN(fid_flatten32(fid));
+}
 
-        if (fid_is_igif(fid)) {
-                ino = lu_igif_ino(fid);
-                RETURN(ino);
-        }
-
-        /* Very stupid and having many downsides inode allocation algorithm
-         * based on fid. */
-        ino = fid_flatten(fid) & 0xFFFFFFFF;
-
-        if (unlikely(ino == 0))
-                /* the first result ino is 0xFFC001, so this is rarely used */
-                ino = 0xffbcde;
-        ino = ino | 0x80000000;
-        RETURN(ino);
+/**
+ * build inode number from passed @fid */
+__u64 cl_fid_build_ino(const struct lu_fid *fid)
+{
+#if BITS_PER_LONG == 32
+        RETURN(fid_flatten32(fid));
+#else
+        RETURN(fid_flatten(fid));
+#endif
 }
 
 /**

@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2009, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -105,14 +105,14 @@ cfs_mutex_t lsb_list_mutex;
 
 static void logid_to_fid(struct llog_logid *id, struct lu_fid *fid)
 {
-        fid->f_seq = id->lgl_ogr;
+        fid->f_seq = id->lgl_oseq;
         fid->f_oid = id->lgl_oid;
         fid->f_ver = 0;
 }
 
 static void fid_to_logid(struct lu_fid *fid, struct llog_logid *id)
 {
-        id->lgl_ogr = fid->f_seq;
+        id->lgl_oseq = fid->f_seq;
         id->lgl_oid = fid->f_oid;
         id->lgl_ogen = 0;
 }
@@ -126,11 +126,15 @@ static struct llog_superblock *llog_osd_get_sb(const struct lu_env *env,
         struct dt_object              *o;
         struct thandle                *_th;
         struct lu_fid                  fid;
-        struct lu_attr                 attr;
+        struct lu_attr                *attr = NULL;
         struct dt_object_format        dof;
         struct lu_buf                  lb;
         loff_t                         pos;
         int                            rc;
+
+        OBD_ALLOC_PTR(attr);
+        if (unlikely(attr == NULL))
+                RETURN(ERR_PTR(-ENOMEM));
 
         cfs_mutex_lock(&lsb_list_mutex);
         cfs_list_for_each_entry(lsb, &lsb_list_head, lsb_list) {
@@ -171,14 +175,14 @@ static struct llog_superblock *llog_osd_get_sb(const struct lu_env *env,
 
                 LASSERT(th == NULL);
 
-                attr.la_valid = LA_TYPE | LA_MODE;
-                attr.la_mode = S_IFREG | 0666;
+                attr->la_valid = LA_TYPE | LA_MODE;
+                attr->la_mode = S_IFREG | 0666;
                 dof.dof_type = dt_mode_to_dft(S_IFREG);
 
                 _th = dt_trans_create(env, dev);
                 LASSERT(!IS_ERR(_th));
 
-                rc = dt_declare_create(env, o, &attr, NULL, &dof, _th);
+                rc = dt_declare_create(env, o, attr, NULL, &dof, _th);
                 LASSERT(rc == 0);
 
                 rc = dt_declare_record_write(env, o, sizeof(sbd), 0, _th);
@@ -190,7 +194,7 @@ static struct llog_superblock *llog_osd_get_sb(const struct lu_env *env,
                 dt_write_lock(env, o, 0);
                 LASSERT(!dt_object_exists(o));
 
-                rc = dt_create(env, o, &attr, NULL, &dof, _th);
+                rc = dt_create(env, o, attr, NULL, &dof, _th);
                 LASSERT(rc == 0);
                 LASSERT(dt_object_exists(o));
                 dt_write_unlock(env, o);
@@ -212,6 +216,9 @@ static struct llog_superblock *llog_osd_get_sb(const struct lu_env *env,
 
 out:
         cfs_mutex_unlock(&lsb_list_mutex);
+
+        if (likely(attr))
+                OBD_FREE_PTR(attr);
 
         return lsb;
 }
@@ -455,13 +462,17 @@ static int llog_osd_read_header(struct llog_handle *handle)
 {
         struct obd_device       *obd;
         struct dt_object        *o;
-        struct lu_attr           attr;
+        struct lu_attr          *attr = NULL;
         struct dt_device        *dt;
         struct lu_env            env;
         int                      rc;
         ENTRY;
 
         LASSERT(sizeof(*handle->lgh_hdr) == LLOG_CHUNK_SIZE);
+
+        OBD_ALLOC_PTR(attr);
+        if (unlikely(attr == NULL))
+                RETURN(-ENOMEM);
 
         obd = handle->lgh_ctxt->loc_exp->exp_obd;
         LASSERT(obd);
@@ -474,14 +485,14 @@ static int llog_osd_read_header(struct llog_handle *handle)
         rc = lu_env_init(&env, dt->dd_lu_dev.ld_type->ldt_ctx_tags);
         if (rc) {
                 CERROR("can't initialize env: %d\n", rc);
-                RETURN(rc);
+                GOTO(out2, rc);
         }
 
-        rc = dt_attr_get(&env, o, &attr, NULL);
+        rc = dt_attr_get(&env, o, attr, NULL);
         LASSERT(rc == 0);
-        LASSERT(attr.la_valid & LA_SIZE);
+        LASSERT(attr->la_valid & LA_SIZE);
 
-        if (attr.la_size == 0) {
+        if (attr->la_size == 0) {
                 CDEBUG(D_HA, "not reading header from 0-byte log\n");
                 GOTO(out, rc = LLOG_EEMPTY);
         }
@@ -522,6 +533,9 @@ static int llog_osd_read_header(struct llog_handle *handle)
 
 out:
         lu_env_fini(&env);
+out2:
+        if (likely(attr))
+                OBD_FREE_PTR(attr);
 
         RETURN(rc);
 }
@@ -531,7 +545,7 @@ static int llog_osd_declare_write_rec_2(struct llog_handle *loghandle,
                                         int idx, struct thandle *th)
 {
         struct dt_object *o;
-        struct lu_attr    attr;
+        struct lu_attr   *attr = NULL;
         struct lu_env     env;
         loff_t            pos;
         int               rc;
@@ -540,7 +554,7 @@ static int llog_osd_declare_write_rec_2(struct llog_handle *loghandle,
         LASSERT(th);
         /* XXX: LASSERT(rec); */
         LASSERT(loghandle);
-        
+
         o = loghandle->lgh_obj;
         LASSERT(o);
 
@@ -551,11 +565,15 @@ static int llog_osd_declare_write_rec_2(struct llog_handle *loghandle,
         }
 
         if (dt_object_exists(o)) {
-                rc = dt_attr_get(&env, o, &attr, BYPASS_CAPA);
+                OBD_ALLOC_PTR(attr);
+                if (unlikely(attr == NULL))
+                        GOTO(out, rc = -ENOMEM);
+                rc = dt_attr_get(&env, o, attr, BYPASS_CAPA);
+                pos = attr->la_size;
+                LASSERT(rc != 0 || attr->la_valid & LA_SIZE);
+                OBD_FREE_PTR(attr);
                 if (rc)
                         GOTO(out, rc);
-                LASSERT(attr.la_valid & LA_SIZE);
-                pos = attr.la_size;
         } else
                 pos = 0;
 
@@ -566,7 +584,7 @@ static int llog_osd_declare_write_rec_2(struct llog_handle *loghandle,
 
         /* each time we update header */
         rc = dt_declare_record_write(&env, o,
-                                     sizeof(struct llog_rec_hdr), 0, th);
+                                     sizeof(struct llog_log_hdr), 0, th);
 
 out:
         lu_env_fini(&env);
@@ -588,7 +606,7 @@ static int llog_osd_write_rec_2(struct llog_handle *loghandle,
         struct dt_object          *o;
         struct lu_env              env;
         size_t                     left;
-        struct lu_attr             attr;
+        struct lu_attr            *attr = NULL;
         loff_t                     off;
         ENTRY;
 
@@ -616,10 +634,14 @@ static int llog_osd_write_rec_2(struct llog_handle *loghandle,
         if (rc)
                 GOTO(out, rc);
 
-        rc = dt_attr_get(&env, o, &attr, NULL);
+        OBD_ALLOC_PTR(attr);
+        if (unlikely(attr == NULL))
+                GOTO(out, rc = -ENOMEM);
+
+        rc = dt_attr_get(&env, o, attr, NULL);
         LASSERT(rc == 0);
-        LASSERT(attr.la_valid & LA_SIZE);
-        off = attr.la_size;
+        LASSERT(attr->la_valid & LA_SIZE);
+        off = attr->la_size;
 
         if (buf)
                 /* write_blob adds header and tail to lrh_len. */
@@ -629,7 +651,7 @@ static int llog_osd_write_rec_2(struct llog_handle *loghandle,
         if (idx != -1) {
                 loff_t saved_offset;
                 /* no header: only allowed to insert record 1 */
-                if (idx != 1 && !attr.la_size)
+                if (idx != 1 && !attr->la_size)
                         LBUG();
 
                 if (idx && llh->llh_size && llh->llh_size != rec->lrh_len)
@@ -732,10 +754,10 @@ static int llog_osd_write_rec_2(struct llog_handle *loghandle,
         if (rc)
                 GOTO(out, rc);
 
-        rc = dt_attr_get(&env, o, &attr, NULL);
+        rc = dt_attr_get(&env, o, attr, NULL);
         LASSERT(rc == 0);
-        LASSERT(attr.la_valid & LA_SIZE);
-        off = attr.la_size;
+        LASSERT(attr->la_valid & LA_SIZE);
+        off = attr->la_size;
 
         rc = llog_osd_write_blob(&env, o, rec, buf, off, th);
         if (rc)
@@ -761,6 +783,8 @@ static int llog_osd_write_rec_2(struct llog_handle *loghandle,
                 rc = 1;
 out: 
 
+        if (likely(attr))
+                OBD_FREE_PTR(attr);
         lu_env_fini(&env);
 
         RETURN(rc);
@@ -772,11 +796,11 @@ int llog_osd_record_read(const struct lu_env *env, struct dt_object *dt,
         struct lu_buf lb;
         int rc;
 
-        lb.lb_buf = &buf;
+        lb.lb_buf = buf;
         lb.lb_len = len;
         lb.lb_vmalloc = 0;
 
-        rc = dt->do_body_ops->dbo_read(env, dt, buf, pos, BYPASS_CAPA);
+        rc = dt->do_body_ops->dbo_read(env, dt, &lb, pos, BYPASS_CAPA);
 
         return (rc >= 0 ? 0 : rc);
 }
@@ -807,7 +831,7 @@ static int llog_osd_next_block(struct llog_handle *loghandle, int *cur_idx,
         struct dt_object *o;
         struct dt_device *dt;
         struct lu_env     env;
-        struct lu_attr    attr;
+        struct lu_attr   *attr = NULL;
         int               rc;
         ENTRY;
 
@@ -832,11 +856,15 @@ static int llog_osd_next_block(struct llog_handle *loghandle, int *cur_idx,
                 RETURN(rc);
         }
 
-        rc = dt_attr_get(&env, o, &attr, BYPASS_CAPA);
+        OBD_ALLOC_PTR(attr);
+        if (unlikely(attr == NULL))
+                GOTO(out, rc = -ENOMEM);
+
+        rc = dt_attr_get(&env, o, attr, BYPASS_CAPA);
         if (rc)
                 GOTO(out, rc);
 
-        while (*cur_offset < attr.la_size) {
+        while (*cur_offset < attr->la_size) {
                 struct llog_rec_hdr *rec;
                 struct llog_rec_tail *tail;
                 loff_t ppos;
@@ -845,7 +873,7 @@ static int llog_osd_next_block(struct llog_handle *loghandle, int *cur_idx,
 
                 ppos = *cur_offset;
                 
-                rc = llog_osd_record_read(&env, o, &buf, len, &ppos);
+                rc = llog_osd_record_read(&env, o, buf, len, &ppos);
                 if (rc) {
                         CERROR("Cant read llog block at log id "LPU64
                                "/%u offset "LPU64"\n",
@@ -907,6 +935,10 @@ static int llog_osd_next_block(struct llog_handle *loghandle, int *cur_idx,
 
 out:
         lu_env_fini(&env);
+
+        if (likely(attr))
+                OBD_FREE_PTR(attr);
+
         RETURN(rc);
 }
 
@@ -916,7 +948,7 @@ static int llog_osd_prev_block(struct llog_handle *loghandle,
         struct dt_object *o;
         struct dt_device *dt;
         struct lu_env     env;
-        struct lu_attr    attr;
+        struct lu_attr   *attr = NULL;
         __u64             cur_offset;
         int               rc;
         ENTRY;
@@ -941,21 +973,25 @@ static int llog_osd_prev_block(struct llog_handle *loghandle,
                 RETURN(rc);
         }
 
+        OBD_ALLOC_PTR(attr);
+        if (unlikely(attr == NULL))
+                GOTO(out, rc = -ENOMEM);
+
         cur_offset = LLOG_CHUNK_SIZE;
         llog_skip_over(&cur_offset, 0, prev_idx);
 
-        rc = dt_attr_get(&env, o, &attr, BYPASS_CAPA);
+        rc = dt_attr_get(&env, o, attr, BYPASS_CAPA);
         if (rc)
                 GOTO(out, rc);
 
-        while (cur_offset < attr.la_size) {
+        while (cur_offset < attr->la_size) {
                 struct llog_rec_hdr *rec;
                 struct llog_rec_tail *tail;
                 loff_t ppos;
 
                 ppos = cur_offset;
 
-                rc = llog_osd_record_read(&env, o, &buf, len, &ppos);
+                rc = llog_osd_record_read(&env, o, buf, len, &ppos);
                 if (rc) {
                         CERROR("Cant read llog block at log id "LPU64
                                "/%u offset "LPU64"\n",
@@ -1005,6 +1041,10 @@ static int llog_osd_prev_block(struct llog_handle *loghandle,
 
 out:
         lu_env_fini(&env);
+
+        if (likely(attr))
+                OBD_FREE_PTR(attr);
+
         RETURN(rc);
 }
 
@@ -1124,7 +1164,7 @@ static int llog_osd_declare_create_2(struct llog_handle *res,
                                      struct thandle *th)
 {
         struct dt_object_format dof;
-        struct lu_attr          attr;
+        struct lu_attr         *attr = NULL;
         struct lu_env           env;
         struct dt_object       *o;
         int                     rc;
@@ -1144,17 +1184,23 @@ static int llog_osd_declare_create_2(struct llog_handle *res,
                 RETURN(rc);
         }
 
-        attr.la_valid = LA_TYPE | LA_MODE;
-        attr.la_mode = S_IFREG | 0666;
+        OBD_ALLOC_PTR(attr);
+        if (unlikely(attr == NULL))
+                GOTO(out, rc = -ENOMEM);
+
+        attr->la_valid = LA_TYPE | LA_MODE;
+        attr->la_mode = S_IFREG | 0666;
         dof.dof_type = dt_mode_to_dft(S_IFREG);
 
-        rc = dt_declare_create(&env, o, &attr, NULL, &dof, th);
+        rc = dt_declare_create(&env, o, attr, NULL, &dof, th);
         LASSERT(rc == 0);
 
         rc = dt_declare_record_write(&env, o, LLOG_CHUNK_SIZE, 0, th);
 
         lu_env_fini(&env);
+        OBD_FREE_PTR(attr);
 
+out:
         RETURN(rc);
 }
 
@@ -1164,7 +1210,7 @@ static int llog_osd_create_2(struct llog_handle *res, struct thandle *th)
 {
         struct dt_object          *o;
         struct lu_env              env;
-        struct lu_attr             attr;
+        struct lu_attr            *attr = NULL;
         struct dt_object_format    dof;
         int                        rc = 0;
         ENTRY;
@@ -1182,20 +1228,28 @@ static int llog_osd_create_2(struct llog_handle *res, struct thandle *th)
                 RETURN(rc);
         }
 
+        OBD_ALLOC_PTR(attr);
+        if (unlikely(attr == NULL))
+                GOTO(out, rc = -ENOMEM);
+
         dt_write_lock(&env, o, 0);
         if (!dt_object_exists(o)) {
-                attr.la_valid = LA_TYPE | LA_MODE;
-                attr.la_mode = S_IFREG | 0666;
+                attr->la_valid = LA_TYPE | LA_MODE;
+                attr->la_mode = S_IFREG | 0666;
                 dof.dof_type = dt_mode_to_dft(S_IFREG);
 
-                rc = dt_create(&env, o, &attr, NULL, &dof, th);
+                rc = dt_create(&env, o, attr, NULL, &dof, th);
                 LASSERT(rc == 0);
                 LASSERT(dt_object_exists(o));
         } else
                 rc = -EEXIST;
         dt_write_unlock(&env, o);
 
+out:
         lu_env_fini(&env);
+
+        if (likely(attr))
+                OBD_FREE_PTR(attr);
 
         RETURN(rc);
 }

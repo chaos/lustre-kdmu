@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2008, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -52,6 +52,7 @@
 #include <linux/fs.h>
 #include <linux/stat.h>
 #include <linux/mount.h>
+#include <linux/statfs.h>
 
 typedef struct file cfs_file_t;
 typedef struct dentry cfs_dentry_t;

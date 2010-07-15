@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2002, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -1727,8 +1727,6 @@ static int lov_change_cbdata(struct obd_export *exp,
         if (!exp || !exp->exp_obd)
                 RETURN(-ENODEV);
 
-        LASSERT_MDS_GROUP(lsm->lsm_object_gr);
-
         lov = &exp->exp_obd->u.lov;
         for (i = 0; i < lsm->lsm_stripe_count; i++) {
                 struct lov_stripe_md submd;
@@ -1739,8 +1737,9 @@ static int lov_change_cbdata(struct obd_export *exp,
                         continue;
                 }
 
+                LASSERT_SEQ_IS_MDT(loi->loi_seq);
                 submd.lsm_object_id = loi->loi_id;
-                submd.lsm_object_gr = lsm->lsm_object_gr;
+                submd.lsm_object_seq = loi->loi_seq;
                 submd.lsm_stripe_count = 0;
                 rc = obd_change_cbdata(lov->lov_tgts[loi->loi_ost_idx]->ltd_exp,
                                        &submd, it, data);
@@ -1765,8 +1764,6 @@ static int lov_find_cbdata(struct obd_export *exp,
         if (!exp || !exp->exp_obd)
                 RETURN(-ENODEV);
 
-        LASSERT_MDS_GROUP(lsm->lsm_object_gr);
-
         lov = &exp->exp_obd->u.lov;
         for (i = 0; i < lsm->lsm_stripe_count; i++) {
                 struct lov_stripe_md submd;
@@ -1777,8 +1774,9 @@ static int lov_find_cbdata(struct obd_export *exp,
                         continue;
                 }
 
+                LASSERT_SEQ_IS_MDT(loi->loi_seq);
                 submd.lsm_object_id = loi->loi_id;
-                submd.lsm_object_gr = loi->loi_gr;
+                submd.lsm_object_seq = loi->loi_seq;
                 submd.lsm_stripe_count = 0;
                 rc = obd_find_cbdata(lov->lov_tgts[loi->loi_ost_idx]->ltd_exp,
                                      &submd, it, data);
@@ -1805,7 +1803,7 @@ static int lov_cancel(struct obd_export *exp, struct lov_stripe_md *lsm,
         if (!exp || !exp->exp_obd)
                 RETURN(-ENODEV);
 
-        LASSERT_MDS_GROUP(lsm->lsm_object_gr);
+        LASSERT_SEQ_IS_MDT(lsm->lsm_object_seq);
         LASSERT(lockh);
         lov = &exp->exp_obd->u.lov;
         rc = lov_prep_cancel_set(exp, &oinfo, lsm, mode, lockh, &set);
@@ -1861,7 +1859,7 @@ static int lov_cancel_unused(struct obd_export *exp,
 
         ASSERT_LSM_MAGIC(lsm);
 
-        LASSERT_MDS_GROUP(lsm->lsm_object_gr);
+        LASSERT_SEQ_IS_MDT(lsm->lsm_object_seq);
         for (i = 0; i < lsm->lsm_stripe_count; i++) {
                 struct lov_stripe_md submd;
                 struct lov_oinfo *loi = lsm->lsm_oinfo[i];
@@ -1876,7 +1874,7 @@ static int lov_cancel_unused(struct obd_export *exp,
                         CDEBUG(D_HA, "lov idx %d inactive\n", loi->loi_ost_idx);
 
                 submd.lsm_object_id = loi->loi_id;
-                submd.lsm_object_gr = lsm->lsm_object_gr;
+                submd.lsm_object_seq = loi->loi_seq;
                 submd.lsm_stripe_count = 0;
                 err = obd_cancel_unused(lov->lov_tgts[loi->loi_ost_idx]->ltd_exp,
                                         &submd, flags, opaque);
@@ -2417,6 +2415,7 @@ static int lov_fiemap(struct lov_obd *lov, __u32 keylen, void *key,
                         fm_local->fm_flags = fiemap->fm_flags;
 
                         fm_key->oa.o_id = lsm->lsm_oinfo[cur_stripe]->loi_id;
+                        fm_key->oa.o_seq = lsm->lsm_oinfo[cur_stripe]->loi_seq;
                         ost_index = lsm->lsm_oinfo[cur_stripe]->loi_ost_idx;
 
                         if (ost_index < 0 || ost_index >=lov->desc.ld_tgt_count)
@@ -2562,7 +2561,7 @@ static int lov_get_info(struct obd_export *exp, __u32 keylen,
                                 continue;
                         if (lov->lov_tgts[loi->loi_ost_idx]->ltd_exp ==
                             data->lock->l_conn_export &&
-                            osc_res_name_eq(loi->loi_id, loi->loi_gr, res_id)) {
+                            osc_res_name_eq(loi->loi_id, loi->loi_seq, res_id)) {
                                 *stripe = i;
                                 GOTO(out, rc = 0);
                         }
@@ -2591,6 +2590,19 @@ static int lov_get_info(struct obd_export *exp, __u32 keylen,
         } else if (KEY_IS(KEY_FIEMAP)) {
                 rc = lov_fiemap(lov, keylen, key, vallen, val, lsm);
                 GOTO(out, rc);
+        } else if (KEY_IS(KEY_CONNECT_FLAG)) {
+                struct lov_tgt_desc *tgt;
+                __u64 ost_idx = *((__u64*)val);
+
+                LASSERT(*vallen == sizeof(__u64));
+                LASSERT(ost_idx < lov->desc.ld_tgt_count);
+                tgt = lov->lov_tgts[ost_idx];
+
+                if (!tgt || !tgt->ltd_exp)
+                        GOTO(out, rc = -ESRCH);
+
+                *((__u64*)val) = tgt->ltd_exp->exp_connect_flags;
+                GOTO(out, rc = 0);
         }
 
         rc = -EINVAL;

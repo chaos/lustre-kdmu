@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2009, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -43,6 +43,7 @@
 
 #define DEBUG_SUBSYSTEM S_FILTER
 
+#include <libcfs/libcfs.h>
 #include "ofd_internal.h"
 
 int filter_record_write(const struct lu_env *env, struct filter_device *ofd,
@@ -86,7 +87,7 @@ int filter_record_write(const struct lu_env *env, struct filter_device *ofd,
         RETURN(rc);
 }
 
-obd_id filter_last_id(struct filter_device *ofd, obd_gr group)
+obd_id filter_last_id(struct filter_device *ofd, obd_seq group)
 {
         obd_id id;
 
@@ -99,7 +100,7 @@ obd_id filter_last_id(struct filter_device *ofd, obd_gr group)
         return id;
 }
 
-void filter_last_id_set(struct filter_device *ofd, obd_id id, obd_gr group)
+void filter_last_id_set(struct filter_device *ofd, obd_id id, obd_seq group)
 {
         LASSERT(group <= ofd->ofd_max_group);
         cfs_spin_lock(&ofd->ofd_objid_lock);
@@ -109,7 +110,7 @@ void filter_last_id_set(struct filter_device *ofd, obd_id id, obd_gr group)
 }
 
 int filter_last_id_write(const struct lu_env *env, struct filter_device *ofd,
-                         obd_gr group, struct thandle *th)
+                         obd_seq group, struct thandle *th)
 {
         obd_id          tmp;
         int             rc;
@@ -198,7 +199,7 @@ int filter_group_load(const struct lu_env *env,
 cleanup:
         RETURN(rc);
 }
-        
+
 /* filter groups managements */
 int filter_groups_init(const struct lu_env *env, struct filter_device *ofd)
 {
@@ -257,50 +258,6 @@ cleanup:
         RETURN(rc);
 }
 
-static inline void fsd_le_to_cpu(struct lr_server_data *buf,
-                                 struct lr_server_data *lsd)
-{
-        memcpy(lsd->lsd_uuid, buf->lsd_uuid, sizeof (lsd->lsd_uuid));
-        lsd->lsd_last_transno     = le64_to_cpu(buf->lsd_last_transno);
-        lsd->lsd_compat14         = le64_to_cpu(buf->lsd_compat14);
-        lsd->lsd_mount_count      = le64_to_cpu(buf->lsd_mount_count);
-        lsd->lsd_feature_compat   = le32_to_cpu(buf->lsd_feature_compat);
-        lsd->lsd_feature_rocompat = le32_to_cpu(buf->lsd_feature_rocompat);
-        lsd->lsd_feature_incompat = le32_to_cpu(buf->lsd_feature_incompat);
-        lsd->lsd_server_size      = le32_to_cpu(buf->lsd_server_size);
-        lsd->lsd_client_start     = le32_to_cpu(buf->lsd_client_start);
-        lsd->lsd_client_size      = le16_to_cpu(buf->lsd_client_size);
-        lsd->lsd_subdir_count     = le16_to_cpu(buf->lsd_subdir_count);
-        lsd->lsd_catalog_oid      = le64_to_cpu(buf->lsd_catalog_oid);
-        lsd->lsd_catalog_ogen     = le32_to_cpu(buf->lsd_catalog_ogen);
-        memcpy(lsd->lsd_peeruuid, buf->lsd_peeruuid,
-               sizeof (lsd->lsd_peeruuid));
-        lsd->lsd_ost_index        = le32_to_cpu(buf->lsd_ost_index);
-        lsd->lsd_mdt_index        = le32_to_cpu(buf->lsd_mdt_index);
-}
-
-static inline void fsd_cpu_to_le(struct lr_server_data *lsd,
-                                 struct lr_server_data *buf)
-{
-        memcpy(buf->lsd_uuid, lsd->lsd_uuid, sizeof (lsd->lsd_uuid));
-        buf->lsd_last_transno     = cpu_to_le64(lsd->lsd_last_transno);
-        buf->lsd_compat14         = cpu_to_le64(lsd->lsd_compat14);
-        buf->lsd_mount_count      = cpu_to_le64(lsd->lsd_mount_count);
-        buf->lsd_feature_compat   = cpu_to_le32(lsd->lsd_feature_compat);
-        buf->lsd_feature_rocompat = cpu_to_le32(lsd->lsd_feature_rocompat);
-        buf->lsd_feature_incompat = cpu_to_le32(lsd->lsd_feature_incompat);
-        buf->lsd_server_size      = cpu_to_le32(lsd->lsd_server_size);
-        buf->lsd_client_start     = cpu_to_le32(lsd->lsd_client_start);
-        buf->lsd_client_size      = cpu_to_le16(lsd->lsd_client_size);
-        buf->lsd_subdir_count     = cpu_to_le16(lsd->lsd_subdir_count);
-        buf->lsd_catalog_oid      = cpu_to_le64(lsd->lsd_catalog_oid);
-        buf->lsd_catalog_ogen     = cpu_to_le32(lsd->lsd_catalog_ogen);
-        memcpy(buf->lsd_peeruuid, lsd->lsd_peeruuid,
-               sizeof (lsd->lsd_peeruuid));
-        buf->lsd_ost_index        = cpu_to_le32(lsd->lsd_ost_index);
-        buf->lsd_mdt_index        = cpu_to_le32(lsd->lsd_mdt_index);
-}
-
 static int filter_last_rcvd_header_read(const struct lu_env *env,
                                         struct filter_device *ofd)
 {
@@ -315,7 +272,7 @@ static int filter_last_rcvd_header_read(const struct lu_env *env,
 
         rc = dt_record_read(env, ofd->ofd_last_rcvd, &buf, &off);
         if (rc == 0)
-                fsd_le_to_cpu(&info->fti_fsd, &ofd->ofd_fsd);
+                lsd_le_to_cpu(&info->fti_fsd, &ofd->ofd_fsd);
         return rc;
 }
 
@@ -330,7 +287,7 @@ int filter_last_rcvd_header_write(const struct lu_env *env,
         info = lu_context_key_get(&env->le_ctx, &filter_thread_key);
         LASSERT(info);
 
-        fsd_cpu_to_le(&ofd->ofd_fsd, &info->fti_fsd);
+        lsd_cpu_to_le(&ofd->ofd_fsd, &info->fti_fsd);
 
         rc = filter_record_write(env, ofd, ofd->ofd_last_rcvd,
                                  &info->fti_fsd, 0, sizeof(info->fti_fsd), th);
@@ -389,15 +346,13 @@ static inline int filter_clients_data_init(const struct lu_env *env,
         CLASSERT (offsetof(struct lsd_client_data, lcd_padding) +
                  sizeof(lcd->lcd_padding) == LR_CLIENT_SIZE);
 
+        OBD_ALLOC_PTR(lcd);
+        if (!lcd)
+                RETURN(-ENOMEM);
+
         for (cl_idx = 0; off < fsize; cl_idx++) {
                 struct obd_export *exp;
                 __u64 last_rcvd;
-
-                if (!lcd) {
-                        OBD_ALLOC_PTR(lcd);
-                        if (!lcd)
-                                GOTO(err_out, rc = -ENOMEM);
-                }
 
                 /* Don't assume off is incremented properly by
                  * fsfilt_read_record(), in case sizeof(*lcd)
@@ -431,30 +386,28 @@ static inline int filter_clients_data_init(const struct lu_env *env,
                 if (IS_ERR(exp)) {
                         if (PTR_ERR(exp) == -EALREADY) {
                                 /* export already exists, zero out this one */
-                                CERROR("Zeroing out duplicate export due to "
-                                       "bug 10479.\n");
-                                lcd->lcd_uuid[0] = '\0';
-                        } else {
-                                GOTO(err_out, rc = PTR_ERR(exp));
+                                CERROR("Duplicate export %s!\n", lcd->lcd_uuid);
+                                continue;
                         }
-                } else {
-                        fed = &exp->exp_filter_data;
-                        fed->fed_ted.ted_lcd = lcd;
-#if 0
-                        fed->fed_group = lcd->lcd_group;
-#endif
-                        filter_export_stats_init(ofd, exp, NULL);
-                        rc = filter_client_add(env, ofd, fed, cl_idx);
-                        LASSERTF(rc == 0, "rc = %d\n", rc); /* can't fail existing */
-
-                        lcd = NULL;
-                        cfs_spin_lock(&exp->exp_lock);
-                        exp->exp_connecting = 0;
-                        exp->exp_in_recovery = 0;
-                        cfs_spin_unlock(&exp->exp_lock);
-                        obd->obd_max_recoverable_clients++;
-                        class_export_put(exp);
+                        GOTO(err_out, rc = PTR_ERR(exp));
                 }
+
+                fed = &exp->exp_filter_data;
+                *fed->fed_ted.ted_lcd = *lcd;
+#if 0
+                fed->fed_group = lcd->lcd_group;
+#endif
+                filter_export_stats_init(ofd, exp, NULL);
+                rc = filter_client_add(env, ofd, fed, cl_idx);
+                LASSERTF(rc == 0, "rc = %d\n", rc); /* can't fail existing */
+                /* VBR: set export last committed version */
+                exp->exp_last_committed = last_rcvd;
+                cfs_spin_lock(&exp->exp_lock);
+                exp->exp_connecting = 0;
+                exp->exp_in_recovery = 0;
+                cfs_spin_unlock(&exp->exp_lock);
+                obd->obd_max_recoverable_clients++;
+                class_export_put(exp);
 
                 /* Need to check last_rcvd even for duplicated exports. */
                 CDEBUG(D_OTHER, "client at idx %d has last_rcvd = "LPU64"\n",
@@ -466,9 +419,8 @@ static inline int filter_clients_data_init(const struct lu_env *env,
                 cfs_spin_unlock(&ofd->ofd_transno_lock);
         }
 
-        if (lcd)
-                OBD_FREE(lcd, sizeof(*lcd));
 err_out:
+        OBD_FREE_PTR(lcd);
         RETURN(rc);
 }
 
@@ -487,7 +439,7 @@ int filter_server_data_update(const struct lu_env *env,
                ofd->ofd_fsd.lsd_mount_count, ofd->ofd_fsd.lsd_last_transno);
 
         cfs_spin_lock(&ofd->ofd_transno_lock);
-        ofd->ofd_fsd.lsd_last_transno = ofd->ofd_last_transno;
+        ofd->ofd_fsd.lsd_last_transno = ofd->ofd_lut.lut_last_transno;
         cfs_spin_unlock(&ofd->ofd_transno_lock);
 
         /*

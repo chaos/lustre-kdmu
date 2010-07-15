@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2002, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -109,12 +109,13 @@ static int lprocfs_filter_rd_last_id(char *page, char **start, off_t off,
         struct obd_device *obd;
         struct filter_obd *filter;
         int retval = 0, rc, i;
+	__u64 temp;
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         filter = &obd->u.filter;
         if (obd == NULL || !obd->obd_set_up || obd->obd_stopping)
                 return 0;
-        temp = filter_last_id(filter, 0);
+	temp = filter_last_id(filter, 0);
         rc = libcfs_param_snprintf(page, count, data, LP_U64, LPU64"\n", temp);
         if (rc < 0)
                 return rc;
@@ -122,9 +123,10 @@ static int lprocfs_filter_rd_last_id(char *page, char **start, off_t off,
         count -= rc;
         retval += rc;
 
-        for (i = FILTER_GROUP_MDS1_N_BASE; i < filter->fo_group_count; i++) {
+        for (i = FID_SEQ_OST_MDT1; i < filter->fo_group_count; i++) {
+		temp = filter_last_id(filter, i);
                 rc = libcfs_param_snprintf(page, count, data, LP_U64, LPU64"\n",
-                                           filter_last_id(filter, i));
+				           temp);
                 if (rc < 0) {
                         retval = rc;
                         break;
@@ -388,39 +390,6 @@ int lprocfs_filter_rd_degraded(char *page, char **start, off_t off,
                                int count, int *eof, void *data)
 {
         struct obd_device *obd;
-        int fo_raid_degraded;
-
-        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
-        LASSERT(obd != NULL);
-
-        fo_raid_degraded = obd->u.filter.fo_raid_degraded;
-        return libcfs_param_snprintf(page, count, data, LP_U32, "%u\n",
-                                     fo_raid_degraded);
-}
-
-int lprocfs_filter_wr_degraded(libcfs_file_t *file, const char *buffer,
-                               unsigned long count, void *data)
-{
-        struct obd_device *obd;
-        int val, rc, flag = 0;
-
-        LIBCFS_PARAM_GET_DATA(obd, data, &flag);
-        LASSERT(obd != NULL);
-
-        rc = lprocfs_write_helper(buffer, count, &val, flag);
-        if (rc)
-                return rc;
-
-        cfs_spin_lock(&obd->obd_osfs_lock);
-        obd->u.filter.fo_raid_degraded = !!val;
-        cfs_spin_unlock(&obd->obd_osfs_lock);
-        return count;
-}
-
-int lprocfs_filter_rd_degraded(char *page, char **start, off_t off,
-                               int count, int *eof, void *data)
-{
-        struct obd_device *obd;
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
 
@@ -466,7 +435,7 @@ static struct lprocfs_vars lprocfs_filter_obd_vars[] = {
                                 lprocfs_obd_wr_recovery_time_soft, 0},
         { "recovery_time_hard", lprocfs_obd_rd_recovery_time_hard,
                                 lprocfs_obd_wr_recovery_time_hard, 0},
-        { "evict_client", 0, lprocfs_wr_evict_client, 0,
+        { "evict_client", 0, lprocfs_wr_evict_client, 0},
                                 //&lprocfs_evict_client_fops},
         { "num_exports",  lprocfs_rd_num_exports,   0, 0 },
         { "readcache_max_filesize",
@@ -627,6 +596,8 @@ static void brw_stats_show(libcfs_seq_file_t *seq, struct brw_stats *brw_stats)
                           &brw_stats->hist[BRW_W_DISK_IOSIZE], 1);
 }
 
+#undef pct
+
 static int filter_brw_stats_seq_show(libcfs_seq_file_t *seq, void *v)
 {
         struct obd_device *dev = LIBCFS_SEQ_PRIVATE(seq);
@@ -691,63 +662,3 @@ static ssize_t filter_per_nid_stats_seq_write(libcfs_file_t *file,
 }
 
 LPROC_SEQ_FOPS(filter_per_nid_stats);
-
-static int lprocfs_init_rw_stats(struct obd_device *obd,
-                                 struct lprocfs_stats **stats)
-{
-        int num_stats;
-
-        num_stats = (sizeof(*obd->obd_type->typ_dt_ops) / sizeof(void *)) +
-                                                        LPROC_FILTER_LAST - 1;
-        *stats = lprocfs_alloc_stats(num_stats, LPROCFS_STATS_FLAG_NOPERCPU);
-        if (*stats == NULL)
-                return -ENOMEM;
-
-        lprocfs_init_ops_stats(LPROC_FILTER_LAST, *stats);
-        lprocfs_counter_init(*stats, LPROC_FILTER_READ_BYTES,
-                             LPROCFS_CNTR_AVGMINMAX, "read_bytes", "bytes");
-        lprocfs_counter_init(*stats, LPROC_FILTER_WRITE_BYTES,
-                             LPROCFS_CNTR_AVGMINMAX, "write_bytes", "bytes");
-
-        return(0);
-}
-
-int filter_nid_proc_stats_add(struct obd_device *obd, struct obd_export *exp)
-{
-        struct nid_stat *tmp = exp->exp_nid_stats;
-        int rc;
-
-        LASSERT(tmp != NULL);
-
-        OBD_ALLOC(tmp->nid_brw_stats, sizeof(struct brw_stats));
-        if (tmp->nid_brw_stats == NULL)
-                RETURN(-ENOMEM);
-
-        init_brw_stats(tmp->nid_brw_stats);
-        rc = lprocfs_seq_create(exp->exp_nid_stats->nid_proc,
-                                "brw_stats", 0644,
-                                &filter_per_nid_stats_fops,
-                                exp->exp_nid_stats);
-        if (rc)
-                CWARN("Error adding the brw_stats file\n");
-
-        rc = lprocfs_init_rw_stats(obd, &exp->exp_nid_stats->nid_stats);
-        if (rc)
-                RETURN(rc);
-
-        rc = lprocfs_register_stats(tmp->nid_proc, "stats",
-                                    tmp->nid_stats);
-        if (rc)
-                RETURN(rc);
-        /* Always add in ldlm_stats */
-        tmp->nid_ldlm_stats =
-                lprocfs_alloc_stats(LDLM_LAST_OPC - LDLM_FIRST_OPC,
-                                    LPROCFS_STATS_FLAG_NOPERCPU);
-        if (tmp->nid_ldlm_stats == NULL)
-                return -ENOMEM;
-
-        lprocfs_init_ldlm_stats(tmp->nid_ldlm_stats);
-        rc = lprocfs_register_stats(tmp->nid_proc, "ldlm_stats",
-                                    tmp->nid_ldlm_stats);
-        RETURN(rc);
-}

@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -39,9 +39,6 @@
  */
 
 #include "ptllnd.h"
-
-#define cfs_wake_up_all(waitq)          wake_up_all(waitq)
-#define cfs_init_waitqueue_head(waitq)  init_waitqueue_head(waitq)
 
 lnd_t kptllnd_lnd = {
         .lnd_type       = PTLLND,
@@ -577,8 +574,8 @@ kptllnd_base_shutdown (void)
                 i = 2;
                 while (cfs_atomic_read (&kptllnd_data.kptl_nthreads) != 0) {
                         /* Wake up all threads*/
-                        cfs_wake_up_all(&kptllnd_data.kptl_sched_waitq);
-                        cfs_wake_up_all(&kptllnd_data.kptl_watchdog_waitq);
+                        cfs_waitq_broadcast(&kptllnd_data.kptl_sched_waitq);
+                        cfs_waitq_broadcast(&kptllnd_data.kptl_watchdog_waitq);
 
                         i++;
                         CDEBUG(((i & (-i)) == i) ? D_WARNING : D_NET, /* power of 2? */
@@ -682,7 +679,7 @@ kptllnd_base_startup (void)
 
         /* Setup the sched locks/lists/waitq */
         cfs_spin_lock_init(&kptllnd_data.kptl_sched_lock);
-        cfs_init_waitqueue_head(&kptllnd_data.kptl_sched_waitq);
+        cfs_waitq_init(&kptllnd_data.kptl_sched_waitq);
         CFS_INIT_LIST_HEAD(&kptllnd_data.kptl_sched_txq);
         CFS_INIT_LIST_HEAD(&kptllnd_data.kptl_sched_rxq);
         CFS_INIT_LIST_HEAD(&kptllnd_data.kptl_sched_rxbq);
@@ -777,7 +774,7 @@ kptllnd_base_startup (void)
         kptllnd_data.kptl_nak_msg->ptlm_srcstamp = kptllnd_data.kptl_incarnation;
 
         cfs_rwlock_init(&kptllnd_data.kptl_peer_rw_lock);
-        cfs_init_waitqueue_head(&kptllnd_data.kptl_watchdog_waitq);
+        cfs_waitq_init(&kptllnd_data.kptl_watchdog_waitq);
         cfs_atomic_set(&kptllnd_data.kptl_needs_ptltrace, 0);
         CFS_INIT_LIST_HEAD(&kptllnd_data.kptl_closing_peers);
         CFS_INIT_LIST_HEAD(&kptllnd_data.kptl_zombie_peers);

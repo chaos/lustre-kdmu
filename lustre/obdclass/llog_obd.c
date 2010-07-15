@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2003, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -172,6 +172,7 @@ int llog_setup_named(struct obd_device *obd,  struct obd_llog_group *olg,
         ctxt = llog_new_ctxt(obd);
         if (!ctxt)
                 RETURN(-ENOMEM);
+        ctxt->loc_flags = LLOG_CTXT_FLAG_UNINITIALIZED;
 
         ctxt->loc_obd = obd;
         ctxt->loc_olg = olg;
@@ -179,7 +180,6 @@ int llog_setup_named(struct obd_device *obd,  struct obd_llog_group *olg,
         ctxt->loc_logops = op;
         cfs_sema_init(&ctxt->loc_sem, 1);
         ctxt->loc_exp = class_export_get(disk_obd->obd_self_export);
-        ctxt->loc_flags = LLOG_CTXT_FLAG_UNINITIALIZED;
 
         rc = llog_group_set_ctxt(olg, ctxt, index);
         if (rc) {
@@ -478,6 +478,7 @@ int llog_obd_origin_declare_add(struct llog_ctxt *ctxt,
         int rc;
         ENTRY;
 
+        LASSERT(ctxt);
         cathandle = ctxt->loc_handle;
         LASSERT(cathandle != NULL);
         rc = llog_cat_declare_add_rec(cathandle, rec, th);

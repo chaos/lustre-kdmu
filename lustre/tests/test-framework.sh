@@ -112,7 +112,22 @@ init_test_env() {
     export ZFSLABEL=${ZFSLABEL:-"zfs get -H -o value  com.sun.lustre:label"}
     export DUMPE2FS=${DUMPE2FS:-dumpe2fs}
     export E2FSCK=${E2FSCK:-e2fsck}
+    export LFSCK_BIN=${LFSCK_BIN:-lfsck}
+    export LFSCK_ALWAYS=${LFSCK_ALWAYS:-"no"} # check filesystem after each test suit
+    export SKIP_LFSCK=${SKIP_LFSCK:-"yes"} # bug 13698, change to "no" when fixed
+    export SHARED_DIRECTORY=${SHARED_DIRECTORY:-"/tmp"}
+    export FSCK_MAX_ERR=4   # File system errors left uncorrected
+    if [ "$SKIP_LFSCK" == "no" ]; then
+        if [ ! -x `which $LFSCK_BIN` ]; then
+            log "$($E2FSCK -V)"
+            error_exit "$E2FSCK does not support lfsck"
+        fi
 
+        export MDSDB=${MDSDB:-$SHARED_DIRECTORY/mdsdb}
+        export OSTDB=${OSTDB:-$SHARED_DIRECTORY/ostdb}
+        export MDSDB_OPT="--mdsdb $MDSDB"
+        export OSTDB_OPT="--ostdb $OSTDB-\$ostidx"
+    fi
     #[ -d /r ] && export ROOT=${ROOT:-/r}
     export TMP=${TMP:-$ROOT/tmp}
     export TESTSUITELOG=${TMP}/${TESTSUITE}.log
@@ -126,6 +141,9 @@ init_test_env() {
     fi
     if ! echo $PATH | grep -q $LUSTRE/utils/gss; then
         export PATH=$PATH:$LUSTRE/utils/gss
+    fi
+    if ! echo $PATH | grep -q $LUSTRE/utils/pthread; then
+        export PATH=$PATH:$LUSTRE/utils/pthread
     fi
     if ! echo $PATH | grep -q $LUSTRE/tests; then
         export PATH=$PATH:$LUSTRE/tests
@@ -152,9 +170,9 @@ init_test_env() {
     if ! echo $PATH | grep -q $LUSTRE/tests/mpi; then
         export PATH=$PATH:$LUSTRE/tests/mpi
     fi
-    export LCTL=${LCTL:-"$LUSTRE/utils/lctl"}
+    export LCTL=${LCTL:-"$LUSTRE/utils/pthread/lctl"}
     [ ! -f "$LCTL" ] && export LCTL=$(which lctl)
-    export LFS=${LFS:-"$LUSTRE/utils/lfs"}
+    export LFS=${LFS:-"$LUSTRE/utils/pthread/lfs"}
     [ ! -f "$LFS" ] && export LFS=$(which lfs)
     export L_GETIDENTITY=${L_GETIDENTITY:-"$LUSTRE/utils/l_getidentity"}
     if [ ! -f "$L_GETIDENTITY" ]; then
@@ -164,6 +182,8 @@ init_test_env() {
             export L_GETIDENTITY=NONE
         fi
     fi
+    export LL_DECODE_FILTER_FID=${LL_DECODE_FILTER_FID:-"$LUSTRE/utils/ll_decode_filter_fid"}
+    [ ! -f "$LL_DECODE_FILTER_FID" ] && export LL_DECODE_FILTER_FID=$(which ll_decode_filter_fid)
     export MKFS=${MKFS:-"$LUSTRE/utils/mkfs.lustre"}
     [ ! -f "$MKFS" ] && export MKFS=$(which mkfs.lustre)
     export TUNEFS=${TUNEFS:-"$LUSTRE/utils/tunefs.lustre"}
@@ -274,7 +294,7 @@ load_module() {
             # Nothing in $MODOPTS_<MODULE>; try modprobe.conf
             set -- $(grep "^options\\s*\<${module}\>" $MODPROBECONF)
             # Get rid of "options $module"
-	    (($# > 0)) && shift 2
+            (($# > 0)) && shift 2
 
             # Ensure we have accept=all for lnet
             if [ $(basename $module) = lnet ]; then
@@ -348,7 +368,7 @@ load_modules_local() {
         load_module mdt/mdt
         load_module lvfs/fsfilt_$FSTYPE
         load_module cmm/cmm
-        load_module osd/osd_ldiskfs
+        load_module osd-ldiskfs/osd_ldiskfs
         load_module ost/ost
         load_module ofd/obdfilter
     fi
@@ -1236,6 +1256,7 @@ wait_mds_ost_sync () {
         local -a sync=($(do_nodes $(comma_list $(osts_nodes)) \
             "$LCTL get_param -n obdfilter.*.mds_sync"))
         local con=1
+        local i
         for ((i=0; i<${#sync[@]}; i++)); do
             [ ${sync[$i]} -eq 0 ] && continue
             # there is a not finished MDS-OST synchronization
@@ -1825,13 +1846,42 @@ zfs_modules () {
     lsmod | grep -q ^zfs || sh $ZFS_SH $1
 }
 
+#default size for virtual zfs volume, in MBs
+ZDEVSIZE=256
+
+zfs_create_vdev() {
+    local vdev=$1
+    local size
+    local osize
+    local asize
+    local bsize
+
+    let "size=ZDEVSIZE*1024*1024"
+
+    if [ -f $vdev ]; then
+        osize=`stat -c \%s $vdev`
+        if let "osize == size"; then
+
+            asize=`stat -c \%B $vdev`
+            bsize=`stat -c \%b $vdev`
+            let "asize = asize*bsize"
+
+            if let "asize >= size"; then
+                return
+            fi
+        fi
+    fi
+
+    dd if=/dev/zero of=$vdev bs=1M count=$ZDEVSIZE
+}
+
 zfs_create_pool () {
     local pool=$1
     local vdev=$2
 
     $ZPOOL list | grep -w $pool && echo $pool exist, skip creation && return 0
 
-    test -b $vdev || dd if=/dev/zero of=$vdev bs=1M count=256
+    test -b $vdev || zfs_create_vdev $vdev
     zfs_modules
     $ZPOOL create -f $pool $vdev
 }
@@ -2296,6 +2346,20 @@ is_mounted () {
     echo $mounted' ' | grep -w -q $mntpt' '
 }
 
+is_empty_dir() {
+    [ $(find $1 -maxdepth 1 -print | wc -l) = 1 ] && return 0
+    return 1
+}
+
+# empty lustre filesystem may have empty directories lost+found and .lustre
+is_empty_fs() {
+    [ $(find $1 -maxdepth 1 -name lost+found -o -name .lustre -prune -o \
+       -print | wc -l) = 1 ] || return 1
+    [ ! -d $1/lost+found ] || is_empty_dir $1/lost+found && return 0
+    [ ! -d $1/.lustre ] || is_empty_dir $1/.lustre && return 0
+    return 1
+}
+
 check_and_setup_lustre() {
     nfs_client_mode && return
 
@@ -2390,7 +2454,123 @@ cleanup_and_setup_lustre() {
     check_and_setup_lustre
 }
 
+# Get all of the server target devices from a given server node and type.
+get_mnt_devs() {
+    local node=$1
+    local type=$2
+    local obd_type
+    local devs
+    local dev
+
+    case $type in
+    mdt) obd_type="osd" ;;
+    ost) obd_type="obdfilter" ;; # needs to be fixed when OST also uses an OSD
+    *) echo "invalid server type" && return 1 ;;
+    esac
+
+    devs=$(do_node $node "lctl get_param -n $obd_type.*.mntdev")
+    for dev in $devs; do
+        case $dev in
+        *loop*) do_node $node "losetup $dev" | \
+                sed -e "s/.*(//" -e "s/).*//" ;;
+        *) echo $dev ;;
+        esac
+    done
+}
+
+# Get all of the server target devices.
+get_svr_devs() {
+    local i
+
+    # MDT device
+    MDTDEV=$(get_mnt_devs $(mdts_nodes) mdt)
+
+    # OST devices
+    i=0
+    for node in $(osts_nodes); do
+        OSTDEVS[i]=$(get_mnt_devs $node ost)
+        i=$((i + 1))
+    done
+}
+
+# Run e2fsck on MDT or OST device.
+run_e2fsck() {
+    local node=$1
+    local target_dev=$2
+    local ostidx=$3
+    local ostdb_opt=$4
+
+    df > /dev/null      # update statfs data on disk
+    local cmd="$E2FSCK -d -v -f -n $MDSDB_OPT $ostdb_opt $target_dev"
+    echo $cmd
+    do_node $node $cmd
+    local rc=${PIPESTATUS[0]}
+    [ $rc -le $FSCK_MAX_ERR ] || \
+        error "$cmd returned $rc, should be <= $FSCK_MAX_ERR"
+    return 0
+}
+
+# Run e2fsck on MDT and OST(s) to generate databases used for lfsck.
+generate_db() {
+    local i
+    local ostidx
+    local dev
+    local tmp_file
+
+    [ $MDSCOUNT -eq 1 ] || error "CMD is not supported"
+    tmp_file=$(mktemp -p $SHARED_DIRECTORY || 
+        error "fail to create file in $SHARED_DIRECTORY")
+
+    # make sure everything gets to the backing store
+    local list=$(comma_list $CLIENTS $(facet_host $SINGLEMDS) $(osts_nodes))
+    do_nodes $list "sync; sleep 2; sync"
+
+    do_nodes $list ls $tmp_file || \
+        error "$SHARED_DIRECTORY is not a shared directory"
+    rm $tmp_file
+
+    run_e2fsck $(mdts_nodes) $MDTDEV
+
+    i=0
+    ostidx=0
+    OSTDB_LIST=""
+    for node in $(osts_nodes); do
+        for dev in ${OSTDEVS[i]}; do
+            local ostdb_opt=`eval echo $OSTDB_OPT`
+            run_e2fsck $node $dev $ostidx "$ostdb_opt"
+            OSTDB_LIST="$OSTDB_LIST $OSTDB-$ostidx"
+            ostidx=$((ostidx + 1))
+        done
+        i=$((i + 1))
+    done
+}
+
+run_lfsck() {
+    local cmd="$LFSCK_BIN -c -l --mdsdb $MDSDB --ostdb $OSTDB_LIST $MOUNT"
+    echo $cmd
+    eval $cmd
+    local rc=${PIPESTATUS[0]}
+    [ $rc -le $FSCK_MAX_ERR ] || \
+        error "$cmd returned $rc, should be <= $FSCK_MAX_ERR"
+    echo "lfsck finished with rc=$rc"
+
+    rm -rvf $MDSDB* $OSTDB* || true
+
+    return $rc
+}
+
 check_and_cleanup_lustre() {
+    if [ "$LFSCK_ALWAYS" = "yes" ]; then
+        get_svr_devs
+        generate_db
+        if [ "$SKIP_LFSCK" == "no" ]; then
+            local rc=0
+            run_lfsck || rc=$?
+        else
+            echo "skip lfsck"
+        fi
+    fi
+
     if is_mounted $MOUNT; then
         [ -n "$DIR" ] && rm -rf $DIR/[Rdfs][0-9]*
         [ "$ENABLE_QUOTA" ] && restore_quota_type || true
@@ -2935,7 +3115,9 @@ run_one() {
     umask 0022
 
     banner "test $testnum: $message"
+    df $DIR
     test_${testnum} || error "test_$testnum failed with $?"
+    df $DIR
     cd $SAVE_PWD
     reset_fail_loc
     check_grant ${testnum} || error "check_grant $testnum failed with $?"
@@ -3861,7 +4043,7 @@ combination()
         R=0
     else
         N=$((N + 1))
-        while [ $N -le $M ]; do
+        while [ $N -lt $M ]; do
             R=$((R * N))
             N=$((N + 1))
         done
@@ -4072,6 +4254,7 @@ wait_flavor()
             return 0
         else
             echo "found $res $flavor connections of $dir, not ready ($expect)"
+            return 0
             sleep 4
         fi
     done
@@ -4198,8 +4381,8 @@ run_llverdev()
         local dev=$1
         local devname=$(basename $1)
         local size=$(grep "$devname"$ /proc/partitions | awk '{print $3}')
-	# loop devices aren't in /proc/partitions
-	[ "x$size" == "x" ] && local size=$(ls -l $dev | awk '{print $5}')
+        # loop devices aren't in /proc/partitions
+        [ "x$size" == "x" ] && local size=$(ls -l $dev | awk '{print $5}')
 
         size=$(($size / 1024 / 1024)) # Gb
 
@@ -4209,4 +4392,53 @@ run_llverdev()
         [ $size -gt 10 ] && partial_arg="-p"
 
         llverdev --force $partial_arg $dev
+}
+
+remove_mdt_files() {
+    local facet=$1
+    local mdtdev=$2
+    shift 2
+    local files="$@"
+    local mntpt=${MOUNT%/*}/$facet
+
+    echo "removing files from $mdtdev on $facet: $files"
+    mount -t $FSTYPE $MDS_MOUNT_OPTS $mdtdev $mntpt || return $?
+    rc=0;
+    for f in $files; do
+        rm $mntpt/ROOT/$f || { rc=$?; break; }
+    done
+    umount -f $mntpt || return $?
+    return $rc
+}
+
+duplicate_mdt_files() {
+    local facet=$1
+    local mdtdev=$2
+    shift 2
+    local files="$@"
+    local mntpt=${MOUNT%/*}/$facet
+
+    echo "duplicating files on $mdtdev on $facet: $files"
+    mkdir -p $mntpt || return $?
+    mount -t $FSTYPE $MDS_MOUNT_OPTS $mdtdev $mntpt || return $?
+
+    do_umount() {
+        trap 0
+        popd > /dev/null
+        rm $tmp
+        umount -f $mntpt
+    }
+    trap do_umount EXIT
+
+    tmp=$(mktemp $TMP/setfattr.XXXXXXXXXX)
+    pushd $mntpt/ROOT > /dev/null || return $?
+    rc=0
+    for f in $files; do
+        touch $f.bad || return $?
+        getfattr -n trusted.lov $f | sed "s#$f#&.bad#" > $tmp
+        rc=${PIPESTATUS[0]}
+        [ $rc -eq 0 ] || return $rc
+        setfattr --restore $tmp || return $?
+    done
+    do_umount
 }

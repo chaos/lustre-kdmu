@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2009 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -126,4 +126,16 @@ void cfs_curproc_cap_unpack(cfs_cap_t cap)
 int cfs_capable(cfs_cap_t cap)
 {
         return 1;
+}
+
+
+int cfs_curproc_is_32bit(void)
+{
+        /* XXX
+         * This function is only called by client code and we don't yet have a
+         * solaris client.  For now assume all lustre solaris applications are
+         * either 64-bit or use LARGEFILE64 API. That's ok for now until we
+         * have a general purpose sclient.
+         */
+        return (0);
 }

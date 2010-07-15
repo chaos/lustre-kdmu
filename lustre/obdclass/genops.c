@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 1999, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -1455,7 +1455,7 @@ void obd_exports_barrier(struct obd_device *obd)
                                       "The obd refcount = %d. Is it stuck?\n",
                                       obd->obd_name, waited,
                                       cfs_atomic_read(&obd->obd_refcount));
-                        dump_exports(obd, 0);
+                        dump_exports(obd, 1);
                 }
                 waited *= 2;
                 cfs_spin_lock(&obd->obd_dev_lock);

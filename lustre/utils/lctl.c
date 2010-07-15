@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2002, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -152,7 +152,7 @@ command_t cmdlist[] = {
          "  -n  Disable printing of the key name when printing values."},
         {"list_param", jt_lcfg_listparam, 0,
          "list the Lustre or LNET parameter name\n"
-         "usage: list_param [-F] <param_path1 param_path2 ...>\n"
+         "usage: list_param [-F|-R] <param_path1 param_path2 ...>\n"
          "List the name of Lustre or LNET parameter from the specified path.\n"
          "  -F  Add '/', '@' or '=' for dirs, symlinks and writeable files,\n"
                 "respectively.\n"

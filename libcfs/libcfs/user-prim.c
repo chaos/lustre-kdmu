@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2008, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -195,7 +195,7 @@ cfs_time_t cfs_timer_deadline(cfs_timer_t *l)
 }
 
 
-#ifdef HAVE_LIBPTHREAD
+#ifdef HAVE_PTHREAD
 
 /*
  * Threads

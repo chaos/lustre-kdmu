@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -364,8 +364,8 @@ static int mdt_statfs(struct mdt_thread_info *info)
         } else {
                 osfs = req_capsule_server_get(info->mti_pill, &RMF_OBD_STATFS);
                 rc = next->md_ops->mdo_statfs(info->mti_env, next,
-                                              &info->mti_u.ksfs);
-                statfs_pack(osfs, &info->mti_u.ksfs);
+                                              &info->mti_u.osfs);
+                *osfs = info->mti_u.osfs;
         }
         RETURN(rc);
 }
@@ -3411,6 +3411,8 @@ static int mdt_intent_reint(enum mdt_it_code opcode,
                   * checked here.
                   */
                 if (lustre_handle_is_used(&lhc->mlh_reg_lh)) {
+                        LASSERTF(rc == 0, "Error occurred but lock handle "
+                                 "is still in use\n");
                         rep->lock_policy_res2 = 0;
                         rc = mdt_intent_lock_replace(info, lockp, NULL, lhc, flags);
                         RETURN(rc);

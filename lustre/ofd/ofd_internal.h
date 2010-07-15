@@ -16,7 +16,8 @@
 #include <obd_cksum.h>
 #include <lprocfs_status.h>
 #include <lustre_fsfilt.h>
-
+#include <lustre_fid.h>
+#include <obd_ost.h>
 
 #define FILTER_GROUPS_FILE "groups"
 
@@ -37,16 +38,7 @@
 
 #define FILTER_RECOVERY_TIMEOUT (obd_timeout * 5 * CFS_HZ / 2) /* *waves hands* */
 
-extern struct file_operations filter_per_export_stats_fops;
-
-/* Data stored per client in the last_rcvd file.  In le32 order. */
-struct filter_client_data {
-        __u8  fcd_uuid[40];        /* client UUID */
-        __u64 fcd_last_rcvd;       /* last completed transaction ID */
-        __u64 fcd_last_xid;        /* client RPC xid for the last transaction */
-        __u32 fcd_group;           /* mds group */
-        __u8  fcd_padding[LR_CLIENT_SIZE - 60];
-};
+extern libcfs_file_ops_t filter_per_export_stats_fops;
 
 /* Limit the returned fields marked valid to those that we actually might set */
 #define FILTER_VALID_FLAGS (LA_TYPE | LA_MODE | LA_SIZE | LA_BLOCKS | \
@@ -92,24 +84,10 @@ enum {
 //#define FILTER_MAX_CACHE_SIZE (32 * 1024 * 1024) /* was OBD_OBJECT_EOF */
 #define FILTER_MAX_CACHE_SIZE OBD_OBJECT_EOF
 
-#ifdef LPROCFS
 void filter_tally(struct obd_export *exp, struct page **pages, int nr_pages,
                   unsigned long *blocks, int blocks_per_page, int wr);
 int lproc_filter_attach_seqstat(struct obd_device *dev);
 void lprocfs_filter_init_vars(struct lprocfs_static_vars *lvars);
-#else
-static inline void filter_tally(struct obd_export *exp, struct page **pages,
-                                int nr_pages, unsigned long *blocks,
-                                int blocks_per_page, int wr) {}
-static inline int lproc_filter_attach_seqstat(struct obd_device *dev)
-{
-        return 0;
-}
-static inline void lprocfs_filter_init_vars(struct lprocfs_static_vars *lvars)
-{
-        memset(lvars, 0, sizeof(*lvars));
-}
-#endif
 
 #ifdef HAVE_QUOTA_SUPPORT
 /* Quota stuff */
@@ -135,13 +113,10 @@ struct filter_device {
 
         /* transaction callbacks */
         struct dt_txn_callback   ofd_txn_cb;
-        cfs_spinlock_t           ofd_transno_lock;
-        __u64                    ofd_last_transno;
 
         /* last_rcvd file */
         struct lu_target         ofd_lut;
         struct dt_object        *ofd_last_group_file;
-        unsigned long           *ofd_last_rcvd_slots;
 
         int                      ofd_subdir_count;
 
@@ -181,8 +156,10 @@ struct filter_device {
         int                      ofd_raid_degraded;
 };
 
-#define ofd_last_rcvd ofd_lut.lut_last_rcvd
-#define ofd_fsd       ofd_lut.lut_lsd
+#define ofd_last_rcvd    ofd_lut.lut_last_rcvd
+#define ofd_fsd          ofd_lut.lut_lsd
+#define ofd_last_transno ofd_lut.lut_last_transno
+#define ofd_transno_lock ofd_lut.lut_translock
 
 static inline struct filter_device *filter_dev(struct lu_device *d)
 {
@@ -241,11 +218,25 @@ struct lustre_capa *filter_object_capa(const struct lu_env *env,
         return BYPASS_CAPA;
 }
 
-static inline void filter_write_lock(const struct lu_env *env,
-                                     struct filter_object *fo, int role)
+static inline void filter_read_lock(const struct lu_env *env,
+                                     struct filter_object *fo)
 {
         struct dt_object  *next = filter_object_child(fo);
-        next->do_ops->do_write_lock(env, next, role);
+        next->do_ops->do_read_lock(env, next, 0);
+}
+
+static inline void filter_read_unlock(const struct lu_env *env,
+                                       struct filter_object *fo)
+{
+        struct dt_object  *next = filter_object_child(fo);
+        next->do_ops->do_read_unlock(env, next);
+}
+
+static inline void filter_write_lock(const struct lu_env *env,
+                                     struct filter_object *fo)
+{
+        struct dt_object  *next = filter_object_child(fo);
+        next->do_ops->do_write_lock(env, next, 0);
 }
 
 static inline void filter_write_unlock(const struct lu_env *env,
@@ -274,9 +265,9 @@ struct filter_thread_info {
         struct ldlm_res_id         fti_resid;
 
         union {
-                char               ns_name[48];   /* for obdfilter_init0()     */
-                struct lustre_cfg_bufs bufs;      /* for obdfilter_stack_fini()*/
-                cfs_kstatfs_t      ksfs;          /* for obdfilter_statfs()    */
+                char               ns_name[48];  /* for obdfilter_init0()     */
+                struct lustre_cfg_bufs bufs;     /* for obdfilter_stack_fini()*/
+                struct obd_statfs  osfs;         /* for obdfilter_statfs()    */
         } fti_u;
 
         /* server and client data buffers */
@@ -320,13 +311,6 @@ struct filter_thread_info * filter_info_init(const struct lu_env *env,
         return info;
 }
 
-typedef void (*filter_cb_t)(const struct filter_device *mdt, __u64 transno,
-                         void *data, int err);
-struct filter_commit_cb {
-        lut_cb_t  filter_cb_func;
-        void     *filter_cb_data;
-};
-
 /*
  * Info allocated per-transaction.
  */
@@ -334,7 +318,7 @@ struct filter_commit_cb {
 struct filter_txn_info {
         __u64                 txi_transno;
         unsigned int          txi_cb_count;
-        struct filter_commit_cb  txi_cb[OFD_MAX_COMMIT_CB];
+        struct lut_commit_cb  txi_cb[OFD_MAX_COMMIT_CB];
 };
 
 static inline void filter_trans_add_cb(const struct thandle *th,
@@ -346,8 +330,8 @@ static inline void filter_trans_add_cb(const struct thandle *th,
         LASSERT(txi->txi_cb_count < ARRAY_SIZE(txi->txi_cb));
 
         /* add new callback */
-        txi->txi_cb[txi->txi_cb_count].filter_cb_func = cb_func;
-        txi->txi_cb[txi->txi_cb_count].filter_cb_data = cb_data;
+        txi->txi_cb[txi->txi_cb_count].lut_cb_func = cb_func;
+        txi->txi_cb[txi->txi_cb_count].lut_cb_data = cb_data;
         txi->txi_cb_count++;
 }
 
@@ -449,12 +433,12 @@ int filter_fs_setup(const struct lu_env *env, struct filter_device *ofd,
 void filter_fs_cleanup(const struct lu_env *env, struct filter_device *ofd);
 
 /* filter_fs.c */
-obd_id filter_last_id(struct filter_device *ofd, obd_gr group);
-void filter_last_id_set(struct filter_device *ofd, obd_id id, obd_gr group);
+obd_id filter_last_id(struct filter_device *ofd, obd_seq seq);
+void filter_last_id_set(struct filter_device *ofd, obd_id id, obd_seq seq);
 int filter_last_id_write(const struct lu_env *env, struct filter_device *ofd,
-                         obd_gr group, struct thandle *th);
+                         obd_seq seq, struct thandle *th);
 int filter_last_id_read(const struct lu_env *env, struct filter_device *ofd,
-                        obd_gr group);
+                        obd_seq seq);
 int filter_groups_init(const struct lu_env *env, struct filter_device *ofd);
 int filter_last_rcvd_header_write(const struct lu_env *env,
                                   struct filter_device *ofd,
@@ -481,7 +465,7 @@ filter_object *filter_object_find_or_create(const struct lu_env *env,
                                             const struct lu_fid *fid,
                                             struct lu_attr *attr);
 int filter_precreate_object(const struct lu_env *env, struct filter_device *ofd,
-                            obd_id id, obd_gr group);
+                            obd_id id, obd_seq seq);
 
 void filter_object_put(const struct lu_env *env, struct filter_object *fo);
 int filter_attr_set(const struct lu_env *env, struct filter_object *fo,
@@ -510,41 +494,37 @@ long filter_grant(const struct lu_env *env, struct obd_export *exp,
 void filter_grant_commit(struct obd_export *exp, int niocount,
                          struct niobuf_local *res);
 
-/* IDIF stuff */
-#include <lustre_fid.h>
-static inline void lu_idif_build(struct lu_fid *fid, obd_id id, obd_gr gr)
+/* The same as osc_build_res_name() */
+static inline void ofd_build_resid(const struct lu_fid *fid,
+                                   struct ldlm_res_id *resname)
 {
-        LASSERT((id >> 48) == 0);
-        fid->f_seq = (IDIF_SEQ_START| id >> 32);
-        fid->f_oid = (__u32)(id & 0xffffffff);
-        fid->f_ver = gr;
+        if (fid_is_idif(fid)) {
+                /* get id/seq like ostid_idif_pack() does */
+                osc_build_res_name(fid_idif_id(fid_seq(fid), fid_oid(fid),
+                                               fid_ver(fid)),
+                                   FID_SEQ_OST_MDT0, resname);
+        } else {
+                /* In the future, where OSTs have FID sequences allocated. */
+                fid_build_reg_res_name(fid, resname);
+        }
+
 }
 
-static inline obd_id lu_idif_id(const struct lu_fid *fid)
-{
-        return ((fid->f_seq & 0xffff) << 32) | fid->f_oid;
-}
-
-static inline obd_gr lu_idif_gr(const struct lu_fid * fid)
-{
-        return fid->f_ver;
-}
-
-static inline struct ldlm_res_id * lu_idif_resid(const struct lu_fid *fid,
-                                                 struct ldlm_res_id *name)
-{
-        name->name[LUSTRE_RES_ID_SEQ_OFF] = lu_idif_id(fid);
-        name->name[LUSTRE_RES_ID_OID_OFF] = 0;
-        name->name[LUSTRE_RES_ID_VER_OFF] = lu_idif_gr(fid);
-        name->name[LUSTRE_RES_ID_HSH_OFF] = 0;
-        return name;
-}
-
-static inline void lu_idif_from_resid(struct lu_fid *fid,
+static inline void ofd_fid_from_resid(struct lu_fid *fid,
                                       const struct ldlm_res_id *name)
 {
-        lu_idif_build(fid, name->name[LUSTRE_RES_ID_SEQ_OFF],
-                      name->name[LUSTRE_RES_ID_VER_OFF]);
+        /* if seq is FID_SEQ_OST_MDT0 then we have IDIF and resid was built
+         * using osc_build_res_name function. */
+        if (fid_seq_is_mdt0(name->name[LUSTRE_RES_ID_OID_OFF])) {
+                struct ost_id ostid;
+                ostid.oi_id = name->name[LUSTRE_RES_ID_SEQ_OFF];
+                ostid.oi_seq = name->name[LUSTRE_RES_ID_OID_OFF];
+                fid_ostid_unpack(fid, &ostid, 0);
+        } else {
+                fid->f_seq = name->name[LUSTRE_RES_ID_SEQ_OFF];
+                fid->f_oid = name->name[LUSTRE_RES_ID_OID_OFF];
+                fid->f_ver = name->name[LUSTRE_RES_ID_VER_OFF];
+        }
 }
 
 static inline void filter_oti2info(struct filter_thread_info *info,

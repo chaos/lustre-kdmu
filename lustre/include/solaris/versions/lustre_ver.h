@@ -4,8 +4,8 @@
 #define LUSTRE_MAJOR            1
 #define LUSTRE_MINOR            10
 #define LUSTRE_PATCH            0
-#define LUSTRE_FIX              43
-#define LUSTRE_VERSION_STRING   "1.10.0.43"
+#define LUSTRE_FIX              44
+#define LUSTRE_VERSION_STRING   "1.10.0.44"
 #define CLIENT_URN              "LUSTRE-200-CLT"
 #define MDS_URN                 "LUSTRE-200-MDS"
 #define MGS_URN                 "LUSTRE-200-MGS"

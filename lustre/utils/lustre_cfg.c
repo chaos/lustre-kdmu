@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2003, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -553,10 +553,10 @@ int jt_lcfg_mgsparam(int argc, char **argv)
 }
 
 struct params_opts{
-        int show_path;
-        int only_path;
-        int show_type;
-        int recursive;
+        int show_path:1;
+        int only_path:1;
+        int show_type:1;
+        int recursive:1;
 };
 
 static void strrpl(char *str, char src, char dst)
@@ -613,7 +613,7 @@ static char *display_name(char *filename, mode_t mode, int show_type)
 static void params_show(int show_path, char *buf)
 {
         char outbuf[CFS_PAGE_SIZE];
-        int rc =0, pos = 0;
+        int rc = 0, pos = 0;
 
         memset(outbuf, 0, CFS_PAGE_SIZE);
         while ((rc = params_unpack(buf + pos, outbuf, sizeof(outbuf)))) {

@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright 2008 Sun Microsystems, Inc.  All rights reserved.
+ * Copyright (c) 2008, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -240,9 +240,9 @@ void osc_lock_build_res(const struct lu_env *env, const struct osc_object *obj,
         } else {
                 /*
                  * In reality, where ost server expects ->lsm_object_id and
-                 * ->lsm_object_gr in rename.
+                 * ->lsm_object_seq in rename.
                  */
-                osc_build_res_name(obj->oo_oinfo->loi_id, obj->oo_oinfo->loi_gr,
+                osc_build_res_name(obj->oo_oinfo->loi_id, obj->oo_oinfo->loi_seq,
                                    resname);
         }
 }

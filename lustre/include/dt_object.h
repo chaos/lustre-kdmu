@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -87,7 +87,7 @@ struct dt_device_operations {
          * Return device-wide statistics.
          */
         int   (*dt_statfs)(const struct lu_env *env,
-                           struct dt_device *dev, cfs_kstatfs_t *sfs);
+                           struct dt_device *dev, struct obd_statfs *osfs);
         /**
          * Create transaction, described by \a param.
          */
@@ -904,9 +904,9 @@ static inline int dt_read_prep(const struct lu_env *env, struct dt_object *d,
 }
 
 static inline int dt_statfs(const struct lu_env *env, struct dt_device *dev,
-                            cfs_kstatfs_t *sfs)
+                            struct obd_statfs *osfs)
 {
-        return dev->dd_ops->dt_statfs(env, dev, sfs);
+        return dev->dd_ops->dt_statfs(env, dev, osfs);
 }
 
 static inline int dt_root_get(const struct lu_env *env, struct dt_device *dev,

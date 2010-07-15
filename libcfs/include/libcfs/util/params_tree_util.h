@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2009, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -62,7 +62,7 @@ int params_read(char *path, int path_len, char *read_buf, int buf_len,
 int params_write(char *path, int path_len, char *write_buf, int buf_len,
                  int offset);
 int params_unpack(char *inbuf, char *outbuf, int outbuf_len);
-int params_value_output(struct libcfs_param_data data, char *outbuf);
+int params_value_output(struct libcfs_param_data *data, char *outbuf);
 void params_free_entrylist(struct params_entry_list *entry_list);
 
 #endif

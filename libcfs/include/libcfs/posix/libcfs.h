@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2009 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2008, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -75,7 +75,7 @@
 #include <unistd.h>
 #endif
 
-#ifdef HAVE_LIBPTHREAD
+#ifdef HAVE_PTHREAD
 #include <pthread.h>
 #endif
 
@@ -119,14 +119,16 @@ typedef unsigned long long cfs_cycles_t;
 
 #include <mntent.h>
 
-typedef struct dentry cfs_dentry_t;
 typedef struct file cfs_file_t;
+typedef struct dentry cfs_dentry_t;
+typedef struct statfs cfs_kstatfs_t;
 typedef struct dirent64 cfs_dirent_t;
 
 #else /* __linux__ */
 
-typedef struct {;} cfs_dentry_t;
 typedef struct {;} cfs_file_t;
+typedef struct {;} cfs_dentry_t;
+typedef struct {;} cfs_kstatfs_t;
 typedef struct {;} cfs_dirent_t;
 
 #endif /* __linux__ */

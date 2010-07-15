@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2002, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -57,10 +57,7 @@
 #include <linux/smp.h>
 #include <linux/rwsem.h>
 #include <libcfs/libcfs.h>
-#include <linux/statfs.h>
 
-#else
-typedef struct statfs cfs_kstatfs_t;
 #endif
 
 #endif /* LPROCFS_SNMP_H */

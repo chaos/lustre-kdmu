@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2002, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -63,8 +63,10 @@ void statfs_pack(struct obd_statfs *osfs, cfs_kstatfs_t *sfs)
         osfs->os_bavail = sfs->f_bavail;
         osfs->os_files = sfs->f_files;
         osfs->os_ffree = sfs->f_ffree;
-        osfs->os_bsize = sfs->f_bsize;
+        osfs->os_bsize = sfs->f_frsize != 0 ? sfs->f_frsize : sfs->f_bsize;
         osfs->os_namelen = sfs->f_namelen;
+
+        LASSERT(osfs->os_bsize > 0);
 }
 
 void statfs_unpack(cfs_kstatfs_t *sfs, struct obd_statfs *osfs)
@@ -76,8 +78,15 @@ void statfs_unpack(cfs_kstatfs_t *sfs, struct obd_statfs *osfs)
         sfs->f_bavail = osfs->os_bavail;
         sfs->f_files = osfs->os_files;
         sfs->f_ffree = osfs->os_ffree;
-        sfs->f_bsize = osfs->os_bsize;
+        sfs->f_frsize = osfs->os_bsize;
         sfs->f_namelen = osfs->os_namelen;
+
+        /* FIXME f_bsize is the optimal transfer size. We'd like this to be 2 MB
+         * or so, but unfortunately 'df' uses f_bsize instead of f_frsize to
+         * calculate filesystem sizes, so for now we set f_bsize=f_frsize.
+         * See bug 22246. */
+        //sfs->f_bsize = min(2UL * PTLRPC_MAX_BRW_SIZE, 4UL << 20);
+        sfs->f_bsize = sfs->f_frsize;
 }
 
 EXPORT_SYMBOL(statfs_pack);

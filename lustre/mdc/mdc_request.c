@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2001, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -1518,6 +1518,14 @@ static void lustre_swab_hal(struct hsm_action_list *h)
         }
 }
 
+static void lustre_swab_kuch(struct kuc_hdr *l)
+{
+        __swab16s(&l->kuc_magic);
+        /* __u8 l->kuc_transport */
+        __swab16s(&l->kuc_msgtype);
+        __swab16s(&l->kuc_msglen);
+}
+
 static int mdc_ioc_hsm_ct_start(struct obd_export *exp,
                                 struct lustre_kernelcomm *lk)
 {
@@ -1811,12 +1819,9 @@ static int mdc_import_event(struct obd_device *obd, struct obd_import *imp,
                 /*
                  * Flush current sequence to make client obtain new one
                  * from server in case of disconnect/reconnect.
-                 * If range is already empty then no need to flush it.
                  */
-                if (cli->cl_seq != NULL &&
-                    !range_is_exhausted(&cli->cl_seq->lcs_space)) {
+                if (cli->cl_seq != NULL)
                         seq_client_flush(cli->cl_seq);
-                }
 
                 rc = obd_notify_observer(obd, obd, OBD_NOTIFY_INACTIVE, NULL);
                 break;

@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2009, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -618,8 +618,6 @@ static int filter_init0(const struct lu_env *env, struct filter_device *m,
                 obd->obd_fsops = NULL;
                 /* this filesystem doesn't support fsfilt */
         }
-
-        cfs_spin_lock_init(&m->ofd_transno_lock);
 
         m->ofd_fmd_max_num = FILTER_FMD_MAX_NUM_DEFAULT;
         m->ofd_fmd_max_age = FILTER_FMD_MAX_AGE_DEFAULT;

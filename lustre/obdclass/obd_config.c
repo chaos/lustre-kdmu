@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2009 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2003, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -159,13 +159,41 @@ int class_match_param(char *buf, char *key, char **valp)
         return 0;
 }
 
+static int parse_nid(char *buf, void *value)
+{
+        lnet_nid_t *nid = (lnet_nid_t *)value;
+
+        *nid = libcfs_str2nid(buf);
+        if (*nid != LNET_NID_ANY)
+                return 0;
+
+        LCONSOLE_ERROR_MSG(0x159, "Can't parse NID '%s'\n", buf);
+        return -EINVAL;
+}
+
+static int parse_net(char *buf, void *value)
+{
+        __u32 *net = (__u32 *)net;
+
+        *net = libcfs_str2net(buf);
+        CDEBUG(D_INFO, "Net %s\n", libcfs_net2str(*net));
+        return 0;
+}
+
+enum {
+        CLASS_PARSE_NID = 1,
+        CLASS_PARSE_NET,
+};
+
 /* 0 is good nid,
    1 not found
    < 0 error
    endh is set to next separator */
-int class_parse_nid(char *buf, lnet_nid_t *nid, char **endh)
+static int class_parse_value(char *buf, int opc, void *value, char **endh)
 {
-        char tmp, *endp;
+        char *endp;
+        char  tmp;
+        int   rc = 0;
 
         if (!buf)
                 return 1;
@@ -181,17 +209,46 @@ int class_parse_nid(char *buf, lnet_nid_t *nid, char **endh)
 
         tmp = *endp;
         *endp = '\0';
-        *nid = libcfs_str2nid(buf);
-        if (*nid == LNET_NID_ANY) {
-                LCONSOLE_ERROR_MSG(0x159, "Can't parse NID '%s'\n", buf);
-                *endp = tmp;
-                return -EINVAL;
+        switch (opc) {
+        default:
+                LBUG();
+        case CLASS_PARSE_NID:
+                rc = parse_nid(buf, value);
+                break;
+        case CLASS_PARSE_NET:
+                rc = parse_net(buf, value);
+                break;
         }
         *endp = tmp;
-
+        if (rc != 0)
+                return rc;
         if (endh)
                 *endh = endp;
-        CDEBUG(D_INFO, "Nid %s\n", libcfs_nid2str(*nid));
+        return 0;
+}
+
+int class_parse_nid(char *buf, lnet_nid_t *nid, char **endh)
+{
+        return class_parse_value(buf, CLASS_PARSE_NID, (void *)nid, endh);
+}
+
+int class_parse_net(char *buf, __u32 *net, char **endh)
+{
+        return class_parse_value(buf, CLASS_PARSE_NET, (void *)net, endh);
+}
+
+int class_match_net(char *buf, lnet_nid_t nid)
+{
+        __u32 net;
+
+        while (class_find_param(buf, PARAM_NETWORK, &buf) == 0) {
+                /* please restrict to the nids pertaining to
+                 * the specified networks */
+                while (class_parse_net(buf, &net, &buf) == 0) {
+                        if (LNET_NIDNET(nid) == net)
+                                return 1;
+                }
+        }
         return 0;
 }
 
@@ -199,12 +256,14 @@ EXPORT_SYMBOL(class_find_param);
 EXPORT_SYMBOL(class_get_next_param);
 EXPORT_SYMBOL(class_match_param);
 EXPORT_SYMBOL(class_parse_nid);
+EXPORT_SYMBOL(class_parse_net);
+EXPORT_SYMBOL(class_match_net);
 
 /********************** class fns **********************/
 
 /**
- * Create a new device and set the type, name and uuid.  If successful, the new
- * device can be accessed by either name or uuid.
+ * Create a new obd device and set the type, name and uuid.  If successful,
+ * the new device can be accessed by either name or uuid.
  */
 int class_attach(struct lustre_cfg *lcfg)
 {
@@ -279,7 +338,7 @@ int class_attach(struct lustre_cfg *lcfg)
         CFS_INIT_LIST_HEAD(&obd->obd_final_req_queue);
         CFS_INIT_LIST_HEAD(&obd->obd_evict_list);
 
-        llog_group_init(&obd->obd_olg, FILTER_GROUP_LLOG);
+        llog_group_init(&obd->obd_olg, FID_SEQ_LLOG);
 
         len = strlen(uuid);
         if (len >= sizeof(obd->obd_uuid)) {
@@ -314,6 +373,9 @@ int class_attach(struct lustre_cfg *lcfg)
         return rc;
 }
 
+/** Create hashes, self-export, and call type-specific setup.
+ * Setup is effectively the "start this obd" call.
+ */
 int class_setup(struct obd_device *obd, struct lustre_cfg *lcfg)
 {
         int err = 0;
@@ -426,6 +488,9 @@ err_hash:
         return err;
 }
 
+/** We have finished using this obd and are ready to destroy it.
+ * There can be no more references to this obd.
+ */
 int class_detach(struct obd_device *obd, struct lustre_cfg *lcfg)
 {
         ENTRY;
@@ -455,6 +520,10 @@ int class_detach(struct obd_device *obd, struct lustre_cfg *lcfg)
         RETURN(0);
 }
 
+/** Start shutting down the obd.  There may be in-progess ops when
+ * this is called.  We tell them to start shutting down with a call
+ * to class_disconnect_exports().
+ */
 int class_cleanup(struct obd_device *obd, struct lustre_cfg *lcfg)
 {
         int err = 0;
@@ -600,6 +669,9 @@ void class_decref(struct obd_device *obd, const char *scope, const void *source)
         }
 }
 
+/** Add a failover nid location.
+ * Client obd types contact server obd types using this nid list.
+ */
 int class_add_conn(struct obd_device *obd, struct lustre_cfg *lcfg)
 {
         struct obd_import *imp;
@@ -631,6 +703,8 @@ int class_add_conn(struct obd_device *obd, struct lustre_cfg *lcfg)
         RETURN(rc);
 }
 
+/** Remove a failover nid location.
+ */
 int class_del_conn(struct obd_device *obd, struct lustre_cfg *lcfg)
 {
         struct obd_import *imp;
@@ -676,6 +750,10 @@ struct lustre_profile *class_get_profile(const char * prof)
         RETURN(NULL);
 }
 
+/** Create a named "profile".
+ * This defines the mdc and osc names to use for a client.
+ * This also is used to define the lov to be used by a mdt.
+ */
 int class_add_profile(int proflen, char *prof, int osclen, char *osc,
                       int mdclen, char *mdc)
 {
@@ -792,6 +870,10 @@ void lustre_register_client_process_config(int (*cpc)(struct lustre_cfg *lcfg))
 }
 EXPORT_SYMBOL(lustre_register_client_process_config);
 
+/** Process configuration commands given in lustre_cfg form.
+ * These may come from direct calls (e.g. class_manual_cleanup)
+ * or processing the config llog, or ioctl from lctl.
+ */
 int class_process_config(struct lustre_cfg *lcfg)
 {
         struct obd_device *obd;
@@ -1068,6 +1150,11 @@ extern int lustre_check_exclusion(struct super_block *sb, char *svname);
 #define lustre_check_exclusion(a,b)  0
 #endif
 
+/** Parse a configuration llog, doing various manipulations on them
+ * for various reasons, (modifications for compatibility, skip obsolete
+ * records, change uuids, etc), then class_process_config() resulting
+ * net records.
+ */
 static int class_config_llog_handler(struct llog_handle * handle,
                                      struct llog_rec_hdr *rec, void *data)
 {
@@ -1380,12 +1467,14 @@ parse_out:
 
 }
 
-/* Cleanup and detach */
+/** Call class_cleanup and class_detach.
+ * "Manual" only in the sense that we're faking lcfg commands.
+ */
 int class_manual_cleanup(struct obd_device *obd)
 {
         char                    flags[3] = "";
-        struct lustre_cfg      *lcfg;
-        struct lustre_cfg_bufs  bufs;
+        struct lustre_cfg      *lcfg = NULL;
+        struct lustre_cfg_bufs *bufs = NULL;
         int                     rc;
         ENTRY;
 
@@ -1393,6 +1482,10 @@ int class_manual_cleanup(struct obd_device *obd)
                 CERROR("empty cleanup\n");
                 RETURN(-EALREADY);
         }
+
+        OBD_ALLOC_PTR(bufs);
+        if (bufs == NULL)
+                GOTO(out, rc = -ENOMEM);
 
         if (obd->obd_force)
                 strcat(flags, "F");
@@ -1402,11 +1495,11 @@ int class_manual_cleanup(struct obd_device *obd)
         CDEBUG(D_CONFIG, "Manual cleanup of %s (flags='%s')\n",
                obd->obd_name, flags);
 
-        lustre_cfg_bufs_reset(&bufs, obd->obd_name);
-        lustre_cfg_bufs_set_string(&bufs, 1, flags);
-        lcfg = lustre_cfg_new(LCFG_CLEANUP, &bufs);
+        lustre_cfg_bufs_reset(bufs, obd->obd_name);
+        lustre_cfg_bufs_set_string(bufs, 1, flags);
+        lcfg = lustre_cfg_new(LCFG_CLEANUP, bufs);
         if (!lcfg)
-                RETURN(-ENOMEM);
+                GOTO(out, rc = -ENOMEM);
 
         rc = class_process_config(lcfg);
         if (rc) {
@@ -1420,7 +1513,10 @@ int class_manual_cleanup(struct obd_device *obd)
         if (rc)
                 CERROR("detach failed %d: %s\n", rc, obd->obd_name);
 out:
-        lustre_cfg_free(lcfg);
+        if (lcfg)
+                lustre_cfg_free(lcfg);
+        if (bufs)
+                OBD_FREE_PTR(bufs);
         RETURN(rc);
 }
 

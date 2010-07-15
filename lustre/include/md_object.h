@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -344,7 +344,7 @@ struct md_device_operations {
                                int *md_size, int *cookie_size);
 
         int (*mdo_statfs)(const struct lu_env *env, struct md_device *m,
-                          cfs_kstatfs_t *sfs);
+                          struct obd_statfs *sfs);
 
         int (*mdo_init_capa_ctxt)(const struct lu_env *env, struct md_device *m,
                                   int mode, unsigned long timeout, __u32 alg,

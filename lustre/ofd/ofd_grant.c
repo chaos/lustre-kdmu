@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2009, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -149,10 +149,6 @@ void filter_grant_discard(struct obd_export *exp)
         struct filter_export_data *fed = &exp->exp_filter_data;
 
         cfs_mutex_down(&ofd->ofd_grant_sem);
-        cfs_spin_lock(&obd->obd_dev_lock);
-        cfs_list_del_init(&exp->exp_obd_chain);
-        cfs_spin_unlock(&obd->obd_dev_lock);
-
         LASSERTF(ofd->ofd_tot_granted >= fed->fed_grant,
                  "%s: tot_granted "LPU64" cli %s/%p fed_grant %ld\n",
                  obd->obd_name, ofd->ofd_tot_granted,
@@ -279,8 +275,8 @@ obd_size filter_grant_space_left(const struct lu_env *env,
         if (cfs_time_before_64(obd->obd_osfs_age,
                                cfs_time_current_64() - CFS_HZ)) {
 restat:
-                dt_statfs(env, ofd->ofd_osd, &info->fti_u.ksfs);
-                statfs_pack(&obd->obd_osfs, &info->fti_u.ksfs);
+                dt_statfs(env, ofd->ofd_osd, &info->fti_u.osfs);
+                obd->obd_osfs = info->fti_u.osfs;
                 statfs_done = 1;
         }
         frsize = obd->obd_osfs.os_bsize;

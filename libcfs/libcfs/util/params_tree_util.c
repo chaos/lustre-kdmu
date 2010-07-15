@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2009, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -592,54 +592,106 @@ out:
         return rc;
 }
 
-int params_value_output(struct libcfs_param_data data, char *outbuf)
+
+/**
+ * The following APIs are used to unpack libcfs_param_data
+ */
+/* Count libcfs_param_data len */
+static int params_data_packlen(struct libcfs_param_data *data)
 {
-        switch (data.param_type) {
+        int len = sizeof(*data);
+
+	if (data->param_name)
+		len += data->param_name_len + 1;
+	if (data->param_unit)
+		len += data->param_unit_len + 1;
+	len += data->param_value_len;
+
+        return len;
+}
+
+/* Unpack libcfs_param_data from the input buf */
+static int params_data_unpack(struct libcfs_param_data **data_ptr, char *buf)
+{
+	struct libcfs_param_data *data;
+        char *ptr;
+
+        if (!buf)
+                return 1;
+
+        data = (struct libcfs_param_data *)buf;
+        ptr = data->param_bulk;
+
+        if (data->param_name_len) {
+                data->param_name = ptr;
+		ptr += data->param_name_len + 1;
+        } else {
+                data->param_name = NULL;
+        }
+        if (data->param_unit_len) {
+                data->param_unit = ptr;
+		ptr += data->param_unit_len + 1;
+        } else {
+                data->param_unit = NULL;
+        }
+        if (data->param_value_len)
+                data->param_value = ptr;
+        else
+                data->param_value = NULL;
+
+	*data_ptr = data;
+
+        return 0;
+}
+
+int params_value_output(struct libcfs_param_data *data, char *outbuf)
+{
+        switch (data->param_type) {
                 case LP_D16: {
                         short temp;
-                        memcpy(&temp, data.param_value, data.param_value_len);
+                        memcpy(&temp, data->param_value, data->param_value_len);
                         sprintf(outbuf, "%d", temp);
                         break; }
                 case LP_D32: {
                         int temp;
-                        memcpy(&temp, data.param_value, data.param_value_len);
+                        memcpy(&temp, data->param_value, data->param_value_len);
                         sprintf(outbuf, "%d", temp);
                         break; }
                 case LP_D64: {
                         long long temp;
-                        memcpy(&temp, data.param_value, data.param_value_len);
+                        memcpy(&temp, data->param_value, data->param_value_len);
                         sprintf(outbuf, "%lld", temp);
                         break; }
                 case LP_U8: {
                         __u8 temp;
-                        memcpy(&temp, data.param_value, data.param_value_len);
+                        memcpy(&temp, data->param_value, data->param_value_len);
                         sprintf(outbuf, "%u", temp);
                         break; }
                 case LP_U16: {
                         __u16 temp;
-                        memcpy(&temp, data.param_value, data.param_value_len);
+                        memcpy(&temp, data->param_value, data->param_value_len);
                         sprintf(outbuf, "%u", temp);
                         break; }
                 case LP_U32: {
                         __u32 temp;
-                        memcpy(&temp, data.param_value, data.param_value_len);
+                        memcpy(&temp, data->param_value, data->param_value_len);
                         sprintf(outbuf, "%u", temp);
                         break; }
                 case LP_U64: {
                         __u64 temp;
-                        memcpy(&temp, data.param_value, data.param_value_len);
+                        memcpy(&temp, data->param_value, data->param_value_len);
                         sprintf(outbuf, "%llu", temp);
                         break; }
                 case LP_DB:
                 case LP_STR:
-                        if (data.param_value[data.param_value_len - 1] == '\n')
-                                data.param_value[data.param_value_len - 1]='\0';
-                        sprintf(outbuf, "%s", data.param_value);
+                        if (data->param_value[data->param_value_len - 1] == '\n')
+                                data->param_value[data->param_value_len - 1]='\0';
+                        sprintf(outbuf, "%s", data->param_value);
                         break;
                 default:
                         fprintf(stderr,
                                 "warning: %s: unknown libcfs_param_data_type"
-                                " (%d).\n", __FUNCTION__, data.param_type);
+                                " (%d).\n", __FUNCTION__, data->param_type);
                         return 0;
         }
 
@@ -649,29 +701,27 @@ int params_value_output(struct libcfs_param_data data, char *outbuf)
 /* one record each time */
 int params_unpack(char *inbuf, char *outbuf, int outbuf_len)
 {
-        struct libcfs_param_data data;
+        struct libcfs_param_data *data;
 
         if (*inbuf == '\0')
                 return 0;
-
-        if (!libcfs_param_unpack(&data, inbuf)) {
-                if (data.param_name) {
-                        sprintf(outbuf, "%s\t", data.param_name);
-                        outbuf += data.param_name_len + 1;
+        if (!params_data_unpack(&data, inbuf)) {
+                if (data->param_name != NULL) {
+                        sprintf(outbuf, "%s\t", data->param_name);
+                        outbuf += data->param_name_len + 1;
                 }
-                if (data.param_value)
+                if (data->param_value != NULL)
                         outbuf += params_value_output(data, outbuf);
-                if (data.param_unit) {
-                        sprintf(outbuf, "%s\n", data.param_unit);
-                        outbuf += data.param_unit_len + 1;
+                if (data->param_unit != NULL) {
+                        sprintf(outbuf, "%s\n", data->param_unit);
+                        outbuf += data->param_unit_len + 1;
                 } else {
                         sprintf(outbuf, "%s", "\n");
                         outbuf += 1;
                 }
-                libcfs_param_free_value(&data);
         }
 
-        return libcfs_param_packlen(&data);
+        return params_data_packlen(data);
 }
 
 /* Free params_entry_list */
@@ -685,4 +735,3 @@ void params_free_entrylist(struct params_entry_list *entry_list)
                 free(pel);
         }
 }
-

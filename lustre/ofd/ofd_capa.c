@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2009, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -64,7 +64,7 @@ int filter_update_capa_key(struct filter_device *ofd, struct lustre_capa_key *ne
 
         cfs_spin_lock(&capa_lock);
         cfs_list_for_each_entry(k, &ofd->ofd_capa_keys, k_list) {
-                if (k->k_key.lk_mdsid != new->lk_mdsid)
+                if (k->k_key.lk_seq != new->lk_seq)
                         continue;
 
                 if (keys[0]) {

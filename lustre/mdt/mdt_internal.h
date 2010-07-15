@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -364,7 +364,7 @@ struct mdt_thread_info {
                 struct obd_uuid    uuid[2];       /* for mdt_seq_init_cli()  */
                 char               ns_name[48];   /* for mdt_init0()         */
                 struct lustre_cfg_bufs bufs;      /* for mdt_stack_fini()    */
-                cfs_kstatfs_t      ksfs;          /* for mdt_statfs()        */
+                struct obd_statfs  osfs;          /* for mdt_statfs()        */
                 struct {
                         /* for mdt_readpage()      */
                         struct lu_rdpg     mti_rdpg;

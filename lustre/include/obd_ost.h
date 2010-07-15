@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2009 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -87,6 +87,7 @@ int osc_extent_blocking_cb(struct ldlm_lock *lock,
                            int flag);
 #endif
 
+#define POSTID LPU64":"LPU64
 /** 
  * Build DLM resource name from object id & group for osc-ost extent lock.
  */
