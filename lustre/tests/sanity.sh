@@ -36,12 +36,13 @@ ALWAYS_EXCEPT="$ALWAYS_EXCEPT 52 54c 56a 160 180"
 # 66  -- blocks counting should be done properly with zfs
 # 103 -- ACL support still relies on linux VFS
 # 129 -- ldiskfs specific test
+# 130 -- (bug 23099) FIEMAP ioctl not supported yet
 # 155 -- we don't control cache via ZFS OSD yet
 # 156 -- we don't control cache via ZFS OSD yet
 # 162 -- support for LMA in dmu osd
 
 [ "$FSTYPE" = "zfs" -o "$OSTFSTYPE" = "zfs" ] && \
-	ALWAYS_EXCEPT="$ALWAYS_EXCEPT 155 156"
+	ALWAYS_EXCEPT="$ALWAYS_EXCEPT 130 155 156"
 
 [ "$FSTYPE" = "zfs" -o "$MDSFSTYPE" = "zfs" ] && \
 	ALWAYS_EXCEPT="$ALWAYS_EXCEPT 57 66 103 129 162"

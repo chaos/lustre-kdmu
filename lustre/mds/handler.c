@@ -376,7 +376,7 @@ static int mds_cmd_setup(struct obd_device *obd, struct lustre_cfg *lcfg)
         OBD_SET_CTXT_MAGIC(&obd->obd_lvfs_ctxt);
         obd->obd_lvfs_ctxt.dt = lmi->lmi_dt;
 
-        lsi = s2lsi(lmi->lmi_sb);
+        lsi = lmi->lmi_lsi;
         lmi->lmi_dt->dd_ops->dt_conf_get(NULL, lmi->lmi_dt, &dt_param);
         mnt = dt_param.ddp_mnt;
         if (mnt == NULL) {

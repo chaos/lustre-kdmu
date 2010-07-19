@@ -260,7 +260,9 @@ struct filter_thread_info {
 
         struct lu_fid              fti_fid;
         struct lu_attr             fti_attr;
+        struct lu_attr             fti_attr2;
         struct ldlm_res_id         fti_resid;
+        struct filter_fid          fti_mds_fid;
 
         union {
                 char               ns_name[48];  /* for obdfilter_init0()     */

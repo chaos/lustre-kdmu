@@ -1140,7 +1140,7 @@ int class_config_dump_handler(struct llog_handle * handle,
                               struct llog_rec_hdr *rec, void *data);
 
 #ifdef __KERNEL__
-extern int lustre_check_exclusion(struct super_block *sb, char *svname);
+extern int lustre_check_exclusion(struct lustre_sb_info *lsi, char *svname);
 #else
 #define lustre_check_exclusion(a,b)  0
 #endif
@@ -1194,8 +1194,8 @@ static int class_config_llog_handler(struct llog_handle * handle,
                                         CDEBUG(D_CONFIG, "SKIP #%d\n",
                                                marker->cm_step);
                                 } else if ((marker->cm_flags & CM_EXCLUDE) ||
-                                           (clli->cfg_sb &&
-                                            lustre_check_exclusion(clli->cfg_sb,
+                                           (clli->cfg_lsi &&
+                                            lustre_check_exclusion(clli->cfg_lsi,
                                                          marker->cm_tgtname))) {
                                         clli->cfg_flags |= CFG_F_EXCLUDE;
                                         CDEBUG(D_CONFIG, "EXCLUDE %d\n",

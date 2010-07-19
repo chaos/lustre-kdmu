@@ -130,7 +130,7 @@ extern void lprocfs_echo_init_vars(struct lprocfs_static_vars *lvars);
 struct config_llog_instance {
         char *              cfg_instance;
         char *              cfg_obdname;
-        struct super_block *cfg_sb;
+        struct lustre_sb_info *cfg_lsi;
         struct obd_uuid     cfg_uuid;
         int                 cfg_last_idx; /* for partial llog processing */
         int                 cfg_flags;
