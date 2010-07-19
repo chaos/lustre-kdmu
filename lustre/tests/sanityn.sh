@@ -330,6 +330,7 @@ run_test 14d "chmod of executing file is still possible ========"
 test_15() {	# bug 974 - ENOSPC
 	echo "PATH=$PATH"
 	sh oos2.sh $MOUNT1 $MOUNT2
+	wait_delete_completed
 	grant_error=`dmesg | grep "> available"`
 	[ -z "$grant_error" ] || error "$grant_error"
 }
