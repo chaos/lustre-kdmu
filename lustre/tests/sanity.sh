@@ -33,18 +33,18 @@ ALWAYS_EXCEPT="$ALWAYS_EXCEPT 52 54c 56a 160 180"
 
 # 57a -- (bug 22607) can't determine dnode size in ZFS yet
 # 57b -- (bug 14113) don't have large dnodes yet
-# 66  -- blocks counting should be done properly with zfs
 # 103 -- ACL support still relies on linux VFS
 # 129 -- ldiskfs specific test
+# 130 -- (bug 23099) FIEMAP ioctl not supported yet
 # 155 -- we don't control cache via ZFS OSD yet
 # 156 -- we don't control cache via ZFS OSD yet
 # 162 -- support for LMA in dmu osd
 
 [ "$FSTYPE" = "zfs" -o "$OSTFSTYPE" = "zfs" ] && \
-	ALWAYS_EXCEPT="$ALWAYS_EXCEPT 155 156"
+	ALWAYS_EXCEPT="$ALWAYS_EXCEPT 130 155 156"
 
 [ "$FSTYPE" = "zfs" -o "$MDSFSTYPE" = "zfs" ] && \
-	ALWAYS_EXCEPT="$ALWAYS_EXCEPT 57 66 103 129 162"
+	ALWAYS_EXCEPT="$ALWAYS_EXCEPT 57 103 129 162"
 
 # LOD/OSP branch needs fixes:
 # 60  -- llog_osd_create()) ASSERTION(dt) failed
@@ -3723,7 +3723,8 @@ run_test 65l "lfs find on -1 stripe dir ========================"
 test_66() {
 	COUNT=${COUNT:-8}
 	dd if=/dev/zero of=$DIR/f66 bs=1k count=$COUNT
-	sync; sleep 1; sync
+	sync; sync_all_data; sleep 1; sync_all_data
+	cancel_lru_locks osc
 	BLOCKS=`ls -s $DIR/f66 | awk '{ print $1 }'`
 	[ $BLOCKS -ge $COUNT ] || error "$DIR/f66 blocks $BLOCKS < $COUNT"
 }
