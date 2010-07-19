@@ -495,7 +495,7 @@ struct mgs_obd {
 #endif /* __linux__ */
         cfs_list_t                       mgs_fs_db_list;
         cfs_semaphore_t                  mgs_sem;
-        libcfs_param_entry_t       *mgs_proc_live;
+        libcfs_param_entry_t            *mgs_proc_live;
 };
 
 struct dt_object;
