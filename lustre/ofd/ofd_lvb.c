@@ -153,6 +153,7 @@ static int filter_lvbo_update(struct ldlm_resource *res,
                 GOTO(out_mutex, rc = 0);
         }
 
+        /* XXX: it's too expensive to create env every time */
         rc = lu_env_init(&env, LCT_DT_THREAD);
         if (rc)
                 GOTO(out_mutex, rc);
