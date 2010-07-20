@@ -2433,13 +2433,14 @@ check_and_setup_lustre() {
     init_gss
     set_flavor_all $SEC
 
-    # create file striped over all OSTs, to be used to sync all OSTs with fdatasync
-    lfs setstripe $DIR/$ALLOSTFILE -c -1 || exit "can't create special $ALLOSTFILE"
-    chmod a+rw $DIR/$ALLOSTFILE
-
     if [ "$ONLY" == "setup" ]; then
         exit 0
     fi
+
+    # create file striped over all OSTs, to be used to sync all OSTs with fdatasync
+    rm -f $DIR/$ALLOSTFILE
+    lfs setstripe $DIR/$ALLOSTFILE -c -1 || exit "can't create special $ALLOSTFILE"
+    chmod a+rw $DIR/$ALLOSTFILE
 }
 
 restore_mount () {
