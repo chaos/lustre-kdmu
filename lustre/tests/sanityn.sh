@@ -330,6 +330,7 @@ run_test 14d "chmod of executing file is still possible ========"
 test_15() {	# bug 974 - ENOSPC
 	echo "PATH=$PATH"
 	sh oos2.sh $MOUNT1 $MOUNT2
+	wait_delete_completed
 	grant_error=`dmesg | grep "> available"`
 	[ -z "$grant_error" ] || error "$grant_error"
 }
@@ -896,7 +897,7 @@ test_36() { #bug 16417
         lctl mark "start test"
         local before=$($LFS df | awk '{if ($1 ~/^filesystem/) {print $5; exit} }')
         dd if=/dev/zero of=$DIR1/$tdir/file000 bs=1M count=$SIZE
-        sync
+        sync_all_data
         sleep 1
         local after_dd=$($LFS df | awk '{if ($1 ~/^filesystem/) {print $5; exit} }')
         multiop_bg_pause $DIR2/$tdir/file000 O_r${SIZE_B}c || return 3
@@ -904,6 +905,7 @@ test_36() { #bug 16417
         rm -f $DIR1/$tdir/file000
         kill -USR1 $read_pid
         wait $read_pid
+        wait_delete_completed
         sleep 1
         local after=$($LFS df | awk '{if ($1 ~/^filesystem/) {print $5; exit} }')
         echo "*** cycle($i) *** before($before):after_dd($after_dd):after($after)"
