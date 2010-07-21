@@ -9,7 +9,6 @@ set -e
 export REFORMAT=${REFORMAT:-""}
 export WRITECONF=${WRITECONF:-""}
 export VERBOSE=false
-export GMNALNID=${GMNALNID:-/usr/sbin/gmlndnid}
 export CATASTROPHE=${CATASTROPHE:-/proc/sys/lnet/catastrophe}
 export GSS=false
 export GSS_KRB5=false
@@ -1398,13 +1397,6 @@ do_lmc() {
     exit 1
 }
 
-h2gm () {
-    if [ "$1" = "client" -o "$1" = "'*'" ]; then echo \'*\'; else
-        ID=`$PDSH $1 $GMNALNID -l | cut -d\  -f2`
-        echo $ID"@gm"
-    fi
-}
-
 h2name_or_ip() {
     if [ "$1" = "client" -o "$1" = "'*'" ]; then echo \'*\'; else
         echo $1"@$2"
@@ -1684,10 +1676,21 @@ stopall() {
     return 0
 }
 
+cleanup_echo_devs () {
+    local devs=$($LCTL dl | grep echo | awk '{print $4}')
+
+    for dev in $devs; do
+        $LCTL --device $dev cleanup
+        $LCTL --device $dev detach
+    done
+}
+
 cleanupall() {
     nfs_client_mode && return
 
     stopall $*
+    cleanup_echo_devs
+
     unload_modules
     cleanup_gss
 }
@@ -2188,7 +2191,7 @@ get_mnt_devs() {
     *) echo "invalid server type" && return 1 ;;
     esac
 
-    devs=$(do_node $node "lctl get_param -n $obd_type.*.mntdev")
+    devs=$(do_node $node "lctl get_param -n $obd_type*.*.mntdev")
     for dev in $devs; do
         case $dev in
         *loop*) do_node $node "losetup $dev" | \

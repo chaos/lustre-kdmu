@@ -1459,7 +1459,7 @@ test_31f() { # bug 4554
 	$SETSTRIPE $DIR/d31f -s 1048576 -c 1
 	cp /etc/hosts $DIR/d31f
 	ls -l $DIR/d31f
-	$DIR/d31f/hosts
+	$GETSTRIPE $DIR/d31f/hosts
 	multiop_bg_pause $DIR/d31f D_c || return 1
 	MULTIPID2=$!
 
@@ -3056,17 +3056,6 @@ test_54e() {
 	echo $string > $f || error
 }
 run_test 54e "console/tty device works in lustre ======================"
-
-check_fstype() {
-	grep -q $FSTYPE /proc/filesystems && return 1
-	modprobe $FSTYPE
-	grep -q $FSTYPE /proc/filesystems && return 1
-	insmod ../$FSTYPE/$FSTYPE.o
-	grep -q $FSTYPE /proc/filesystems && return 1
-	insmod ../$FSTYPE/$FSTYPE.ko
-	grep -q $FSTYPE /proc/filesystems && return 1
-	return 0
-}
 
 test_55() {
         rm -rf $DIR/d55
