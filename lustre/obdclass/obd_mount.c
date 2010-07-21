@@ -2439,7 +2439,7 @@ int lustre_mount(void *osvfsp, void *data, unsigned long mflags)
 out:
         if (rc) {
                 CERROR("Unable to mount %s (%d)\n",
-                       lsi ? lmd->lmd_dev : "", rc);
+                       /*lsi ? lmd->lmd_dev : */"", rc);
         } else {
                 CDEBUG(D_SUPER, "Mount %s complete\n",
                        lmd->lmd_dev);
