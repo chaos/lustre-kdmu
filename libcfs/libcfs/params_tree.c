@@ -64,11 +64,7 @@ static void free_param(libcfs_param_entry_t *lpe)
                 LIBCFS_FREE_PARAMDATA(lpe->lpe_data);
         if (lpe->lpe_hash_t != NULL)
                 cfs_hash_putref(lpe->lpe_hash_t);
-        if (lpe->lpe_name != NULL)
-                LIBCFS_FREE(lpe, sizeof(*lpe) + lpe->lpe_name_len + 1);
-        else
-                /* dummy node has no name */
-                LIBCFS_FREE(lpe, sizeof(*lpe));
+        LIBCFS_FREE(lpe, sizeof(*lpe) + lpe->lpe_name_len + 1);
 }
 
 libcfs_param_entry_t *libcfs_param_get(libcfs_param_entry_t *lpe)
@@ -417,8 +413,8 @@ _add_param(const char *name, mode_t mode, libcfs_param_entry_t *parent)
                                  &lpe->lpe_hash_n);
         if (!rc)
                 lpe->lpe_parent = parent;
-fail:
         cfs_up_write(&parent->lpe_rw_sem);
+fail:
         if (rc) {
                 free_param(lpe);
                 lpe = NULL;
@@ -1126,8 +1122,8 @@ int libcfs_param_write(const char *path, char *buf, int count)
                 rc = entry->lpe_cb_write(NULL, buf, count, entry->lpe_data);
         else
                 GOTO(out, rc = -EIO);
-        cfs_up_write(&entry->lpe_rw_sem);
 out:
+        cfs_up_write(&entry->lpe_rw_sem);
         libcfs_param_put(entry);
         return rc;
 }
