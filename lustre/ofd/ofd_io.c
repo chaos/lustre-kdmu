@@ -266,7 +266,7 @@ filter_commitrw_write(const struct lu_env *env, struct filter_device *ofd,
 {
         struct filter_thread_info *info = filter_info(env);
         struct filter_object *fo;
-        struct dt_object     *o;
+        struct dt_object     *o = NULL;
         struct lu_attr       *ln = &info->fti_attr2;
         struct lu_buf         buf;
         struct thandle       *th;
@@ -291,7 +291,7 @@ filter_commitrw_write(const struct lu_env *env, struct filter_device *ofd,
 
         rc = dt_attr_get(env, o, ln, BYPASS_CAPA);
         if (rc)
-                GOTO(out, rc = PTR_ERR(th));
+                GOTO(out, rc);
         LASSERT(ln->la_valid & LA_MODE);
 
         th = filter_trans_create(env, ofd);
