@@ -168,9 +168,9 @@ init_test_env() {
     if ! echo $PATH | grep -q $LUSTRE/tests/mpi; then
         export PATH=$PATH:$LUSTRE/tests/mpi
     fi
-    export LCTL=${LCTL:-"$LUSTRE/utils/pthread/lctl"}
+    export LCTL=${LCTL:-"$LUSTRE/utils/lctl"}
     [ ! -f "$LCTL" ] && export LCTL=$(which lctl)
-    export LFS=${LFS:-"$LUSTRE/utils/pthread/lfs"}
+    export LFS=${LFS:-"$LUSTRE/utils/lfs"}
     [ ! -f "$LFS" ] && export LFS=$(which lfs)
     export L_GETIDENTITY=${L_GETIDENTITY:-"$LUSTRE/utils/l_getidentity"}
     if [ ! -f "$L_GETIDENTITY" ]; then
@@ -2437,13 +2437,14 @@ check_and_setup_lustre() {
         set_flavor_all $SEC
     fi
 
-    # create file striped over all OSTs, to be used to sync all OSTs with fdatasync
-    lfs setstripe $DIR/$ALLOSTFILE -c -1 || exit "can't create special $ALLOSTFILE"
-    chmod a+rw $DIR/$ALLOSTFILE
-
     if [ "$ONLY" == "setup" ]; then
         exit 0
     fi
+
+    # create file striped over all OSTs, to be used to sync all OSTs with fdatasync
+    rm -f $DIR/$ALLOSTFILE
+    lfs setstripe $DIR/$ALLOSTFILE -c -1 || exit "can't create special $ALLOSTFILE"
+    chmod a+rw $DIR/$ALLOSTFILE
 }
 
 restore_mount () {
@@ -2479,13 +2480,7 @@ get_mnt_devs() {
     local devs
     local dev
 
-    case $type in
-    mdt) obd_type="osd" ;;
-    ost) obd_type="obdfilter" ;; # needs to be fixed when OST also uses an OSD
-    *) echo "invalid server type" && return 1 ;;
-    esac
-
-    devs=$(do_node $node "lctl get_param -n $obd_type.*.mntdev")
+    devs=$(do_node $node "lctl get_param -n osd*.*.mntdev")
     for dev in $devs; do
         case $dev in
         *loop*) do_node $node "losetup $dev" | \

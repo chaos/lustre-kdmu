@@ -20,8 +20,8 @@ GRANT_CHECK_LIST=${GRANT_CHECK_LIST:-""}
 require_dsh_mds || exit 0
 
 # Skip these tests
-# bug number:  17466 18857
-ALWAYS_EXCEPT="61d   33a 33b     $REPLAY_SINGLE_EXCEPT"
+# bug number:  22449 23366 23364    19960 23365 17466 18857
+ALWAYS_EXCEPT="14    20b   22 23 25 65a   66a   61d   33a 33b $REPLAY_SINGLE_EXCEPT"
 
 # lodosp
 # 20b -- FAIL: after 74332 > before 34288 

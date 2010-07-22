@@ -27,8 +27,8 @@ CPU=`awk '/model/ {print $4}' /proc/cpuinfo`
 [ "$CPU" = "UML" ] && EXCEPT="$EXCEPT 6"
 
 # Skip these tests
-# BUG NUMBER: 
-ALWAYS_EXCEPT="$REPLAY_OST_SINGLE_EXCEPT"
+# BUG NUMBER:  22210 23386
+ALWAYS_EXCEPT="6     7     $REPLAY_OST_SINGLE_EXCEPT"
 
 #					
 [ "$SLOW" = "no" ] && EXCEPT_SLOW="5"

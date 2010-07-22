@@ -303,7 +303,8 @@ static int ost_statfs(struct ptlrpc_request *req)
         osfs = req_capsule_server_get(&req->rq_pill, &RMF_OBD_STATFS);
 
         req->rq_status = obd_statfs(req->rq_export->exp_obd, osfs,
-                                    cfs_time_current_64() - CFS_HZ, 0);
+                                    cfs_time_shift_64(-OBD_STATFS_CACHE_SECONDS),
+                                    0);
         if (req->rq_status != 0)
                 CERROR("ost: statfs failed: rc %d\n", req->rq_status);
 
@@ -1037,7 +1038,7 @@ static int ost_brw_write(struct ptlrpc_request *req, struct obd_trans_info *oti)
 
         if ((body->oa.o_flags & OBD_BRW_MEMALLOC) &&
             (exp->exp_connection->c_peer.nid == exp->exp_connection->c_self))
-                libcfs_memory_pressure_set();
+                cfs_memory_pressure_set();
 
         objcount = req_capsule_get_size(&req->rq_pill, &RMF_OBD_IOOBJ,
                                         RCL_CLIENT) / sizeof(*ioo);
@@ -1344,7 +1345,7 @@ out:
                       exp->exp_connection->c_remote_uuid.uuid,
                       libcfs_id2str(req->rq_peer));
         }
-        libcfs_memory_pressure_clr();
+        cfs_memory_pressure_clr();
         RETURN(rc);
 }
 

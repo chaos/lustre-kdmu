@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2009, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -83,22 +83,6 @@ static int lprocfs_filter_rd_tot_pending(char *page, char **start, off_t off,
         LASSERT(obd != NULL);
         *eof = 1;
         return snprintf(page, count, LPU64"\n", obd->u.filter.fo_tot_pending);
-}
-
-static int lprocfs_filter_rd_mntdev(char *page, char **start, off_t off,
-                                    int count, int *eof, void *data)
-{
-#if 0
-        struct obd_device *obd = (struct obd_device *)data;
-
-        LASSERT(obd != NULL);
-        LASSERT(obd->u.filter.fo_vfsmnt->mnt_devname);
-        *eof = 1;
-        return snprintf(page, count, "%s\n",
-                        obd->u.filter.fo_vfsmnt->mnt_devname);
-#endif
-        *eof = 1;
-        return 0;
 }
 
 static int lprocfs_filter_rd_last_id(char *page, char **start, off_t off,
@@ -299,7 +283,6 @@ static struct lprocfs_vars lprocfs_filter_obd_vars[] = {
         { "filesfree",    lprocfs_rd_filesfree,     0, 0 },
         { "filegroups",   lprocfs_filter_rd_groups, 0, 0 },
         { "fstype",       lprocfs_filter_rd_fstype, 0, 0 },
-        { "mntdev",       lprocfs_filter_rd_mntdev, 0, 0 },
         { "last_id",      lprocfs_filter_rd_last_id,0, 0 },
         { "tot_dirty",    lprocfs_filter_rd_tot_dirty,   0, 0 },
         { "tot_pending",  lprocfs_filter_rd_tot_pending, 0, 0 },
