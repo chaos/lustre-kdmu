@@ -367,11 +367,6 @@ cfs_timer_dpc_proc (
     timer->proc((long_ptr_t)timer->arg);
 }
 
-void cfs_init_timer(cfs_timer_t *timer)
-{
-    memset(timer, 0, sizeof(cfs_timer_t));
-}
-
 /*
  * cfs_timer_init
  *   To initialize the cfs_timer_t

@@ -174,12 +174,6 @@ void cfs_cond_resched(void)
 }
 EXPORT_SYMBOL(cfs_cond_resched);
 
-void cfs_init_timer(cfs_timer_t *t)
-{
-        init_timer(t);
-}
-EXPORT_SYMBOL(cfs_init_timer);
-
 void cfs_timer_init(cfs_timer_t *t, cfs_timer_func_t *func, void *arg)
 {
         init_timer(t);

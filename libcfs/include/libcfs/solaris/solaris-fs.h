@@ -154,11 +154,6 @@ typedef struct cfs_file_lock {
 #define S_SWAPFILE	256	/* Do not truncate: swapon got its bmaps */
 #define S_PRIVATE	512	/* Inode is fs-internal */
 
-/* stub it out for now */
-struct super_block {
-        ;
-};
-
 typedef struct {
         ;
 } cfs_dentry_t;

@@ -160,11 +160,6 @@ void cfs_cond_resched(void)
  * Timer
  */
 
-void cfs_init_timer(cfs_timer_t *t)
-{
-        CFS_INIT_LIST_HEAD(&t->tl_list);
-}
-
 void cfs_timer_init(cfs_timer_t *l, cfs_timer_func_t *func, void *arg)
 {
         CFS_INIT_LIST_HEAD(&l->tl_list);

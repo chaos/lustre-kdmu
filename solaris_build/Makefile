@@ -244,6 +244,7 @@ OBDCLASS_SRCS      = $(OBDCLASS_PATH)/acl.c \
                      $(OBDCLASS_PATH)/md_local_object.c \
                      $(OBDCLASS_PATH)/mea.c \
                      $(OBDCLASS_PATH)/obd_config.c \
+                     $(OBDCLASS_PATH)/obd_mount.c \
                      $(OBDCLASS_PATH)/obdo.c \
                      $(OBDCLASS_PATH)/statfs_pack.c \
                      $(OBDCLASS_PATH)/uuid.c

@@ -377,7 +377,6 @@ typedef struct cfs_timer {
 	struct ktimer t;
 } cfs_timer_t;
 
-#define cfs_init_timer(t)	do {} while(0)
 void cfs_timer_init(struct cfs_timer *t, void (*func)(unsigned long), void *arg);
 void cfs_timer_done(struct cfs_timer *t);
 void cfs_timer_arm(struct cfs_timer *t, cfs_time_t deadline);

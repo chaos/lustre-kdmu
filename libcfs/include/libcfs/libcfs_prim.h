@@ -79,7 +79,6 @@ int64_t cfs_waitq_timedwait(cfs_waitlink_t *link, cfs_task_state_t state,
  */
 typedef  void (cfs_timer_func_t)(ulong_ptr_t);
 
-void cfs_init_timer(cfs_timer_t *t);
 void cfs_timer_init(cfs_timer_t *t, cfs_timer_func_t *func, void *arg);
 void cfs_timer_done(cfs_timer_t *t);
 void cfs_timer_arm(cfs_timer_t *t, cfs_time_t deadline);
