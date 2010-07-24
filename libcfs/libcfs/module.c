@@ -40,7 +40,6 @@
 #define DEBUG_SUBSYSTEM S_LNET
 
 #include <libcfs/libcfs.h>
-#include <libcfs/params_tree.h>
 #include <lnet/lib-lnet.h>
 #include <lnet/lnet.h>
 #include "tracefile.h"

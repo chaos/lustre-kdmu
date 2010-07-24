@@ -553,7 +553,7 @@ void seq_server_fini(struct lu_server_seq *seq,
 }
 EXPORT_SYMBOL(seq_server_fini);
 
-struct libcfs_param_entry *seq_type_proc_dir = NULL;
+libcfs_param_entry_t *seq_type_proc_dir = NULL;
 
 static struct lu_local_obj_desc llod_seq_srv = {
         .llod_name      = LUSTRE_SEQ_SRV_NAME,

@@ -24,7 +24,6 @@
 #define DEBUG_SUBSYSTEM S_LNET
 #include <libcfs/libcfs.h>
 #include <lnet/lib-lnet.h>
-#include <libcfs/params_tree.h>
 
 #if defined(__KERNEL__) && defined(LNET_ROUTER)
 
@@ -1166,8 +1165,8 @@ lnet_proc_fini(void)
 int
 lnet_params_init(void)
 {
-        struct libcfs_param_entry *lpe;
-        int                        rc = 0;
+        libcfs_param_entry_t *lpe;
+        int                   rc = 0;
 
         if (libcfs_param_lnet_root == NULL) {
                 libcfs_param_lnet_root = libcfs_param_mkdir(LNET_PARAM_ROOT,

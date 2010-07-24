@@ -571,7 +571,7 @@ static int obd_proc_read_health(char *page, char **start, off_t off,
 }
 
 /* Root for /proc/fs/lustre */
-struct libcfs_param_entry *proc_lustre_root = NULL;
+libcfs_param_entry_t *proc_lustre_root = NULL;
 
 struct lprocfs_vars lprocfs_base[] = {
         { "version", obd_proc_read_version, NULL, NULL },
@@ -672,8 +672,8 @@ static int class_procfs_clean(void)
 
 static int class_procfs_init(void)
 {
-        struct libcfs_param_entry *root;
-        struct libcfs_param_entry *lustre_root;
+        libcfs_param_entry_t *root;
+        libcfs_param_entry_t *lustre_root;
         int rc;
         ENTRY;
 

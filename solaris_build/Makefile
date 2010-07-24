@@ -119,8 +119,7 @@ LIBCFSUTIL_A_SRCS   = $(GENERIC_LIBCFS_PATH)/nidstrings.c \
                       $(LIBCFS_UTIL_PATH)/util.c \
                       $(LIBCFS_UTIL_PATH)/params_tree_util.c
 
-LIB_LAPI_CFSUTIL_CMN_SRCS = $(GENERIC_LIBCFS_PATH)/params_tree.c \
-                      $(LIBCFS_UTIL_PATH)/l_ioctl.c
+LIB_LAPI_CFSUTIL_CMN_SRCS = $(LIBCFS_UTIL_PATH)/l_ioctl.c
 
 CFSD_SRCS           = $(LUSTRE_SOLARIS_UTILS_PATH)/cfsd.c
 

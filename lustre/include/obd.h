@@ -213,7 +213,7 @@ struct obd_type {
         cfs_list_t typ_chain;
         struct obd_ops *typ_dt_ops;
         struct md_ops *typ_md_ops;
-        struct libcfs_param_entry *typ_procroot;
+        libcfs_param_entry_t *typ_procroot;
         char *typ_name;
         int  typ_refcnt;
         struct lu_device_type *typ_lu;
@@ -233,9 +233,11 @@ struct ost_server_data;
 
 /* hold common fields for "target" device */
 struct obd_device_target {
+#if defined(__linux__)
         struct super_block       *obt_sb;
         /** last_rcvd file */
         struct file              *obt_rcvd_filp;
+#endif /* __linux__ */
         struct lu_target         *obt_lut;
         __u64                     obt_mount_count;
 #ifdef HAVE_QUOTA_SUPPORT
@@ -244,8 +246,10 @@ struct obd_device_target {
         lustre_quota_version_t    obt_qfmt;
 #endif
         cfs_rw_semaphore_t        obt_rwsem;
+#if defined(__linux__)
         struct vfsmount          *obt_vfsmnt;
         struct file              *obt_health_check_filp;
+#endif /* __linux__ */
 };
 
 /* llog contexts */
@@ -490,13 +494,15 @@ struct client_obd {
 
 struct mgs_obd {
         struct ptlrpc_service           *mgs_service;
+#if defined(__linux__)
         struct vfsmount                 *mgs_vfsmnt;
         struct super_block              *mgs_sb;
         cfs_dentry_t                    *mgs_configs_dir;
         cfs_dentry_t                    *mgs_fid_de;
+#endif /* __linux__ */
         cfs_list_t                       mgs_fs_db_list;
         cfs_semaphore_t                  mgs_sem;
-        struct libcfs_param_entry       *mgs_proc_live;
+        libcfs_param_entry_t            *mgs_proc_live;
 };
 
 struct dt_object;
@@ -531,7 +537,9 @@ struct mds_obd {
         /* array for store pages with obd_id */
         void                           **mds_lov_page_array;
         /* file for store objid */
+#if defined(__linux__)
         struct file                     *mds_lov_objid_filp;
+#endif /* __linux__ */
         __u32                            mds_lov_objid_count;
         __u32                            mds_lov_objid_max_index;
         __u32                            mds_lov_objid_lastpage;
@@ -692,7 +700,7 @@ struct pool_desc {
         struct lov_qos_rr     pool_rr;                /* round robin qos */
         cfs_hlist_node_t      pool_hash;              /* access by poolname */
         cfs_list_t            pool_list;              /* serial access */
-        struct libcfs_param_entry *pool_proc_entry;        /* file in /proc */
+        libcfs_param_entry_t *pool_proc_entry;        /* file in /proc */
         struct lov_obd       *pool_lov;               /* lov obd to which this
                                                          pool belong */
 };
@@ -714,7 +722,7 @@ struct lov_obd {
         int                     lov_pool_count;
         cfs_hash_t             *lov_pools_hash_body; /* used for key access */
         cfs_list_t              lov_pool_list; /* used for sequential access */
-        struct libcfs_param_entry *lov_pool_proc_entry;
+        libcfs_param_entry_t *lov_pool_proc_entry;
         enum lustre_sec_part    lov_sp_me;
 };
 
@@ -1089,10 +1097,10 @@ struct obd_device {
         unsigned int           md_cntr_base;
         struct lprocfs_stats  *md_stats;
 
-        struct libcfs_param_entry       *obd_proc_entry;
-        struct libcfs_param_entry       *obd_proc_exports_entry;
-        struct libcfs_param_entry       *obd_svc_procroot;
-        struct lprocfs_stats            *obd_svc_stats;
+        libcfs_param_entry_t  *obd_proc_entry;
+        libcfs_param_entry_t  *obd_proc_exports_entry;
+        libcfs_param_entry_t  *obd_svc_procroot;
+        struct lprocfs_stats  *obd_svc_stats;
         cfs_atomic_t           obd_evict_inprogress;
         cfs_waitq_t            obd_evict_inprogress_waitq;
         cfs_list_t             obd_evict_list; /* protected with pet_lock */
@@ -1585,7 +1593,9 @@ static inline const struct lsm_operations *lsm_op_find(int magic)
         }
 }
 
+#if defined(__linux__)
 int lvfs_check_io_health(struct obd_device *obd, struct file *file);
+#endif
 
 /* Requests for obd_extent_calc() */
 #define OBD_CALC_STRIPE_START   1

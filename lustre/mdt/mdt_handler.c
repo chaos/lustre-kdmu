@@ -3852,7 +3852,7 @@ static int mdt_start_ptlrpc_service(struct mdt_device *m)
 {
         int rc;
         static struct ptlrpc_service_conf conf;
-        struct libcfs_param_entry *procfs_entry;
+        libcfs_param_entry_t *procfs_entry;
         ENTRY;
 
         procfs_entry = m->mdt_md_dev.md_lu_dev.ld_obd->obd_proc_entry;
@@ -4507,7 +4507,7 @@ static int mdt_init0(const struct lu_env *env, struct mdt_device *m,
                 CERROR("Cannot get mount info for %s!\n", dev);
                 RETURN(-EFAULT);
         } else {
-                lsi = s2lsi(lmi->lmi_sb);
+                lsi = lmi->lmi_lsi;
                 fsoptions_to_mdt_flags(m, lsi->lsi_lmd->lmd_opts);
                 if (lsi->lsi_lmd->lmd_flags & LMD_FLG_ABORT_RECOV)
                         m->mdt_opts.mo_abort_recov = 1;

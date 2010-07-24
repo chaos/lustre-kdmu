@@ -243,7 +243,7 @@ static int lmv_connect(const struct lu_env *env,
                        void *localdata)
 {
 #ifdef __KERNEL__
-        struct libcfs_param_entry    *lmv_proc_dir;
+        libcfs_param_entry_t    *lmv_proc_dir;
 #endif
         struct lmv_obd        *lmv = &obd->u.lmv;
         struct lustre_handle  conn = { 0 };
@@ -377,7 +377,7 @@ static int lmv_init_ea_size(struct obd_export *exp, int easize,
 int lmv_connect_mdc(struct obd_device *obd, struct lmv_tgt_desc *tgt)
 {
 #ifdef __KERNEL__
-        struct libcfs_param_entry   *lmv_proc_dir;
+        libcfs_param_entry_t   *lmv_proc_dir;
 #endif
         struct lmv_obd          *lmv = &obd->u.lmv;
         struct obd_uuid         *cluuid = &lmv->cluuid;
@@ -616,7 +616,7 @@ int lmv_check_connect(struct obd_device *obd)
 static int lmv_disconnect_mdc(struct obd_device *obd, struct lmv_tgt_desc *tgt)
 {
 #ifdef __KERNEL__
-        struct libcfs_param_entry  *lmv_proc_dir;
+        libcfs_param_entry_t  *lmv_proc_dir;
 #endif
         struct lmv_obd         *lmv = &obd->u.lmv;
         struct obd_device      *mdc_obd;
@@ -634,7 +634,7 @@ static int lmv_disconnect_mdc(struct obd_device *obd, struct lmv_tgt_desc *tgt)
 #ifdef __KERNEL__
         lmv_proc_dir = lprocfs_srch(obd->obd_proc_entry, "target_obds");
         if (lmv_proc_dir) {
-                struct libcfs_param_entry *mdc_symlink;
+                libcfs_param_entry_t *mdc_symlink;
 
                 mdc_symlink = lprocfs_srch(lmv_proc_dir, mdc_obd->obd_name);
                 if (mdc_symlink) {
@@ -674,7 +674,7 @@ static int lmv_disconnect(struct obd_export *exp)
 {
         struct obd_device     *obd = class_exp2obd(exp);
 #ifdef __KERNEL__
-        struct libcfs_param_entry  *lmv_proc_dir;
+        libcfs_param_entry_t  *lmv_proc_dir;
 #endif
         struct lmv_obd        *lmv = &obd->u.lmv;
         int                    rc;

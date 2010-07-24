@@ -150,7 +150,7 @@
 #define LDLM_POOL_SLV_SHIFT (10)
 
 #ifdef __KERNEL__
-extern void *ldlm_ns_proc_dir;
+extern libcfs_param_entry_t *ldlm_ns_proc_dir;
 #endif
 
 static inline __u64 dru(__u64 val, __u32 shift, int round_up)
@@ -649,7 +649,6 @@ int ldlm_pool_setup(struct ldlm_pool *pl, int limit)
 EXPORT_SYMBOL(ldlm_pool_setup);
 
 #ifdef __KERNEL__
-
 static int lprocfs_rd_pool_state(char *page, char **start, off_t off,
                                  int count, int *eof, void *data)
 {
@@ -706,7 +705,7 @@ LDLM_POOL_PROC_WRITER(recalc_period, int);
 static int ldlm_pool_proc_init(struct ldlm_pool *pl)
 {
         struct ldlm_namespace *ns = ldlm_pl2ns(pl);
-        struct libcfs_param_entry *parent_ns_proc;
+        libcfs_param_entry_t *parent_ns_proc;
         struct lprocfs_vars pool_vars[2];
         char *var_name = NULL;
         int rc = 0;

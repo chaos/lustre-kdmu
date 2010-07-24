@@ -73,7 +73,6 @@
 # define DEBUG_SUBSYSTEM S_LNET
 
 #include <libcfs/libcfs.h>
-#include <libcfs/params_tree.h>
 #include <asm/div64.h>
 #include "tracefile.h"
 

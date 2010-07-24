@@ -108,14 +108,6 @@ typedef int (cfs_write_proc_t)(struct file *file, const char *buffer,
                                unsigned long count, void *data);
 
 /*
- * Parameters Tree
- */
-typedef int (libcfs_param_read_t)(char *page, char **start, off_t off,
-                                  int count, int *eof, void *data);
-typedef int (libcfs_param_write_t)(struct file *file, const char *buffer,
-                                   unsigned long count, void *data);
-
-/*
  * Signal
  */
 typedef sigset_t                        cfs_sigset_t;

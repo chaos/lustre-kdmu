@@ -77,7 +77,7 @@ LU_KEY_INIT_FINI(fld, struct fld_thread_info);
 /* context key: fld_thread_key */
 LU_CONTEXT_KEY_DEFINE(fld, LCT_MD_THREAD|LCT_DT_THREAD);
 
-struct libcfs_param_entry *fld_type_proc_dir = NULL;
+libcfs_param_entry_t *fld_type_proc_dir = NULL;
 
 static struct lu_local_obj_desc llod_fld_index = {
         .llod_name      = fld_index_name,

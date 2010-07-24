@@ -136,7 +136,7 @@ int lov_connect_obd(struct obd_device *obd, __u32 index, int activate,
         static struct obd_uuid lov_osc_uuid = { "LOV_OSC_UUID" };
         struct obd_import *imp;
 #ifdef __KERNEL__
-        struct libcfs_param_entry *lov_proc_dir;
+        libcfs_param_entry_t *lov_proc_dir;
 #endif
         int rc;
         ENTRY;
@@ -201,7 +201,7 @@ int lov_connect_obd(struct obd_device *obd, __u32 index, int activate,
         lov_proc_dir = lprocfs_srch(obd->obd_proc_entry, "target_obds");
         if (lov_proc_dir) {
                 struct obd_device *osc_obd = lov->lov_tgts[index]->ltd_exp->exp_obd;
-                void *osc_symlink;
+                libcfs_param_entry_t *osc_symlink;
 
                 LASSERT(osc_obd != NULL);
                 LASSERT(osc_obd->obd_magic == OBD_DEVICE_MAGIC);
@@ -289,7 +289,7 @@ static int lov_connect(const struct lu_env *env,
 
 static int lov_disconnect_obd(struct obd_device *obd, struct lov_tgt_desc *tgt)
 {
-        struct libcfs_param_entry *lov_proc_dir;
+        libcfs_param_entry_t *lov_proc_dir;
         struct lov_obd *lov = &obd->u.lov;
         struct obd_device *osc_obd;
         int rc;
@@ -307,7 +307,7 @@ static int lov_disconnect_obd(struct obd_device *obd, struct lov_tgt_desc *tgt)
 
         lov_proc_dir = lprocfs_srch(obd->obd_proc_entry, "target_obds");
         if (lov_proc_dir) {
-                struct libcfs_param_entry *osc_symlink;
+                libcfs_param_entry_t *osc_symlink;
 
                 osc_symlink = lprocfs_srch(lov_proc_dir, osc_obd->obd_name);
                 if (osc_symlink) {

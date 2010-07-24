@@ -37,8 +37,6 @@
 #ifndef _LUSTRE_SEC_H_
 #define _LUSTRE_SEC_H_
 
-#include<libcfs/params_tree.h>
-
 /** \defgroup sec sec
  *
  * @{
@@ -583,7 +581,7 @@ struct ptlrpc_bulk_sec_desc {
 /*
  * lprocfs
  */
-extern struct libcfs_param_entry *sptlrpc_proc_root;
+extern libcfs_param_entry_t *sptlrpc_proc_root;
 
 /*
  * round size up to next power of 2, for slab allocation.

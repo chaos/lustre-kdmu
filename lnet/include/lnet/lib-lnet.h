@@ -54,7 +54,6 @@
 #endif
 
 #include <libcfs/libcfs.h>
-#include <libcfs/params_tree.h>
 #include <lnet/types.h>
 #include <lnet/lnet.h>
 #include <lnet/lib-types.h>

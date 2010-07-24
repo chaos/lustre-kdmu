@@ -192,7 +192,7 @@ out:
 /* fill entry list */
 static int params_fill_list(void *buf, struct params_entry_list **pel)
 {
-        struct libcfs_param_info *lpi = buf;
+        libcfs_param_info_t      *lpi = buf;
         struct params_entry_list *temp = NULL;
         char *ptr;
         int rc = 0;
@@ -601,11 +601,11 @@ static int params_data_packlen(struct libcfs_param_data *data)
 {
         int len = sizeof(*data);
 
-	if (data->param_name)
-		len += data->param_name_len + 1;
-	if (data->param_unit)
-		len += data->param_unit_len + 1;
-	len += data->param_value_len;
+        if (data->param_name)
+                len += data->param_name_len + 1;
+        if (data->param_unit)
+                len += data->param_unit_len + 1;
+        len += data->param_value_len;
 
         return len;
 }
@@ -613,7 +613,7 @@ static int params_data_packlen(struct libcfs_param_data *data)
 /* Unpack libcfs_param_data from the input buf */
 static int params_data_unpack(struct libcfs_param_data **data_ptr, char *buf)
 {
-	struct libcfs_param_data *data;
+        libcfs_param_data_t *data;
         char *ptr;
 
         if (!buf)
@@ -624,13 +624,13 @@ static int params_data_unpack(struct libcfs_param_data **data_ptr, char *buf)
 
         if (data->param_name_len) {
                 data->param_name = ptr;
-		ptr += data->param_name_len + 1;
+                ptr += data->param_name_len + 1;
         } else {
                 data->param_name = NULL;
         }
         if (data->param_unit_len) {
                 data->param_unit = ptr;
-		ptr += data->param_unit_len + 1;
+                ptr += data->param_unit_len + 1;
         } else {
                 data->param_unit = NULL;
         }
@@ -639,12 +639,12 @@ static int params_data_unpack(struct libcfs_param_data **data_ptr, char *buf)
         else
                 data->param_value = NULL;
 
-	*data_ptr = data;
+        *data_ptr = data;
 
         return 0;
 }
 
-int params_value_output(struct libcfs_param_data *data, char *outbuf)
+int params_value_output(libcfs_param_data_t *data, char *outbuf)
 {
         switch (data->param_type) {
                 case LP_D16: {
@@ -701,7 +701,7 @@ int params_value_output(struct libcfs_param_data *data, char *outbuf)
 /* one record each time */
 int params_unpack(char *inbuf, char *outbuf, int outbuf_len)
 {
-        struct libcfs_param_data *data;
+        libcfs_param_data_t *data;
 
         if (*inbuf == '\0')
                 return 0;

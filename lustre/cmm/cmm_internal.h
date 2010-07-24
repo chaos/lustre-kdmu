@@ -64,7 +64,7 @@ struct cmm_device {
         __u32                   cmm_tgt_count;
         cfs_list_t              cmm_targets;
         cfs_spinlock_t          cmm_tgt_guard;
-        struct libcfs_param_entry    *cmm_proc_entry;
+        libcfs_param_entry_t   *cmm_proc_entry;
         struct lprocfs_stats   *cmm_stats;
 };
 

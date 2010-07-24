@@ -63,7 +63,7 @@
 
 #ifdef __KERNEL__
 
-struct libcfs_param_entry *sptlrpc_proc_root = NULL;
+libcfs_param_entry_t *sptlrpc_proc_root = NULL;
 EXPORT_SYMBOL(sptlrpc_proc_root);
 
 char *sec_flags2str(unsigned long flags, char *buf, int bufsize)

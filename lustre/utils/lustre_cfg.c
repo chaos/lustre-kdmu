@@ -59,7 +59,6 @@
 #include <obd.h>          /* for struct lov_stripe_md */
 #include <obd_lov.h>
 #include <lustre/lustre_build_version.h>
-#include <lustre/liblustreapi.h>
 
 #include <unistd.h>
 #include <sys/un.h>
@@ -72,7 +71,6 @@
 #include "obdctl.h"
 #include <lnet/lnetctl.h>
 #include <libcfs/libcfsutil.h>
-#include <libcfs/libcfs.h>
 #include <stdio.h>
 
 static char * lcfg_devname;

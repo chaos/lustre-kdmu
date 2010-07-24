@@ -1967,7 +1967,7 @@ int filter_common_setup(struct obd_device *obd, struct lustre_cfg* lcfg,
         if (lmi) {
                 /* We already mounted in lustre_fill_super.
                    lcfg bufs 1, 2, 4 (device, fstype, mount opts) are ignored.*/
-                struct lustre_sb_info *lsi = s2lsi(lmi->lmi_sb);
+                struct lustre_sb_info *lsi = lmi->lmi_lsi;
                 mnt = lmi->lmi_mnt;
                 obd->obd_fsops = fsfilt_get_ops(MT_STR(lsi->lsi_ldd));
 
@@ -2107,7 +2107,7 @@ int filter_common_setup(struct obd_device *obd, struct lustre_cfg* lcfg,
         label = fsfilt_get_label(obd, obd->u.obt.obt_sb);
         LCONSOLE_INFO("%s: Now serving %s %s%s with recovery %s\n",
                       obd->obd_name, label ?: str, lmi ? "on " : "",
-                      lmi ? s2lsi(lmi->lmi_sb)->lsi_lmd->lmd_dev : "",
+                      lmi ? lmi->lmi_lsi->lsi_lmd->lmd_dev : "",
                       obd->obd_replayable ? "enabled" : "disabled");
 
         if (obd->obd_recovering)
@@ -2197,7 +2197,7 @@ static int filter_setup(struct obd_device *obd, struct lustre_cfg* lcfg)
                 }
         }
         if (obd->obd_proc_exports_entry) {
-                struct libcfs_param_entry *temp;
+                libcfs_param_entry_t *temp;
                 temp = lprocfs_add_simple(obd->obd_proc_exports_entry, "clear",
                                           lprocfs_nid_stats_clear_read,
                                           lprocfs_nid_stats_clear_write,

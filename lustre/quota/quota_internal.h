@@ -181,7 +181,7 @@ int lquota_proc_setup(struct obd_device *obd, int is_master);
 int lquota_proc_cleanup(struct lustre_quota_ctxt *qctxt);
 void build_lqs(struct obd_device *obd);
 
-extern struct libcfs_param_entry *lquota_type_proc_dir;
+extern libcfs_param_entry_t *lquota_type_proc_dir;
 #endif
 
 #define LQS_BLK_DECREASE 1

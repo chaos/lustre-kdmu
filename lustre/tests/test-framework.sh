@@ -16,6 +16,7 @@ export GSS_KRB5=false
 export GSS_PIPEFS=false
 export IDENTITY_UPCALL=default
 export QUOTA_AUTO=0
+export ALLOSTFILE=file_to_sync_all_osts
 
 #export PDSH="pdsh -S -Rssh -w"
 
@@ -1192,17 +1193,28 @@ wait_update_facet () {
     wait_update  $(facet_active_host $facet) "$@"
 }
 
+sync_all_data () {
+    sync
+    if [ "$MULTIOP" != "" ]; then
+        $MULTIOP $DIR/$ALLOSTFILE OY || echo "can't sync data"
+    else
+        multiop $DIR/$ALLOSTFILE OY || echo "can't sync data"
+    fi
+}
+
 wait_delete_completed () {
     local TOTALPREV=`lctl get_param -n osc.*.kbytesavail | \
                      awk 'BEGIN{total=0}; {total+=$1}; END{print total}'`
 
     local WAIT=0
     local MAX_WAIT=20
+    sync_all_data
+    echo "prev: $TOTALPREV"
     while [ "$WAIT" -ne "$MAX_WAIT" ]; do
         sleep 1
         TOTAL=`lctl get_param -n osc.*.kbytesavail | \
                awk 'BEGIN{total=0}; {total+=$1}; END{print total}'`
-        [ "$TOTAL" -eq "$TOTALPREV" ] && return 0
+        [ "$TOTAL" -gt "$TOTALPREV" ] && return 0
         echo "Waiting delete completed ... prev: $TOTALPREV current: $TOTAL "
         TOTALPREV=$TOTAL
         WAIT=$(( WAIT + 1))
@@ -2427,6 +2439,11 @@ check_and_setup_lustre() {
     if [ "$ONLY" == "setup" ]; then
         exit 0
     fi
+
+    # create file striped over all OSTs, to be used to sync all OSTs with fdatasync
+    rm -f $DIR/$ALLOSTFILE
+    lfs setstripe $DIR/$ALLOSTFILE -c -1 || exit "can't create special $ALLOSTFILE"
+    chmod a+rw $DIR/$ALLOSTFILE
 }
 
 restore_mount () {

@@ -60,12 +60,12 @@ CFS_LIST_HEAD(ldlm_srv_namespace_list);
 cfs_semaphore_t ldlm_cli_namespace_lock;
 CFS_LIST_HEAD(ldlm_cli_namespace_list);
 
-struct libcfs_param_entry *ldlm_type_proc_dir = NULL;
-struct libcfs_param_entry *ldlm_ns_proc_dir = NULL;
-struct libcfs_param_entry *ldlm_svc_proc_dir = NULL;
+libcfs_param_entry_t *ldlm_type_proc_dir = NULL;
+libcfs_param_entry_t *ldlm_ns_proc_dir = NULL;
+libcfs_param_entry_t *ldlm_svc_proc_dir = NULL;
 
 #ifdef __KERNEL__
-static int ldlm_proc_dump_ns(cfs_lproc_filep_t file, const char *buffer,
+static int ldlm_proc_dump_ns(libcfs_file_t *file, const char *buffer,
                              unsigned long count, void *data)
 {
         ldlm_dump_all_namespaces(LDLM_NAMESPACE_SERVER, D_DLMTRACE);
@@ -663,7 +663,7 @@ void ldlm_namespace_free_post(struct ldlm_namespace *ns)
 
 #ifdef  __KERNEL__
         {
-                struct libcfs_param_entry *dir;
+                libcfs_param_entry_t *dir;
                 dir = lprocfs_srch(ldlm_ns_proc_dir, ns->ns_name);
                 if (dir == NULL) {
                         CERROR("ldlm namespace %s has no procfs dir?\n",
