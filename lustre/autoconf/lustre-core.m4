@@ -2576,7 +2576,6 @@ lustre/tests/Makefile
 lustre/tests/mpi/Makefile
 lustre/utils/Makefile
 lustre/utils/gss/Makefile
-lustre/utils/pthread/Makefile
 lustre/obdclass/darwin/Makefile
 ])
 ])
