@@ -603,7 +603,8 @@ int lprocfs_rd_blksize(char *page, char **start, off_t off, int count,
         int rc;
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
-        rc = obd_statfs(obd, &osfs, cfs_time_current_64() - CFS_HZ,
+        rc = obd_statfs(obd, &osfs,
+                        cfs_time_shift_64(-OBD_STATFS_CACHE_SECONDS),
                         OBD_STATFS_NODELAY);
         if (!rc)
                 rc = libcfs_param_snprintf(page, count, data, LP_U32,
@@ -619,7 +620,8 @@ int lprocfs_rd_kbytestotal(char *page, char **start, off_t off, int count,
         int rc;
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
-        rc = obd_statfs(obd, &osfs, cfs_time_current_64() - CFS_HZ,
+        rc = obd_statfs(obd, &osfs,
+                        cfs_time_shift_64(-OBD_STATFS_CACHE_SECONDS),
                         OBD_STATFS_NODELAY);
         if (!rc) {
                 __u32 blk_size = osfs.os_bsize >> 10;
@@ -642,8 +644,9 @@ int lprocfs_rd_kbytesfree(char *page, char **start, off_t off, int count,
         int rc;
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
-        rc = obd_statfs(obd, &osfs, cfs_time_current_64() - CFS_HZ,
-                            OBD_STATFS_NODELAY);
+        rc = obd_statfs(obd, &osfs,
+                        cfs_time_shift_64(-OBD_STATFS_CACHE_SECONDS),
+                        OBD_STATFS_NODELAY);
         if (!rc) {
                 __u32 blk_size = osfs.os_bsize >> 10;
                 __u64 result = osfs.os_bfree;
@@ -665,8 +668,9 @@ int lprocfs_rd_kbytesavail(char *page, char **start, off_t off, int count,
         int rc;
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
-        rc = obd_statfs(obd, &osfs, cfs_time_current_64() - CFS_HZ,
-                            OBD_STATFS_NODELAY);
+        rc = obd_statfs(obd, &osfs,
+                        cfs_time_shift_64(-OBD_STATFS_CACHE_SECONDS),
+                        OBD_STATFS_NODELAY);
         if (!rc) {
                 __u32 blk_size = osfs.os_bsize >> 10;
                 __u64 result = osfs.os_bavail;
@@ -688,7 +692,8 @@ int lprocfs_rd_filestotal(char *page, char **start, off_t off, int count,
         int rc;
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
-        rc = obd_statfs(obd, &osfs, cfs_time_current_64() - CFS_HZ,
+        rc = obd_statfs(obd, &osfs,
+                        cfs_time_shift_64(-OBD_STATFS_CACHE_SECONDS),
                         OBD_STATFS_NODELAY);
         if (!rc)
                 rc = libcfs_param_snprintf(page, count, data, LP_U64,
@@ -705,8 +710,9 @@ int lprocfs_rd_filesfree(char *page, char **start, off_t off, int count,
         int rc;
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
-        rc = obd_statfs(obd, &osfs, cfs_time_current_64() - CFS_HZ,
-                            OBD_STATFS_NODELAY);
+        rc = obd_statfs(obd, &osfs,
+                        cfs_time_shift_64(-OBD_STATFS_CACHE_SECONDS),
+                        OBD_STATFS_NODELAY);
         if (!rc)
                 rc = libcfs_param_snprintf(page, count, data, LP_U64,
                                            LPU64"\n", osfs.os_ffree);
@@ -2458,6 +2464,19 @@ int lprocfs_obd_wr_recovery_time_hard(libcfs_file_t *file, const char *buffer,
         return count;
 }
 EXPORT_SYMBOL(lprocfs_obd_wr_recovery_time_hard);
+
+int lprocfs_obd_rd_mntdev(char *page, char **start, off_t off,
+                          int count, int *eof, void *data)
+{
+        struct obd_device *obd = (struct obd_device *)data;
+
+        LASSERT(obd != NULL);
+        LASSERT(obd->u.obt.obt_vfsmnt->mnt_devname);
+        *eof = 1;
+        return snprintf(page, count, "%s\n",
+                        obd->u.obt.obt_vfsmnt->mnt_devname);
+}
+EXPORT_SYMBOL(lprocfs_obd_rd_mntdev);
 
 EXPORT_SYMBOL(lprocfs_register);
 EXPORT_SYMBOL(lprocfs_srch);

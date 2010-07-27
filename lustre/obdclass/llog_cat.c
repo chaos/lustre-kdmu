@@ -334,7 +334,7 @@ int llog_cat_add_rec_2(struct llog_handle *cathandle, struct llog_rec_hdr *rec,
                 if (rc < 0)
                         CERROR("llog_write_rec %d: lh=%p\n", rc, loghandle);
                 cfs_up_write(&loghandle->lgh_lock);
-        } else if (!created && rc >= 0 && cathandle->u.chd.chd_next_log != NULL) {
+        } else if (0 && !created && rc >= 0 && cathandle->u.chd.chd_next_log != NULL) {
                 /* create next llog ahead */
                 cfs_down_write_nested(&cathandle->lgh_lock, LLOGH_CAT);
                 loghandle = cathandle->u.chd.chd_next_log;
@@ -355,7 +355,7 @@ int llog_cat_declare_add_rec(struct llog_handle *cathandle,
                              struct thandle *th)
 {
 
-        struct llog_handle *loghandle;
+        struct llog_handle *loghandle, *next;
         int rc = 0;
         ENTRY;
 
@@ -396,13 +396,12 @@ int llog_cat_declare_add_rec(struct llog_handle *cathandle,
         if (!llog_exist_2(cathandle->u.chd.chd_current_log)) {
                 rc = llog_declare_create_2(cathandle->u.chd.chd_current_log, th);
                 llog_declare_write_rec_2(cathandle, NULL, -1, th);
-        } else {
-                struct llog_handle *next;
-                next = cathandle->u.chd.chd_next_log;
-                if (next && !llog_exist_2(next)) {
-                        rc = llog_declare_create_2(next, th);
-                        llog_declare_write_rec_2(cathandle, NULL, -1, th);
-                }
+        }
+
+        next = cathandle->u.chd.chd_next_log;
+        if (next && !llog_exist_2(next)) {
+                rc = llog_declare_create_2(next, th);
+                llog_declare_write_rec_2(cathandle, NULL, -1, th);
         }
 
         /* declare records in the llogs */

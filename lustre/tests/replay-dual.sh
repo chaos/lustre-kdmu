@@ -2,8 +2,8 @@
 
 set -e
 
-# bug number:  10124
-ALWAYS_EXCEPT="15c   $REPLAY_DUAL_EXCEPT"
+# bug number:  19884,23385 10124
+ALWAYS_EXCEPT="14b         15c   $REPLAY_DUAL_EXCEPT"
 
 LFS=${LFS:-lfs}
 SETSTRIPE=${SETSTRIPE:-"$LFS setstripe"}

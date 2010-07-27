@@ -93,21 +93,6 @@ static int lprocfs_filter_rd_tot_pending(char *page, char **start, off_t off,
                             obd->u.filter.fo_tot_pending);
 }
 
-static int lprocfs_filter_rd_mntdev(char *page, char **start, off_t off,
-                                    int count, int *eof, void *data)
-{
-#if 0
-        struct obd_device *obd;
-
-        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
-        LASSERT(obd != NULL);
-        LASSERT(obd->u.filter.fo_vfsmnt->mnt_devname);
-        return libcfs_param_snprintf(page, count, data, LP_STR, "%s\n",
-                            obd->u.filter.fo_vfsmnt->mnt_devname);
-#endif
-        return 0;
-}
-
 static int lprocfs_filter_rd_last_id(char *page, char **start, off_t off,
                                      int count, int *eof, void *data)
 {
@@ -331,8 +316,7 @@ static struct lprocfs_vars lprocfs_filter_obd_vars[] = {
         { "filesfree",    lprocfs_rd_filesfree,     0, 0 },
         { "filegroups",   lprocfs_filter_rd_groups, 0, 0 },
         { "fstype",       lprocfs_filter_rd_fstype, 0, 0 },
-        { "mntdev",       lprocfs_filter_rd_mntdev, 0, 0 },
-	{ "last_id",      lprocfs_filter_rd_last_id,0, 0 },
+        { "last_id",      lprocfs_filter_rd_last_id,0, 0 },
         { "tot_dirty",    lprocfs_filter_rd_tot_dirty,   0, 0 },
         { "tot_pending",  lprocfs_filter_rd_tot_pending, 0, 0 },
         { "tot_granted",  lprocfs_filter_rd_tot_granted, 0, 0 },
