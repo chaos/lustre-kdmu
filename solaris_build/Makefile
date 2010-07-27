@@ -245,6 +245,7 @@ OBDCLASS_SRCS      = $(OBDCLASS_PATH)/acl.c \
                      $(OBDCLASS_PATH)/mea.c \
                      $(OBDCLASS_PATH)/obd_config.c \
                      $(OBDCLASS_PATH)/obd_mount.c \
+                     $(OBDCLASS_PATH)/solaris/solaris-obd_mount.c \
                      $(OBDCLASS_PATH)/obdo.c \
                      $(OBDCLASS_PATH)/statfs_pack.c \
                      $(OBDCLASS_PATH)/uuid.c
@@ -352,6 +353,7 @@ clean:
 	@mkdir -p kernel/lustre/ptlrpc
 	@mkdir -p kernel/lustre/ldlm
 	@mkdir -p kernel/lustre/obdclass
+	@mkdir -p kernel/lustre/obdclass/solaris
 	@mkdir -p kernel/lustre/lvfs
 	@mkdir -p kernel/lustre/ost
 	@mkdir -p kernel/lustre/obdecho
