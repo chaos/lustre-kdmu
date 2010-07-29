@@ -171,7 +171,6 @@ static int mgs_setup(struct obd_device *obd, struct lustre_cfg *lcfg)
 {
         struct lprocfs_static_vars lvars;
         struct mgs_obd *mgs = &obd->u.mgs;
-        struct lustre_mount_info *lmi;
         struct lustre_sb_info *lsi;
         struct dt_device_param dt_param;
         struct vfsmount *mnt;
@@ -181,16 +180,15 @@ static int mgs_setup(struct obd_device *obd, struct lustre_cfg *lcfg)
         CDEBUG(D_CONFIG, "Starting MGS\n");
 
         /* Find our disk */
-        lmi = server_get_mount(obd->obd_name);
-        if (!lmi)
+        lsi = server_get_mount(obd->obd_name);
+        if (!lsi)
                 RETURN(rc = -EINVAL);
 
-        lmi->lmi_dt->dd_ops->dt_conf_get(NULL, lmi->lmi_dt, &dt_param);
+        lsi->lsi_dt_dev->dd_ops->dt_conf_get(NULL, lsi->lsi_dt_dev, &dt_param);
         mnt = dt_param.ddp_mnt;
         LASSERT(mnt);
 
-        lsi = lmi->lmi_lsi;
-        obd->obd_fsops = fsfilt_get_ops(MT_STR(lsi->lsi_ldd));
+        obd->obd_fsops = fsfilt_get_ops(mt_str(dt_param.ddp_mount_type));
         if (IS_ERR(obd->obd_fsops))
                 GOTO(err_put, rc = PTR_ERR(obd->obd_fsops));
 
@@ -258,7 +256,7 @@ static int mgs_setup(struct obd_device *obd, struct lustre_cfg *lcfg)
 
         ping_evictor_start();
 
-        LCONSOLE_INFO("MGS %s started\n", obd->obd_name);
+        LCONSOLE_INFO("MGS '%s' started\n", obd->obd_name);
 
         RETURN(0);
 
@@ -385,15 +383,17 @@ static int mgs_check_target(struct obd_device *obd, struct mgs_target_info *mti)
         rc = mgs_check_index(obd, mti);
         if (rc == 0) {
                 LCONSOLE_ERROR_MSG(0x13b, "%s claims to have registered, but "
-                                   "this MGS does not know about it, preventing "
-                                   "registration.\n", mti->mti_svname);
+                                   "this MGS does not know about it.  Use '-o "
+                                   "writeconf' to re-register.\n",
+                                   mti->mti_svname);
                 rc = -ENOENT;
         } else if (rc == -1) {
-                LCONSOLE_ERROR_MSG(0x13c, "Client log %s-client has "
-                                   "disappeared! Regenerating all logs.\n",
+                /* Writeconf was not specified, but no client log. */
+                LCONSOLE_ERROR_MSG(0x13c, "Client log %s-client is "
+                                   "missing. All servers must be restarted "
+                                   "with '-o writeconf'.\n",
                                    mti->mti_fsname);
-                mti->mti_flags |= LDD_F_WRITECONF;
-                rc = 1;
+                rc = -ENOENT;
         } else {
                 /* Index is correctly marked as used */
 
@@ -469,18 +469,10 @@ static int mgs_handle_target_reg(struct ptlrpc_request *req)
          * from where they left off.
          */
 
-        /* COMPAT_146 */
         if (mti->mti_flags & LDD_F_UPGRADE14) {
-                rc = mgs_upgrade_sv_14(obd, mti, fsdb);
-                if (rc) {
-                        CERROR("Can't upgrade from 1.4 (%d)\n", rc);
-                        GOTO(out, rc);
-                }
-
-                /* We're good to go */
-                mti->mti_flags |= LDD_F_UPDATE;
+                CERROR("Can't upgrade from 1.4 (%d)\n", rc);
+                GOTO(out, rc);
         }
-        /* end COMPAT_146 */
 
         if (mti->mti_flags & LDD_F_UPDATE) {
                 CDEBUG(D_MGS, "updating %s, index=%d\n", mti->mti_svname,

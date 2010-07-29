@@ -46,6 +46,7 @@
 #include <lustre_ver.h>
 #include <sys/stat.h>
 #include <sys/utsname.h>
+#include "mount_utils.h"
 
 extern char *progname;
 extern int verbose;
@@ -106,9 +107,12 @@ int run_command_err(char *cmd, int cmdsz, char *error_msg)
                 FILE *fp;
                 fp = fopen(log, "r");
                 if (fp) {
-                        while (fgets(buf, sizeof(buf), fp) != NULL) {
+                        if (verbose <= 1)
+                                printf("cmd: %s\n", cmd);
+
+                        while (fgets(buf, sizeof(buf), fp) != NULL)
                                 printf("   %s", buf);
-                        }
+
                         fclose(fp);
                 }
         }
@@ -146,8 +150,8 @@ int get_mountdata(char *dev, struct lustre_disk_data *mo_ldd)
 
         ret = run_command(cmd, cmdsz);
         if (ret) {
-                verrprint("%s: Unable to dump %s dir (%d)\n",
-                          progname, MOUNT_CONFIGS_DIR, ret);
+                verrprint("%s: Unable to dump %s from %s (%d)\n",
+                          progname, MOUNT_DATA_FILE, dev, ret);
                 goto out_rmdir;
         }
 
@@ -163,8 +167,8 @@ int get_mountdata(char *dev, struct lustre_disk_data *mo_ldd)
                         goto out_close;
                 }
         } else {
-                verrprint("%s: Unable to read %d.%d config %s.\n",
-                          progname, LUSTRE_MAJOR, LUSTRE_MINOR, filepnm);
+                verrprint("%s: Unable to open temp data file %s\n",
+                          progname, filepnm);
                 ret = 1;
                 goto out_rmdir;
         }
@@ -184,6 +188,52 @@ out_rmdir:
         }
 
         return ret;
+}
+
+/* Convert symbolic hostnames to ipaddrs, since we can't do this lookup in the
+ * kernel. */
+#define MAXNIDSTR 1024
+char *convert_hostnames(char *s1)
+{
+        char *converted, *s2 = 0, *c, *end, sep;
+        int left = MAXNIDSTR;
+        lnet_nid_t nid;
+
+        converted = malloc(left);
+        if (converted == NULL) {
+                return NULL;
+        }
+
+        end = s1 + strlen(s1);
+        c = converted;
+        while ((left > 0) && (s1 < end)) {
+                s2 = strpbrk(s1, ",:");
+                if (!s2)
+                        s2 = end;
+                sep = *s2;
+                *s2 = '\0';
+                nid = libcfs_str2nid(s1);
+
+                if (nid == LNET_NID_ANY) {
+                        fprintf(stderr, "%s: Can't parse NID '%s'\n", progname, s1);
+                        free(converted);
+                        return NULL;
+                }
+                if (strncmp(libcfs_nid2str(nid), "127.0.0.1",
+                            strlen("127.0.0.1")) == 0) {
+                        fprintf(stderr, "%s: The NID '%s' resolves to the "
+                                "loopback address '%s'.  Lustre requires a "
+                                "non-loopback address.\n",
+                                progname, s1, libcfs_nid2str(nid));
+                        free(converted);
+                        return NULL;
+                }
+
+                c += snprintf(c, left, "%s%c", libcfs_nid2str(nid), sep);
+                left = converted + MAXNIDSTR - c;
+                s1 = s2 + 1;
+        }
+        return converted;
 }
 
 #define PARENT_URN "urn:uuid:2bb5bdbf-6c4b-11dc-9b8e-080020a9ed93"

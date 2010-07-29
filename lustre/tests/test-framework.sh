@@ -8,7 +8,7 @@ set -e
 
 export REFORMAT=${REFORMAT:-""}
 export WRITECONF=${WRITECONF:-""}
-export VERBOSE=false
+export VERBOSE=${VERBOSE:-"false"}
 export CATASTROPHE=${CATASTROPHE:-/proc/sys/lnet/catastrophe}
 export GSS=false
 export GSS_KRB5=false
@@ -2017,19 +2017,21 @@ formatall() {
 
     for num in `seq $MDSCOUNT`; do
         echo "Format mds$num: $(mdsdevname $num)"
+	index=$((num-1))
         if $VERBOSE; then
-            add mds$num `mdsmkfsopts $num` $MDSFSTYPE_OPT --reformat `mdsdevname $num` || exit 9
+            add mds$num `mdsmkfsopts $num` $MDSFSTYPE_OPT --index $index --reformat `mdsdevname $num` || exit 9
         else
-            add mds$num `mdsmkfsopts $num` $MDSFSTYPE_OPT --reformat `mdsdevname $num` > /dev/null || exit 9
+            add mds$num `mdsmkfsopts $num` $MDSFSTYPE_OPT --index $index --reformat `mdsdevname $num` > /dev/null || exit 9
         fi
     done
 
     for num in `seq $OSTCOUNT`; do
         echo "Format ost$num: $(ostdevname $num)"
+	index=$((num-1))
         if $VERBOSE; then
-            add ost$num $OST_MKFS_OPTS $OSTFSTYPE_OPT --reformat `ostdevname $num` || exit 10
+            add ost$num $OST_MKFS_OPTS $OSTFSTYPE_OPT --index $index --reformat `ostdevname $num` || exit 10
         else
-            add ost$num $OST_MKFS_OPTS $OSTFSTYPE_OPT --reformat `ostdevname $num` > /dev/null || exit 10
+            add ost$num $OST_MKFS_OPTS $OSTFSTYPE_OPT --index $index --reformat `ostdevname $num` > /dev/null || exit 10
         fi
     done
 

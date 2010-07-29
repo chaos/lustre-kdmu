@@ -507,8 +507,8 @@ out:
 }
 
 int filter_stack_init(const struct lu_env *env,
-                          struct filter_device *m, struct lustre_cfg *cfg,
-                          struct lustre_mount_info  *lmi)
+                      struct filter_device *m, struct lustre_cfg *cfg,
+                      struct lustre_sb_info *lsi)
 {
         struct lu_device  *d = &m->ofd_dt_dev.dd_lu_dev;
         struct lu_device  *tmp;
@@ -634,22 +634,25 @@ static int filter_init0(const struct lu_env *env, struct filter_device *m,
         const char *dev = lustre_cfg_string(cfg, 0);
         struct filter_thread_info *info = NULL;
         struct filter_obd *filter;
-        struct lustre_mount_info *lmi;
+        struct lustre_sb_info *lsi;
+        struct dt_device_param dt_param;
         struct obd_device *obd;
         int rc;
         ENTRY;
 
         obd = class_name2obd(dev);
         LASSERT(obd != NULL);
+        lsi = server_get_mount(dev);
+        LASSERT(lsi != NULL);
 
-        lmi = server_get_mount(dev);
-#if 0
-        obd->obd_fsops = fsfilt_get_ops(MT_STR(lmi->lmi_lsi->lsi_ldd));
+        lsi->lsi_dt_dev->dd_ops->dt_conf_get(NULL, lsi->lsi_dt_dev,
+                                             &dt_param);
+        obd->obd_fsops = fsfilt_get_ops(mt_str(dt_param.ddp_mount_type));
+ sops = fsfilt_get_ops(mt_str(dt_param.ddp_mount_type));
         if (IS_ERR(obd->obd_fsops)) {
                 obd->obd_fsops = NULL;
                 /* this filesystem doesn't support fsfilt */
         }
-#endif
 
         m->ofd_fmd_max_num = FILTER_FMD_MAX_NUM_DEFAULT;
         m->ofd_fmd_max_age = FILTER_FMD_MAX_AGE_DEFAULT;
@@ -712,7 +715,7 @@ static int filter_init0(const struct lu_env *env, struct filter_device *m,
         }
 
         /* init the stack */
-        rc = filter_stack_init(env, m, cfg, lmi);
+        rc = filter_stack_init(env, m, cfg, lsi);
         if (rc) {
                 CERROR("Can't init device stack, rc %d\n", rc);
                 GOTO(err_fini_proc, rc);
@@ -748,15 +751,6 @@ static int filter_init0(const struct lu_env *env, struct filter_device *m,
                 CERROR("failed to setup llogging subsystems\n");
                 GOTO(err_lut_fini, rc);
         }
-
-
-#if 0
-        lvfs_init_ctxt(&obd->obd_lvfs_ctxt, lmi->lmi_mnt, &null_ops);
-
-        LASSERT(obd->obd_olg.olg_group == OBD_LLOG_GROUP);
-        rc = llog_cat_initialize(obd, &obd->obd_olg, 1, NULL);
-        LASSERT(rc == 0);
-#endif
 
         target_recovery_init(&m->ofd_lut, ost_handle);
 
@@ -808,8 +802,8 @@ static void filter_fini(const struct lu_env *env, struct filter_device *m)
 #if 0
         sptlrpc_rule_set_free(&m->mdt_sptlrpc_rset);
 #endif
-        /* 
-         * Finish the stack 
+        /*
+         * Finish the stack
          */
         filter_stack_fini(env, m, &m->ofd_osd->dd_lu_dev);
 

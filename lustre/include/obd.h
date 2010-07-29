@@ -815,8 +815,6 @@ struct niobuf_local {
 #define LUSTRE_LOV_NAME         "lov"
 #define LUSTRE_MGS_NAME         "mgs"
 #define LUSTRE_MGC_NAME         "mgc"
-#define LUSTRE_MCF_NAME         "mountconf"
-
 #define LUSTRE_CACHEOBD_NAME    "cobd"
 #define LUSTRE_ECHO_NAME        "obdecho"
 #define LUSTRE_ECHO_CLIENT_NAME "echo_client"
@@ -1150,7 +1148,6 @@ enum obd_cleanup_stage {
 #define KEY_CHANGELOG_CLEAR     "changelog_clear"
 #define KEY_FID2PATH            "fid2path"
 #define KEY_CHECKSUM            "checksum"
-#define KEY_CLEAR_FS            "clear_fs"
 #define KEY_CONN_DATA           "conn_data"
 #define KEY_EVICT_BY_NID        "evict_by_nid"
 #define KEY_FIEMAP              "fiemap"
@@ -1171,7 +1168,6 @@ enum obd_cleanup_stage {
 #define KEY_READ_ONLY           "read-only"
 #define KEY_REGISTER_TARGET     "register_target"
 #define KEY_REVIMP_UPD          "revimp_update"
-#define KEY_SET_FS              "set_fs"
 /*      KEY_SET_INFO in lustre_idl.h */
 #define KEY_SPTLRPC_CONF        "sptlrpc_conf"
 #define KEY_CONNECT_FLAG        "connect_flags"

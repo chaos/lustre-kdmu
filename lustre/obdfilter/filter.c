@@ -1944,12 +1944,14 @@ void *filter_iobuf_get(struct filter_obd *filter, struct obd_trans_info *oti)
  * 3 = flags: failover=f, failout=n
  * 4 = mount options
  */
+
+#error This is no longer used!
 int filter_common_setup(struct obd_device *obd, struct lustre_cfg* lcfg,
                         void *option)
 {
         struct filter_obd *filter = &obd->u.filter;
         struct vfsmount *mnt;
-        struct lustre_mount_info *lmi;
+        struct lustre_sb_info *lsi;
         struct obd_uuid uuid;
         __u8 *uuid_ptr;
         char *str, *label;
@@ -1963,13 +1965,16 @@ int filter_common_setup(struct obd_device *obd, struct lustre_cfg* lcfg,
             LUSTRE_CFG_BUFLEN(lcfg, 2) < 1)
                 RETURN(-EINVAL);
 
-        lmi = server_get_mount(obd->obd_name);
-        if (lmi) {
+        lsi = server_get_mount(obd->obd_name);
+        if (lsi) {
+                struct dt_device_param dt_param;
+
                 /* We already mounted in lustre_fill_super.
                    lcfg bufs 1, 2, 4 (device, fstype, mount opts) are ignored.*/
-                struct lustre_sb_info *lsi = lmi->lmi_lsi;
-                mnt = lmi->lmi_mnt;
-                obd->obd_fsops = fsfilt_get_ops(MT_STR(lsi->lsi_ldd));
+                lsi->lsi_dt_dev->dd_ops->dt_conf_get(NULL, lsi->lsi_dt_dev,
+                                                     &dt_param);
+                mnt = dt_param.ddp_mnt;
+                obd->obd_fsops =fsfilt_get_ops(mt_str(dt_param.ddp_mount_type));
 
                 /* gets recovery timeouts from mount data */
                 if (lsi->lsi_lmd && lsi->lsi_lmd->lmd_recovery_time_soft)

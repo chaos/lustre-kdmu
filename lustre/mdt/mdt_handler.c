@@ -4231,7 +4231,7 @@ out:
 static int mdt_stack_init(struct lu_env *env,
                           struct mdt_device *m,
                           struct lustre_cfg *cfg,
-                          struct lustre_mount_info  *lmi)
+                          struct lustre_sb_info *lsi)
 {
         struct lu_device  *d = &m->mdt_md_dev.md_lu_dev;
         struct lu_device  *tmp;
@@ -4240,8 +4240,8 @@ static int mdt_stack_init(struct lu_env *env,
         int rc;
         ENTRY;
 
-        LASSERT(lmi->lmi_dt);
-        tmp = &lmi->lmi_dt->dd_lu_dev;
+        LASSERT(lsi->lsi_dt_dev);
+        tmp = &lsi->lsi_dt_dev->dd_lu_dev;
 
         site = m->mdt_md_dev.md_lu_dev.ld_site;
         LASSERT(site);
@@ -4270,7 +4270,6 @@ static int mdt_stack_init(struct lu_env *env,
  * this may need to be rewrite as part of llog rewrite for lu-api.
  */
 static int mdt_obd_llog_setup(struct obd_device *obd,
-                              struct lustre_mount_info *lmi,
                               struct lustre_sb_info *lsi)
 {
         struct dt_device_param dt_param;
@@ -4278,7 +4277,7 @@ static int mdt_obd_llog_setup(struct obd_device *obd,
         int    rc;
 
         OBD_SET_CTXT_MAGIC(&obd->obd_lvfs_ctxt);
-        obd->obd_lvfs_ctxt.dt = lmi->lmi_dt;
+        obd->obd_lvfs_ctxt.dt = lsi->lsi_dt_dev;
 
         rc = llog_setup(obd, &obd->obd_olg, LLOG_CONFIG_ORIG_CTXT, obd,
                         0, NULL, &llog_osd_ops);
@@ -4288,17 +4287,17 @@ static int mdt_obd_llog_setup(struct obd_device *obd,
         }
 
         LASSERT(obd->obd_fsops == NULL);
-        lmi->lmi_dt->dd_ops->dt_conf_get(NULL, lmi->lmi_dt, &dt_param);
+        lsi->lsi_dt_dev->dd_ops->dt_conf_get(NULL, lsi->lsi_dt_dev, &dt_param);
         mnt = dt_param.ddp_mnt;
         if (mnt == NULL) {
-                //CERROR("no llog support on this device\n");
+                CERROR("no llog support on device %s\n", lsi->lsi_svname);
                 return 0;
         }
         LASSERT(mnt);
 
 #if 0
         /* XXX: used for changelogs */
-        obd->obd_fsops = fsfilt_get_ops(MT_STR(lsi->lsi_ldd));
+        obd->obd_fsops = fsfilt_get_ops(mt_str(dt_param.ddp_mount_type));
         if (IS_ERR(obd->obd_fsops))
                 return PTR_ERR(obd->obd_fsops);
 
@@ -4517,9 +4516,7 @@ static int mdt_init0(const struct lu_env *env, struct mdt_device *m,
         struct obd_device         *obd;
         const char                *dev = lustre_cfg_string(cfg, 0);
         const char                *num = lustre_cfg_string(cfg, 2);
-        struct lustre_mount_info  *lmi = NULL;
         struct lustre_sb_info     *lsi;
-        struct lustre_disk_data   *ldd;
         struct lu_site            *s;
         struct md_site            *mite;
         const char                *identity_upcall = "NONE";
@@ -4562,32 +4559,34 @@ static int mdt_init0(const struct lu_env *env, struct mdt_device *m,
         m->mdt_opts.mo_user_xattr = 0;
         m->mdt_opts.mo_acl = 0;
         m->mdt_opts.mo_cos = MDT_COS_DEFAULT;
-        lmi = server_get_mount(dev);
-        if (lmi == NULL) {
+
+        lsi = server_get_mount(dev);
+        if (lsi == NULL) {
                 CERROR("Cannot get mount info for %s!\n", dev);
                 RETURN(-EFAULT);
-        } else {
-                lsi = lmi->lmi_lsi;
-                fsoptions_to_mdt_flags(m, lsi->lsi_lmd->lmd_opts);
-                if (lsi->lsi_lmd->lmd_flags & LMD_FLG_ABORT_RECOV)
-                        m->mdt_opts.mo_abort_recov = 1;
-                /* CMD is supported only in IAM mode */
-                ldd = lsi->lsi_ldd;
-                LASSERT(num);
-                node_id = simple_strtol(num, NULL, 10);
-                if (!(ldd->ldd_flags & LDD_F_IAM_DIR) && node_id) {
-                        CERROR("CMD Operation not allowed in IOP mode\n");
-                        GOTO(err_lmi, rc = -EINVAL);
-                }
-                /* Read recovery timeouts */
-                if (lsi->lsi_lmd && lsi->lsi_lmd->lmd_recovery_time_soft)
-                        obd->obd_recovery_timeout =
-                                lsi->lsi_lmd->lmd_recovery_time_soft;
-
-                if (lsi->lsi_lmd && lsi->lsi_lmd->lmd_recovery_time_hard)
-                        obd->obd_recovery_time_hard =
-                                lsi->lsi_lmd->lmd_recovery_time_hard;
         }
+        LASSERT(lsi->lsi_lmd);
+
+        fsoptions_to_mdt_flags(m, lsi->lsi_lmd->lmd_opts);
+        if (lsi->lsi_lmd->lmd_flags & LMD_FLG_ABORT_RECOV)
+                m->mdt_opts.mo_abort_recov = 1;
+
+        /* CMD is supported only in IAM mode */
+        LASSERT(num);
+        node_id = simple_strtol(num, NULL, 10);
+        if (!(lsi->lsi_flags & LDD_F_IAM_DIR) && node_id) {
+                CERROR("CMD Operation not allowed in IOP mode\n");
+                GOTO(err_lsi, rc = -EINVAL);
+        }
+
+        /* Read recovery timeouts */
+        if (lsi->lsi_lmd->lmd_recovery_time_soft)
+                obd->obd_recovery_timeout =
+                	lsi->lsi_lmd->lmd_recovery_time_soft;
+
+        if (lsi->lsi_lmd->lmd_recovery_time_hard)
+                obd->obd_recovery_time_hard =
+                	lsi->lsi_lmd->lmd_recovery_time_hard;
 
         cfs_rwlock_init(&m->mdt_sptlrpc_lock);
         sptlrpc_rule_set_init(&m->mdt_sptlrpc_rset);
@@ -4639,7 +4638,7 @@ static int mdt_init0(const struct lu_env *env, struct mdt_device *m,
         }
 
         /* init the stack */
-        rc = mdt_stack_init((struct lu_env *)env, m, cfg, lmi);
+        rc = mdt_stack_init((struct lu_env *)env, m, cfg, lsi);
         if (rc) {
                 CERROR("Can't init device stack, rc %d\n", rc);
                 GOTO(err_fini_proc, rc);
@@ -4692,7 +4691,7 @@ static int mdt_init0(const struct lu_env *env, struct mdt_device *m,
         if (rc)
                 GOTO(err_capa, rc);
 
-        rc = mdt_obd_llog_setup(obd, lmi, lsi);
+        rc = mdt_obd_llog_setup(obd, lsi);
         if (rc)
                 GOTO(err_fs_cleanup, rc);
 
@@ -4761,8 +4760,8 @@ err_fini_stack:
         mdt_stack_fini(env, m, md2lu_dev(m->mdt_child));
 err_fini_proc:
         mdt_procfs_fini(m);
-err_lmi:
-        if (lmi) 
+err_lsi:
+        if (lsi)
                 server_put_mount(dev);
         return (rc);
 }
@@ -5282,7 +5281,7 @@ static void mdt_allow_cli(struct mdt_device *m, unsigned int flag)
         if (cfs_test_bit(MDT_FL_CFGLOG, &m->mdt_state) &&
             cfs_test_bit(MDT_FL_SYNCED, &m->mdt_state)) {
                 struct obd_device *obd = m->mdt_md_dev.md_lu_dev.ld_obd;
- 
+
                 /* Open for clients */
                 if (obd->obd_no_conn) {
                         cfs_spin_lock_bh(&obd->obd_processing_task_lock);

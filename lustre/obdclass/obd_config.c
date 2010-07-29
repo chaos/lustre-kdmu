@@ -87,9 +87,9 @@ int class_find_param(char *buf, char *key, char **valp)
  * On return \a params is set to next parameter or to NULL if last
  * parameter is returned.
  *
- * \retval 0 if parameter is returned in \a copy
- * \retval 1 otherwise
- * \retval -EINVAL if unbalanced quota is found
+ * @retval 0 if parameter is returned in \a copy
+ * @retval 1 otherwise
+ * @retval -EINVAL if unbalanced quota is found
  */
 int class_get_next_param(char **params, char *copy)
 {
@@ -129,7 +129,7 @@ int class_get_next_param(char **params, char *copy)
                 str = q1 + 1;
                 q2 = strchr(str, *q1);
                 if (q2 == NULL) {
-                        CERROR("Unbalanced quota in parameters: \"%s\"\n",
+                        CERROR("Unbalanced quote in parameters: \"%s\"\n",
                                *params);
                         return -EINVAL;
                 }

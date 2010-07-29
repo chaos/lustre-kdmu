@@ -355,6 +355,8 @@ test_5a() {	# was test_5
 run_test 5a "force cleanup mds, then cleanup"
 
 test_5b() {
+	[ combined_mgs_mds ] && skip "needs separate MGS" && return
+	start_mgs
 	start_ost
 	[ -d $MOUNT ] || mkdir -p $MOUNT
 	grep " $MOUNT " /etc/mtab && echo "test 5b: mtab before mount" && return 10
@@ -383,8 +385,8 @@ test_5c() {
 run_test 5c "cleanup after failed mount (bug 2712) (should return errs)"
 
 test_5d() {
-	start_ost
 	start_mds
+	start_ost
 	stop_ost -f
 	grep " $MOUNT " /etc/mtab && echo "test 5d: mtab before mount" && return 10
 	mount_client $MOUNT || return 1
@@ -393,6 +395,7 @@ test_5d() {
 	return 0
 }
 run_test 5d "mount with ost down"
+
 
 test_5e() {
 	start_mds
@@ -433,8 +436,8 @@ test_8() {
 run_test 8 "double mount setup"
 
 test_9() {
-	start_ost
-
+	setup
+	
 	do_facet ost1 lctl set_param debug=\'inode trace\' || return 1
 	do_facet ost1 lctl set_param subsystem_debug=\'mds ost\' || return 1
 
@@ -548,8 +551,11 @@ test_19a() {
 run_test 19a "start/stop MDS without OSTs"
 
 test_19b() {
+	[ combined_mgs_mds ] && skip "needs separate MGS" && return
+	start_mgs || error "MGS can't start"
 	start_ost || return 1
 	stop_ost -f || return 2
+	stop_mgs || error "MGS can't stop"
 }
 run_test 19b "start/stop OSTs without MDS"
 
@@ -584,15 +590,20 @@ test_21a() {
 run_test 21a "start mds before ost, stop ost first"
 
 test_21b() {
+	[ combined_mgs_mds ] && skip "needs separate MGS" && return
+	start_mgs
 	start_ost
 	start_mds
 	wait_osc_import_state mds ost FULL
 	stop_mds
 	stop_ost
+	stop_mgs
 }
 run_test 21b "start ost before mds, stop mds first"
 
 test_21c() {
+	[ combined_mgs_mds ] && skip "needs separate MGS" && return
+	start_mgs
 	start_ost
 	start_mds
 	start_ost2
@@ -600,6 +611,7 @@ test_21c() {
 	stop_ost
 	stop_ost2
 	stop_mds
+	stop_mgs
 	#writeconf to remove all ost2 traces for subsequent tests
 	writeconf
 }
@@ -733,9 +745,9 @@ test_24a() {
 
 	# test 8-char fsname as well
 	local FSNAME2=test1234
-	add fs2mds $MDS_MKFS_OPTS --fsname=${FSNAME2} --nomgs --mgsnode=$MGSNID --reformat $fs2mdsdev || exit 10
+	add fs2mds $MDS_MKFS_OPTS --fsname=${FSNAME2} --nomgs --mgsnode=$MGSNID --index=0 --backfstype=$FSTYPE --reformat $fs2mdsdev || exit 10
 
-	add fs2ost $OST_MKFS_OPTS --fsname=${FSNAME2} --reformat $fs2ostdev || exit 10
+	add fs2ost $OST_MKFS_OPTS --fsname=${FSNAME2} --index=0 --backfstype=$FSTYPE --reformat $fs2ostdev || exit 10
 
 	setup
 	start fs2mds $fs2mdsdev $MDS_MOUNT_OPTS $WCF && trap cleanup_24a EXIT INT
@@ -778,7 +790,7 @@ test_24b() {
 
 	local fs2mdsdev=${fs2mds_DEV:-${MDSDEV}_2}
 
-	add fs2mds $MDS_MKFS_OPTS --fsname=${FSNAME}2 --mgs --reformat $fs2mdsdev || exit 10
+	add fs2mds $MDS_MKFS_OPTS --fsname=${FSNAME}2 --mgs --index=0 --backfstype=$FSTYPE --reformat $fs2mdsdev || exit 10
 	setup
 	start fs2mds $fs2mdsdev $MDS_MOUNT_OPTS $WCF && return 2
 	cleanup || return 6
@@ -826,8 +838,8 @@ set_and_check() {
 }
 
 test_27a() {
-	start_ost || return 1
 	start_mds || return 2
+	start_ost || return 1
 	echo "Requeue thread should have started: "
 	ps -e | grep ll_cfg_requeue
 	set_and_check ost1 "lctl get_param -n obdfilter.$FSNAME-OST0000.client_cache_seconds" "$FSNAME-OST0000.ost.client_cache_seconds" || return 3
@@ -1030,8 +1042,8 @@ test_33a() { # bug 12333, was test_33
 
 	local fs2mdsdev=${fs2mds_DEV:-${MDSDEV}_2}
 	local fs2ostdev=${fs2ost_DEV:-$(ostdevname 1)_2}
-	add fs2mds $MDS_MKFS_OPTS --mkfsoptions='\"-J size=8\"' --fsname=${FSNAME2} --reformat $fs2mdsdev || exit 10
-	add fs2ost $OST_MKFS_OPTS --fsname=${FSNAME2} --index=8191 --mgsnode=$MGSNID --reformat $fs2ostdev || exit 10
+	add fs2mds $MDS_MKFS_OPTS --mkfsoptions='\"-J size=8\"' --fsname=${FSNAME2} --index=0 --backfstype=$FSTYPE --reformat $fs2mdsdev || exit 10
+	add fs2ost $OST_MKFS_OPTS --fsname=${FSNAME2} --index=8191 --mgsnode=$MGSNID --backfstype=$FSTYPE --reformat $fs2ostdev || exit 10
 
 	start fs2mds $fs2mdsdev $MDS_MOUNT_OPTS $WCF && trap cleanup_24a EXIT INT
 	start fs2ost $fs2ostdev $OST_MOUNT_OPTS $WCF
@@ -1251,11 +1263,11 @@ test_36() { # 12743
 	local fs2mdsdev=${fs2mds_DEV:-${MDSDEV}_2}
 	local fs2ostdev=${fs2ost_DEV:-$(ostdevname 1)_2}
 	local fs3ostdev=${fs3ost_DEV:-$(ostdevname 2)_2}
-	add fs2mds $MDS_MKFS_OPTS --fsname=${FSNAME2} --reformat $fs2mdsdev || exit 10
+	add fs2mds $MDS_MKFS_OPTS --fsname=${FSNAME2} --index=0 --backfstype=$FSTYPE --reformat $fs2mdsdev || exit 10
 	# XXX after we support non 4K disk blocksize, change following --mkfsoptions with
 	# other argument
-	add fs2ost $OST_MKFS_OPTS --mkfsoptions='-b4096' --fsname=${FSNAME2} --mgsnode=$MGSNID --reformat $fs2ostdev || exit 10
-	add fs3ost $OST_MKFS_OPTS --mkfsoptions='-b4096' --fsname=${FSNAME2} --mgsnode=$MGSNID --reformat $fs3ostdev || exit 10
+	add fs2ost $OST_MKFS_OPTS --mkfsoptions='-b4096' --fsname=${FSNAME2} --mgsnode=$MGSNID --index=0 --backfstype=$FSTYPE --reformat $fs2ostdev || exit 10
+	add fs3ost $OST_MKFS_OPTS --mkfsoptions='-b4096' --fsname=${FSNAME2} --mgsnode=$MGSNID --index=1 --backfstype=$FSTYPE --reformat $fs3ostdev || exit 10
 
 	start fs2mds $fs2mdsdev $MDS_MOUNT_OPTS $WCF
 	start fs2ost $fs2ostdev $OST_MOUNT_OPTS $WCF
@@ -1314,7 +1326,7 @@ test_37() {
 	rm -f $LOCAL_MDSDEV
 
 	touch $LOCAL_MDSDEV
-	mkfs.lustre --reformat --fsname=lustre --mdt --mgs --device-size=9000 $LOCAL_MDSDEV ||
+	mkfs.lustre --reformat --fsname=lustre --mdt --mgs --index=0 --device-size=9000 --backfstype=$FSTYPE $LOCAL_MDSDEV ||
 		error "mkfs.lustre $LOCAL_MDSDEV failed"
 	ln -s $LOCAL_MDSDEV $SYM_MDSDEV
 
@@ -1398,7 +1410,6 @@ test_39() {
 run_test 39 "leak_finder recognizes both LUSTRE and LNET malloc messages"
 
 test_40() { # bug 15759
-	start_ost
 	#define OBD_FAIL_TGT_TOOMANY_THREADS     0x706
 	do_facet $SINGLEMDS "sysctl -w lustre.fail_loc=0x80000706"
 	start_mds
@@ -1716,58 +1727,34 @@ run_test 48 "too many acls on file"
 
 # check PARAM_SYS_LDLM_TIMEOUT option of MKFS.LUSTRE
 test_49() { # bug 17710
-	local OLD_MDS_MKFS_OPTS=$MDS_MKFS_OPTS
-	local OLD_OST_MKFS_OPTS=$OST_MKFS_OPTS
-	local LOCAL_TIMEOUT=20
-
-
-	OST_MKFS_OPTS="--ost --fsname=$FSNAME --device-size=$OSTSIZE --mgsnode=$MGSNID --param sys.timeout=$LOCAL_TIMEOUT --param sys.ldlm_timeout=$LOCAL_TIMEOUT $MKFSOPT $OSTOPT"
-
-	reformat
-	setup_noconfig
-	check_mount || return 1
-
-	echo "check ldlm_timout..."
-	LDLM_MDS="`do_facet mds lctl get_param -n ldlm_timeout`"
-	LDLM_OST1="`do_facet ost1 lctl get_param -n ldlm_timeout`"
-	LDLM_CLIENT="`do_facet client lctl get_param -n ldlm_timeout`"
-
-	if [ $LDLM_MDS -ne $LDLM_OST1 ] || [ $LDLM_MDS -ne $LDLM_CLIENT ]; then
-		error "Different LDLM_TIMEOUT:$LDLM_MDS $LDLM_OST1 $LDLM_CLIENT"
-	fi
-
-	if [ $LDLM_MDS -ne $((LOCAL_TIMEOUT / 3)) ]; then
-		error "LDLM_TIMEOUT($LDLM_MDS) is not correct"
-	fi
-
-	umount_client $MOUNT
-	stop_ost || return 2
-	stop_mds || return 3
-
-	OST_MKFS_OPTS="--ost --fsname=$FSNAME --device-size=$OSTSIZE --mgsnode=$MGSNID --param sys.timeout=$LOCAL_TIMEOUT --param sys.ldlm_timeout=$((LOCAL_TIMEOUT - 1)) $MKFSOPT $OSTOPT"
-
-	reformat
-	setup_noconfig
-	check_mount || return 7
+	setup
 
 	LDLM_MDS="`do_facet mds lctl get_param -n ldlm_timeout`"
 	LDLM_OST1="`do_facet ost1 lctl get_param -n ldlm_timeout`"
 	LDLM_CLIENT="`do_facet client lctl get_param -n ldlm_timeout`"
+	echo "default ldlm_timout: M=$LDLM_MDS O=$LDLM_OST1 C=$LDLM_CLIENT"
 
-	if [ $LDLM_MDS -ne $LDLM_OST1 ] || [ $LDLM_MDS -ne $LDLM_CLIENT ]; then
+#define LDLM_TIMEOUT_DEFAULT            20
+#define MDS_LDLM_TIMEOUT_DEFAULT        6
+	[ $LDLM_MDS -ne 6 ] && [ $LDLM_MDS -ne $LDLM_OST1 ] && \
+		error "MDS LDLM_TIMEOUT($LDLM_MDS) is not correct"
+	[ $LDLM_OST1 -ne $LDLM_CLIENT ] && \
 		error "Different LDLM_TIMEOUT:$LDLM_MDS $LDLM_OST1 $LDLM_CLIENT"
-	fi
 
-	if [ $LDLM_MDS -ne $((LOCAL_TIMEOUT - 1)) ]; then
-		error "LDLM_TIMEOUT($LDLM_MDS) is not correct"
-	fi
+	local NEWVAL=19
+	set_and_check ost1 "lctl get_param -n ldlm_timeout" "$FSNAME.sys.ldlm_timeout" $NEWVAL || return 3
 
-	cleanup || return $?
+	LDLM_MDS="`do_facet mds lctl get_param -n ldlm_timeout`"
+	LDLM_OST1="`do_facet ost1 lctl get_param -n ldlm_timeout`"
+	LDLM_CLIENT="`do_facet client lctl get_param -n ldlm_timeout`"
+	echo "$NEWVAL ldlm_timout: M=$LDLM_MDS O=$LDLM_OST1 C=$LDLM_CLIENT"
 
-	MDS_MKFS_OPTS=$OLD_MDS_MKFS_OPTS
-	OST_MKFS_OPTS=$OLD_OST_MKFS_OPTS
+	{ [ $LDLM_MDS -ne $LDLM_OST1 ] || [ $LDLM_MDS -ne $LDLM_CLIENT ]; } && \
+		error "Different LDLM_TIMEOUT:$LDLM_MDS $LDLM_OST1 $LDLM_CLIENT"
+
+	cleanup
 }
-run_test 49 "check PARAM_SYS_LDLM_TIMEOUT option of MKFS.LUSTRE"
+run_test 49 "check PARAM_LDLM_TIMEOUT can be changed"
 
 lazystatfs() {
 	# Test both statfs and lfs df and fail if either one fails
@@ -2287,9 +2274,9 @@ test_55() {
 run_test 55 "check lov_objid size"
 
 test_56() {
-	add mds1 $MDS_MKFS_OPTS --mkfsoptions='\"-J size=16\"' --reformat $(mdsdevname 1)
-	add ost1 $OST_MKFS_OPTS --index=1000 --reformat $(ostdevname 1)
-	add ost2 $OST_MKFS_OPTS --index=10000 --reformat $(ostdevname 2)
+	add mds1 $MDS_MKFS_OPTS --mkfsoptions='\"-J size=16\"' --index=0 --backfstype=$FSTYPE --reformat $(mdsdevname 1)
+	add ost1 $OST_MKFS_OPTS --index=1000 --backfstype=$FSTYPE --reformat $(ostdevname 1)
+	add ost2 $OST_MKFS_OPTS --index=10000 --backfstype=$FSTYPE --reformat $(ostdevname 2)
 
 	start_mds $WCF
 	start_ost $WCF
