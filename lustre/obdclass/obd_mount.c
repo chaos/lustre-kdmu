@@ -955,6 +955,8 @@ static int server_label2mti(struct lustre_sb_info *lsi, struct mgs_target_info *
 {
         struct dt_device_param  dt_param;
         char                   *label;
+        if (lsi->lsi_lmd->lmd_flags & LMD_FLG_WRITECONF)
+                ldd->ldd_flags |= LDD_F_WRITECONF;
         int                     rc;
 
         LASSERT(lsi);
@@ -1822,6 +1824,9 @@ static int lmd_parse(char *options, struct lustre_mount_data *lmd)
                         clear++;
                 } else if (strncmp(s1, "nomgs", 5) == 0) {
                         lmd->lmd_flags |= LMD_FLG_NOMGS;
+                        clear++;
+                } else if (strncmp(s1, "writeconf", 9) == 0) {
+                        lmd->lmd_flags |= LMD_FLG_WRITECONF;
                         clear++;
                 } else if (strncmp(s1, "mgssec=", 7) == 0) {
                         rc = lmd_parse_mgssec(lmd, s1 + 7);
