@@ -266,7 +266,7 @@ filter_commitrw_write(const struct lu_env *env, struct filter_device *ofd,
 {
         struct filter_thread_info *info = filter_info(env);
         struct filter_object *fo;
-        struct dt_object     *o = NULL;
+        struct dt_object     *o;
         struct lu_attr       *ln = &info->fti_attr2;
         struct lu_buf         buf;
         struct thandle       *th;
@@ -278,11 +278,15 @@ filter_commitrw_write(const struct lu_env *env, struct filter_device *ofd,
         fo = filter_object_find(env, ofd, fid);
         if (IS_ERR(fo))
                 RETURN(PTR_ERR(fo));
+
         LASSERT(fo != NULL);
         LASSERT(filter_object_exists(fo));
+
+        o = filter_object_child(fo);
+        LASSERT(o != NULL);
+
         if (old_rc)
                 GOTO(out, rc = old_rc);
-        o = filter_object_child(fo);
 
         /* XXX: need 1 here until support on client for async writes */
 #if 0
