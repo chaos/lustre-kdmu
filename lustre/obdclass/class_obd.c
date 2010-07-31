@@ -738,9 +738,7 @@ int init_obdclass(void)
 {
         int i, err;
 #ifdef __KERNEL__
-#if !defined(__sun__)
         int lustre_register_fs(void);
-#endif
 
         cfs_spin_lock_init(&obd_updatemax_lock);
         cfs_spin_lock_init(&capa_lock);
@@ -820,7 +818,7 @@ int init_obdclass(void)
         if (err)
                 return err;
 
-#if defined(__KERNEL__) && !defined(__sun__)
+#if defined(__KERNEL__)
         err = lustre_register_fs();
 #endif
 
@@ -833,16 +831,12 @@ int init_obdclass(void)
 static void cleanup_obdclass(void)
 {
         int i;
-#if !defined(__sun__)
         int lustre_unregister_fs(void);
-#endif
         __u64 memory_leaked, pages_leaked;
         __u64 memory_max, pages_max;
         ENTRY;
 
-#if !defined(__sun__)
         lustre_unregister_fs();
-#endif
 
         cfs_psdev_deregister(&obd_psdev);
         for (i = 0; i < class_devno_max(); i++) {

@@ -55,7 +55,7 @@
 #include <lustre_disk.h>
 #include <lustre_param.h>
 
-extern void lustre_osvfs_update(void *, void *);
+extern void lustre_osvfs_update(void *, struct lustre_sb_info *);
 extern int lustre_osvfs_mount(void *);
 
 struct mconf_device {

@@ -556,8 +556,11 @@ static struct modldrv modldrv = {
         &dev_ops,       /* driver ops */
 };
 
+extern struct modlfs lustrefs_modlfs;
+
 static struct modlinkage modlinkage = {
         MODREV_1,
+        &lustrefs_modlfs,
         &modldrv,
         NULL
 };
@@ -588,13 +591,39 @@ int _init(void)
 int _fini(void)
 {
         int rc;
+        extern int lustrefs_active_count;
 
         if (!cfs_mods_unloadable)
+                return EBUSY;
+
+        if (lustrefs_active_count)
                 return EBUSY;
 
         rc = mod_remove(&modlinkage);
         if (rc != 0)
                 return rc;
+
+        /*
+         * XXX I believe solaris vfs has a race where even after successful
+         * mod_remove() a file system that was forcefully unmounted may still
+         * have referenced vfs/vnode structures. Unloading our module in such
+         * a situation may lead to panics and/or memory corruption.
+         *
+         * But currently all file systems that support forceful umount may
+         * suffer from this bug. So we are joining the club hoping it'll be
+         * fixed in solaris. See CR:
+         * 
+         * 6974332 a race between file system module unloading and
+         *         forceful unmounts
+         *
+         * Remove this comment after the bug is fixed or I am proven wrong and
+         * there's no issue in the first place.
+         *
+         * For now at least assert lustrefs_active_count is 0 and panic in
+         * assert rather than in some strange place later...
+         */
+
+        LASSERT(lustrefs_active_count == 0);
 
         libcfs_all_modules_fini();
 

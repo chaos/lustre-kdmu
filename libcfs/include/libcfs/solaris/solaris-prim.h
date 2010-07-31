@@ -456,6 +456,8 @@ typedef struct cfs_module {
 #define MODULE_DESCRIPTION(s)
 #define MODULE_LICENSE(s)
 
+#define LUSTREFS_DRIVER "lustrefs"
+
 #define isspace(ch) (((ch) == ' ') || ((ch) == '\r') || ((ch) == '\n') || \
                      ((ch) == '\t') || ((ch) == '\f'))
 
