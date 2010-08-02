@@ -235,7 +235,7 @@ int filter_preprw(int cmd, struct obd_export *exp, struct obdo *oa, int objcount
 static int
 filter_commitrw_read(const struct lu_env *env, struct filter_device *ofd,
                      struct lu_fid *fid, int objcount, int niocount,
-                     struct niobuf_local *res)
+                     struct niobuf_local *res, int old_rc)
 {
         struct filter_object *fo;
         ENTRY;
@@ -255,7 +255,7 @@ filter_commitrw_read(const struct lu_env *env, struct filter_device *ofd,
         filter_read_unlock(env, fo);
         filter_object_put(env, fo);
 
-        RETURN(0);
+        RETURN(old_rc);
 }
 
 static int
@@ -452,7 +452,7 @@ int filter_commitrw(int cmd, struct obd_export *exp,
                         }
                 }
                 rc = filter_commitrw_read(env, ofd, &info->fti_fid, objcount,
-                                          npages, res);
+                                          npages, res, old_rc);
         } else {
                 LBUG();
                 rc = -EPROTO;
