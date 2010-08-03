@@ -10,4 +10,5 @@ include build/autoMakefile.am.toplevel
 
 EXTRA_DIST += kernel_patches
 
+all-symvers:
 module-dist-hook:

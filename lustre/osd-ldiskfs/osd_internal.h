@@ -478,7 +478,7 @@ static inline int osd_invariant(const struct osd_object *obj)
 #define osd_invariant(obj) (1)
 #endif
 
-static struct super_block *osd_sb(const struct osd_device *dev)
+static inline struct super_block *osd_sb(const struct osd_device *dev)
 {
         return dev->od_mnt->mnt_sb;
 }

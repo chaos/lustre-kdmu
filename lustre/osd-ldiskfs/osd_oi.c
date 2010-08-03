@@ -80,11 +80,6 @@ struct oi_descr {
         __u32 oid;
 };
 
-static journal_t *osd_journal(const struct osd_device *dev)
-{
-        return LDISKFS_SB(osd_sb(dev))->s_journal;
-}
-
 /** to serialize concurrent OI index initialization */
 static cfs_mutex_t oi_init_lock;
 
@@ -118,13 +113,12 @@ static int osd_oi_index_create_one(struct osd_thread_info *info,
         struct inode *inode;
         struct ldiskfs_dir_entry_2 *de;
         struct dentry *dentry;
-        struct inode  *dir = osd_sb(osd)->s_root->d_inode;
         handle_t *jh;
         int rc;
 
         dentry = osd_child_dentry_by_inode(env, osd_sb(osd)->s_root->d_inode,
                                            name, strlen(name));
-        bh = ll_ldiskfs_find_entry(dir, dentry, &de);
+        bh = ll_ldiskfs_find_entry(osd_sb(osd)->s_root->d_inode, dentry, &de);
         if (bh) {
                 brelse(bh);
 

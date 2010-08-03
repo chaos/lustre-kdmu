@@ -611,8 +611,8 @@ static int filter_statfs(struct obd_device *obd,
         osfs->os_bavail -= min(osfs->os_bavail, GRANT_FOR_LLOG +
                         ((ofd->ofd_tot_dirty + ofd->ofd_tot_pending +
                           osfs->os_bsize - 1) >> blockbits));
-        CDEBUG(D_CACHE,
-               "%Lu blocks: %Lu free, %Lu avail; %Lu objects: %Lu free; state %lx\n",
+        CDEBUG(D_CACHE, LPU64" blocks: "LPU64" free, "LPU64" avail; "
+               LPU64" objects: "LPU64" free; state %x\n",
                osfs->os_blocks, osfs->os_bfree, osfs->os_bavail,
                osfs->os_files, osfs->os_ffree, osfs->os_state);
 

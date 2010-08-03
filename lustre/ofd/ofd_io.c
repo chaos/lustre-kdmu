@@ -235,7 +235,7 @@ int filter_preprw(int cmd, struct obd_export *exp, struct obdo *oa, int objcount
 static int
 filter_commitrw_read(const struct lu_env *env, struct filter_device *ofd,
                      struct lu_fid *fid, int objcount, int niocount,
-                     struct niobuf_local *res)
+                     struct niobuf_local *res, int old_rc)
 {
         struct filter_object *fo;
         ENTRY;
@@ -255,7 +255,7 @@ filter_commitrw_read(const struct lu_env *env, struct filter_device *ofd,
         filter_read_unlock(env, fo);
         filter_object_put(env, fo);
 
-        RETURN(0);
+        RETURN(old_rc);
 }
 
 static int
@@ -278,11 +278,15 @@ filter_commitrw_write(const struct lu_env *env, struct filter_device *ofd,
         fo = filter_object_find(env, ofd, fid);
         if (IS_ERR(fo))
                 RETURN(PTR_ERR(fo));
+
         LASSERT(fo != NULL);
         LASSERT(filter_object_exists(fo));
+
+        o = filter_object_child(fo);
+        LASSERT(o != NULL);
+
         if (old_rc)
                 GOTO(out, rc = old_rc);
-        o = filter_object_child(fo);
 
         /* XXX: need 1 here until support on client for async writes */
 #if 0
@@ -291,7 +295,7 @@ filter_commitrw_write(const struct lu_env *env, struct filter_device *ofd,
 
         rc = dt_attr_get(env, o, ln, BYPASS_CAPA);
         if (rc)
-                GOTO(out, rc = PTR_ERR(th));
+                GOTO(out, rc);
         LASSERT(ln->la_valid & LA_MODE);
 
         th = filter_trans_create(env, ofd);
@@ -448,7 +452,7 @@ int filter_commitrw(int cmd, struct obd_export *exp,
                         }
                 }
                 rc = filter_commitrw_read(env, ofd, &info->fti_fid, objcount,
-                                          npages, res);
+                                          npages, res, old_rc);
         } else {
                 LBUG();
                 rc = -EPROTO;
