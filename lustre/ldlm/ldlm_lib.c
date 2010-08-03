@@ -987,9 +987,9 @@ dont_check_exports:
                                                        req->rq_self,
                                                        &remote_uuid);
         if (cfs_hlist_unhashed(&export->exp_nid_hash)) {
-                cfs_hash_add_unique(export->exp_obd->obd_nid_hash,
-                                    &export->exp_connection->c_peer.nid,
-                                    &export->exp_nid_hash);
+                cfs_hash_add(export->exp_obd->obd_nid_hash,
+                             &export->exp_connection->c_peer.nid,
+                             &export->exp_nid_hash);
         }
 
         cfs_spin_lock_bh(&target->obd_processing_task_lock);
@@ -1659,17 +1659,18 @@ static int handle_recovery_req(struct ptlrpc_thread *thread,
         int rc;
         ENTRY;
 
-        rc = lu_context_init(&req->rq_recov_session, LCT_SESSION);
-        if (rc) {
-                CERROR("Failure to initialize session: %d\n", rc);
-                GOTO(reqcopy_put, rc);
-        }
         /**
          * export can be evicted during recovery, no need to handle replays for
          * it after that, discard such request silently
          */
         if (req->rq_export->exp_disconnected)
+                GOTO(reqcopy_put, rc = 0);
+
+        rc = lu_context_init(&req->rq_recov_session, LCT_SESSION);
+        if (rc) {
+                CERROR("Failure to initialize session: %d\n", rc);
                 GOTO(reqcopy_put, rc);
+        }
 
         req->rq_recov_session.lc_thread = thread;
         lu_context_enter(&req->rq_recov_session);
