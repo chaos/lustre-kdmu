@@ -1932,7 +1932,8 @@ facet_pool () {
     local facet=$1
 
     local dev=$(facetdevname $facet)
-    echo ${dev//\/$facet}
+    local pool=$(echo $dev | sed -re "s/\/[^/]*$//g")
+    echo $pool
 }
 
 zfs_create_pool_facet () {
@@ -2007,7 +2008,7 @@ formatall() {
     [ "$OSTFSTYPE" ] && OSTFSTYPE_OPT="--backfstype $OSTFSTYPE"
 
     if ! combined_mgs_mds ; then
-        add mgs $mgs_MKFS_OPTS $FSTYPE_OPT --reformat $MGSDEV || exit 10
+        add mgs $mgs_MKFS_OPTS $MGSFSTYPE_OPT --reformat $MGSDEV || exit 10
     fi
 
     for num in `seq $MDSCOUNT`; do
