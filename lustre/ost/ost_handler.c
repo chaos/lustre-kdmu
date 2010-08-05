@@ -1004,7 +1004,7 @@ static int ost_brw_write(struct ptlrpc_request *req, struct obd_trans_info *oti)
         int rc, i, j;
         obd_count                client_cksum = 0, server_cksum = 0;
         cksum_type_t             cksum_type = OBD_CKSUM_CRC32;
-        int                      no_reply = 0;
+        int                      no_reply = 0, mmap = 0;
         __u32                    o_uid = 0, o_gid = 0;
         struct ost_thread_local_cache *tls;
         ENTRY;
@@ -1114,6 +1114,8 @@ static int ost_brw_write(struct ptlrpc_request *req, struct obd_trans_info *oti)
                 if (body->oa.o_valid & OBD_MD_FLFLAGS)
                         cksum_type = cksum_type_unpack(body->oa.o_flags);
         }
+        if (body->oa.o_valid & OBD_MD_FLFLAGS && body->oa.o_flags & OBD_FL_MMAP)
+                mmap = 1;
 
         /* Because we already sync grant info with client when reconnect,
          * grant info will be cleared for resent req, then fed_grant and
@@ -1214,8 +1216,9 @@ static int ost_brw_write(struct ptlrpc_request *req, struct obd_trans_info *oti)
                 repbody->oa.o_cksum = server_cksum;
                 cksum_counter++;
                 if (unlikely(client_cksum != server_cksum)) {
-                        CERROR("client csum %x, server csum %x\n",
-                               client_cksum, server_cksum);
+                        CDEBUG_LIMIT(mmap ? D_INFO : D_ERROR,
+                                     "client csum %x, server csum %x\n",
+                                     client_cksum, server_cksum);
                         cksum_counter = 0;
                 } else if ((cksum_counter & (-cksum_counter)) == cksum_counter){
                         CDEBUG(D_INFO, "Checksum %u from %s OK: %x\n",
@@ -1245,7 +1248,7 @@ static int ost_brw_write(struct ptlrpc_request *req, struct obd_trans_info *oti)
          */
         repbody->oa.o_valid &= ~(OBD_MD_FLMTIME | OBD_MD_FLATIME);
 
-        if (unlikely(client_cksum != server_cksum && rc == 0)) {
+        if (unlikely(client_cksum != server_cksum && rc == 0 &&  !mmap)) {
                 int  new_cksum = ost_checksum_bulk(desc, OST_WRITE, cksum_type);
                 char *msg;
                 char *via;

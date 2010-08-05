@@ -1578,6 +1578,8 @@ out_mnt:
         /* We jump here in case of failure while starting targets or MGS.
          * In this case we can't just put @mnt and have to do real cleanup
          * with stoping targets, etc. */
+        //stop_temp_site(lsi);
+        LBUG();
         lustre_server_umount(lsi);
         RETURN(rc);
 }

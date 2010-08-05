@@ -1724,7 +1724,7 @@ static int target_recovery_thread(void *arg)
         RECALC_SIGPENDING;
         SIGNAL_MASK_UNLOCK(current, flags);
 
-        rc = lu_context_init(&env.le_ctx, LCT_MD_THREAD);
+        rc = lu_context_init(&env.le_ctx, LCT_MD_THREAD|LCT_DT_THREAD);
         if (rc)
                 RETURN(rc);
 

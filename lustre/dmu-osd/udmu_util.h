@@ -43,7 +43,7 @@
 #ifndef _DMU_UTIL_H
 #define _DMU_UTIL_H
 
-#ifdef DMU_OSD
+#ifdef HAVE_ZFS_OSD
 
 #ifdef __cplusplus
 extern "C" {
@@ -67,6 +67,6 @@ int udmu_util_write(udmu_objset_t *uos, dmu_buf_t *db,
 }
 #endif
 
-#endif /* DMU_OSD */
+#endif /* HAVE_ZFS_OSD */
 
 #endif /* _DMU_UTIL_H */

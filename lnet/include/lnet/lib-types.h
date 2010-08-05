@@ -160,7 +160,6 @@ typedef struct {
 #define LNET_PROTO_QSW_MAGIC                0x0be91b93
 #define LNET_PROTO_TCP_MAGIC                0xeebc0ded
 #define LNET_PROTO_PTL_MAGIC                0x50746C4E /* 'PtlN' unique magic */
-#define LNET_PROTO_GM_MAGIC                 0x6d797269 /* 'myri'! */
 #define LNET_PROTO_MX_MAGIC                 0x4d583130 /* 'MX10'! */
 #define LNET_PROTO_ACCEPTOR_MAGIC           0xacce7100
 #define LNET_PROTO_PING_MAGIC               0x70696E67 /* 'ping' */
@@ -367,7 +366,7 @@ typedef struct lnet_lnd
         /* query of peer aliveness */
         void (*lnd_query)(struct lnet_ni *ni, lnet_nid_t peer, cfs_time_t *when);
 
-#if defined(__KERNEL__) || defined(HAVE_PTHREAD)
+#if defined(__KERNEL__) || defined(HAVE_LIBPTHREAD)
         /* accept a new connection */
         int (*lnd_accept)(struct lnet_ni *ni, cfs_socket_t *sock);
 #endif
@@ -539,7 +538,7 @@ typedef struct
         cfs_semaphore_t   ln_api_mutex;
         cfs_semaphore_t   ln_lnd_mutex;
 #else
-# ifndef HAVE_PTHREAD
+# ifndef HAVE_LIBPTHREAD
         int                    ln_lock;
         int                    ln_api_mutex;
         int                    ln_lnd_mutex;

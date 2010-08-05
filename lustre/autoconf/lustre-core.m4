@@ -97,20 +97,13 @@ kernel patches from Lustre version 1.4.3 or above.])
 #
 AC_DEFUN([LC_CONFIG_BACKINGFS],
 [
-BACKINGFS="ldiskfs"
-
-if test x$with_ldiskfs = xno ; then
+if test x$with_ldiskfs = xno && test x$with_zfs = xno ; then
 	if test x$linux25$enable_server = xyesyes ; then
-		AC_MSG_ERROR([ldiskfs is required for 2.6-based servers.])
+		AC_MSG_ERROR([ldiskfs or zfs are required for 2.6-based servers.])
 	fi
 else
-	# ldiskfs is enabled
-	LB_DEFINE_LDISKFS_OPTIONS
-fi #ldiskfs
-
-AC_MSG_CHECKING([which backing filesystem to use])
-AC_MSG_RESULT([$BACKINGFS])
-AC_SUBST(BACKINGFS)
+        LB_DEFINE_LDISKFS_OPTIONS
+fi #ldiskfs && zfs
 ])
 
 #
@@ -2489,7 +2482,6 @@ AM_CONDITIONAL(LIBLUSTRE_TESTS, test x$enable_liblustre_tests = xyes)
 AM_CONDITIONAL(MPITESTS, test x$enable_mpitests = xyes, Build MPI Tests)
 AM_CONDITIONAL(CLIENT, test x$enable_client = xyes)
 AM_CONDITIONAL(SERVER, test x$enable_server = xyes)
-AM_CONDITIONAL(DMU, test x$with_dmu = xyes)
 AM_CONDITIONAL(QUOTA, test x$enable_quota_module = xyes)
 AM_CONDITIONAL(SPLIT, test x$enable_split = xyes)
 AM_CONDITIONAL(BLKID, test x$ac_cv_header_blkid_blkid_h = xyes)
@@ -2579,7 +2571,6 @@ lustre/tests/Makefile
 lustre/tests/mpi/Makefile
 lustre/utils/Makefile
 lustre/utils/gss/Makefile
-lustre/utils/pthread/Makefile
 lustre/lod/Makefile
 lustre/lod/autoMakefile
 lustre/osp/Makefile

@@ -9,7 +9,6 @@ set -e
 export REFORMAT=${REFORMAT:-""}
 export WRITECONF=${WRITECONF:-""}
 export VERBOSE=false
-export GMNALNID=${GMNALNID:-/usr/sbin/gmlndnid}
 export CATASTROPHE=${CATASTROPHE:-/proc/sys/lnet/catastrophe}
 export GSS=false
 export GSS_KRB5=false
@@ -334,7 +333,7 @@ load_modules_local() {
     fi
 
     echo Loading modules from $LUSTRE
-    load_module ../libcfs/libcfs/libcfs
+    load_module ../libcfs/libcfs/libcfs libcfs_panic_on_lbug=0
     [ "$PTLDEBUG" ] && lctl set_param debug="$PTLDEBUG"
     [ "$SUBSYSTEM" ] && lctl set_param subsystem_debug="${SUBSYSTEM# }"
     load_module ../lnet/lnet/lnet
@@ -1484,13 +1483,6 @@ do_lmc() {
     exit 1
 }
 
-h2gm () {
-    if [ "$1" = "client" -o "$1" = "'*'" ]; then echo \'*\'; else
-        ID=`$PDSH $1 $GMNALNID -l | cut -d\  -f2`
-        echo $ID"@gm"
-    fi
-}
-
 h2name_or_ip() {
     if [ "$1" = "client" -o "$1" = "'*'" ]; then echo \'*\'; else
         echo $1"@$2"
@@ -1825,10 +1817,21 @@ stopall() {
     return 0
 }
 
+cleanup_echo_devs () {
+    local devs=$($LCTL dl | grep echo | awk '{print $4}')
+
+    for dev in $devs; do
+        $LCTL --device $dev cleanup
+        $LCTL --device $dev detach
+    done
+}
+
 cleanupall() {
     nfs_client_mode && return
 
     stopall $*
+    cleanup_echo_devs
+
     unload_modules
     cleanup_gss
 
@@ -1931,7 +1934,8 @@ facet_pool () {
     local facet=$1
 
     local dev=$(facetdevname $facet)
-    echo ${dev//\/$facet}
+    local pool=$(echo $dev | sed -re "s/\/[^/]*$//g")
+    echo $pool
 }
 
 zfs_create_pool_facet () {
@@ -2006,7 +2010,7 @@ formatall() {
     [ "$OSTFSTYPE" ] && OSTFSTYPE_OPT="--backfstype $OSTFSTYPE"
 
     if ! combined_mgs_mds ; then
-        add mgs $mgs_MKFS_OPTS $FSTYPE_OPT --reformat $MGSDEV || exit 10
+        add mgs $mgs_MKFS_OPTS $MGSFSTYPE_OPT --reformat $MGSDEV || exit 10
     fi
 
     for num in `seq $MDSCOUNT`; do
@@ -2475,8 +2479,6 @@ cleanup_and_setup_lustre() {
 # Get all of the server target devices from a given server node and type.
 get_mnt_devs() {
     local node=$1
-    local type=$2
-    local obd_type
     local devs
     local dev
 
@@ -2495,12 +2497,12 @@ get_svr_devs() {
     local i
 
     # MDT device
-    MDTDEV=$(get_mnt_devs $(mdts_nodes) mdt)
+    MDTDEV=$(get_mnt_devs $(mdts_nodes))
 
     # OST devices
     i=0
     for node in $(osts_nodes); do
-        OSTDEVS[i]=$(get_mnt_devs $node ost)
+        OSTDEVS[i]=$(get_mnt_devs $node)
         i=$((i + 1))
     done
 }

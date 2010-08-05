@@ -896,8 +896,6 @@ build_lustre() {
     CONFIGURE_FLAGS="--disable-debug-kmem $CONFIGURE_FLAGS"
     # kDMU build requires --disable-liblustre --disable-quota (for now?)
     CONFIGURE_FLAGS="$CONFIGURE_FLAGS --disable-liblustre --disable-quota"
-    # and it also needs to be told to build the DMU (for silly reasons)
-    CONFIGURE_FLAGS="$CONFIGURE_FLAGS --enable-dmu"
 
     cp "$LUSTRE" SOURCES
 
