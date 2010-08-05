@@ -2763,6 +2763,7 @@ static struct lu_device *osd_device_alloc(const struct lu_env *env,
 {
         struct lu_device  *l;
         struct osd_device *o;
+        int                rc;
 
         OBD_ALLOC_PTR(o);
         if (o != NULL) {
@@ -2778,7 +2779,14 @@ static struct lu_device *osd_device_alloc(const struct lu_env *env,
                         o->od_reserved_fraction = DMU_RESERVED_FRACTION;
                         /* XXX: mount here */
                         /* XXX: relocate osd_device_init() here */
-                        LBUG();
+                        osd_device_init(env, l, NULL, NULL);
+                        lu_site_init(&o->od_site, l);
+                        o->od_site.ls_bottom_dev = l;
+                        rc = osd_mount(env, o, cfg);
+                        if (rc) {
+                                dt_device_fini(&o->od_dt_dev);
+                                l = ERR_PTR(rc);
+                        }
                 } else
                         l = ERR_PTR(result);
         } else

@@ -84,6 +84,7 @@ struct osd_device {
         struct dt_device          od_dt_dev;
         /* information about underlying file system */
         udmu_objset_t             od_objset;
+        struct lu_site            od_site;
 
         /* Environment for transaction commit callback.
          * Currently, OSD is based on ext3/JBD. Transaction commit in ext3/JBD
