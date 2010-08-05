@@ -333,7 +333,7 @@ load_modules_local() {
     fi
 
     echo Loading modules from $LUSTRE
-    load_module ../libcfs/libcfs/libcfs libcfs_panic_on_lbug=0
+    load_module ../libcfs/libcfs/libcfs
     [ "$PTLDEBUG" ] && lctl set_param debug="$PTLDEBUG"
     [ "$SUBSYSTEM" ] && lctl set_param subsystem_debug="${SUBSYSTEM# }"
     load_module ../lnet/lnet/lnet
