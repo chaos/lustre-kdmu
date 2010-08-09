@@ -674,8 +674,10 @@ repeat_find:
                 /*
                  * skip empty devices - usually it means inactive device 
                  */
-                if (sfs.os_blocks == 0)
+                if (sfs.os_blocks == 0) {
+                        QOS_DEBUG("#%d: inactive\n", ost_idx);
                         continue;
+                }
 
                 /*
                  * skip full devices
@@ -689,14 +691,18 @@ repeat_find:
                  * We expect number of precreated objects in f_ffree at
                  * the first iteration, skip OSPs with no objects ready
                  */
-                if (sfs.os_ffree == 0 && speed == 0)
+                if (sfs.os_ffree == 0 && speed == 0) {
+                        QOS_DEBUG("#%d: precreation is empty\n", ost_idx);
                         continue;
+                }
 
                 /*
                  * try to use another OSP if this one is degraded
                  */
-                if (sfs.os_state == OS_STATE_DEGRADED && speed == 0)
+                if (sfs.os_state == OS_STATE_DEGRADED && speed == 0) {
+                        QOS_DEBUG("#%d: degraded\n", ost_idx);
                         continue;
+                }
 
                 o = lod_qos_declare_object_on(env, m, ost_idx, th);
                 if (IS_ERR(o)) {
