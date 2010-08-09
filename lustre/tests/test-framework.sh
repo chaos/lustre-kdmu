@@ -3738,9 +3738,9 @@ get_mdtosc_proc_path() {
     local major=$(get_mds_version_major)
     local minor=$(get_mds_version_minor)
     if [ $major -le 1 -a $minor -le 8 ] ; then
-        echo "${ost}-osc"
+        echo "${ost}-osp"
     else
-        echo "${ost}-osc-MDT0000"
+        echo "${ost}-osp-MDT0000"
     fi
 }
 
@@ -3794,7 +3794,7 @@ wait_osc_import_state() {
     local CONN_STATE
     local i=0
 
-    CONN_PROC="osc.${ost}.ost_server_uuid"
+    CONN_PROC="os[cp].${ost}.ost_server_uuid"
     CONN_STATE=$(do_facet $facet lctl get_param -n $CONN_PROC 2>/dev/null | cut -f2)
     while [ "${CONN_STATE}" != "${expected}" ]; do
         if [ "${expected}" == "DISCONN" ]; then 
