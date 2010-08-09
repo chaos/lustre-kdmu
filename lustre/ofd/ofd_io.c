@@ -311,7 +311,7 @@ filter_commitrw_write(const struct lu_env *env, struct filter_device *ofd,
                 buf.lb_len = sizeof(*ff);
                 buf.lb_buf = ff;
 
-                rc = dt_declare_xattr_set(env, o, buf.lb_len,
+                rc = dt_declare_xattr_set(env, o, &buf,
                                           XATTR_NAME_FID, 0, th);
                 if (rc)
                         GOTO(out_stop, rc);
