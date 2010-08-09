@@ -1364,10 +1364,22 @@ out:
         RETURN(rc);
 }
 
+static int mdd_obd_health_check(struct obd_device *obd)
+{
+        struct mdd_device *mdd = lu2mdd_dev(obd->obd_lu_dev);
+        int                rc;
+        ENTRY;
+
+        LASSERT(mdd);
+        rc = obd_health_check(mdd->mdd_child_exp->exp_obd);
+        RETURN(rc);
+}
+
 static struct obd_ops mdd_obd_device_ops = {
-        .o_owner       = THIS_MODULE,
-        .o_connect     = mdd_obd_connect,
-        .o_disconnect  = mdd_obd_disconnect
+        .o_owner        = THIS_MODULE,
+        .o_connect      = mdd_obd_connect,
+        .o_disconnect   = mdd_obd_disconnect,
+        .o_health_check = mdd_obd_health_check
 };
 
 /* context key constructor/destructor: mdd_ucred_key_init, mdd_ucred_key_fini */

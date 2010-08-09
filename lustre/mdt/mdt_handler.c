@@ -5049,6 +5049,18 @@ static int mdt_obd_connect(const struct lu_env *env,
         req = info->mti_pill->rc_req;
         mdt = mdt_dev(obd->obd_lu_dev);
 
+        /*
+         * first, check whether the stack is ready to handle requests
+         * XXX: probably not very appropriate method is used now
+         *      at some point we should find a better one
+         */
+        if (mdt->mdt_ready == 0) {
+                rc = obd_health_check(mdt->mdt_child_exp->exp_obd);
+                if (rc)
+                        RETURN(-EAGAIN);
+                mdt->mdt_ready = 1;
+        }
+
         rc = class_connect(&conn, obd, cluuid);
         if (rc)
                 RETURN(rc);

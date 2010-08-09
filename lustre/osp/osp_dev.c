@@ -771,6 +771,20 @@ static struct lu_device_type osp_device_type = {
         .ldt_ctx_tags = LCT_MD_THREAD
 };
 
+static int osp_obd_health_check(struct obd_device *obd)
+{
+        struct osp_device *d = lu2osp_dev(obd->obd_lu_dev);
+        int                rc;
+        ENTRY;
+
+        LASSERT(d);
+        if (d->opd_imp_active)
+                rc = 0;
+        else
+                rc = 1;
+        RETURN(rc);
+}
+
 static struct obd_ops osp_obd_device_ops = {
         .o_owner                = THIS_MODULE,
         .o_add_conn             = client_import_add_conn,
@@ -778,6 +792,7 @@ static struct obd_ops osp_obd_device_ops = {
         .o_reconnect            = osp_reconnect,
         .o_connect              = osp_obd_connect,
         .o_disconnect           = osp_obd_disconnect,
+        .o_health_check         = osp_obd_health_check,
         .o_import_event         = osp_import_event,
         .o_iocontrol            = osp_iocontrol,
         .o_statfs               = osp_obd_statfs,

@@ -628,14 +628,33 @@ static struct lu_device_type lod_device_type = {
         .ldt_ctx_tags = LCT_MD_THREAD | LCT_DT_THREAD,
 };
 
+static int lod_obd_health_check(struct obd_device *obd)
+{
+        struct lod_device *d = lu2lod_dev(obd->obd_lu_dev);
+        int                i, rc = 1;
+        ENTRY;
+
+        LASSERT(d);
+        for (i = 0; i < LOD_MAX_OSTNR; i++) {
+                if (d->lod_ost[i] == NULL)
+                        continue;
+                rc = obd_health_check(d->lod_ost_exp[i]->exp_obd);
+                /* one healthy device is enough */
+                if (rc == 0)
+                        break;
+        }
+        RETURN(rc);
+}
+
 static struct obd_ops lod_obd_device_ops = {
-        .o_owner       = THIS_MODULE,
-        .o_connect     = lod_obd_connect,
-        .o_disconnect  = lod_obd_disconnect,
-        .o_pool_new    = lov_pool_new,
-        .o_pool_rem    = lov_pool_remove,
-        .o_pool_add    = lov_pool_add,
-        .o_pool_del    = lov_pool_del,
+        .o_owner        = THIS_MODULE,
+        .o_connect      = lod_obd_connect,
+        .o_disconnect   = lod_obd_disconnect,
+        .o_health_check = lod_obd_health_check,
+        .o_pool_new     = lov_pool_new,
+        .o_pool_rem     = lov_pool_remove,
+        .o_pool_add     = lov_pool_add,
+        .o_pool_del     = lov_pool_del,
 };
 
 

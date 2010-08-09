@@ -114,6 +114,7 @@ struct mdt_device {
         /* underlying device */
         /* reference to the next dev in the stack */
         struct obd_export         *mdt_child_exp;
+        int                        mdt_ready;
         struct md_device          *mdt_child;
         struct dt_device          *mdt_bottom;
         /** target device */
