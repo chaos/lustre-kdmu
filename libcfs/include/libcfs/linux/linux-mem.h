@@ -98,6 +98,9 @@ static inline int cfs_page_count(cfs_page_t *page)
 
 #define cfs_page_index(p)       ((p)->index)
 
+#define cfs_page_pin(page) page_cache_get(page)
+#define cfs_page_unpin(page) page_cache_release(page)
+
 /*
  * Memory allocator
  * XXX Liang: move these declare to public file
@@ -108,12 +111,8 @@ extern void  cfs_free(void *addr);
 extern void *cfs_alloc_large(size_t nr_bytes);
 extern void  cfs_free_large(void *addr);
 
-extern cfs_page_t *cfs_alloc_pages(unsigned int flags, unsigned int order);
-extern void __cfs_free_pages(cfs_page_t *page, unsigned int order);
-
-#define cfs_alloc_page(flags)  cfs_alloc_pages(flags, 0)
-#define __cfs_free_page(page)  __cfs_free_pages(page, 0)
-#define cfs_free_page(p)       __free_pages(p, 0)
+extern cfs_page_t *cfs_alloc_page(unsigned int flags);
+extern void cfs_free_page(cfs_page_t *page);
 
 #define cfs_memory_pressure_get() (current->flags & PF_MEMALLOC)
 #define cfs_memory_pressure_set() do { current->flags |= PF_MEMALLOC; } while (0)

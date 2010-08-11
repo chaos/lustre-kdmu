@@ -707,14 +707,7 @@ static int osd_trans_stop(const struct lu_env *env, struct thandle *th)
         
         udmu_tx_commit(oh->ot_tx);
 
-        /* XXX FIXME XXX - the 'if' statement below seems to be disabled for
-         * performance purposes, but this is not correct. We need to implement
-         * a way to efficiently write synchronously, possibly using the ZIL.
-         *
-         * XXX: also note: oh->ot_sync appears not to be properly set at the
-         * moment.
-         */
-        if (1 && oh->ot_sync)
+        if (th->th_sync)
                 udmu_wait_txg_synced(&osd->od_objset, txg);
 
         RETURN(result);
@@ -2505,7 +2498,7 @@ static int osd_write_commit(const struct lu_env *env, struct dt_object *dt,
 
         LASSERT(th != NULL);
         oh = container_of0(th, struct osd_thandle, ot_super);
-        
+
         for (i = 0; i < nr; i++, lb++) {
                 CDEBUG(D_OTHER, "write %u bytes at %u\n", (unsigned) lb->len,
                        (unsigned) lb->file_offset);

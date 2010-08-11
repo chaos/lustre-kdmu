@@ -572,6 +572,13 @@ static int filter_get_info(struct obd_export *exp, __u32 keylen, void *key,
 #endif
                 RETURN(0);
         }
+
+        if (KEY_IS(KEY_SYNC_LOCK_CANCEL)) {
+                *((__u32 *) val) = ofd->ofd_sync_lock_cancel;
+                *vallen = sizeof(__u32);
+                RETURN(0);
+        }
+
         CDEBUG(D_IOCTL, "invalid key\n");
         RETURN(-EINVAL);
 }
@@ -657,7 +664,6 @@ int filter_setattr(struct obd_export *exp,
         LASSERT(rc == 0);
 
         info = filter_info_init(env, exp);
-        info->fti_no_need_trans = 0;
         filter_oti2info(info, oti);
 
         fid_ostid_unpack(&info->fti_fid, &oinfo->oi_oa->o_oi, 0);
@@ -747,7 +753,6 @@ static int filter_punch(struct obd_export *exp, struct obd_info *oinfo,
         LASSERT(rc == 0);
 
         info = filter_info_init(env, exp);
-        info->fti_no_need_trans = 0;
         filter_oti2info(info, oti);
 
         fid_ostid_unpack(&info->fti_fid, &oinfo->oi_oa->o_oi, 0);
@@ -866,7 +871,6 @@ int filter_destroy(struct obd_export *exp,
         LASSERT(rc == 0);
 
         info = filter_info_init(env, exp);
-        info->fti_no_need_trans = 0;
         filter_oti2info(info, oti);
 
         if (!(oa->o_valid & OBD_MD_FLGROUP))
@@ -963,15 +967,13 @@ static int filter_orphans_destroy(const struct lu_env *env,
         RETURN(rc);
 }
 
-static int filter_create(struct obd_export *exp,
-                         struct obdo *oa, struct lov_stripe_md **ea,
-                         struct obd_trans_info *oti)
+int filter_create(struct obd_export *exp, struct obdo *oa,
+                  struct lov_stripe_md **ea, struct obd_trans_info *oti)
 {
         struct filter_device *ofd = filter_exp(exp);
         struct lu_env *env = oti->oti_thread->t_env;
         struct filter_thread_info *info;
         int rc = 0, diff;
-        obd_seq group = oa->o_seq;
         ENTRY;
 
         rc = lu_env_refill(env);
@@ -982,17 +984,18 @@ static int filter_create(struct obd_export *exp,
         filter_oti2info(info, oti);
 
         LASSERT(ea == NULL);
-        LASSERT(group >= FID_SEQ_OST_MDT0);
+        LASSERT(oa->o_seq >= FID_SEQ_OST_MDT0);
         LASSERT(oa->o_valid & OBD_MD_FLGROUP);
 
         CDEBUG(D_INFO, "filter_create(oa->o_seq="LPU64",oa->o_id="LPU64")\n",
-               group, oa->o_id);
+               oa->o_seq, oa->o_id);
 
         if ((oa->o_valid & OBD_MD_FLFLAGS) &&
             (oa->o_flags & OBD_FL_RECREATE_OBJS)) {
-                if (oa->o_id > filter_last_id(ofd, group)) {
+                if (!filter_obd(ofd)->obd_recovering ||
+                    oa->o_id > filter_last_id(ofd, oa->o_seq)) {
                         CERROR("recreate objid "LPU64" > last id "LPU64"\n",
-                               oa->o_id, filter_last_id(ofd, group));
+                               oa->o_id, filter_last_id(ofd, oa->o_seq));
                         GOTO(out, rc = -EINVAL);
                 }
                 /* do nothing because we create objects during first write */
@@ -1008,70 +1011,71 @@ static int filter_create(struct obd_export *exp,
                         GOTO(out, rc = 0);
                 }
                 /* This causes inflight precreates to abort and drop lock */
-                cfs_set_bit(group, &ofd->ofd_destroys_in_progress);
-                cfs_mutex_down(&ofd->ofd_create_locks[group]);
-                if (!cfs_test_bit(group, &ofd->ofd_destroys_in_progress)) {
+                cfs_set_bit(oa->o_seq, &ofd->ofd_destroys_in_progress);
+                cfs_mutex_down(&ofd->ofd_create_locks[oa->o_seq]);
+                if (!cfs_test_bit(oa->o_seq, &ofd->ofd_destroys_in_progress)) {
                         CERROR("%s:["LPU64"] destroys_in_progress already cleared\n",
-                               exp->exp_obd->obd_name, group);
+                               exp->exp_obd->obd_name, oa->o_seq);
                         GOTO(out, rc = 0);
                 }
-                diff = oa->o_id - filter_last_id(ofd, group);
+                diff = oa->o_id - filter_last_id(ofd, oa->o_seq);
                 CDEBUG(D_HA, "filter_last_id() = "LPU64" -> diff = %d\n",
-                       filter_last_id(ofd, group), diff);
+                       filter_last_id(ofd, oa->o_seq), diff);
                 if (-diff > OST_MAX_PRECREATE) {
                         /* FIXME: should reset precreate_next_id on MDS */
                         rc = 0;
                 } else if (diff < 0) {
                         rc = filter_orphans_destroy(env, exp, ofd, oa);
-                        cfs_clear_bit(group, &ofd->ofd_destroys_in_progress);
+                        cfs_clear_bit(oa->o_seq, &ofd->ofd_destroys_in_progress);
                 } else {
                         /* XXX: Used by MDS for the first time! */
-                        cfs_clear_bit(group, &ofd->ofd_destroys_in_progress);
+                        cfs_clear_bit(oa->o_seq, &ofd->ofd_destroys_in_progress);
                 }
         } else {
-                cfs_mutex_down(&ofd->ofd_create_locks[group]);
+                cfs_mutex_down(&ofd->ofd_create_locks[oa->o_seq]);
                 if (oti->oti_conn_cnt < exp->exp_conn_cnt) {
                         CERROR("%s: dropping old precreate request\n",
                                filter_obd(ofd)->obd_name);
                         GOTO(out, rc = 0);
                 }
                 /* only precreate if group == 0 and o_id is specfied */
-                if (group < FID_SEQ_OST_MDT0 || oa->o_id == 0) {
+                if (oa->o_seq < FID_SEQ_OST_MDT0 || oa->o_id == 0) {
                         LBUG();
                         diff = 1; /* shouldn't we create this right now? */
                 } else {
-                        diff = oa->o_id - filter_last_id(ofd, group);
+                        diff = oa->o_id - filter_last_id(ofd, oa->o_seq);
                 }
         }
         if (diff > 0) {
-                obd_id next_id = filter_last_id(ofd, group) + 1;
+                obd_id next_id = filter_last_id(ofd, oa->o_seq) + 1;
                 int i;
 
                 /* TODO: check we have free space. Need DMU support */
                 CDEBUG(D_HA,
                        "%s: reserve %d objects in group "LPU64" at "LPU64"\n",
-                       filter_obd(ofd)->obd_name, diff, group, next_id);
+                       filter_obd(ofd)->obd_name, diff, oa->o_seq, next_id - diff);
                 for (i = 0; i < diff; i++) {
-                        rc = filter_precreate_object(env, ofd, next_id + i, group);
+                        rc = filter_precreate_object(env, ofd, next_id + i,
+                                                     oa->o_seq);
                         if (rc)
                                 break;
                 }
-                rc = filter_last_id_write(env, ofd, group, 0);
+                rc = filter_last_id_write(env, ofd, oa->o_seq, 0);
                 if (i > 0) {
                         /* some objects got created, we can return
                          * them, even if last creation failed */
-                        oa->o_id = filter_last_id(ofd, group);
+                        oa->o_id = filter_last_id(ofd, oa->o_seq);
                         rc = 0;
                 } else
                         CERROR("unable to precreate: %d\n", rc);
 
-                LASSERT(oa->o_seq == group);
+                LASSERT(oa->o_seq == oa->o_seq);
                 oa->o_valid = OBD_MD_FLID | OBD_MD_FLGROUP;
         }
 
         filter_info2oti(info, oti);
 out:
-        cfs_mutex_up(&ofd->ofd_create_locks[group]);
+        cfs_mutex_up(&ofd->ofd_create_locks[oa->o_seq]);
         return rc;
 }
 
