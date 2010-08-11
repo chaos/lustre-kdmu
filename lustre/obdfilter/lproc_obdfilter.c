@@ -404,21 +404,23 @@ int lprocfs_filter_wr_degraded(libcfs_file_t *file, const char *buffer,
 int lprocfs_filter_rd_syncjournal(char *page, char **start, off_t off,
                                   int count, int *eof, void *data)
 {
-        struct obd_device *obd = data;
-        int rc;
+        struct obd_device *obd;
 
-        rc = snprintf(page, count, "%u\n", obd->u.filter.fo_syncjournal);
-        return rc;
+        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        return libcfs_param_snprintf(page, count, data, LP_U32,
+                                     "%u\n", obd->u.filter.fo_syncjournal);
 }
 
-int lprocfs_filter_wr_syncjournal(struct file *file, const char *buffer,
+int lprocfs_filter_wr_syncjournal(libcfs_file_t *file, const char *buffer,
                                   unsigned long count, void *data)
 {
-        struct obd_device *obd = data;
+        struct obd_device *obd;
         int val;
         int rc;
+        int flag = 0;
 
-        rc = lprocfs_write_helper(buffer, count, &val);
+        LIBCFS_PARAM_GET_DATA(obd, data, &flag);
+        rc = lprocfs_write_helper(buffer, count, &val, flag);
         if (rc)
                 return rc;
 
@@ -438,21 +440,22 @@ static char *sync_on_cancel_states[] = {"never",
 int lprocfs_filter_rd_sync_lock_cancel(char *page, char **start, off_t off,
                                        int count, int *eof, void *data)
 {
-        struct obd_device *obd = data;
-        int rc;
+        struct obd_device *obd;
 
-        rc = snprintf(page, count, "%s\n",
+        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        return libcfs_param_snprintf(page, count, data, LP_STR, "%s\n",
                       sync_on_cancel_states[obd->u.filter.fo_sync_lock_cancel]);
-        return rc;
 }
 
-int lprocfs_filter_wr_sync_lock_cancel(struct file *file, const char *buffer,
-                                          unsigned long count, void *data)
+int lprocfs_filter_wr_sync_lock_cancel(libcfs_file_t *file, const char *buffer,
+                                       unsigned long count, void *data)
 {
         struct obd_device *obd = data;
         int val = -1;
         int i;
+        int flag = 0;
 
+        LIBCFS_PARAM_GET_DATA(obd, data, &flag);
         for (i = 0 ; i < NUM_SYNC_ON_CANCEL_STATES; i++) {
                 if (memcmp(buffer, sync_on_cancel_states[i],
                     strlen(sync_on_cancel_states[i])) == 0) {
@@ -462,7 +465,7 @@ int lprocfs_filter_wr_sync_lock_cancel(struct file *file, const char *buffer,
         }
         if (val == -1) {
                 int rc;
-                rc = lprocfs_write_helper(buffer, count, &val);
+                rc = lprocfs_write_helper(buffer, count, &val, flag);
                 if (rc)
                         return rc;
         }

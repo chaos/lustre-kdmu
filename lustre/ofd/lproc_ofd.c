@@ -309,21 +309,23 @@ int lprocfs_filter_rd_fstype(char *page, char **start, off_t off, int count,
 int lprocfs_filter_rd_syncjournal(char *page, char **start, off_t off,
                                   int count, int *eof, void *data)
 {
-        struct filter_device *ofd = data;
-        int rc;
+        struct filter_device *ofd;
 
-        rc = snprintf(page, count, "%u\n", ofd->ofd_syncjournal);
-        return rc;
+        LIBCFS_PARAM_GET_DATA(ofd, data, NULL);
+        return libcfs_param_snprintf(page, count, data, LP_U32,
+                                     "%u\n", ofd->ofd_syncjournal);
 }
 
-int lprocfs_filter_wr_syncjournal(struct file *file, const char *buffer,
+int lprocfs_filter_wr_syncjournal(libcfs_file_t *file, const char *buffer,
                                   unsigned long count, void *data)
 {
         struct filter_device *ofd = data;
         int val;
         int rc;
+        int flag = 0;
 
-        rc = lprocfs_write_helper(buffer, count, &val);
+        LIBCFS_PARAM_GET_DATA(ofd, data, &flag);
+        rc = lprocfs_write_helper(buffer, count, &val, flag);
         if (rc)
                 return rc;
 
@@ -343,21 +345,22 @@ static char *sync_on_cancel_states[] = {"never",
 int lprocfs_filter_rd_sync_lock_cancel(char *page, char **start, off_t off,
                                        int count, int *eof, void *data)
 {
-        struct filter_device *ofd = data;
-        int rc;
+        struct filter_device *ofd;
 
-        rc = snprintf(page, count, "%s\n",
+        LIBCFS_PARAM_GET_DATA(ofd, data, NULL);
+        return libcfs_param_snprintf(page, count, data, LP_STR, "%s\n",
                       sync_on_cancel_states[ofd->ofd_sync_lock_cancel]);
-        return rc;
 }
 
-int lprocfs_filter_wr_sync_lock_cancel(struct file *file, const char *buffer,
-                                          unsigned long count, void *data)
+int lprocfs_filter_wr_sync_lock_cancel(libcfs_file_t *file, const char *buffer,
+                                       unsigned long count, void *data)
 {
-        struct filter_device *ofd = data;
+        struct filter_device *ofd;
         int val = -1;
         int i;
+        int flag = 0;
 
+        LIBCFS_PARAM_GET_DATA(ofd, data, &flag);
         for (i = 0 ; i < NUM_SYNC_ON_CANCEL_STATES; i++) {
                 if (memcmp(buffer, sync_on_cancel_states[i],
                     strlen(sync_on_cancel_states[i])) == 0) {
@@ -367,7 +370,7 @@ int lprocfs_filter_wr_sync_lock_cancel(struct file *file, const char *buffer,
         }
         if (val == -1) {
                 int rc;
-                rc = lprocfs_write_helper(buffer, count, &val);
+                rc = lprocfs_write_helper(buffer, count, &val, flag);
                 if (rc)
                         return rc;
         }

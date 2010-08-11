@@ -300,7 +300,6 @@ static int lprocfs_osd_wr_cache(libcfs_file_t *file, const char *buffer,
 {
         struct osd_device *osd;
         int val, rc, flag;
-        LASSERT(osd != NULL);
 
         LIBCFS_PARAM_GET_DATA(osd, data, &flag);
         LASSERT(osd != NULL);
