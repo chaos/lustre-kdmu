@@ -333,7 +333,7 @@ load_modules_local() {
     fi
 
     echo Loading modules from $LUSTRE
-    load_module ../libcfs/libcfs/libcfs libcfs_panic_on_lbug=0
+    load_module ../libcfs/libcfs/libcfs
     [ "$PTLDEBUG" ] && lctl set_param debug="$PTLDEBUG"
     [ "$SUBSYSTEM" ] && lctl set_param subsystem_debug="${SUBSYSTEM# }"
     load_module ../lnet/lnet/lnet
@@ -1677,10 +1677,12 @@ do_nodes() {
         $myPDSH $rnodes $LCTL mark "$@" > /dev/null 2>&1 || :
     fi
 
-    if $verbose ; then
+    # do not replace anything from pdsh output if -N is used
+    # -N     Disable hostname: prefix on lines of output.
+    if $verbose || [[ $myPDSH = *-N* ]]; then
         $myPDSH $rnodes "(PATH=\$PATH:$RLUSTRE/utils:$RLUSTRE/tests:/sbin:/usr/sbin; cd $RPWD; LUSTRE=\"$RLUSTRE\" $(get_env_vars) sh -c \"$@\")"
     else
-        $myPDSH $rnodes "(PATH=\$PATH:$RLUSTRE/utils:$RLUSTRE/tests:/sbin:/usr/sbin; cd $RPWD; LUSTRE=\"$RLUSTRE\" $(get_env_vars) sh -c \"$@\")" | sed -re "s/\w+:\s//g"
+        $myPDSH $rnodes "(PATH=\$PATH:$RLUSTRE/utils:$RLUSTRE/tests:/sbin:/usr/sbin; cd $RPWD; LUSTRE=\"$RLUSTRE\" $(get_env_vars) sh -c \"$@\")" | sed -re "s/^[^:]*: //g"
     fi
     return ${PIPESTATUS[0]}
 }
@@ -1932,7 +1934,8 @@ facet_pool () {
     local facet=$1
 
     local dev=$(facetdevname $facet)
-    echo ${dev//\/$facet}
+    local pool=$(echo $dev | sed -re "s/\/[^/]*$//g")
+    echo $pool
 }
 
 zfs_create_pool_facet () {
@@ -2007,7 +2010,7 @@ formatall() {
     [ "$OSTFSTYPE" ] && OSTFSTYPE_OPT="--backfstype $OSTFSTYPE"
 
     if ! combined_mgs_mds ; then
-        add mgs $mgs_MKFS_OPTS $FSTYPE_OPT --reformat $MGSDEV || exit 10
+        add mgs $mgs_MKFS_OPTS $MGSFSTYPE_OPT --reformat $MGSDEV || exit 10
     fi
 
     for num in `seq $MDSCOUNT`; do

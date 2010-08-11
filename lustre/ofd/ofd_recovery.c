@@ -229,7 +229,7 @@ static int filter_txn_stop_cb(const struct lu_env *env,
         cfs_spin_unlock(&ofd->ofd_transno_lock);
 
         filter_trans_add_cb(txn, lut_cb_last_committed,
-                         class_export_cb_get(info->fti_exp));
+                            class_export_cb_get(info->fti_exp));
 
         return filter_last_rcvd_update(info, txn);
 }
