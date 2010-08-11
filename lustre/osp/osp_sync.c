@@ -371,7 +371,6 @@ static int osp_sync_interpret(const struct lu_env *env,
                 cfs_list_add(&req->rq_exp_list, &d->opd_syn_committed_there);
                 cfs_spin_unlock(&d->opd_syn_lock);
 
-                /* XXX: some batching wouldn't hurt */
                 cfs_waitq_signal(&d->opd_syn_waitq);
         } else if (rc) {
                 /*
@@ -382,6 +381,8 @@ static int osp_sync_interpret(const struct lu_env *env,
                 cfs_spin_lock(&d->opd_syn_lock);
                 d->opd_syn_rpc_in_progress--;
                 cfs_spin_unlock(&d->opd_syn_lock);
+
+                cfs_waitq_signal(&d->opd_syn_waitq);
         }
 
         LASSERT(d->opd_syn_rpc_in_flight > 0);
@@ -391,7 +392,7 @@ static int osp_sync_interpret(const struct lu_env *env,
         CDEBUG(D_OTHER, "%s: %d in flight, %d in progress\n",
                d->opd_obd->obd_name, d->opd_syn_rpc_in_flight,
                d->opd_syn_rpc_in_progress);
-       
+
         osp_sync_check_for_work(d);
 
         return 0; 
@@ -683,6 +684,11 @@ static int osp_sync_process_queues(struct llog_handle *llh,
         do { 
                 struct l_wait_info lwi = { 0 };
 
+                if (!osp_sync_running(d)) {
+                        CDEBUG(D_HA, "stop llog processing\n");
+                        return LLOG_PROC_BREAK;
+                }
+
                 /* process requests committed by OST */
                 osp_sync_process_committed(d);
 
@@ -730,11 +736,6 @@ static int osp_sync_process_queues(struct llog_handle *llh,
                                         || !cfs_list_empty(&d->opd_syn_committed_there),
                                 &lwi);
 
-                if (!osp_sync_running(d)) {
-                        CDEBUG(D_HA, "stop llog processing\n");
-                        return LLOG_PROC_BREAK;
-                }
-
         } while (1);
 }
 
@@ -755,6 +756,7 @@ static int osp_sync_thread(void *_arg)
 {
         struct osp_device      *d = _arg;
         struct ptlrpc_thread   *thread = &d->opd_syn_thread;
+        struct l_wait_info      lwi = { 0 };
         struct llog_ctxt       *ctxt;
         struct obd_device      *obd = d->opd_obd;
         struct llog_handle     *llh;
@@ -805,6 +807,14 @@ static int osp_sync_thread(void *_arg)
 
 out:
         thread->t_flags = SVC_STOPPED;
+
+        /*
+         * there might be a race between osp sync thread sending RPCs and
+         * import invalidation. this can result in RPCs being in ptlrpcd
+         * till this point. for safete reason let's wait till they are done
+         */
+        l_wait_event(d->opd_syn_waitq, d->opd_syn_rpc_in_flight == 0, &lwi);
+
         cfs_waitq_signal(&thread->t_ctl_waitq);
         LASSERTF(d->opd_syn_rpc_in_progress == 0,
                  "%s: %d %d %sempty\n",
