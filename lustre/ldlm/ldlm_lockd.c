@@ -255,7 +255,7 @@ static int ldlm_lock_busy(struct ldlm_lock *lock)
         if (lock->l_export == NULL)
                 return 0;
 
-        cfs_spin_lock(&lock->l_export->exp_lock);
+        cfs_spin_lock_bh(&lock->l_export->exp_rpc_lock);
         cfs_list_for_each_entry(req, &lock->l_export->exp_queued_rpc,
                                 rq_exp_list) {
                 if (req->rq_ops->hpreq_lock_match) {
@@ -264,7 +264,7 @@ static int ldlm_lock_busy(struct ldlm_lock *lock)
                                 break;
                 }
         }
-        cfs_spin_unlock(&lock->l_export->exp_lock);
+        cfs_spin_unlock_bh(&lock->l_export->exp_rpc_lock);
         RETURN(match);
 }
 
@@ -696,14 +696,14 @@ static void ldlm_lock_reorder_req(struct ldlm_lock *lock)
                 RETURN_EXIT;
         }
 
-        cfs_spin_lock(&lock->l_export->exp_lock);
+        cfs_spin_lock_bh(&lock->l_export->exp_rpc_lock);
         cfs_list_for_each_entry(req, &lock->l_export->exp_queued_rpc,
                                 rq_exp_list) {
                 if (!req->rq_hp && req->rq_ops->hpreq_lock_match &&
                     req->rq_ops->hpreq_lock_match(req, lock))
                         ptlrpc_hpreq_reorder(req);
         }
-        cfs_spin_unlock(&lock->l_export->exp_lock);
+        cfs_spin_unlock_bh(&lock->l_export->exp_rpc_lock);
         EXIT;
 }
 
@@ -1439,10 +1439,7 @@ int ldlm_handle_cancel(struct ptlrpc_request *req)
         if (!ldlm_request_cancel(req, dlm_req, 0))
                 req->rq_status = ESTALE;
 
-        if (ptlrpc_reply(req) != 0)
-                LBUG();
-
-        RETURN(0);
+        RETURN(ptlrpc_reply(req));
 }
 
 void ldlm_handle_bl_callback(struct ldlm_namespace *ns,
@@ -1563,6 +1560,10 @@ static void ldlm_handle_cp_callback(struct ptlrpc_request *req,
         unlock_res_and_lock(lock);
 
         LDLM_DEBUG(lock, "callback handler finished, about to run_ast_work");
+
+        /* Let Enqueue to call osc_lock_upcall() and initialize
+         * l_ast_data */
+        OBD_FAIL_TIMEOUT(OBD_FAIL_OSC_CP_ENQ_RACE, 2);
 
         ldlm_run_ast_work(&ast_list, LDLM_WORK_CP_AST);
 
@@ -2008,9 +2009,11 @@ static int ldlm_cancel_handler(struct ptlrpc_request *req)
         if (req->rq_export == NULL) {
                 struct ldlm_request *dlm_req;
 
-                CERROR("operation %d from %s with bad export cookie "LPU64"\n",
-                       lustre_msg_get_opc(req->rq_reqmsg),
-                       libcfs_id2str(req->rq_peer),
+                CERROR("%s from %s arrived at %lu with bad export cookie "
+                       LPU64"\n",
+                       ll_opcode2str(lustre_msg_get_opc(req->rq_reqmsg)),
+                       libcfs_nid2str(req->rq_peer.nid),
+                       req->rq_arrival_time.tv_sec,
                        lustre_msg_get_handle(req->rq_reqmsg)->cookie);
 
                 if (lustre_msg_get_opc(req->rq_reqmsg) == LDLM_CANCEL) {

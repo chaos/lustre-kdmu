@@ -1087,11 +1087,21 @@ static void osc_init_grant(struct client_obd *cli, struct obd_connect_data *ocd)
                 cli->cl_avail_grant = ocd->ocd_grant;
         else
                 cli->cl_avail_grant = ocd->ocd_grant - cli->cl_dirty;
+
+        if (cli->cl_avail_grant < 0) {
+                CWARN("%s: available grant < 0, the OSS is probably not running"
+                      " with patch from bug20278 (%ld) \n",
+                      cli->cl_import->imp_obd->obd_name, cli->cl_avail_grant);
+                /* workaround for 1.6 servers which do not have 
+                 * the patch from bug20278 */
+                cli->cl_avail_grant = ocd->ocd_grant;
+        }
+
         client_obd_list_unlock(&cli->cl_loi_list_lock);
 
-        CDEBUG(D_CACHE, "setting cl_avail_grant: %ld cl_lost_grant: %ld \n",
+        CDEBUG(D_CACHE, "%s, setting cl_avail_grant: %ld cl_lost_grant: %ld \n",
+               cli->cl_import->imp_obd->obd_name,
                cli->cl_avail_grant, cli->cl_lost_grant);
-        LASSERT(cli->cl_avail_grant >= 0);
 
         if (ocd->ocd_connect_flags & OBD_CONNECT_GRANT_SHRINK &&
             cfs_list_empty(&cli->cl_grant_shrink_list))
@@ -3216,6 +3226,9 @@ static int osc_enqueue_interpret(const struct lu_env *env,
          * to arrive after an upcall has been executed by
          * osc_enqueue_fini(). */
         ldlm_lock_addref(&handle, mode);
+
+        /* Let CP AST to grant the lock first. */
+        OBD_FAIL_TIMEOUT(OBD_FAIL_OSC_CP_ENQ_RACE, 1);
 
         /* Complete obtaining the lock procedure. */
         rc = ldlm_cli_enqueue_fini(aa->oa_exp, req, aa->oa_ei->ei_type, 1,

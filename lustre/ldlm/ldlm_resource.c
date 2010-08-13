@@ -168,7 +168,8 @@ static int lprocfs_wr_lru_size(struct file *file, const char *buffer,
                         canceled = ldlm_cancel_lru(ns, unused, LDLM_SYNC,
                                                    LDLM_CANCEL_PASSED);
                         if (canceled < unused) {
-                                CERROR("not all requested locks are canceled, "
+                                CDEBUG(D_DLMTRACE,
+                                       "not all requested locks are canceled, "
                                        "requested: %d, canceled: %d\n", unused,
                                        canceled);
                                 return -EINVAL;
@@ -863,6 +864,8 @@ ldlm_resource_add(struct ldlm_namespace *ns, struct ldlm_resource *parent,
                 /* someone won the race and added the resource before */
                 ldlm_resource_getref(old_res);
                 cfs_spin_unlock(&ns->ns_hash_lock);
+                /* clean lu_ref for failed resource */
+                lu_ref_fini(&res->lr_reference);
                 OBD_SLAB_FREE(res, ldlm_resource_slab, sizeof *res);
                 /* synchronize WRT resource creation */
                 if (ns->ns_lvbo && ns->ns_lvbo->lvbo_init) {
