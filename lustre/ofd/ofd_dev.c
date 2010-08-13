@@ -626,6 +626,8 @@ static int filter_init0(const struct lu_env *env, struct filter_device *m,
         m->ofd_tot_granted = 0;
         m->ofd_tot_pending = 0;
 
+        m->ofd_max_group = 0;
+
 #if 0
         cfs_rwlock_init(&m->ofd_sptlrpc_lock);
         sptlrpc_rule_set_init(&m->ofd_sptlrpc_rset);

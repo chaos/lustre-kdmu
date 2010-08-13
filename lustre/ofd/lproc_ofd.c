@@ -96,7 +96,7 @@ static int lprocfs_filter_rd_last_id(char *page, char **start, off_t off,
         if (obd == NULL)
                 return 0;
 
-        for (i = FID_SEQ_OST_MDT0; i < filter->fo_group_count; i++) {
+        for (i = FID_SEQ_OST_MDT0; i <= ofd->ofd_max_group; i++) {
                 rc = snprintf(page, count, LPU64"\n", filter_last_id(ofd, i));
                 if (rc < 0) {
                         retval = rc;
@@ -276,7 +276,8 @@ int lprocfs_filter_rd_fstype(char *page, char **start, off_t off, int count,
 int lprocfs_filter_rd_syncjournal(char *page, char **start, off_t off,
                                   int count, int *eof, void *data)
 {
-        struct filter_device *ofd = data;
+        struct obd_device *obd = data;
+        struct filter_device *ofd = filter_dev(obd->obd_lu_dev);
         int rc;
 
         rc = snprintf(page, count, "%u\n", ofd->ofd_syncjournal);
@@ -286,7 +287,8 @@ int lprocfs_filter_rd_syncjournal(char *page, char **start, off_t off,
 int lprocfs_filter_wr_syncjournal(struct file *file, const char *buffer,
                                   unsigned long count, void *data)
 {
-        struct filter_device *ofd = data;
+        struct obd_device *obd = data;
+        struct filter_device *ofd = filter_dev(obd->obd_lu_dev);
         int val;
         int rc;
 
@@ -310,7 +312,8 @@ static char *sync_on_cancel_states[] = {"never",
 int lprocfs_filter_rd_sync_lock_cancel(char *page, char **start, off_t off,
                                        int count, int *eof, void *data)
 {
-        struct filter_device *ofd = data;
+        struct obd_device *obd = data;
+        struct filter_device *ofd = filter_dev(obd->obd_lu_dev);
         int rc;
 
         rc = snprintf(page, count, "%s\n",
@@ -321,7 +324,8 @@ int lprocfs_filter_rd_sync_lock_cancel(char *page, char **start, off_t off,
 int lprocfs_filter_wr_sync_lock_cancel(struct file *file, const char *buffer,
                                           unsigned long count, void *data)
 {
-        struct filter_device *ofd = data;
+        struct obd_device *obd = data;
+        struct filter_device *ofd = filter_dev(obd->obd_lu_dev);
         int val = -1;
         int i;
 
