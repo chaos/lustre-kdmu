@@ -2074,25 +2074,51 @@ test_84a() {
 }
 run_test 84a "stale open during export disconnect"
 
-test_85() { # bug 22190
-    local fail=0
-    do_facet ost1 "lctl set_param -n obdfilter.${ost1_svc}.sync_journal 1"
+test_86() {
+        local clients=${CLIENTS:-$HOSTNAME}
+
+        zconf_umount_clients $clients $MOUNT
+        do_facet $SINGLEMDS lctl set_param mdt.${FSNAME}-MDT*.exports.clear=0
+        remount_facet $SINGLEMDS
+        zconf_mount_clients $clients $MOUNT
+}
+run_test 86 "umount server after clear nid_stats should not hit LBUG"
+
+test_87() {
+    do_facet ost1 "lctl set_param -n obdfilter.${ost1_svc}.sync_journal 0"
 
     replay_barrier ost1
     lfs setstripe -i 0 -c 1 $DIR/$tfile
-    dd oflag=dsync if=/dev/urandom of=$DIR/$tfile bs=4k count=100 || fail=1
-    fail_abort ost1
-    echo "FAIL $fail"
-    [ $fail -ne 0 ] || error "Write was successful"
+    dd if=/dev/urandom of=$DIR/$tfile bs=1024k count=8 || error "Cannot write"
+    cksum=`md5sum $DIR/$tfile | awk '{print $1}'`
+    cancel_lru_locks osc
+    fail ost1
+    dd if=$DIR/$tfile of=/dev/null bs=1024k count=8 || error "Cannot read"
+    cksum2=`md5sum $DIR/$tfile | awk '{print $1}'`
+    if [ $cksum != $cksum2 ] ; then
+	error "New checksum $cksum2 does not match original $cksum"
+    fi
 }
-run_test 85 "ensure there is no reply on bulk write if obd is in rdonly mode"
+run_test 87 "write replay"
 
-test_86() {
-        umount $MOUNT
-        do_facet $SINGLEMDS lctl set_param mdt.${FSNAME}-MDT*.exports.clear=0
-        remount_facet $SINGLEMDS
+test_87b() {
+    do_facet ost1 "lctl set_param -n obdfilter.${ost1_svc}.sync_journal 0"
+
+    replay_barrier ost1
+    lfs setstripe -i 0 -c 1 $DIR/$tfile
+    dd if=/dev/urandom of=$DIR/$tfile bs=1024k count=8 || error "Cannot write"
+    sleep 1 # Give it a chance to flush dirty data
+    echo TESTTEST | dd of=$DIR/$tfile bs=1 count=8 seek=64
+    cksum=`md5sum $DIR/$tfile | awk '{print $1}'`
+    cancel_lru_locks osc
+    fail ost1
+    dd if=$DIR/$tfile of=/dev/null bs=1024k count=8 || error "Cannot read"
+    cksum2=`md5sum $DIR/$tfile | awk '{print $1}'`
+    if [ $cksum != $cksum2 ] ; then
+	error "New checksum $cksum2 does not match original $cksum"
+    fi
 }
-run_test 86 "umount server after clear nid_stats should not hit LBUG"
+run_test 87b "write replay with changed data (checksum resend)"
 
 equals_msg `basename $0`: test complete, cleaning up
 check_and_cleanup_lustre

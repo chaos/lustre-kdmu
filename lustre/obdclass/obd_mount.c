@@ -1230,10 +1230,9 @@ static void stop_temp_site(struct lustre_sb_info *lsi)
         lu_site_purge(&env, site, ~0);
         lu_site_fini(site);
         lu_env_fini(&env);
-
         lsi->lsi_dt_dev->dd_lu_dev.ld_site = NULL;
-
         OBD_FREE_PTR(site);
+        lu_device_fini(&mdev->mcf_lu_dev);
         OBD_FREE_PTR(mdev);
 }
 
@@ -1557,7 +1556,7 @@ static struct lu_device *try_start_osd(struct lustre_mount_data *lmd,
         type = class_get_type(typename);
         if (!type) {
                 CERROR("Unknown type: '%s'\n", typename);
-                GOTO(out_env, rc = -ENODEV);
+                GOTO(out, rc = -ENODEV);
         }
 
         ldt = type->typ_lu;
@@ -1573,7 +1572,7 @@ static struct lu_device *try_start_osd(struct lustre_mount_data *lmd,
         d = ldt->ldt_ops->ldto_device_alloc(&env, ldt, NULL);
         if (IS_ERR(d)) {
                 CERROR("Cannot allocate device: '%s'\n", typename);
-                GOTO(out_type, rc = -ENODEV);
+                GOTO(out_env, rc = -ENODEV);
         }
 
         type->typ_refcnt++;
@@ -1592,28 +1591,25 @@ static struct lu_device *try_start_osd(struct lustre_mount_data *lmd,
         lustre_cfg_free(lcfg);
 
         if (rc)
-                GOTO(out, rc);
+                GOTO(out_init, rc);
 
         lu_device_get(d);
         lu_ref_add(&d->ld_reference, "lu-stack", &lu_site_init);
-out_type:
-out_alloc:
-out:
-        if (rc) {
-                if (d) {
-                        LASSERT(ldt);
-                        type->typ_refcnt--;
-                        ldt->ldt_ops->ldto_device_fini(&env, d);
-                        ldt->ldt_ops->ldto_device_free(&env, d);
-                }
-                if (type)
-                        class_put_type(type);
-        }
         lu_env_fini(&env);
-out_env:
-        if (rc)
-                d = ERR_PTR(rc);
+        RETURN(d);
 
+out_init:
+        ldt->ldt_ops->ldto_device_fini(&env, d);
+out_alloc:
+        type->typ_refcnt--;
+        ldt->ldt_ops->ldto_device_free(&env, d);
+out_env:
+        lu_env_fini(&env);
+out_type:
+        class_put_type(type);
+out:
+        LASSERT(rc);
+        d = ERR_PTR(rc);
         RETURN(d);
 }
 
@@ -1917,6 +1913,7 @@ out_mnt:
         /* We jump here in case of failure while starting targets or MGS.
          * In this case we can't just put @mnt and have to do real cleanup
          * with stoping targets, etc. */
+        stop_temp_site(lsi);
         lustre_server_umount(lsi);
         RETURN(rc);
 }

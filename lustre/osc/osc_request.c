@@ -1177,7 +1177,7 @@ static inline int can_merge_pages(struct brw_page *p1, struct brw_page *p2)
 {
         if (p1->flag != p2->flag) {
                 unsigned mask = ~(OBD_BRW_FROM_GRANT|
-                                  OBD_BRW_NOCACHE|OBD_BRW_SYNC);
+                                  OBD_BRW_NOCACHE|OBD_BRW_SYNC|OBD_BRW_ASYNC);
 
                 /* warn if we try to combine flags that we don't know to be
                  * safe to combine */
@@ -1426,6 +1426,10 @@ static int check_write_checksum(struct obdo *oa, const lnet_process_id_t *peer,
                 CDEBUG(D_PAGE, "checksum %x confirmed\n", client_cksum);
                 return 0;
         }
+
+        /* If this is mmaped file - it can be changed at any time */
+        if (oa->o_valid & OBD_MD_FLFLAGS && oa->o_flags & OBD_FL_MMAP)
+                return 1;
 
         if (oa->o_valid & OBD_MD_FLFLAGS)
                 cksum_type = cksum_type_unpack(oa->o_flags);
@@ -2167,9 +2171,20 @@ static int brw_interpret(const struct lu_env *env,
         rc = osc_brw_fini_request(req, rc);
         CDEBUG(D_INODE, "request %p aa %p rc %d\n", req, aa, rc);
         if (osc_recoverable_error(rc)) {
-                rc = osc_brw_redo_request(req, aa);
-                if (rc == 0)
-                        RETURN(0);
+                /* Only retry once for mmaped files since the mmaped page
+                 * might be modified at anytime. We have to retry at least
+                 * once in case there WAS really a corruption of the page
+                 * on the network, that was not caused by mmap() modifying
+                 * the page. Bug11742 */
+                if ((rc == -EAGAIN) && (aa->aa_resends > 0) &&
+                    aa->aa_oa->o_valid & OBD_MD_FLFLAGS &&
+                    aa->aa_oa->o_flags & OBD_FL_MMAP) {
+                        rc = 0;
+                } else {
+                        rc = osc_brw_redo_request(req, aa);
+                        if (rc == 0)
+                                RETURN(0);
+                }
         }
 
         if (aa->aa_ocapa) {
@@ -2201,7 +2216,7 @@ static int brw_interpret(const struct lu_env *env,
                 }
                 OBDO_FREE(aa->aa_oa);
         } else { /* from async_internal() */
-                int i;
+                obd_count i;
                 for (i = 0; i < aa->aa_page_count; i++)
                         osc_release_write_grant(aa->aa_cli, aa->aa_ppga[i], 1);
 
@@ -2214,6 +2229,7 @@ static int brw_interpret(const struct lu_env *env,
         if (!async)
                 cl_req_completion(env, aa->aa_clerq, rc);
         osc_release_ppga(aa->aa_ppga, aa->aa_page_count);
+
         RETURN(rc);
 }
 

@@ -10,8 +10,8 @@ init_test_env $@
 
 . ${CONFIG:=$LUSTRE/tests/cfg/$NAME.sh}
 init_logging
-#              
-ALWAYS_EXCEPT="10  $INSANITY_EXCEPT"
+#              23435
+ALWAYS_EXCEPT="2     10  $INSANITY_EXCEPT"
 
 if [ "$FAILURE_MODE" = "HARD" ]; then
     mixed_ost_devs && CONFIG_EXCEPTIONS="0 2 4 5 6 8" && \

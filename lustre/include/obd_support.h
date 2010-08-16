@@ -121,6 +121,8 @@ int obd_alloc_fail(const void *ptr, const char *name, const char *type,
 #define OBD_RECOVERY_TIME_SOFT          (obd_timeout * 3)
 /* Change recovery-small 26b time if you change this */
 #define PING_INTERVAL max(obd_timeout / 4, 1U)
+/* a bit more than maximal journal commit time in seconds */
+#define PING_INTERVAL_SHORT min(PING_INTERVAL, 7U)
 /* Client may skip 1 ping; we must wait at least 2.5. But for multiple
  * failover targets the client only pings one server at a time, and pings
  * can be lost on a loaded network. Since eviction has serious consequences,
@@ -773,13 +775,13 @@ do {                                                                          \
         (keylen >= (sizeof(str)-1) && memcmp(key, str, (sizeof(str)-1)) == 0)
 
 /* Wrapper for contiguous page frame allocation */
-#define OBD_PAGES_ALLOC(ptr, order, gfp_mask)                                 \
+#define OBD_PAGE_ALLOC(ptr, gfp_mask)                                         \
 do {                                                                          \
-        (ptr) = cfs_alloc_pages(gfp_mask, order);                             \
+        (ptr) = cfs_alloc_page(gfp_mask);                                     \
         if (unlikely((ptr) == NULL)) {                                        \
                 CERROR("alloc_pages of '" #ptr "' %d page(s) / "LPU64" bytes "\
-                       "failed\n", (int)(1 << (order)),                       \
-                       (__u64)((1 << (order)) << CFS_PAGE_SHIFT));            \
+                       "failed\n", (int)1,                                    \
+                       (__u64)(1 << CFS_PAGE_SHIFT));                         \
                 CERROR(LPU64" total bytes and "LPU64" total pages "           \
                        "("LPU64" bytes) allocated by Lustre, "                \
                        "%d total bytes by LNET\n",                            \
@@ -788,29 +790,24 @@ do {                                                                          \
                        obd_pages_sum(),                                       \
                        cfs_atomic_read(&libcfs_kmemory));                     \
         } else {                                                              \
-                obd_pages_add(order);                                         \
+                obd_pages_add(0);                                             \
                 CDEBUG(D_MALLOC, "alloc_pages '" #ptr "': %d page(s) / "      \
                        LPU64" bytes at %p.\n",                                \
-                       (int)(1 << (order)),                                   \
-                       (__u64)((1 << (order)) << CFS_PAGE_SHIFT), ptr);       \
+                       (int)1,                                                \
+                       (__u64)(1 << CFS_PAGE_SHIFT), ptr);                    \
         }                                                                     \
 } while (0)
 
-#define OBD_PAGE_ALLOC(ptr, gfp_mask)                                         \
-        OBD_PAGES_ALLOC(ptr, 0, gfp_mask)
-
-#define OBD_PAGES_FREE(ptr, order)                                            \
+#define OBD_PAGE_FREE(ptr)                                                    \
 do {                                                                          \
         LASSERT(ptr);                                                         \
-        obd_pages_sub(order);                                                 \
+        obd_pages_sub(0);                                                     \
         CDEBUG(D_MALLOC, "free_pages '" #ptr "': %d page(s) / "LPU64" bytes " \
                "at %p.\n",                                                    \
-               (int)(1 << (order)), (__u64)((1 << (order)) << CFS_PAGE_SHIFT),\
+               (int)1, (__u64)(1 << CFS_PAGE_SHIFT),                          \
                ptr);                                                          \
-        __cfs_free_pages(ptr, order);                                         \
+        cfs_free_page(ptr);                                                   \
         (ptr) = (void *)0xdeadbeef;                                           \
 } while (0)
-
-#define OBD_PAGE_FREE(ptr) OBD_PAGES_FREE(ptr, 0)
 
 #endif

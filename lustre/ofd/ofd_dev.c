@@ -616,6 +616,8 @@ static int filter_init0(const struct lu_env *env, struct filter_device *m,
 
         m->ofd_fmd_max_num = FILTER_FMD_MAX_NUM_DEFAULT;
         m->ofd_fmd_max_age = FILTER_FMD_MAX_AGE_DEFAULT;
+        m->ofd_syncjournal = 0;
+        filter_slc_set(m);
 
         /* grant data */
         cfs_spin_lock_init(&m->ofd_grant_lock);
@@ -768,35 +770,8 @@ static void filter_fini(const struct lu_env *env, struct filter_device *m)
         struct obd_device *obd = filter_obd(m);
         struct lu_device  *d = &m->ofd_dt_dev.dd_lu_dev;
         struct lu_site    *ls = d->ld_site;
-#if 0
-        int                waited = 0;
-#endif
 
-        /* At this point, obd exports might still be on the "obd_zombie_exports"
-         * list, and obd_zombie_impexp_thread() is trying to destroy them.
-         * We wait a little bit until all exports (except the self-export)
-         * have been destroyed, because the whole mdt stack might be accessed
-         * in mdt_destroy_export(). This will not be a long time, maybe one or
-         * two seconds are enough. This is not a problem while umounting.
-         *
-         * The three references that should be remaining are the
-         * obd_self_export and the attach and setup references.
-         */
-#if 0
-        /* XXX */
-        while (cfs_atomic_read(&obd->obd_refcount) > 3) {
-                cfs_schedule_timeout(CFS_TASK_UNINT, cfs_time_seconds(1));
-                ++waited;
-                if (waited > 5 && IS_PO2(waited))
-                        LCONSOLE_WARN("Waiting for obd_zombie_impexp_thread "
-                                      "more than %d seconds to destroy all "
-                                      "the exports. The current obd refcount ="
-                                      " %d. Is it stuck there?\n",
-                                      waited, cfs_atomic_read(&obd->obd_refcount));
-        }
-#endif
         target_recovery_fini(obd);
-
 #if 0
         filter_obd_llog_cleanup(obd);
 #endif
@@ -875,13 +850,19 @@ static struct lu_device *filter_device_alloc(const struct lu_env *env,
 
 /* thread context key constructor/destructor */
 LU_KEY_INIT_FINI(filter, struct filter_thread_info);
-LU_CONTEXT_KEY_DEFINE(filter, LCT_DT_THREAD);
-#if 0
 static void filter_key_exit(const struct lu_context *ctx,
                             struct lu_context_key *key, void *data)
 {
         struct filter_thread_info *info = data;
-        memset(info, 0, sizeof(*info));
+        info->fti_exp = NULL;
+        info->fti_env = NULL;
+
+        info->fti_xid = 0;
+        info->fti_transno = 0;
+        info->fti_has_trans = 0;
+        info->fti_no_need_trans = 0;
+
+        memset(&info->fti_attr, 0, sizeof info->fti_attr);
 }
 
 struct lu_context_key filter_thread_key = {
@@ -890,7 +871,6 @@ struct lu_context_key filter_thread_key = {
         .lct_fini = filter_key_fini,
         .lct_exit = filter_key_exit
 };
-#endif
 
 /* transaction context key */
 LU_KEY_INIT_FINI(filter_txn, struct filter_txn_info);

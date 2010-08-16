@@ -448,6 +448,10 @@ void mdt_pack_attr2body(struct mdt_thread_info *info, struct mdt_body *b,
 
         if (info)
                 mdt_body_reverse_idmap(info, b);
+
+        if (b->valid & OBD_MD_FLSIZE)
+                CDEBUG(D_VFSTRACE, DFID": returning size %llu\n",
+                       PFID(fid), b->size);
 }
 
 static inline int mdt_body_has_lov(const struct lu_attr *la,
@@ -1232,15 +1236,20 @@ static int mdt_sendpage(struct mdt_thread_info *info,
         if (OBD_FAIL_CHECK(OBD_FAIL_MDS_SENDPAGE))
                 GOTO(abort_bulk, rc = 0);
 
-        timeout = (int) req->rq_deadline - cfs_time_current_sec();
-        if (timeout < 0)
-                CERROR("Req deadline already passed %lu (now: %lu)\n",
-                       req->rq_deadline, cfs_time_current_sec());
-        *lwi = LWI_TIMEOUT_INTERVAL(cfs_time_seconds(max(timeout, 1)),
-                                    cfs_time_seconds(1), NULL, NULL);
-        rc = l_wait_event(desc->bd_waitq, !ptlrpc_server_bulk_active(desc) ||
-                          exp->exp_failed || exp->exp_abort_active_req, lwi);
-        LASSERT (rc == 0 || rc == -ETIMEDOUT);
+        do {
+                timeout = (int) req->rq_deadline - cfs_time_current_sec();
+                if (timeout < 0)
+                        CERROR("Req deadline already passed %lu (now: %lu)\n",
+                               req->rq_deadline, cfs_time_current_sec());
+                *lwi = LWI_TIMEOUT_INTERVAL(cfs_time_seconds(max(timeout, 1)),
+                                            cfs_time_seconds(1), NULL, NULL);
+                rc = l_wait_event(desc->bd_waitq,
+                                  !ptlrpc_server_bulk_active(desc) ||
+                                  exp->exp_failed ||
+                                  exp->exp_abort_active_req, lwi);
+                LASSERT (rc == 0 || rc == -ETIMEDOUT);
+        } while ((rc == -ETIMEDOUT) &&
+                 (req->rq_deadline > cfs_time_current_sec()));
 
         if (rc == 0) {
                 if (desc->bd_success &&
@@ -4450,6 +4459,9 @@ static void fsoptions_to_mdt_flags(struct mdt_device *m, char *options)
                         LCONSOLE_INFO("Disabling ACL\n");
                 }
 
+                if (!*p)
+                        break;
+
                 options = ++p;
         }
 }
@@ -5529,8 +5541,8 @@ static int mdt_iocontrol(unsigned int cmd, struct obd_export *exp, int len,
 int mdt_postrecov(const struct lu_env *env, struct mdt_device *mdt)
 {
         struct lu_device *ld = md2lu_dev(mdt->mdt_child);
-        struct obd_device *obd = mdt2obd_dev(mdt);
 #ifdef HAVE_QUOTA_SUPPORT
+        struct obd_device *obd = mdt2obd_dev(mdt);
         struct md_device *next = mdt->mdt_child;
 #endif
         int rc;
