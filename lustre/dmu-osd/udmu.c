@@ -110,7 +110,7 @@ int udmu_objset_open(char *osname, udmu_objset_t *uos)
 
         memset(uos, 0, sizeof(udmu_objset_t));
 
-        error = dmu_objset_open(osname, DMU_OST_ZFS, DS_MODE_OWNER, &uos->os);
+        error = dmu_objset_own(osname, DMU_OST_ZFS, B_FALSE, uos, &uos->os);
         if (error) {
                 uos->os = NULL;
                 goto out;
@@ -162,7 +162,7 @@ int udmu_objset_open(char *osname, udmu_objset_t *uos)
 
 out:
         if (error && uos->os != NULL)
-                dmu_objset_close(uos->os);
+                dmu_objset_disown(uos->os, uos);
 
 #if 0
         if (error == 0) {
@@ -220,7 +220,7 @@ void udmu_objset_close(udmu_objset_t *uos)
 #endif
 
         /* close the object set */
-        dmu_objset_close(uos->os);
+        dmu_objset_disown(uos->os, uos);
 
         uos->os = NULL;
 }
@@ -336,7 +336,8 @@ int udmu_userprop_set_str(udmu_objset_t *uos, const char *prop_name,
         if (rc != 0)
                 return rc;
 
-        rc = dsl_prop_set(os_name, real_prop, 1, strlen(val) + 1, val);
+        rc = dsl_prop_set(os_name, real_prop, ZPROP_SRC_LOCAL, 1,
+                          strlen(val) + 1, val);
         udmu_userprop_cleanup(&os_name, &real_prop);
 
         return rc;
@@ -362,7 +363,7 @@ int udmu_userprop_get_str(udmu_objset_t *uos, const char *prop_name, char *buf,
         /* We can't just pass buf_size to dsl_prop_get() because it expects the
            exact value size (zap_lookup() requirement), so we must get all props
            and extract the one we want. */
-        rc = dsl_prop_get_all(uos->os, &nvl, TRUE);
+        rc = dsl_prop_get_all(uos->os, &nvl);
         if (rc != 0) {
                 nvl = NULL;
                 goto out;
@@ -1432,5 +1433,5 @@ int udmu_xattr_list(udmu_objset_t *uos, dmu_buf_t *db, void *buf, int buflen)
 
 void udmu_freeze(udmu_objset_t *uos)
 {
-        spa_freeze(uos->os->os->os_spa);
+        spa_freeze(uos->os->os_spa);
 }
