@@ -507,8 +507,7 @@ out:
 }
 
 int filter_stack_init(const struct lu_env *env,
-                      struct filter_device *m, struct lustre_cfg *cfg,
-                      struct lustre_sb_info *lsi)
+                      struct filter_device *m, struct lustre_cfg *cfg)
 {
         struct lu_device  *d = &m->ofd_dt_dev.dd_lu_dev;
         struct lu_device  *tmp;
@@ -648,7 +647,6 @@ static int filter_init0(const struct lu_env *env, struct filter_device *m,
         lsi->lsi_dt_dev->dd_ops->dt_conf_get(NULL, lsi->lsi_dt_dev,
                                              &dt_param);
         obd->obd_fsops = fsfilt_get_ops(mt_str(dt_param.ddp_mount_type));
- sops = fsfilt_get_ops(mt_str(dt_param.ddp_mount_type));
         if (IS_ERR(obd->obd_fsops)) {
                 obd->obd_fsops = NULL;
                 /* this filesystem doesn't support fsfilt */
@@ -715,7 +713,7 @@ static int filter_init0(const struct lu_env *env, struct filter_device *m,
         }
 
         /* init the stack */
-        rc = filter_stack_init(env, m, cfg, lsi);
+        rc = filter_stack_init(env, m, cfg);
         if (rc) {
                 CERROR("Can't init device stack, rc %d\n", rc);
                 GOTO(err_fini_proc, rc);

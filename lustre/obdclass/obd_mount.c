@@ -782,16 +782,15 @@ static int server_lsi2mti(struct lustre_sb_info *lsi,
                 if (LNET_NETTYP(LNET_NIDNET(id.nid)) == LOLND)
                         continue;
 
-#if 0
-/* FIXME - add new mount opt PARAM_NETWORK, but we should probably
-   filter them out when we first collect nids intead of here. */
+                /* FIXME filter out non-network-matching nids when we first
+                   collect nids intead of here. */
                 if (class_find_param(ldd->ldd_params,
                                      PARAM_NETWORK, NULL) == 0 &&
                     !class_match_net(ldd->ldd_params, id.nid)) {
                         /* can't match specified network */
                         continue;
                 }
-#endif
+
                 mti->mti_nids[mti->mti_nid_count] = id.nid;
                 mti->mti_nid_count++;
                 if (mti->mti_nid_count >= MTI_NIDS_MAX) {
@@ -824,7 +823,6 @@ static int server_register_target(struct lustre_sb_info *lsi)
 {
         struct obd_device *mgc = lsi->lsi_mgc;
         struct mgs_target_info  *mti = NULL;
-        struct obd_device       *obd;
         int                      rc;
         ENTRY;
 
@@ -1034,9 +1032,105 @@ static int lustre_put_lsi(struct lustre_sb_info *lsi)
 /*************** server mount ******************/
 
 
+static int start_osd(struct lustre_sb_info *lsi, unsigned long mflags)
+{
+        struct obd_device        *obd;
+        struct lu_device         *d;
+        struct lustre_mount_data *lmd = lsi->lsi_lmd;
+        char                     *osdname;
+        ENTRY;
 
+        osdname = OBD_ALLOC(strlen(lsi->lsi_svname + 5));
+        if (osdname == NULL)
+                RETURN(-ENOMEM);
+        sprintf(osdname, "%s-dsk", lsi->lsi_svname);
 
-int server_kernel_mount(struct lustre_sb_info *lsi, unsigned long mflags)
+        /* Try ldiskfs first. Use the same uuid for all layers of server */
+        rc = lustre_start_simple(osdname, LUSTRE_OSD_NAME, lsi->lsi_svname,
+                                 lmd->lmd_dev, flagstr);
+        if (rc)
+        /* Then ZFS */
+                rc = lustre_start_simple(osdname, LUSTRE_ZFS_NAME,
+                                         lsi->lsi_svname, lmd->lmd_dev,
+                                         flagstr);
+        obd = class_name2obd(osdname);
+        if (obd == NULL) {
+                CERROR("Can't find obd '%s'\n", osdname);
+                OBD_FREE(osdname);
+                RETURN(-ENODEV);
+        }
+        OBD_FREE(osdname);
+
+        lsi->lsi_dt_dev = lu2dt_dev(obd->obd_lu_dev);
+        LASSERT(lsi->lsi_dt_dev);
+
+        RETURN(0);
+}
+
+/* Stop the OSD in error cases */
+static void stop_osd(struct lustre_sb_info *lsi)
+{
+        struct lustre_cfg_bufs  *bufs;
+        struct lustre_cfg       *lcfg;
+        struct dt_device        *dt = lsi->lsi_dt_dev;
+        struct lu_device        *d;
+        struct lu_device_type   *ldt;
+        struct obd_type         *type;
+        struct lu_env            env;
+        char                     flags[3]="";
+        int                      rc;
+
+        if (dt == NULL)
+                return;
+
+        OBD_ALLOC(bufs, sizeof(*bufs));
+        if (bufs == NULL) {
+                CERROR("Cannot alloc bufs!\n");
+                return;
+        }
+
+        LASSERT(dt);
+        d = &dt->dd_lu_dev;
+
+        ldt = d->ld_type;
+        LASSERT(ldt);
+
+        type = ldt->ldt_obd_type;
+        LASSERT(type != NULL);
+
+        rc = lu_env_init(&env, ldt->ldt_ctx_tags);
+        LASSERT(rc == 0);
+
+        /* process cleanup, pass mdt obd name to get obd umount flags */
+        lustre_cfg_bufs_reset(bufs, NULL);
+        lustre_cfg_bufs_set_string(bufs, 1, flags);
+        lcfg = lustre_cfg_new(LCFG_CLEANUP, bufs);
+        if (!lcfg) {
+                CERROR("Cannot alloc lcfg!\n");
+                OBD_FREE(bufs, sizeof(*bufs));
+                return;
+        }
+
+        d->ld_ops->ldo_process_config(&env, d, lcfg);
+        lustre_cfg_free(lcfg);
+
+        lu_ref_del(&d->ld_reference, "lu-stack", &lu_site_init);
+        lu_device_put(d);
+
+        type->typ_refcnt--;
+        ldt->ldt_ops->ldto_device_fini(&env, d);
+        ldt->ldt_ops->ldto_device_free(&env, d);
+        lu_env_fini(&env);
+
+        class_put_type(type);
+
+        OBD_FREE(bufs, sizeof(*bufs));
+
+        lsi->lsi_dt_dev = NULL;
+}
+
+/* Mount and start services, using mount line options */
+static int server_kernel_mount(struct lustre_sb_info *lsi, unsigned long mflags)
 {
         struct dt_device_param    dt_param;
         struct lu_device         *dev;
@@ -1047,10 +1141,10 @@ int server_kernel_mount(struct lustre_sb_info *lsi, unsigned long mflags)
         /* The server name is given as a mount line option */
         if (lsi->lsi_lmd->lmd_profile == NULL) {
                 LCONSOLE_ERROR("Can't determine server name\n");
-                RETURN(ERR_PTR(-EINVAL));
+                RETURN(-EINVAL);
         }
         if (strlen(lsi->lsi_lmd->lmd_profile) >= sizeof(lsi->lsi_svname))
-                RETURN(ERR_PTR(-ENAMETOOLONG));
+                RETURN(-ENAMETOOLONG);
         strcpy(lsi->lsi_svname, lsi->lsi_lmd->lmd_profile);
 
         /* Determine server type */
@@ -1063,7 +1157,7 @@ int server_kernel_mount(struct lustre_sb_info *lsi, unsigned long mflags)
                 } else {
                         LCONSOLE_ERROR("Can't determine server type of '%s'\n",
                                        lsi->lsi_svname);
-                        RETURN(ERR_PTR(rc));
+                        RETURN(rc);
                 }
         }
         lsi->lsi_flags |= rc;
@@ -1080,12 +1174,9 @@ int server_kernel_mount(struct lustre_sb_info *lsi, unsigned long mflags)
                lsi->lsi_svname, lsi->lsi_flags, mflags);
 
         /* start OSD on given device */
-        dev = start_osd(lsi, mflags);
-        if (IS_ERR(dev))
-                RETURN((void *)dev);
-
-        lsi->lsi_dt_dev = lu2dt_dev(dev);
-        LASSERT(lsi->lsi_dt_dev);
+        rc = start_osd(lsi, mflags);
+        if (rc)
+                RETURN(rc);
 
         /* Populate the lsi fields from the device configuration data */
         lsi->lsi_dt_dev->dd_ops->dt_conf_get(NULL, lsi->lsi_dt_dev, &dt_param);
@@ -1124,8 +1215,7 @@ static void server_wait_finished(struct lustre_sb_info *lsi)
                cfs_block_sigs(blocked);
                if (rc < 0) {
                        LCONSOLE_EMERG("Danger: interrupted umount %s with "
-                                      "%d refs!\n",
-                                      lsi->lsi_svname,
+                                      "%d refs!\n", lsi->lsi_svname,
                                       cfs_atomic_read(&lsi->lsi_mounts));
                        break;
                }
@@ -1150,6 +1240,9 @@ static int lustre_server_mount(struct lustre_sb_info *lsi, unsigned long mflags)
                 lustre_put_lsi(lsi);
                 RETURN(rc);
         }
+
+        CDEBUG(D_MOUNT, "Found service %s on device %s\n",
+               lsi->lsi_svname, lsi->lsi_lmd->lmd_dev);
 
         if (class_name2obd(lsi->lsi_svname)) {
                 LCONSOLE_ERROR_MSG(0x161, "The target named %s is already "
@@ -1177,7 +1270,7 @@ static int lustre_server_mount(struct lustre_sb_info *lsi, unsigned long mflags)
                 GOTO(out_mnt, rc);
 
         /* Set up all obd devices for service */
-        rc = server_start_targets(lsi, dt);
+        rc = server_start_targets(lsi);
         if (rc < 0) {
                 CERROR("Unable to start targets: %d\n", rc);
                 GOTO(out_mnt, rc);
@@ -1433,13 +1526,12 @@ static int lmd_parse(char *options, struct lustre_mount_data *lmd)
                 int time_min = 2 * (CONNECTION_SWITCH_MAX +
                                2 * INITIAL_CONNECT_TIMEOUT);
 
-                /* Find next opt */
-                s2 = strchr(s1, ',');
-
                 /* Skip whitespace and extra commas */
                 while (*s1 == ' ' || *s1 == ',')
                         s1++;
-                /* s2 should be pointing at the next comma after this opt */
+
+                /* Find next opt */
+                s2 = strchr(s1, ',');
 
                 /* Client options are parsed in ll_options: eg. flock,
                    user_xattr, acl */
@@ -1638,14 +1730,15 @@ void lustre_server_umount(struct lustre_sb_info *lsi)
                          * to .put_super, so we better make sure we clean up! */
                         obd->obd_force = 1;
                         class_manual_cleanup(obd);
-                        /* Normal cleanup should stop osd */
+                        /* Normal cleanup should have stopped OSD;
+                           clear our pointer */
                         lsi->lsi_dt_dev = NULL;
                 } else {
                         CERROR("no obd %s\n", lsi->lsi_svname);
                 }
         }
 
-        /* if MDS start with --nomgs, don't stop MGS then */
+        /* if MDS started with --nomgs, then don't stop MGS */
         if (IS_MGS(lsi) && !(lsi->lsi_lmd->lmd_flags & LMD_FLG_NOMGS)) {
                 /* XXX: OSD isn't part of MGS stack yet
                  * so shutdown OSD manually with stop_osd below */

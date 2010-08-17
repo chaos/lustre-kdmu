@@ -44,6 +44,7 @@
 #include <obd.h>
 #include <lprocfs_status.h>
 #include <lu_time.h>
+#include <obd_class.h>
 
 #include <lustre/lustre_idl.h>
 
@@ -61,32 +62,30 @@ static int osd_stats_init(struct osd_device *osd)
         ENTRY;
 
         osd->od_stats = lprocfs_alloc_stats(LPROC_OSD_LAST, 0);
-        if (osd->od_stats != NULL) {
-                result = lprocfs_register_stats(osd->od_proc_entry, "stats",
-                                                osd->od_stats);
-                if (result)
-                        GOTO(out, result);
+        if (osd->od_stats == NULL)
+                RETURN(-ENOMEM);
 
-                lprocfs_counter_init(osd->od_stats, LPROC_OSD_GET_PAGE,
-                                     LPROCFS_CNTR_AVGMINMAX|LPROCFS_CNTR_STDDEV,
-                                     "get_page", "usec");
-                lprocfs_counter_init(osd->od_stats, LPROC_OSD_NO_PAGE,
-                                     LPROCFS_CNTR_AVGMINMAX,
-                                     "get_page_failures", "num");
-                lprocfs_counter_init(osd->od_stats, LPROC_OSD_CACHE_ACCESS,
-                                     LPROCFS_CNTR_AVGMINMAX,
-                                     "cache_access", "pages");
-                lprocfs_counter_init(osd->od_stats, LPROC_OSD_CACHE_HIT,
-                                     LPROCFS_CNTR_AVGMINMAX,
-                                     "cache_hit", "pages");
-                lprocfs_counter_init(osd->od_stats, LPROC_OSD_CACHE_MISS,
-                                     LPROCFS_CNTR_AVGMINMAX,
-                                     "cache_miss", "pages");
-        } else
-                result = -ENOMEM;
+        result = lprocfs_register_stats(osd->od_proc_entry, "stats",
+                                        osd->od_stats);
+        if (result)
+                RETURN(result);
 
-out:
-        RETURN(result);
+        lprocfs_counter_init(osd->od_stats, LPROC_OSD_GET_PAGE,
+                             LPROCFS_CNTR_AVGMINMAX|LPROCFS_CNTR_STDDEV,
+                             "get_page", "usec");
+        lprocfs_counter_init(osd->od_stats, LPROC_OSD_NO_PAGE,
+                             LPROCFS_CNTR_AVGMINMAX,
+                             "get_page_failures", "num");
+        lprocfs_counter_init(osd->od_stats, LPROC_OSD_CACHE_ACCESS,
+                             LPROCFS_CNTR_AVGMINMAX,
+                             "cache_access", "pages");
+        lprocfs_counter_init(osd->od_stats, LPROC_OSD_CACHE_HIT,
+                             LPROCFS_CNTR_AVGMINMAX,
+                             "cache_hit", "pages");
+        lprocfs_counter_init(osd->od_stats, LPROC_OSD_CACHE_MISS,
+                             LPROCFS_CNTR_AVGMINMAX,
+                             "cache_miss", "pages");
+        RETURN(0);
 }
 
 int osd_procfs_init(struct osd_device *osd, const char *name)
@@ -97,14 +96,18 @@ int osd_procfs_init(struct osd_device *osd, const char *name)
         int                  rc;
         ENTRY;
 
-        type = ld->ld_type->ldt_obd_type;
-        LASSERT(type);
-
-        if (osd->od_proc_entry)
+        if (osd->od_proc_entry != NULL)
                 RETURN(0);
 
+        type = class_search_type(ld->ld_type->ldt_name);
+        if (type == NULL) {
+                CERROR("Can't find obd_type for ldt_type %s\n",
+                       ld->ld_type->ldt_name);
+                RETURN(0);
+        }
+
         LASSERT(name != NULL);
-        LASSERT(type != NULL);
+        LASSERT(type->typ_procroot != NULL);
 
         /* Find the type procroot and add the proc entry for this device */
         lprocfs_osd_init_vars(&lvars);
@@ -118,6 +121,8 @@ int osd_procfs_init(struct osd_device *osd, const char *name)
         }
 
         rc = osd_stats_init(osd);
+        if (rc)
+                CERROR("Error %d setting up osdstats for %s\n", rc, name);
 
         EXIT;
 out:
@@ -130,13 +135,13 @@ int osd_procfs_fini(struct osd_device *osd)
 {
         ENTRY;
 
-        if (osd->od_stats)
-                lprocfs_free_stats(&osd->od_stats);
-
         if (osd->od_proc_entry) {
                 lprocfs_remove(&osd->od_proc_entry);
                 osd->od_proc_entry = NULL;
         }
+
+        if (osd->od_stats)
+                lprocfs_free_stats(&osd->od_stats);
 
         RETURN(0);
 }

@@ -472,7 +472,7 @@ static int add_mgsnids(char *options, const char *params)
 {
         char *ptr = (char *)params;
         char tmp, *sep;
-        
+
         while ((ptr = strstr(ptr, PARAM_MGSNODE)) != NULL) {
                 sep = strchr(ptr, ' ');
                 if (sep != NULL) {
@@ -637,10 +637,16 @@ int main(int argc, char *const argv[])
                 return rc;
         }
 
-        if (!is_client && (get_mountdata(source, &ldd) == 0)) {
+        if (!is_client) {
                 /* For OSD, we no longer read the MOUNT_DATA_FILE from within
                  * Lustre. But for ldiskfs, we can continue to read it here,
                  * and convert critical info into mount options. */
+                rc = get_mountdata(source, &ldd);
+                if (rc) {
+                        fprintf(stderr, "%s: %s failed to read permanent mount"
+                                " data: %s\n", progname, target, strerror(rc));
+                        return rc;
+                }
 
                 if (ldd.ldd_flags & LDD_F_NEED_INDEX) {
                         fprintf(stderr, "%s: %s has no index assigned "
@@ -664,6 +670,12 @@ int main(int argc, char *const argv[])
                         } else {
                                 add_mgsnids(options, ldd.ldd_params);
                         }
+                }
+                /* Better have an mgsnid by now */
+                if (!have_mgsnid) {
+                        fprintf(stderr, "%s: missing option mgsnode=<nid>\n",
+                                progname);
+                        return EINVAL;
                 }
 
                 append_option(options, "svname=");
