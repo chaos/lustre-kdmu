@@ -846,6 +846,7 @@ build_lustre() {
         # first, the userspace tools RPMs
         if ! $RPMBUILD $targets ${rpmbuildopt} $pkg/$pkg.spec \
             --nodeps \
+            --define "configure_args ${CONFIGURE_FLAGS}" \
             --define "_tmppath /var/tmp" \
             --define "_topdir $TOPDIR" 2>&1; then
             return 255
@@ -856,6 +857,7 @@ build_lustre() {
             # if ! $RPMBUILD -ts lustre/$pkg/$pkg-*.tar.gz
             if ! $RPMBUILD -bs $pkg/$pkg.spec \
                 --nodeps \
+                --define "configure_args ${CONFIGURE_FLAGS}" \
                 --define "_tmppath /var/tmp" \
                 --define "_topdir $TOPDIR" 2>&1; then
                 return 255
@@ -866,8 +868,9 @@ build_lustre() {
         if ! $RPMBUILD $targets ${rpmbuildopt} $pkg/$rpmmod.spec \
             --nodeps \
             --define "require_kdir ${linux}" \
-            ${linuxobJ:+--define "require_kobj ${linuxobj}"} \
+            ${linuxobj:+--define "require_kobj ${linuxobj}"} \
             ${spldir:+--define "require_spldir ${spldir}"} \
+            --define "configure_args ${CONFIGURE_FLAGS}" \
             --define "_tmppath /var/tmp" \
             --define "_topdir $TOPDIR" 2>&1; then
             return 255
@@ -881,6 +884,7 @@ build_lustre() {
                 --define "require_kdir ${linux}" \
                 ${linuxobj:+--define "require_kobj ${linuxobj}"} \
                 ${spldir:+--define "require_spldir ${spldir}"} \
+                --define "configure_args ${CONFIGURE_FLAGS}" \
                 --define "_tmppath /var/tmp" \
                 --define "_topdir $TOPDIR" 2>&1; then
                 return 255
