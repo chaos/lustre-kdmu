@@ -427,7 +427,6 @@ int osd_get_bufs(const struct lu_env *env, struct dt_object *d, loff_t pos,
                 if (lb->page == NULL)
                         GOTO(cleanup, rc = -ENOMEM);
 
-#if 0
                 /* DLM locking protects us from write and truncate competing
                  * for same region, but truncate can leave dirty page in the
                  * cache. it's possible the writeout on a such a page is in
@@ -436,9 +435,7 @@ int osd_get_bufs(const struct lu_env *env, struct dt_object *d, loff_t pos,
                  * be able to proceed in filter_commitrw_write(). thus let's
                  * just wait for writeout completion, should be rare enough.
                  * -bzzz */
-                if (obd->u.filter.fo_writethrough_cache)
-                        wait_on_page_writeback(lb->page);
-#endif
+                wait_on_page_writeback(lb->page);
                 BUG_ON(PageWriteback(lb->page));
 
                 lu_object_get(&d->do_lu);
