@@ -370,7 +370,8 @@ filter_commitrw_write(const struct lu_env *env, struct filter_device *ofd,
         if (rc)
                 GOTO(out_stop, rc);
 
-        if (buf.lb_buf)
+        /* XXX - bug 23345 - disabling with the DMU-OSD because it asserts */
+        if (buf.lb_buf && ofd->ofd_dt_conf.ddp_mount_type != LDD_MT_ZFS)
                 rc = dt_xattr_set(env, o, &buf, XATTR_NAME_FID, 0, th, BYPASS_CAPA);
         if (rc)
                 GOTO(out_stop, rc);

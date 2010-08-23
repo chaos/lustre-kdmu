@@ -199,6 +199,7 @@ struct lustre_mount_data {
                                         existing MGS services */
 
 #define lmd_is_client(x) ((x)->lmd_flags & LMD_FLG_CLIENT)
+#define devname_is_client(devname) strstr(devname, ":/")
 
 
 /****************** last_rcvd file *********************/
