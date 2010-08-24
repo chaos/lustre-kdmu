@@ -1351,7 +1351,7 @@ static int mgs_write_log_failnids(struct obd_device *obd,
 
         /* Pull failnid info out of params string */
         while (class_find_param(ptr, PARAM_FAILNODE, &ptr) == 0) {
-                while (class_parse_nid(ptr, &nid, &ptr) == 0) {
+                while (class_parse_nid(ptr, &nid, &ptr, 0) == 0) {
                         if (failnodeuuid == NULL) {
                                 /* We don't know the failover node name,
                                    so just use the first nid as the uuid */

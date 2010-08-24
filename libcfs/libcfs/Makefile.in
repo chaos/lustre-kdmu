@@ -26,7 +26,7 @@ endif
 
 libcfs-all-objs := debug.o nidstrings.o lwt.o module.o tracefile.o watchdog.o \
 	libcfs_string.o params_tree.o upcall_cache.o libcfs_sysctl.o hash.o \
-	kernel_user_comm.o
+	kernel_user_comm.o prng.o
 
 libcfs-objs := $(libcfs-linux-objs) $(libcfs-all-objs)
 

@@ -735,7 +735,6 @@ static struct thandle *osd_trans_create(const struct lu_env *env,
         struct osd_thandle *oh;
         struct thandle *th;
         dmu_tx_t *tx;
-        int hook_res;
         ENTRY;
 
         tx = udmu_tx_create(&osd->od_objset);
@@ -753,14 +752,6 @@ static struct thandle *osd_trans_create(const struct lu_env *env,
         th = &oh->ot_super;
         th->th_dev = dt;
         th->th_result = 0;
-        lu_device_get(&dt->dd_lu_dev);
-        lu_context_init(&th->th_ctx, LCT_TX_HANDLE);
-        lu_context_enter(&th->th_ctx);
-
-        hook_res = dt_txn_hook_start(env, dt, th);
-        if (hook_res != 0)
-                RETURN(ERR_PTR(hook_res));
-
         RETURN(th);
 }
 
@@ -775,9 +766,13 @@ static int osd_trans_start(const struct lu_env *env, struct dt_device *d,
         ENTRY;
 
         oh = container_of0(th, struct osd_thandle, ot_super);
+        LASSERT(oh);
+        LASSERT(oh->ot_tx);
 
-        /* TODO: hook_start shoud be here, so upper layers will be able to
-         * declare own transaction usage */
+        rc = dt_txn_hook_start(env, d, th);
+        if (rc != 0)
+                RETURN(ERR_PTR(rc));
+
         rc = udmu_tx_assign(oh->ot_tx, TXG_WAIT);
         if (unlikely(rc != 0)) {
                 /* dmu will call commit callback with error code during abort */
@@ -786,6 +781,9 @@ static int osd_trans_start(const struct lu_env *env, struct dt_device *d,
                 /* add commit callback */
                 udmu_tx_cb_register(oh->ot_tx, osd_trans_commit_cb, (void *)oh);
                 oh->ot_assigned = 1;
+                lu_context_init(&th->th_ctx, LCT_TX_HANDLE);
+                lu_context_enter(&th->th_ctx);
+                lu_device_get(&d->dd_lu_dev);
         }
 
         RETURN(-rc);
@@ -805,16 +803,9 @@ static int osd_trans_stop(const struct lu_env *env, struct thandle *th)
         oh = container_of0(th, struct osd_thandle, ot_super);
 
         if (oh->ot_assigned == 0) {
-
                 LASSERT(oh->ot_tx);
                 udmu_tx_abort(oh->ot_tx);
-
-                lu_device_put(&th->th_dev->dd_lu_dev);
-                th->th_dev = NULL;
-                lu_context_exit(&th->th_ctx);
-                lu_context_fini(&th->th_ctx);
                 OBD_FREE_PTR(oh);
-
                 RETURN(0);
         }
 
@@ -823,7 +814,6 @@ static int osd_trans_stop(const struct lu_env *env, struct thandle *th)
                 CERROR("Failure in transaction hook: %d\n", result);
 
         txg = udmu_get_txg(&osd->od_objset, oh->ot_tx);
-        
         udmu_tx_commit(oh->ot_tx);
 
         if (th->th_sync)

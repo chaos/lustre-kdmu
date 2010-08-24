@@ -426,7 +426,7 @@ struct nid_stat;
 extern int lprocfs_add_clear_entry(struct obd_device *obd,
                                    libcfs_param_entry_t *entry);
 extern int lprocfs_exp_setup(struct obd_export *exp,
-                             lnet_nid_t *peer_nid, int *newnid);
+                             lnet_nid_t *peer_nid, int reconnect, int *newnid);
 extern int lprocfs_exp_cleanup(struct obd_export *exp);
 extern libcfs_param_entry_t *
 lprocfs_add_simple(libcfs_param_entry_t *root, char *name,
@@ -761,8 +761,8 @@ static inline void lprocfs_free_md_stats(struct obd_device *obddev)
 struct obd_export;
 static inline int lprocfs_add_clear_entry(struct obd_export *exp)
 { return 0; }
-static inline int lprocfs_exp_setup(struct obd_export *exp,
-                                    lnet_nid_t *peer_nid, int *newnid)
+static inline int lprocfs_exp_setup(struct obd_export *exp,lnet_nid_t *peer_nid,
+                                    int reconnect, int *newnid)
 { return 0; }
 static inline int lprocfs_exp_cleanup(struct obd_export *exp)
 { return 0; }
