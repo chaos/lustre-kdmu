@@ -57,6 +57,7 @@
 #include <ctype.h>
 #include <limits.h>
 #include "mount_utils.h"
+#include <lustre_param.h>
 
 #define MAX_HW_SECTORS_KB_PATH  "queue/max_hw_sectors_kb"
 #define MAX_SECTORS_KB_PATH     "queue/max_sectors_kb"
@@ -68,6 +69,7 @@ int          nomtab = 0;
 int          fake = 0;
 int          force = 0;
 int          retry = 0;
+int          have_mgsnid = 0;
 int          md_stripe_cache_size = 16384;
 char         *progname = NULL;
 
@@ -273,6 +275,13 @@ static void append_option(char *options, const char *one)
         strcat(options, one);
 }
 
+static void append_mgsnid(char *options, const char *val)
+{
+        append_option(options, PARAM_MGSNODE);
+        strcat(options, val);
+        have_mgsnid++;
+}
+
 /* Replace options with subset of Lustre-specific options, and
    fill in mount flags */
 int parse_options(char *orig_options, int *flagp)
@@ -291,9 +300,9 @@ int parse_options(char *orig_options, int *flagp)
                  * manner */
                 arg = opt;
                 val = strchr(opt, '=');
-                /* please note that some ldiskfs mount options are also in the form
-                 * of param=value. We should pay attention not to remove those
-                 * mount options, see bug 22097. */
+                /* please note that some ldiskfs mount options are also in the
+                 * form of param=value. We should pay attention not to remove
+                 * those mount options, see bug 22097. */
                 if (val && strncmp(arg, "md_stripe_cache_size", 20) == 0) {
                         md_stripe_cache_size = atoi(val + 1);
                 } else if (val && strncmp(arg, "retry", 5) == 0) {
@@ -303,9 +312,8 @@ int parse_options(char *orig_options, int *flagp)
                         else if (retry < 0)
                                 retry = 0;
                 } else if (val && strncmp(opt, "mgs", 3) == 0) {
-                        strcat(options, "mgs");
-                        strcat(options, val);
-                        strcat(options, ",");
+                        /* mgs*=val (no val for plain "mgs" option) */
+                        append_mgsnid(options, val + 1);
                 } else if (val && strncmp(arg, "mgssec", 6) == 0) {
                         append_option(options, opt);
                 } else if (strncmp(opt, "force", 5) == 0) {
