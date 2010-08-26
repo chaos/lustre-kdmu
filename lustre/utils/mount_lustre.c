@@ -311,8 +311,8 @@ int parse_options(char *orig_options, int *flagp)
                                 retry = MAX_RETRIES;
                         else if (retry < 0)
                                 retry = 0;
-                } else if (val && strncmp(opt, "mgs", 3) == 0) {
-                        /* mgs*=val (no val for plain "mgs" option) */
+                } else if (val && strncmp(opt, PARAM_MGSNODE,
+                                          sizeof(PARAM_MGSNODE)) == 0) {
                         append_mgsnid(options, val + 1);
                 } else if (val && strncmp(arg, "mgssec", 6) == 0) {
                         append_option(options, opt);
