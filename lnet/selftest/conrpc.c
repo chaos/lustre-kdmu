@@ -334,7 +334,7 @@ int
 lstcon_rpc_trans_postwait(lstcon_rpc_trans_t *trans, int timeout)
 {
         lstcon_rpc_t  *crpc;
-        int            rc;
+        long           rc;
 
         if (cfs_list_empty(&trans->tas_rpcs_list))
                 return 0;

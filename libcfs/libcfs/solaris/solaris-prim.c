@@ -267,49 +267,50 @@ cfs_waitq_wait(struct cfs_waitlink *link, cfs_task_state_t state)
         mutex_exit(&link->cfswl_lock);
 }
 
-static inline int64_t
-cfs_waitq_timedwait_internal(struct cfs_waitlink *link,
-                             cfs_task_state_t state,
-                             int64_t timeout)
-{
-        clock_t expire = lbolt + timeout;
-        clock_t ret;
-
-        /* the following check is only needed because Solaris's
-         * cv_timedwait currently does:
-         *         if (tim <= lbolt) return (-1); */
-        if (expire <= 0)
-                expire = CFS_MAX_SCHEDULE_TIMEOUT;
-        
-        mutex_enter(&link->cfswl_lock);
-        if (link->cfswl_evhit == 0) {
-                if (state == CFS_TASK_INTERRUPTIBLE) {
-                        cv_timedwait_sig(&link->cfswl_cv, &link->cfswl_lock,
-                            expire);
-                } else {
-                        cv_timedwait(&link->cfswl_cv, &link->cfswl_lock,
-                            expire);
-                }
-        }
-        link->cfswl_evhit = 0;
-        mutex_exit(&link->cfswl_lock);
-
-        ret = expire - lbolt;
-
-        return (ret < 0 ? 0 : ret);
-}
-
 int64_t
 cfs_waitq_timedwait(struct cfs_waitlink *link,
                     cfs_task_state_t state,
                     int64_t timeout)
 {
-        if (timeout == CFS_MAX_SCHEDULE_TIMEOUT) {
-                cfs_waitq_wait(link, state);
-                return (0); /* caller shouldn't care for rc */
-        }
+        clock_t ret = timeout;
 
-        return (cfs_waitq_timedwait_internal(link, state, timeout));
+        if (timeout == 0)
+                return 0;
+
+        mutex_enter(&link->cfswl_lock);
+        if (link->cfswl_evhit == 0) {
+                if (state == CFS_TASK_INTERRUPTIBLE) {
+                        int64_t expire = 0;
+
+                        if (!(curproc->p_flag & SSYS)) {
+                                expire = ddi_get_lbolt64() + timeout;
+                                if (expire <= 0)
+                                        expire = INT64_MAX;
+                        }
+
+                        ret = cv_reltimedwait_sig(&link->cfswl_cv,
+                                                  &link->cfswl_lock,
+                                                  timeout, TR_CLOCK_TICK);
+                        if (ret == 0) {
+                                int64_t now = ddi_get_lbolt64();
+                                LASSERT(expire != 0);
+                                if (now >= expire) {
+                                        ret = 0;
+                                } else {
+                                        LASSERT(expire - now <= timeout);
+                                        ret = (clock_t)(expire - now);
+                                }
+                        }
+                } else {
+                        ret = cv_reltimedwait(&link->cfswl_cv,
+                                              &link->cfswl_lock,
+                                              timeout, TR_CLOCK_TICK);
+                }
+        }
+        link->cfswl_evhit = 0;
+        mutex_exit(&link->cfswl_lock);
+
+        return (ret < 0 ? 0 : ret);
 }
 
 void
@@ -445,7 +446,7 @@ cfs_timer_arm(cfs_timer_t *t, cfs_time_t deadline)
                         t->cfstim_count--;
                 }
         }
-        delta = deadline - lbolt;
+        delta = deadline - ddi_get_lbolt();
         t->cfstim_deadline = deadline;
         t->cfstim_count++;
         LASSERT(t->cfstim_count);

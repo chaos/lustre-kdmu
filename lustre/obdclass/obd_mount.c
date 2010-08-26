@@ -1808,7 +1808,8 @@ static struct dt_device *server_kernel_mount(struct lustre_sb_info *lsi,
 static void server_wait_finished(struct lustre_sb_info *lsi)
 {
        cfs_waitq_t             waitq;
-       int                     rc, waited = 0;
+       long                    rc;
+       int                     waited = 0;
        cfs_sigset_t            blocked;
 
        cfs_waitq_init(&waitq);

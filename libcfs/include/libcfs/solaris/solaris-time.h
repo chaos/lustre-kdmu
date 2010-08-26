@@ -133,7 +133,7 @@ typedef long cfs_duration_t;
 
 static inline cfs_time_t cfs_time_current(void)
 {
-        return lbolt;
+        return ddi_get_lbolt();
 }
 
 static inline time_t cfs_time_current_sec(void)
@@ -192,15 +192,7 @@ static inline void cfs_duration_nsec(cfs_duration_t d, struct timespec *s)
 
 static inline __u64 cfs_time_current_64(void)
 {
-#if defined(_LP64)
-        return (__u64)lbolt64;
-#else
-        __u64 t;
-
-        t = lbolt64;
-        t = atomic_cas_64((volatile uint64_t *)&lbolt64, t, t);
-        return (t);
-#endif /* _LP64 */
+        return (__u64)ddi_get_lbolt64();
 }
 
 static inline __u64 cfs_time_add_64(__u64 t, __u64 d)

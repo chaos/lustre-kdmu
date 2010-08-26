@@ -42,6 +42,7 @@
 #include <vm/page.h>
 #include <vm/vm_dep.h>
 #include <vm/seg_kpm.h>
+#include <vm/seg_kmem.h>
 
 #define DEBUG_SUBSYSTEM S_LNET
 

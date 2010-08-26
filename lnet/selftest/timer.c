@@ -178,7 +178,7 @@ stt_check_timers (cfs_time_t *last)
 int
 stt_timer_main (void *arg)
 {
-        int rc = 0;
+        long rc = 0;
         UNUSED(arg);
 
         cfs_daemonize("st_timer");

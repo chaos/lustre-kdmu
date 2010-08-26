@@ -344,11 +344,6 @@ do {                                                            \
 #define __cfs_wait_event_timeout(wq, condition, timeout, ret)   \
 do {                                                            \
         struct cfs_waitlink __wait;                             \
-        clock_t             __expire = lbolt + (timeout);       \
-        clock_t             __wret   = 0;                       \
-                                                                \
-        if (__expire <= 0)                                      \
-                __expire = CFS_MAX_SCHEDULE_TIMEOUT;            \
                                                                 \
         cfs_waitlink_init(&__wait);                             \
         cfs_waitq_add(&(wq), &__wait);                          \
@@ -358,16 +353,17 @@ do {                                                            \
                 }                                               \
                 mutex_enter(&__wait.cfswl_lock);                \
                 if (!__wait.cfswl_evhit)                        \
-                        __wret = cv_timedwait(&__wait.cfswl_cv, \
-                                              &__wait.cfswl_lock,\
-                                              __expire);        \
+                        (ret) = cv_reltimedwait(&__wait.cfswl_cv,\
+                                                 &__wait.cfswl_lock,\
+                                                 (ret),         \
+                                                 TR_CLOCK_TICK);\
                 __wait.cfswl_evhit = 0;                         \
                 mutex_exit(&__wait.cfswl_lock);                 \
                 if (condition) {                                \
                         break;                                  \
                 }                                               \
-                if (__wret == -1) {                             \
-                        (ret) = 1;                              \
+                if ((ret) == -1) {                              \
+                        (ret) = 0;                              \
                         break;                                  \
                 }                                               \
         }                                                       \
@@ -376,12 +372,13 @@ do {                                                            \
 } while (0)
 
 /*
- * retval == 0; condition met; we're good.
- * retval > 0; timed out.
+ * retval > 0; condition met; we're good.
+ * retval == 0; timed out.
 */
 #define cfs_waitq_wait_event_timeout(wq, condition, timeout, rc)     \
 do {                                                                 \
-        rc = 0;                                                      \
+        typecheck(clock_t, rc);                                      \
+        rc = timeout;                                                \
         if (!(condition))                                            \
                 __cfs_wait_event_timeout(wq, condition, timeout, rc);\
 } while (0)
@@ -389,11 +386,6 @@ do {                                                                 \
 #define __cfs_wait_event_interruptible_timeout(wq, condition, timeout, ret) \
 do {                                                            \
         struct cfs_waitlink __wait;                             \
-        clock_t             __expire = lbolt + (timeout);       \
-        clock_t             __wret   = 1;                       \
-                                                                \
-        if (__expire <= 0)                                      \
-                __expire = CFS_MAX_SCHEDULE_TIMEOUT;            \
                                                                 \
         cfs_waitlink_init(&__wait);                             \
         cfs_waitq_add(&(wq), &__wait);                          \
@@ -403,20 +395,20 @@ do {                                                            \
                 }                                               \
                 mutex_enter(&__wait.cfswl_lock);                \
                 if (!__wait.cfswl_evhit)                        \
-                        __wret = cv_timedwait_sig(&__wait.cfswl_cv,\
-                                                  &__wait.cfswl_lock,\
-                                                  __expire);    \
+                        (ret) = cv_reltimedwait_sig(&__wait.cfswl_cv,\
+                                                     &__wait.cfswl_lock,\
+                                                     (ret),     \
+                                                     TR_CLOCK_TICK);\
                 __wait.cfswl_evhit = 0;                         \
                 mutex_exit(&__wait.cfswl_lock);                 \
                 if (condition) {                                \
                         break;                                  \
                 }                                               \
-                if (__wret == 0) {                              \
+                if ((ret) == 0) {                               \
                         (ret) = -ERESTARTSYS;                   \
                         break;                                  \
-                }                                               \
-                if (__wret == -1) {                             \
-                        (ret) = 1;                              \
+                } else if ((ret) == -1) {                       \
+                        (ret) = 0;                              \
                         break;                                  \
                 }                                               \
         }                                                       \
@@ -425,16 +417,17 @@ do {                                                            \
 } while (0)
 
 /*
- * retval == 0; condition met; we're good.
+ * retval > 0; condition met; we're good.
  * retval < 0; interrupted by signal.
- * retval > 0; timed out.
+ * retval == 0; timed out.
 */
 #define cfs_waitq_wait_event_interruptible_timeout(wq, condition, timeout, rc)\
-do {                                                                   \
-        rc = 0;                                                      \
-        if (!(condition))                                            \
-                __cfs_wait_event_interruptible_timeout((wq), (condition),\
-                    (timeout), rc);                                  \
+do {                                                                          \
+        typecheck(clock_t, rc);                                               \
+        rc = timeout;                                                         \
+        if (!(condition))                                                     \
+                __cfs_wait_event_interruptible_timeout((wq), (condition),     \
+                    (timeout), rc);                                           \
 } while (0)
 
 #define cfs_request_module(name, ...)        0

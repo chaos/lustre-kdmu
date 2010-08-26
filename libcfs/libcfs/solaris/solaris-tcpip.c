@@ -263,14 +263,11 @@ static inline void
 libcfs_sock_notifier_twait(cfs_sock_notifier_t *ntf, int timeout, int *bflag_p)
 {
         int     rc          = 0;
-        clock_t finish_time = lbolt + timeout * hz;
-
-        if (finish_time <= 0)
-                finish_time = CFS_MAX_SCHEDULE_TIMEOUT;
         
         mutex_enter(&ntf->sntf_lock);
         while (ntf->sntf_state == CFS_SNTF_EMPTY && rc != -1)
-                rc = cv_timedwait(&ntf->sntf_cv, &ntf->sntf_lock, finish_time);
+                rc = cv_reltimedwait(&ntf->sntf_cv, &ntf->sntf_lock,
+                                     timeout * hz, TR_SEC);
 
         *bflag_p = ntf->sntf_state & CFS_SNTF_BREAK;
         
