@@ -304,7 +304,8 @@ typedef struct {
 #define LNET_COOKIE_TYPE_MD    1
 #define LNET_COOKIE_TYPE_ME    2
 #define LNET_COOKIE_TYPE_EQ    3
-#define LNET_COOKIE_TYPES      4
+#define LNET_COOKIE_TYPE_BITS  2
+#define LNET_COOKIE_TYPES      (1 << LNET_COOKIE_TYPE_BITS)
 /* LNET_COOKIE_TYPES must be a power of 2, so the cookie type can be
  * extracted by masking with (LNET_COOKIE_TYPES - 1) */
 
@@ -508,12 +509,20 @@ typedef struct {
 
 /* Options for lnet_portal_t::ptl_options */
 #define LNET_PTL_LAZY               (1 << 0)
+#define LNET_PTL_MATCH_UNIQUE       (1 << 1)    /* unique match, for RDMA */
+#define LNET_PTL_MATCH_WILDCARD     (1 << 2)    /* wildcard match, request portal */
+
+/* ME hash of RDMA portal */
+#define LNET_PORTAL_HASH_BITS        8
+#define LNET_PORTAL_HASH_SIZE       (1 << LNET_PORTAL_HASH_BITS)
+
 typedef struct {
-        cfs_list_t           ptl_ml;   /* match list */
-        cfs_list_t           ptl_msgq; /* messages blocking for MD */
-        __u64                ptl_ml_version;    /* validity stamp, only changed for new attached MD */
-        __u64                ptl_msgq_version;  /* validity stamp */
-        unsigned int         ptl_options;
+        cfs_list_t       *ptl_mhash;            /* match hash */
+        cfs_list_t        ptl_mlist;            /* match list */
+        cfs_list_t        ptl_msgq;             /* messages blocking for MD */
+        __u64             ptl_ml_version;       /* validity stamp, only changed for new attached MD */
+        __u64             ptl_msgq_version;     /* validity stamp */
+        unsigned int      ptl_options;
 } lnet_portal_t;
 
 /* Router Checker states */

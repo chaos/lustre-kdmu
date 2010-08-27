@@ -413,7 +413,9 @@ static int client_common_fill_super(struct super_block *sb, char *md, char *dt)
         CDEBUG(D_SUPER, "rootfid "DFID"\n", PFID(&sbi->ll_root_fid));
 
         sb->s_op = &lustre_super_operations;
+#if THREAD_SIZE >= 8192
         sb->s_export_op = &lustre_export_operations;
+#endif
 
         /* make root inode
          * XXX: move this to after cbd setup? */
@@ -767,6 +769,11 @@ static int ll_options(char *options, int *flags)
                         goto next;
                 }
                 tmp = ll_set_opt("som_preview", s1, LL_SBI_SOM_PREVIEW);
+                if (tmp) {
+                        *flags |= tmp;
+                        goto next;
+                }
+                tmp = ll_set_opt("32bitapi", s1, LL_SBI_32BIT_API);
                 if (tmp) {
                         *flags |= tmp;
                         goto next;
@@ -1589,7 +1596,7 @@ void ll_update_inode(struct inode *inode, struct lustre_md *md)
                         inode->i_size = body->size;
 
                         CDEBUG(D_VFSTRACE, "inode=%lu, updating i_size %llu\n",
-                               inode->i_ino, body->size);
+                               inode->i_ino, (unsigned long long)body->size);
                 }
 
                 if (body->valid & OBD_MD_FLBLOCKS)
