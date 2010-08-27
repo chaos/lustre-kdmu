@@ -341,7 +341,7 @@ do {                                                            \
                                                1, rc);          \
 } while (0)
 
-#define __cfs_wait_event_timeout(wq, condition, timeout, ret)   \
+#define __cfs_wait_event_timeout(wq, condition, ret)            \
 do {                                                            \
         struct cfs_waitlink __wait;                             \
                                                                 \
@@ -380,10 +380,10 @@ do {                                                                 \
         typecheck(clock_t, rc);                                      \
         rc = timeout;                                                \
         if (!(condition))                                            \
-                __cfs_wait_event_timeout(wq, condition, timeout, rc);\
+                __cfs_wait_event_timeout(wq, condition, rc);         \
 } while (0)
 
-#define __cfs_wait_event_interruptible_timeout(wq, condition, timeout, ret) \
+#define __cfs_wait_event_interruptible_timeout(wq, condition, ret) \
 do {                                                            \
         struct cfs_waitlink __wait;                             \
                                                                 \
@@ -426,8 +426,7 @@ do {                                                                          \
         typecheck(clock_t, rc);                                               \
         rc = timeout;                                                         \
         if (!(condition))                                                     \
-                __cfs_wait_event_interruptible_timeout((wq), (condition),     \
-                    (timeout), rc);                                           \
+                __cfs_wait_event_interruptible_timeout(wq, condition, rc);    \
 } while (0)
 
 #define cfs_request_module(name, ...)        0

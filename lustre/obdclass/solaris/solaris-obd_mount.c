@@ -210,17 +210,6 @@ lustrefs_mount(vfs_t *vfsp, vnode_t *mvp, struct mounta *uap, cred_t *cr)
         }
         mutex_exit(&mvp->v_lock);
 
-        /*
-         * Make sure lustrefs_attach() got a chance to run
-         * and completed lustre initialization before
-         * we dive into lustre_mount().
-         */
-        if (ddi_install_driver(LUSTREFS_DRIVER) != DDI_SUCCESS) {
-                cmn_err(CE_WARN, "lustrefs_mount: Failed"
-                    " to install %s driver\n", LUSTREFS_DRIVER);
-                RETURN(ENOTACTIVE);
-        }
-
         inargs = kmem_alloc(MAX_MNTOPT_STR, KM_SLEEP);
         error = copyinstr(opts, inargs, (size_t)optlen, NULL);
         if (error)
