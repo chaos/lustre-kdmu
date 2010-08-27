@@ -293,6 +293,7 @@ struct filter_thread_info {
 
         /* Ops object filename */
         struct lu_name             fti_name;
+        struct ost_lvb             fti_lvb;
 };
 
 extern struct lu_context_key filter_txn_thread_key;
