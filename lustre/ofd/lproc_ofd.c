@@ -176,7 +176,7 @@ int lprocfs_filter_rd_fmd_max_age(char *page, char **start, off_t off,
         struct filter_device *ofd = filter_dev(obd->obd_lu_dev);
         int rc;
 
-        rc = snprintf(page, count, "%u\n", ofd->ofd_fmd_max_age / CFS_HZ);
+        rc = snprintf(page, count, "%li\n", ofd->ofd_fmd_max_age / CFS_HZ);
         return rc;
 }
 
@@ -263,7 +263,9 @@ int lprocfs_filter_wr_degraded(struct file *file, const char *buffer,
         if (rc)
                 return rc;
 
+        cfs_spin_lock(&ofd->ofd_flags_lock);
         ofd->ofd_raid_degraded = !!val;
+        cfs_spin_unlock(&ofd->ofd_flags_lock);
 
         return count;
 }
@@ -307,8 +309,10 @@ int lprocfs_filter_wr_syncjournal(struct file *file, const char *buffer,
         if (val < 0)
                 return -EINVAL;
 
+        cfs_spin_lock(&ofd->ofd_flags_lock);
         ofd->ofd_syncjournal = !!val;
         filter_slc_set(ofd);
+        cfs_spin_unlock(&ofd->ofd_flags_lock);
 
         return count;
 }
@@ -354,7 +358,9 @@ int lprocfs_filter_wr_sync_lock_cancel(struct file *file, const char *buffer,
         if (val < 0 || val > 2)
                 return -EINVAL;
 
+        cfs_spin_lock(&ofd->ofd_flags_lock);
         ofd->ofd_sync_lock_cancel = val;
+        cfs_spin_unlock(&ofd->ofd_flags_lock);
         return count;
 }
 

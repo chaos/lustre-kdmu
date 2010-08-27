@@ -371,7 +371,7 @@ static int lfs_setstripe(int argc, char **argv)
         }
         /* get the stripe offset */
         if (stripe_off_arg != NULL) {
-                st_offset = strtoul(stripe_off_arg, &end, 0);
+                st_offset = strtol(stripe_off_arg, &end, 0);
                 if (*end != '\0') {
                         fprintf(stderr, "error: %s: bad stripe offset '%s'\n",
                                 argv[0], stripe_off_arg);
@@ -2387,10 +2387,14 @@ static int lfs_changelog(int argc, char **argv)
                 time_t secs;
                 struct tm ts;
 
-                if (endrec && rec->cr_index > endrec)
+                if (endrec && rec->cr_index > endrec) {
+                        llapi_changelog_free(&rec);
                         break;
-                if (rec->cr_index < startrec)
+                }
+                if (rec->cr_index < startrec) {
+                        llapi_changelog_free(&rec);
                         continue;
+                }
 
                 secs = rec->cr_time >> 30;
                 gmtime_r(&secs, &ts);
