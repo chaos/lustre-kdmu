@@ -159,6 +159,7 @@ struct filter_device {
         cfs_spinlock_t           ofd_flags_lock;
         unsigned long            ofd_raid_degraded:1,
                                  ofd_syncjournal:1, /* sync journal on writes */
+                                 ofd_sync_lock_cancel:2;/* sync on lock cancel */
 
         /* sptlrpc stuff */
         cfs_rwlock_t             ofd_sptlrpc_lock;
