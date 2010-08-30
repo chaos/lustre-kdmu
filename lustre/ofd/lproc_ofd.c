@@ -176,7 +176,7 @@ int lprocfs_filter_rd_fmd_max_age(char *page, char **start, off_t off,
         struct filter_device *ofd = filter_dev(obd->obd_lu_dev);
         int rc;
 
-        rc = snprintf(page, count, "%li\n", ofd->ofd_fmd_max_age / CFS_HZ);
+        rc = snprintf(page, count, "%ld\n", ofd->ofd_fmd_max_age / CFS_HZ);
         return rc;
 }
 
