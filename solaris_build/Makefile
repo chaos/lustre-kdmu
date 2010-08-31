@@ -47,7 +47,9 @@ ONNV_TREE = ./onnv_147_h
 
 SOLARIS_INCL_DIRS = -I$(ONNV_TREE)/usr/src/uts/common
 
-SOLARIS_UINCL_DIRS = -I$(ONNV_TREE)/usr/src/head
+SOLARIS_UINCL_DIRS = -I$(ONNV_TREE)/usr/src/head \
+                     -I$(ONNV_TREE)/usr/src/lib/libzfs/common \
+                     -I$(ONNV_TREE)/usr/src/lib/libnvpair
 
 SOLARIS_KINCL_DIRS = -I$(ONNV_TREE)/usr/src/uts/intel      \
                      -I$(ONNV_TREE)/usr/src/uts/$(archstr)
@@ -105,6 +107,10 @@ MISC_PATH=lustre/lvfs
 OST_PATH=lustre/ost
 ECHO_PATH=lustre/obdecho
 
+MKFS_LUSTRE_SRCS   = $(LUSTRE_SOLARIS_UTILS_PATH)/mkfs_lustre.c
+
+MOUNT_LUSTRE_SRCS   = $(LUSTRE_SOLARIS_UTILS_PATH)/mount_lustre.c
+
 LOADGEN_SRCS        = $(LUSTRE_UTILS_PATH)/loadgen.c \
                       $(LUSTRE_UTILS_PATH)/lustre_cfg.c \
                       $(LUSTRE_UTILS_PATH)/obd.c
@@ -136,7 +142,8 @@ GENERIC_LIBCFS_SRCS = $(GENERIC_LIBCFS_PATH)/module.c \
                       $(GENERIC_LIBCFS_PATH)/params_tree.c \
                       $(GENERIC_LIBCFS_PATH)/libcfs_sysctl.c \
                       $(GENERIC_LIBCFS_PATH)/upcall_cache.c \
-                      $(GENERIC_LIBCFS_PATH)/hash.c
+                      $(GENERIC_LIBCFS_PATH)/hash.c \
+                      $(GENERIC_LIBCFS_PATH)/kernel_user_comm.c
 
 SOLARIS_LIBCFS_SRCS = $(SOLARIS_LIBCFS_PATH)/solaris-module.c \
                       $(SOLARIS_LIBCFS_PATH)/solaris-debug.c \
@@ -264,6 +271,9 @@ OST_SRCS           = $(OST_PATH)/ost_handler.c \
 ECHO_SRCS          = $(ECHO_PATH)/echo.c \
                      $(ECHO_PATH)/lproc_echo.c
 
+MKFS_LUSTRE_OBJS   = $(MKFS_LUSTRE_SRCS:.c=.o)
+MOUNT_LUSTRE_OBJS   = $(MOUNT_LUSTRE_SRCS:.c=.o)
+
 LOADGEN_OBJS        = $(LOADGEN_SRCS:.c=.o)
 LIBLUSTREAPI_A_OBJS = $(LIBLUSTREAPI_A_SRCS:.c=.o)
 LIBPTLCTL_A_OBJS    = $(LIBPTLCTL_A_SRCS:.c=.o)
@@ -273,7 +283,8 @@ LIB_LAPI_CFSUTIL_CMN_OBJS = $(LIB_LAPI_CFSUTIL_CMN_SRCS:.c=.o)
 PTHREAD_USER_UTILS_OBJS = $(LOADGEN_OBJS)
 USER_UTILS_OBJS     = $(LIBLUSTREAPI_A_OBJS) \
                       $(LIBPTLCTL_A_OBJS) $(LIBCFSUTIL_A_OBJS) \
-                      $(LIB_LAPI_CFSUTIL_CMN_OBJS)
+                      $(LIB_LAPI_CFSUTIL_CMN_OBJS) \
+                      $(MKFS_LUSTRE_OBJS) $(MOUNT_LUSTRE_OBJS)
 
 CFSD_OBJS           = $(CFSD_SRCS:.c=.o)
 
@@ -291,9 +302,14 @@ MISC_OBJS     = $(MISC_SRCS:%.c=kernel/%.o)
 OST_OBJS      = $(OST_SRCS:%.c=kernel/%.o)
 ECHO_OBJS     = $(ECHO_SRCS:%.c=kernel/%.o)
 
-LUSTREFS_OBJS = $(LIBCFS_OBJS) $(LNET_OBJS) $(KSOCKLND_OBJS) $(KO2IBLND_OBJS)
+# LUSTREFS_OBJS = $(LIBCFS_OBJS) $(LNET_OBJS) $(KSOCKLND_OBJS) $(KO2IBLND_OBJS)
+LUSTREFS_OBJS = $(LIBCFS_OBJS) $(LNET_OBJS) $(KSOCKLND_OBJS)
 LUSTREFS_OBJS += $(SELFTEST_OBJS) $(PTLRPC_OBJS) $(LDLM_OBJS) $(OBDCLASS_OBJS)
 LUSTREFS_OBJS += $(MISC_OBJS) $(OST_OBJS) $(ECHO_OBJS)
+
+MKFS_LUSTRE = $(LUSTRE_SOLARIS_UTILS_PATH)/mkfs.lustre
+MKFS_LUSTRE_LIBS = -lnvpair -lzfs
+MOUNT_LUSTRE = $(LUSTRE_SOLARIS_UTILS_PATH)/mount.lustre
 
 LOADGEN = $(LUSTRE_UTILS_PATH)/loadgen
 LIBLUSTREAPI_A = $(LUSTRE_UTILS_PATH)/liblustreapi.a
@@ -302,13 +318,20 @@ LIBCFSUTIL_A = $(GENERIC_LIBCFS_PATH)/libcfsutil.a
 
 CFSD = $(LUSTRE_SOLARIS_UTILS_PATH)/cfsd
 
-all: lustrefs $(LOADGEN) $(CFSD)
+all: lustrefs $(MKFS_LUSTRE) $(MOUNT_LUSTRE) $(LOADGEN) $(CFSD)
 
-LUSTREFS_LD_NEEDED = -N misc/ksocket -N misc/sol_ofs -N misc/ibtl
+# LUSTREFS_LD_NEEDED = -N misc/ksocket -N misc/sol_ofs -N misc/ibtl
+LUSTREFS_LD_NEEDED = -N misc/ksocket
 
 lustrefs: $(LUSTREFS_OBJS)
 	$(LD) -dy -r -o $@ $(LUSTREFS_OBJS) $(LUSTREFS_LD_NEEDED)
 	$(CTFMERGE) $(CTFLBL_FLAGS) -o $@ $(LUSTREFS_OBJS)
+
+$(MKFS_LUSTRE): $(MKFS_LUSTRE_OBJS)
+	$(CC) -o $@ $(UCFLAGS) $(MKFS_LUSTRE_OBJS) $(MKFS_LUSTRE_LIBS)
+
+$(MOUNT_LUSTRE): $(MOUNT_LUSTRE_OBJS)
+	$(CC) -o $@ $(UCFLAGS) $(MOUNT_LUSTRE_OBJS)
 
 LOADGEN_DEPS = $(LOADGEN_OBJS) $(LIBLUSTREAPI_A) $(LIBPTLCTL_A)
 LOADGEN_DEPS += $(LIBCFSUTIL_A)
@@ -350,7 +373,8 @@ $(CFSD_OBJS): $(TOP)/$(CFSD_SRCS)
               $(TOP)/$(CFSD_SRCS)
 
 clean:
-	-$(RM) -f lustrefs $(LUSTREFS_OBJS) $(LOADGEN) $(USER_UTILS_OBJS) \
+	-$(RM) -f lustrefs $(LUSTREFS_OBJS) $(MKFS_LUSTRE) $(MOUNT_LUSTRE) \
+	      $(LOADGEN) $(USER_UTILS_OBJS) \
               $(PTHREAD_USER_UTILS_OBJS) $(LIBLUSTREAPI_A) $(LIBPTLCTL_A) \
               $(LIBCFSUTIL_A) $(CFSD) $(CFSD_OBJS)
 

@@ -61,9 +61,7 @@ cfs_psdev_t obd_psdev;
 /* how many processes can open /dev/lnet concurrently */
 #define CFS_MINOR_CHUNK 32
 
-/* all Lustre modules are NOT unloadable by default */
-int cfs_mods_unloadable = 1; /* Change it back to zero
-                              * for production use */
+static int cfs_mods_unloadable = 1;
 
 static vmem_t     *lustrefs_arena;
 static void       *lustrefs_softstate;
@@ -325,7 +323,9 @@ cfs_psdev_deregister(cfs_psdev_t *dev)
 extern cfs_lumodule_desc_t libcfs_module_desc;
 extern cfs_lumodule_desc_t lnet_module_desc;
 extern cfs_lumodule_desc_t ksocknal_module_desc;
+#if 0
 extern cfs_lumodule_desc_t ko2iblnd_module_desc;
+#endif
 extern cfs_lumodule_desc_t lnet_selftest_module_desc;
 extern cfs_lumodule_desc_t ptlrpc_module_desc;
 extern cfs_lumodule_desc_t obdclass_module_desc;
@@ -351,12 +351,14 @@ lustrefs_startup(void)
                 goto ksocknal_fail;
         }
 
+#if 0
         rc = ko2iblnd_module_desc.mdesc_init();
 
         if (rc != 0) {
                 CDEBUG(D_ERROR, "ko2iblnd module init failed\n");
                 goto ko2iblnd_fail;
         }
+#endif
 
         rc = lnet_selftest_module_desc.mdesc_init();
 
@@ -404,8 +406,10 @@ ptlrpc_fail:
 obdclass_fail:
         lnet_selftest_module_desc.mdesc_fini();
 lnetselftest_fail:
+#if 0
         ko2iblnd_module_desc.mdesc_fini();
 ko2iblnd_fail:
+#endif
         ksocknal_module_desc.mdesc_fini();
 ksocknal_fail:
         lnet_module_desc.mdesc_fini();
@@ -421,7 +425,9 @@ lustrefs_shutdown(void)
         ptlrpc_module_desc.mdesc_fini();
         obdclass_module_desc.mdesc_fini();
         lnet_selftest_module_desc.mdesc_fini();
+#if 0
         ko2iblnd_module_desc.mdesc_fini();
+#endif
         ksocknal_module_desc.mdesc_fini();
         lnet_module_desc.mdesc_fini();
 }
@@ -513,8 +519,10 @@ lustrefs_lookup_props(dev_info_t *dip, void *arg)
 
 void lnet_modparams_init(void);
 void lnet_modparams_fini(void);
+#if 0
 void kiblnd_modparams_init(void);
 void kiblnd_modparams_fini(void);
+#endif
 void ksocknal_modparams_init(void);
 void ksocknal_modparams_fini(void);
 
@@ -532,7 +540,9 @@ libcfs_all_modules_init(void)
 
         lnet_modparams_init();
         ksocknal_modparams_init();
+#if 0
         kiblnd_modparams_init();
+#endif
 
         rc = 1; /* lustrefs_lookup_props() *must* change it */
         e_ddi_walk_driver(LUSTREFS_DRIVER, lustrefs_lookup_props, &rc);
@@ -548,7 +558,9 @@ libcfs_all_modules_init(void)
         return (0);
 
 startup_fail:
+#if 0
         kiblnd_modparams_fini();
+#endif
         ksocknal_modparams_fini();
         lnet_modparams_fini();
         libcfs_module_desc.mdesc_fini();
@@ -560,7 +572,9 @@ static void
 libcfs_all_modules_fini(void)
 {
         lustrefs_shutdown();
+#if 0
         kiblnd_modparams_fini();
+#endif
         ksocknal_modparams_fini();
         lnet_modparams_fini();
         libcfs_module_desc.mdesc_fini();        
