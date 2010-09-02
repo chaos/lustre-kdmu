@@ -267,7 +267,7 @@ getquota() {
 
         [ "$uuid" = "global" ] && uuid=$DIR
 
-        $LFS quota -v "$1" "$2" $DIR | awk 'BEGIN { num='$spec' } { if ($1 == "'$uuid'") { if (NF == 1) { getline } else { num++ } ; print $num;} }'
+        $LFS quota -v "$1" "$2" $DIR | awk 'BEGIN { num='$spec' } { if ($1 == "'$uuid'") { if (NF == 1) { getline } else { num++ } ; print $num;} }' | tr -d "*"
 }
 
 quota_show_check() {
@@ -1464,7 +1464,7 @@ test_18bc_sub() {
 	fi
 
         DDPID=$!
-        do_facet $SINGLEMDS "$LCTL conf_param mdd.${FSNAME}-MDT*.quota_type=ug"
+        do_facet $SINGLEMDS "$LCTL conf_param ${FSNAME}-MDT*.mdd.quota_type=ug"
 
 	log "failing mds for $((2 * timeout)) seconds"
         fail $SINGLEMDS $((2 * timeout))
