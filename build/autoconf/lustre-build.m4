@@ -441,6 +441,10 @@ if test -r $SPL_OBJ/Module.symvers; then
 	SPL_SYMBOLS=Module.symvers
 elif test -r $SPL_OBJ/Modules.symvers; then
 	SPL_SYMBOLS=Modules.symvers
+elif test -r $SPL_OBJ/module/Module.symvers; then
+	SPL_SYMBOLS=Module.symvers
+elif test -r $SPL_OBJ/module/Modules.symvers; then
+	SPL_SYMBOLS=Modules.symvers
 else
 	SPL_SYMBOLS=$SYMVERFILE
 fi
@@ -571,11 +575,7 @@ AC_ARG_WITH([spl-obj],
 		fi
 	],[
 		if test x$with_spl = xyes; then
-			if test -d $SPL_DIR/module; then
-				SPL_OBJ=$SPL_DIR/module
-			else
-				SPL_OBJ=$SPL_DIR
-			fi
+			SPL_OBJ=$SPL_DIR
 		fi
 	])
 
@@ -636,6 +636,10 @@ AC_DEFUN([LB_ZFS_SYMVERS],
 if test -r $ZFS_OBJ/Module.symvers; then
 	ZFS_SYMBOLS=Module.symvers
 elif test -r $ZFS_OBJ/Modules.symvers; then
+	ZFS_SYMBOLS=Modules.symvers
+elif test -r $ZFS_OBJ/module/Module.symvers; then
+	ZFS_SYMBOLS=Module.symvers
+elif test -r $ZFS_OBJ/module/Modules.symvers; then
 	ZFS_SYMBOLS=Modules.symvers
 else
 	ZFS_SYMBOLS=$SYMVERFILE
@@ -777,11 +781,7 @@ AC_ARG_WITH([zfs-obj],
 		fi
 	],[
 		if test x$with_zfs = xyes; then
-			if test -d $ZFS_DIR/module; then
-				ZFS_OBJ=$ZFS_DIR/module
-			else
-				ZFS_OBJ=$ZFS_DIR
-			fi
+			ZFS_OBJ=$ZFS_DIR
 		fi
 	])
 
