@@ -455,11 +455,11 @@ AC_SUBST(SPL_SYMBOLS)
 
 AC_DEFUN([LB_SPL_RELEASE],
 [AC_MSG_CHECKING([spl source release])
-if test -r $SPL_DIR/spl_config.h; then
+if test -r $SPL_OBJ/spl_config.h; then
 	tmp_flags="$EXTRA_KCFLAGS"
 	EXTRA_KCFLAGS="-I$SPL_DIR $EXTRA_KCFLAGS"
 	LB_LINUX_TRY_MAKE([
-		#include <$SPL_DIR/spl_config.h>
+		#include <$SPL_OBJ/spl_config.h>
 	],[
 		char *SPL_RELEASE;
 		SPL_RELEASE=SPL_META_VERSION;
@@ -494,7 +494,7 @@ AC_SUBST(SPL_RELEASE)
 AC_DEFUN([LB_SPL_CFLAGS],
 [
 SPL_EXTRA_PRE_CFLAGS="-I$SPL_DIR -I$SPL_DIR/include "
-SPL_EXTRA_PRE_CFLAGS="$SPL_EXTRA_PRE_CFLAGS -include $SPL_DIR/spl_config.h"
+SPL_EXTRA_PRE_CFLAGS="$SPL_EXTRA_PRE_CFLAGS -include $SPL_OBJ/spl_config.h"
 
 AC_SUBST(SPL_EXTRA_PRE_CFLAGS)
 ])
@@ -651,11 +651,11 @@ AC_SUBST(ZFS_SYMBOLS)
 
 AC_DEFUN([LB_ZFS_RELEASE],
 [AC_MSG_CHECKING([zfs source release])
-if test -r $ZFS_DIR/zfs_config.h; then
+if test -r $ZFS_OBJ/zfs_config.h; then
 	tmp_flags="$EXTRA_KCFLAGS"
 	EXTRA_KCFLAGS="-I$ZFS_DIR $EXTRA_KCFLAGS"
 	LB_LINUX_TRY_MAKE([
-		#include <$ZFS_DIR/zfs_config.h>
+		#include <$ZFS_OBJ/zfs_config.h>
 	],[
 		char *ZFS_RELEASE;
 		ZFS_RELEASE=ZFS_META_VERSION;
@@ -690,7 +690,7 @@ AC_SUBST(ZFS_RELEASE)
 AC_DEFUN([LB_ZFS_CFLAGS],
 [
 ZFS_EXTRA_PRE_CFLAGS="-I$ZFS_DIR -I$ZFS_DIR/include"
-ZFS_EXTRA_PRE_CFLAGS="$ZFS_EXTRA_PRE_CFLAGS -include $ZFS_DIR/zfs_config.h"
+ZFS_EXTRA_PRE_CFLAGS="$ZFS_EXTRA_PRE_CFLAGS -include $ZFS_OBJ/zfs_config.h"
 
 AC_SUBST(ZFS_EXTRA_PRE_CFLAGS)
 ])
