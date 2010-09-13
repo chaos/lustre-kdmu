@@ -155,9 +155,11 @@ struct filter_device {
         /* filter mod data: filter_device wide values */
         int                      ofd_fmd_max_num; /* per ofd filter_mod_data */
         cfs_duration_t           ofd_fmd_max_age; /* time to fmd expiry */
-        unsigned long            ofd_syncjournal:1, /* sync journal on writes */
-                                 ofd_sync_lock_cancel:2;/* sync on lock cancel */
 
+        cfs_spinlock_t           ofd_flags_lock;
+        unsigned long            ofd_raid_degraded:1,
+                                 ofd_syncjournal:1, /* sync journal on writes */
+                                 ofd_sync_lock_cancel:2;/* sync on lock cancel */
 
         /* sptlrpc stuff */
         cfs_rwlock_t             ofd_sptlrpc_lock;
@@ -167,8 +169,6 @@ struct filter_device {
         unsigned int             ofd_fl_oss_capa;
         cfs_list_t               ofd_capa_keys;
         cfs_hlist_head_t        *ofd_capa_hash;
-
-        int                      ofd_raid_degraded;
 };
 
 #define ofd_last_rcvd    ofd_lut.lut_last_rcvd
@@ -293,6 +293,7 @@ struct filter_thread_info {
 
         /* Ops object filename */
         struct lu_name             fti_name;
+        struct ost_lvb             fti_lvb;
 };
 
 extern struct lu_context_key filter_txn_thread_key;

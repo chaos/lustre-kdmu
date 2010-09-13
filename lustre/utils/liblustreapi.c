@@ -1357,27 +1357,19 @@ retry_get_uuids:
         return ret;
 }
 
-static int cb_ostlist(char *path, DIR *parent, DIR *d, void *data,
-                      struct dirent64 *de)
-{
-        struct find_param *param = (struct find_param *)data;
-        int ret;
-
-        LASSERT(parent != NULL || d != NULL);
-
-        /* Prepare odb. */
-        ret = setup_obd_uuid(d ? d : parent, path, param);
-
-        /* We don't want to actually traverse the directory tree,
-         * so return a positive value from sem_init to terminate
-         * the traversal before it starts.
-         */
-        return ret == 0 ? 1 : ret;
-}
-
 int llapi_ostlist(char *path, struct find_param *param)
 {
-        return param_callback(path, cb_ostlist, cb_common_fini, param);
+        DIR *dir;
+        int ret;
+
+        dir = opendir(path);
+        if (dir == NULL)
+                return -errno;
+
+        ret = setup_obd_uuid(dir, path, param);
+        closedir(dir);
+
+        return ret;
 }
 
 static void lov_dump_user_lmm_header(struct lov_user_md *lum, char *path,
@@ -1431,8 +1423,14 @@ static void lov_dump_user_lmm_header(struct lov_user_md *lum, char *path,
                 if (verbose & ~VERBOSE_OFFSET)
                         llapi_printf(LLAPI_MSG_NORMAL, "%sstripe_offset:  ",
                                      prefix);
-                llapi_printf(LLAPI_MSG_NORMAL, "%u%c",
-                             objects[0].l_ost_idx, nl);
+                if (is_dir) 
+                        llapi_printf(LLAPI_MSG_NORMAL, "%d%c",
+                                     lum->lmm_stripe_offset ==
+                                     (typeof(lum->lmm_stripe_offset))(-1) ? -1 :
+                                     lum->lmm_stripe_offset, nl);
+                else
+                        llapi_printf(LLAPI_MSG_NORMAL, "%u%c",
+                                     objects[0].l_ost_idx, nl);
         }
 
         if ((verbose & VERBOSE_POOL) && (pool_name != NULL)) {
@@ -2832,7 +2830,6 @@ struct changelog_private {
         int magic;
         int flags;
         lustre_kernelcomm kuc;
-        char *buf;
 };
 
 /** Start reading from a changelog
@@ -2849,15 +2846,9 @@ int llapi_changelog_start(void **priv, int flags, const char *device,
         int rc;
 
         /* Set up the receiver control struct */
-        cp = malloc(sizeof(*cp));
+        cp = calloc(1, sizeof(*cp));
         if (cp == NULL)
                 return -ENOMEM;
-
-        cp->buf = malloc(CR_MAXSIZE);
-        if (cp->buf == NULL) {
-                rc = -ENOMEM;
-                goto out_free;
-        }
 
         cp->magic = CHANGELOG_PRIV_MAGIC;
         cp->flags = flags;
@@ -2884,8 +2875,6 @@ int llapi_changelog_start(void **priv, int flags, const char *device,
         return 0;
 
 out_free:
-        if (cp->buf)
-                free(cp->buf);
         free(cp);
         return rc;
 }
@@ -2899,7 +2888,6 @@ int llapi_changelog_fini(void **priv)
                 return -EINVAL;
 
         libcfs_ukuc_stop(&cp->kuc);
-        free(cp->buf);
         free(cp);
         *priv = NULL;
         return 0;
@@ -2922,14 +2910,17 @@ int llapi_changelog_recv(void *priv, struct changelog_rec **rech)
                 return -EINVAL;
         if (rech == NULL)
                 return -EINVAL;
+        kuch = malloc(CR_MAXSIZE + sizeof(*kuch));
+        if (kuch == NULL)
+                return -ENOMEM;
 
 repeat:
-        rc = libcfs_ukuc_msg_get(&cp->kuc, cp->buf, CR_MAXSIZE,
+        rc = libcfs_ukuc_msg_get(&cp->kuc, (char *)kuch,
+                                 CR_MAXSIZE + sizeof(*kuch),
                                  KUC_TRANSPORT_CHANGELOG);
         if (rc < 0)
-                return rc;
+                goto out_free;
 
-        kuch = (struct kuc_hdr *)cp->buf;
         if ((kuch->kuc_transport != KUC_TRANSPORT_CHANGELOG) ||
             ((kuch->kuc_msgtype != CL_RECORD) &&
              (kuch->kuc_msgtype != CL_EOF))) {
@@ -2950,19 +2941,30 @@ repeat:
                 }
         }
 
-        /* Our message is a changelog_rec */
+        /* Our message is a changelog_rec.  Use pointer math to skip
+         * kuch_hdr and point directly to the message payload.
+         */
         *rech = (struct changelog_rec *)(kuch + 1);
 
         return 0;
 
 out_free:
         *rech = NULL;
+        free(kuch);
         return rc;
 }
 
 /** Release the changelog record when done with it. */
 int llapi_changelog_free(struct changelog_rec **rech)
 {
+        if (*rech) {
+                /* We allocated memory starting at the kuc_hdr, but passed
+                 * the consumer a pointer to the payload.
+                 * Use pointer math to get back to the header.
+                 */
+                struct kuc_hdr *kuch = (struct kuc_hdr *)*rech - 1;
+                free(kuch);
+        }
         *rech = NULL;
         return 0;
 }
@@ -3080,7 +3082,6 @@ int llapi_path2fid(const char *path, lustre_fid *fid)
 #define CT_PRIV_MAGIC 0xC0BE2001
 struct copytool_private {
         int magic;
-        char *buf;
         char *fsname;
         lustre_kernelcomm kuc;
         __u32 archives;
@@ -3107,13 +3108,12 @@ int llapi_copytool_start(void **priv, char *fsname, int flags,
                 return -EINVAL;
         }
 
-        ct = malloc(sizeof(*ct));
+        ct = calloc(1, sizeof(*ct));
         if (ct == NULL)
                 return -ENOMEM;
 
-        ct->buf = malloc(HAL_MAXSIZE);
         ct->fsname = malloc(strlen(fsname) + 1);
-        if (ct->buf == NULL || ct->fsname == NULL) {
+        if (ct->fsname == NULL) {
                 rc = -ENOMEM;
                 goto out_err;
         }
@@ -3151,8 +3151,6 @@ int llapi_copytool_start(void **priv, char *fsname, int flags,
         return 0;
 
 out_err:
-        if (ct->buf)
-                free(ct->buf);
         if (ct->fsname)
                 free(ct->fsname);
         free(ct);
@@ -3174,7 +3172,6 @@ int llapi_copytool_fini(void **priv)
         /* Shut down the kernelcomms */
         libcfs_ukuc_stop(&ct->kuc);
 
-        free(ct->buf);
         free(ct->fsname);
         free(ct);
         *priv = NULL;
@@ -3200,13 +3197,17 @@ int llapi_copytool_recv(void *priv, struct hsm_action_list **halh, int *msgsize)
         if (halh == NULL || msgsize == NULL)
                 return -EINVAL;
 
-        rc = libcfs_ukuc_msg_get(&ct->kuc, ct->buf, HAL_MAXSIZE,
+        kuch = malloc(HAL_MAXSIZE + sizeof(*kuch));
+        if (kuch == NULL)
+                return -ENOMEM;
+
+        rc = libcfs_ukuc_msg_get(&ct->kuc, (char *)kuch,
+                                 HAL_MAXSIZE + sizeof(*kuch),
                                  KUC_TRANSPORT_HSM);
         if (rc < 0)
-                return rc;
+                goto out_free;
 
         /* Handle generic messages */
-        kuch = (struct kuc_hdr *)ct->buf;
         if (kuch->kuc_transport == KUC_TRANSPORT_GENERIC &&
             kuch->kuc_msgtype == KUC_MSG_SHUTDOWN) {
                 rc = -ESHUTDOWN;
@@ -3222,8 +3223,9 @@ int llapi_copytool_recv(void *priv, struct hsm_action_list **halh, int *msgsize)
                 goto out_free;
         }
 
-        /* Our message is an hsm_action_list */
-
+        /* Our message is a hsm_action_list.  Use pointer math to skip
+         * kuch_hdr and point directly to the message payload.
+         */
         hal = (struct hsm_action_list *)(kuch + 1);
 
         /* Check that we have registered for this archive # */
@@ -3242,14 +3244,15 @@ int llapi_copytool_recv(void *priv, struct hsm_action_list **halh, int *msgsize)
 out_free:
         *halh = NULL;
         *msgsize = 0;
+        free(kuch);
         return rc;
 }
 
 /** Release the action list when done with it. */
 int llapi_copytool_free(struct hsm_action_list **hal)
 {
-        *hal = NULL;
-        return 0;
+        /* Reuse the llapi_changelog_free function */
+        return llapi_changelog_free((struct changelog_rec **)hal);
 }
 
 int llapi_get_connect_flags(const char *mnt, __u64 *flags)

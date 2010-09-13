@@ -19,7 +19,9 @@ export PATH=$PWD/$SRCDIR:$SRCDIR:$PWD/$SRCDIR/../utils:$PATH:/sbin
 ONLY=${ONLY:-"$*"}
 # test_11 has been used to protect a kernel bug(bz10912), now it isn't
 # useful any more. Then add it to ALWAYS_EXCEPT. b=19835
-ALWAYS_EXCEPT="10 $SANITY_QUOTA_EXCEPT"
+# We have changed the mechanism of quota, test_12 is meanless now.
+# b=20877
+ALWAYS_EXCEPT="10 12 $SANITY_QUOTA_EXCEPT"
 # UPDATE THE COMMENT ABOVE WITH BUG NUMBERS WHEN CHANGING ALWAYS_EXCEPT!
 
 case `uname -r` in
@@ -42,6 +44,11 @@ BUNIT_SZ=${BUNIT_SZ:-1024}	# min block quota unit(kB)
 IUNIT_SZ=${IUNIT_SZ:-10}	# min inode quota unit
 MAX_DQ_TIME=604800
 MAX_IQ_TIME=604800
+SANITY_QUOTA_USERS="quota15_1 quota15_2 quota15_3 quota15_4 quota15_5 quota15_6 \
+                    quota15_7 quota15_8 quota15_9 quota15_10 quota15_11 quota15_12 \
+                    quota15_13 quota15_14 quota15_15 quota15_16 quota15_17 quota15_18 \
+                    quota15_19 quota15_20 quota15_21 quota15_22 quota15_23 quota15_24 \
+                    quota15_25 quota15_26 quota15_27 quota15_28 quota15_29 quota15_30"
 
 TRACE=${TRACE:-""}
 LUSTRE=${LUSTRE:-`dirname $0`/..}
@@ -1017,64 +1024,8 @@ test_9() {
 }
 run_test_with_stat 9 "run for fixing bug10707(64bit) ==========="
 
-# run for fixing bug10707, it need a big room. test for 32bit
-# 2.0 version does not support 32 bit qd_count, so such test is obsolete.
-test_10() {
-	mkdir -p $DIR/$tdir
-	chmod 0777 $DIR/$tdir
-	check_whether_skip && return 0
-
-	wait_delete_completed
-
-	set_blk_tunesz 512
-	set_blk_unitsz 1024
-
-	# make qd_count 32 bit
-	lustre_fail mds_ost 0xA00
-
-	TESTFILE="$DIR/$tdir/$tfile-0"
-
-	BLK_LIMIT=$((100 * KB * KB)) # 100G
-	FILE_LIMIT=1000000
-
-	log "  Set enough high limit(block:$BLK_LIMIT; file: $FILE_LIMIT) for user: $TSTUSR"
-	$LFS setquota -u $TSTUSR -b 0 -B $BLK_LIMIT -i 0 -I $FILE_LIMIT $DIR
-	log "  Set enough high limit(block:$BLK_LIMIT; file: $FILE_LIMIT) for group: $TSTUSR"
-	$LFS setquota -g $TSTUSR -b 0 -B $BLK_LIMIT -i 0 -I $FILE_LIMIT $DIR
-
-        quota_show_check a u $TSTUSR
-        quota_show_check a g $TSTUSR
-
-	echo "  Set stripe"
-	$LFS setstripe $TESTFILE -c 1
-	touch $TESTFILE
-	chown $TSTUSR.$TSTUSR $TESTFILE
-
-        log "    Write the big file of 4.5 G ..."
-        $RUNAS dd if=/dev/zero of=$TESTFILE  bs=$blksize count=$((size_file / blksize)) || \
-		quota_error a $TSTUSR "(usr) write 4.5 G file failure, but expect success"
-
-        $SHOW_QUOTA_USER
-        $SHOW_QUOTA_GROUP
-
-        log "    delete the big file of 4.5 G..."
-        $RUNAS rm -f $TESTFILE
-	sync; sleep 3; sync;
-
-        $SHOW_QUOTA_USER
-        $SHOW_QUOTA_GROUP
-
-	RC=$?
-
-	# make qd_count 64 bit
-	lustre_fail mds_ost 0
-
-	set_blk_unitsz $((128 * 1024))
-	set_blk_tunesz $((128 * 1024 / 2))
-
-	return $RC
-}
-#run_test_with_stat 10 "run for fixing bug10707(32bit) ==========="
+# 2.0 version does not support 32 bit qd_count,
+# test_10 "run for fixing bug10707(32bit) " is obsolete
 
 # test a deadlock between quota and journal b=11693
 test_12() {
@@ -1303,67 +1254,8 @@ test_15(){
 }
 run_test_with_stat 15 "set block quota more than 4T ==="
 
-# $1=u/g $2=with qunit adjust or not
-test_16_tub() {
-	LIMIT=$(( $BUNIT_SZ * $(($OSTCOUNT + 1)) * 4))
-	TESTFILE="$DIR/$tdir/$tfile"
-	mkdir -p $DIR/$tdir
-
-	wait_delete_completed
-
-	echo "  User quota (limit: $LIMIT kbytes)"
-	if [ $1 == "u" ]; then
-	    $LFS setquota -u $TSTUSR -b 0 -B $LIMIT -i 0 -I 0 $DIR
-            quota_show_check b u $TSTUSR
-	else
-	    $LFS setquota -g $TSTUSR -b 0 -B $LIMIT -i 0 -I 0 $DIR
-            quota_show_check b g $TSTUSR
-	fi
-
-	$LFS setstripe $TESTFILE -c 1
-	chown $TSTUSR.$TSTUSR $TESTFILE
-
-	echo "    Write ..."
-	$RUNAS dd if=/dev/zero of=$TESTFILE bs=$BLK_SZ count=$((BUNIT_SZ * 4)) || \
-	    quota_error a $TSTUSR "(usr) write failure, but expect success"
-	echo "    Done"
-	echo "    Write out of block quota ..."
-	# this time maybe cache write,  ignore it's failure
-	$RUNAS dd if=/dev/zero of=$TESTFILE bs=$BLK_SZ count=$BUNIT_SZ seek=$((BUNIT_SZ * 4)) || true
-	# flush cache, ensure noquota flag is setted on client
-        cancel_lru_locks osc
-	if [ $2 -eq 1 ]; then
-	    $RUNAS dd if=/dev/zero of=$TESTFILE bs=$BLK_SZ count=$BUNIT_SZ seek=$((BUNIT_SZ * 4)) || \
-		quota_error a $TSTUSR "(write failure, but expect success"
-	else
-	    $RUNAS dd if=/dev/zero of=$TESTFILE bs=$BLK_SZ count=$BUNIT_SZ seek=$((BUNIT_SZ * 4)) && \
-		quota_error a $TSTUSR "(write success, but expect EDQUOT"
-	fi
-
-	rm -f $TESTFILE
-	sync; sleep 3; sync;
-	resetquota -$1 $TSTUSR
-}
-
-# test without adjusting qunit
-# 2.0 version does not support WITHOUT_CHANGE_QS, so such test is obsolete
-test_16 () {
-	set_blk_tunesz $((BUNIT_SZ * 2))
-	set_blk_unitsz $((BUNIT_SZ * 4))
-	for i in u g; do
-	    for j in 0 1; do
-                # define OBD_FAIL_QUOTA_WITHOUT_CHANGE_QS    0xA01
-		echo " grp/usr: $i, adjust qunit: $j"
-		echo "-------------------------------"
-		[ $j -eq 1 ] && lustre_fail mds_ost 0
-		[ $j -eq 0 ] && lustre_fail mds_ost 0xA01
-		test_16_tub $i $j
-	    done
-	done
-	set_blk_unitsz $((128 * 1024))
-	set_blk_tunesz $((128 * 1024 / 2))
-}
-#run_test_with_stat 16 "test without adjusting qunit"
+# 2.0 version does not support WITHOUT_CHANGE_QS,
+# test_16 "test without adjusting qunit" is obsolete
 
 # run for fixing bug14526, failed returned quota reqs shouldn't ruin lustre.
 test_17() {
@@ -1572,7 +1464,7 @@ test_18bc_sub() {
 	fi
 
         DDPID=$!
-        do_facet $SINGLEMDS "$LCTL conf_param ${FSNAME}-MDT*.mdd.quota_type=ug"
+        do_facet $SINGLEMDS "$LCTL conf_param mdd.${FSNAME}-MDT*.quota_type=ug"
 
 	log "failing mds for $((2 * timeout)) seconds"
         fail $SINGLEMDS $((2 * timeout))
@@ -2225,6 +2117,80 @@ test_31() {
         resetquota -u $TSTUSR
 }
 run_test_with_stat 31 "test duplicate quota releases ==="
+
+# check hash_cur_bits
+check_quota_hash_cur_bits() {
+        local bits=$1
+
+        # check quota_hash_cur_bits on all obdfilters
+        for num in `seq $OSTCOUNT`; do
+	    cb=`do_facet ost$num "cat /sys/module/lquota/parameters/hash_lqs_cur_bits"`
+	    if [ $cb -gt $bits ]; then
+		echo "hash_lqs_cur_bits of ost$num is too large(cur_bits=$cb)"
+		return 1;
+	    fi
+        done
+        # check quota_hash_cur_bits on mds
+        cb=`do_facet $SINGLEMDS "cat /sys/module/lquota/parameters/hash_lqs_cur_bits"`
+        if [ $cb -gt $bits ]; then
+	    echo "hash_lqs_cur_bits of mds is too large(cur_bits=$cb)"
+	    return 1;
+        fi
+        return 0;
+}
+
+# check lqs hash
+check_lqs_hash() {
+        # check distribution of all obdfilters
+        for num in `seq $OSTCOUNT`; do
+	    do_facet ost$num "lctl get_param obdfilter.${FSNAME}-OST*.hash_stats | grep LQS_HASH" | while read line; do
+		rehash_count=`echo $line | awk '{print $9}'`
+		if [ $rehash_count -eq 0 ]; then
+		    echo -e "ost$num:\n $line"
+		    error "Rehearsh didn't happen"
+		fi
+	    done
+        done
+        # check distribution of mds
+        do_facet $SINGLEMDS "lctl get_param mdt.${FSNAME}-MDT*.hash_stats | grep LQS_HASH" | while read line; do
+	    rehash_count=`echo $line | awk '{print $9}'`
+	    if [ $rehash_count -eq 0 ]; then
+		echo -e "mdt:\n $line"
+		error "Rehearsh didn't happen"
+	    fi
+        done
+}
+
+test_32()
+{
+        # reset system so that quota_hash_cur_bits==3
+        echo "Reset system ..."
+        local LMR_orig=$LOAD_MODULES_REMOTE
+        LOAD_MODULES_REMOTE=true
+        cleanup_and_setup_lustre
+        LOAD_MODULES_REMOTE=$LMR_orig
+
+        for user in $SANITY_QUOTA_USERS; do
+	    check_runas_id_ret $user quota_usr "runas -u $user -g quota_usr" >/dev/null 2>/dev/null || \
+		missing_users="$missing_users $user"
+        done
+        [ -n "$missing_users" ] && { skip_env "the following users are missing: $missing_users" ; return 0 ; }
+        check_quota_hash_cur_bits 3 || { skip_env "hash_lqs_cur_bits isn't set properly"; return 0;}
+
+        $LFS quotaoff -ug $DIR
+        $LFS quotacheck -ug $DIR
+
+        for user in $SANITY_QUOTA_USERS; do
+	    $LFS setquota -u $user --block-hardlimit 1048576 $DIR
+        done
+
+        check_lqs_hash
+
+        for user in $SANITY_QUOTA_USERS; do
+	    resetquota -u $user
+        done
+}
+run_test 32 "check lqs hash(bug 21846) =========================================="
 
 # turn off quota
 quota_fini()

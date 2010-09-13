@@ -451,7 +451,7 @@ void mdt_pack_attr2body(struct mdt_thread_info *info, struct mdt_body *b,
 
         if (b->valid & OBD_MD_FLSIZE)
                 CDEBUG(D_VFSTRACE, DFID": returning size %llu\n",
-                       PFID(fid), b->size);
+                       PFID(fid), (unsigned long long)b->size);
 }
 
 static inline int mdt_body_has_lov(const struct lu_attr *la,
@@ -5040,7 +5040,7 @@ static int mdt_obd_connect(const struct lu_env *env,
                 memcpy(lcd->lcd_uuid, cluuid, sizeof lcd->lcd_uuid);
                 rc = mdt_client_new(env, mdt);
                 if (rc == 0)
-                        mdt_export_stats_init(obd, lexp, localdata);
+                        mdt_export_stats_init(obd, lexp, 0, localdata);
         }
 
 out:
@@ -5079,7 +5079,7 @@ static int mdt_obd_reconnect(const struct lu_env *env,
 
         rc = mdt_connect_internal(exp, mdt_dev(obd->obd_lu_dev), data);
         if (rc == 0)
-                mdt_export_stats_init(obd, exp, localdata);
+                mdt_export_stats_init(obd, exp, 1, localdata);
 
         RETURN(rc);
 }
@@ -5242,9 +5242,9 @@ static void mdt_allow_cli(struct mdt_device *m, unsigned int flag)
  
                 /* Open for clients */
                 if (obd->obd_no_conn) {
-                        cfs_spin_lock_bh(&obd->obd_processing_task_lock);
+                        cfs_spin_lock(&obd->obd_dev_lock);
                         obd->obd_no_conn = 0;
-                        cfs_spin_unlock_bh(&obd->obd_processing_task_lock);
+                        cfs_spin_unlock(&obd->obd_dev_lock);
                 }
         }
 }

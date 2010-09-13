@@ -46,3 +46,26 @@ curl ftp://ftp.kernel.org/pub/linux/kernel/people/akpm/patches/2.6/2.6.17/2.6.17
      fi
     done
 }
+
+unpack_linux_devel_rpm-sles10() {
+    local callers_rpm="$1"
+
+    # get the Module.symvers out of the kenrel-flavor RPM
+    local kernelrpm=${callers_rpm/-source-/-$RPMSMPTYPE-}
+
+    if ! rpm2cpio < "$kernelrpm" | cpio -id ./usr/src/linux-${lnxmaj}${lnxmin}-${lnxrel}-obj/$(resolve_arch $TARGET_ARCH)/$RPMSMPTYPE/Module.symvers ./boot/sym\* > /dev/null 2>&1; then
+        return 255
+    fi
+
+    # now just sanity check that everything needed to build properly versioned
+    # modules is in place
+    if [ ! -f usr/src/linux-${lnxmaj}${lnxmin}-${lnxrel}-obj/$(resolve_arch $TARGET_ARCH)/$RPMSMPTYPE/Module.symvers && ! -f usr/src/linux-${lnxmaj}${lnxmin}-${lnxrel}-obj/$TARGET_ARCH/$RPMSMPTYPE/Module.symvers ]; then
+        fatal 1 "cannot build kernel modules: the Kernel's Module.symvers is missing."
+    fi
+    if [ ! -f boot/symsets-${lnxmaj}${lnxmin}-${lnxrel}-$RPMSMPTYPE.tar.gz ]; then
+        fatal 1 "cannot build modules: the Kernel's symsets is missing."
+    fi
+
+    return 0
+
+}

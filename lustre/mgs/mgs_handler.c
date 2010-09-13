@@ -59,7 +59,7 @@
 #include <lustre_fsfilt.h>
 #include <lustre_disk.h>
 #include "mgs_internal.h"
-
+#include <lustre_param.h>
 
 /* Establish a connection to the MGS.*/
 static int mgs_connect(const struct lu_env *env,
@@ -90,7 +90,7 @@ static int mgs_connect(const struct lu_env *env,
                 data->ocd_version = LUSTRE_VERSION_CODE;
         }
 
-        rc = mgs_client_add(obd, lexp, localdata);
+        rc = mgs_export_stats_init(obd, lexp, 0, localdata);
 
         if (rc) {
                 class_disconnect(lexp);
@@ -119,7 +119,7 @@ static int mgs_reconnect(const struct lu_env *env,
                 data->ocd_version = LUSTRE_VERSION_CODE;
         }
 
-        RETURN(0);
+        RETURN(mgs_export_stats_init(obd, exp, 1, localdata));
 }
 
 static int mgs_disconnect(struct obd_export *exp)
@@ -405,6 +405,30 @@ static int mgs_check_target(struct obd_device *obd, struct mgs_target_info *mti)
         RETURN(rc);
 }
 
+/* Ensure this is not a failover node that is connecting first*/
+static int mgs_check_failover_reg(struct mgs_target_info *mti)
+{
+        lnet_nid_t nid;
+        char *ptr;
+        int i;
+
+        ptr = mti->mti_params;
+        while (class_find_param(ptr, PARAM_FAILNODE, &ptr) == 0) {
+                while (class_parse_nid(ptr, &nid, &ptr, 1) == 0) {
+                        for (i = 0; i < mti->mti_nid_count; i++) {
+                                if (nid == mti->mti_nids[i]) {
+                                        LCONSOLE_WARN("Denying initial registra"
+                                                      "tion attempt from nid %s"
+                                                      ", specified as failover"
+                                                      "\n",libcfs_nid2str(nid));
+                                        return -EADDRNOTAVAIL;
+                                }
+                        }
+                }
+        }
+        return 0;
+}
+
 /* Called whenever a target starts up.  Flags indicate first connect, etc. */
 static int mgs_handle_target_reg(struct ptlrpc_request *req)
 {
@@ -417,6 +441,10 @@ static int mgs_handle_target_reg(struct ptlrpc_request *req)
         mgs_counter_incr(req->rq_export, LPROC_MGS_TARGET_REG);
 
         mti = req_capsule_client_get(&req->rq_pill, &RMF_MGS_TARGET_INFO);
+
+        if (mti->mti_flags & LDD_F_NEED_INDEX)
+                mti->mti_flags |= LDD_F_WRITECONF;
+
         if (!(mti->mti_flags & (LDD_F_WRITECONF | LDD_F_UPGRADE14 |
                                 LDD_F_UPDATE))) {
                 /* We're just here as a startup ping. */
@@ -427,12 +455,15 @@ static int mgs_handle_target_reg(struct ptlrpc_request *req)
                 if (rc <= 0)
                         /* Nothing wrong, or fatal error */
                         GOTO(out_nolock, rc);
+        } else {
+                if ((rc = mgs_check_failover_reg(mti)))
+                        GOTO(out_nolock, rc);
         }
 
         OBD_FAIL_TIMEOUT(OBD_FAIL_MGS_PAUSE_TARGET_REG, 10);
 
         if (mti->mti_flags & LDD_F_WRITECONF) {
-                if (mti->mti_flags & LDD_F_SV_TYPE_MDT &&
+                if (mti->mti_flags & SVTYPE_MDT &&
                     mti->mti_stripe_index == 0) {
                         rc = mgs_erase_logs(obd, mti->mti_fsname);
                         LCONSOLE_WARN("%s: Logs for fs %s were removed by user "
@@ -440,7 +471,7 @@ static int mgs_handle_target_reg(struct ptlrpc_request *req)
                                       "in order to regenerate the logs."
                                       "\n", obd->obd_name, mti->mti_fsname);
                 } else if (mti->mti_flags &
-                           (LDD_F_SV_TYPE_OST | LDD_F_SV_TYPE_MDT)) {
+                           (SVTYPE_OST | SVTYPE_MDT)) {
                         rc = mgs_erase_log(obd, mti->mti_svname);
                         LCONSOLE_WARN("%s: Regenerating %s log by user "
                                       "request.\n",
@@ -503,6 +534,7 @@ out:
 out_nolock:
         CDEBUG(D_MGS, "replying with %s, index=%d, rc=%d\n", mti->mti_svname,
                mti->mti_stripe_index, rc);
+        req->rq_status = rc;
         rc = req_capsule_server_pack(&req->rq_pill);
         if (rc)
                 RETURN(rc);

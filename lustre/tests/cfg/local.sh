@@ -57,6 +57,7 @@ SUBSYSTEM=${SUBSYSTEM:- 0xffb7e3ff}
 ENABLE_QUOTA=${ENABLE_QUOTA:-""}
 QUOTA_TYPE="ug3"
 QUOTA_USERS=${QUOTA_USERS:-"quota_usr quota_2usr sanityusr sanityusr1"}
+LQUOTAOPTS=${LQUOTAOPTS:-"hash_lqs_cur_bits=3"}
 
 MKFSOPT=""
 [ "x$MDSJOURNALSIZE" != "x" ] &&
@@ -78,15 +79,13 @@ MKFSOPT=""
 [ "x$L_GETIDENTITY" != "x" ] &&
     MDSOPT=$MDSOPT" --param mdt.identity_upcall=$L_GETIDENTITY"
 
-MDSn_MKFS_OPTS=$MDS_MKFS_OPTS
 MDS_MKFS_OPTS="--mdt --fsname=$FSNAME --device-size=$MDSSIZE --param sys.timeout=$TIMEOUT $MKFSOPT $MDSOPT $MDS_MKFS_OPTS"
 if [[ $mds1_HOST == $mgs_HOST ]] && [[ $MDSDEV1 == $MGSDEV ]]; then
     MDS_MKFS_OPTS="--mgs $MDS_MKFS_OPTS"
 else
     MDS_MKFS_OPTS="--mgsnode=$MGSNID $MDS_MKFS_OPTS"
-    mgs_MKFS_OPTS="--mgs --device-size=$MGSSIZE"
+    MGS_MKFS_OPTS="--mgs --device-size=$MGSSIZE"
 fi
-MDSn_MKFS_OPTS="--mgsnode=$MGSNID --mdt --fsname=$FSNAME --device-size=$MDSSIZE --param sys.timeout=$TIMEOUT $MKFSOPT $MDSOPT $MDSn_MKFS_OPTS"
 
 MKFSOPT=""
 [ "x$OSTJOURNALSIZE" != "x" ] &&
@@ -103,8 +102,7 @@ OST_MKFS_OPTS="--ost --fsname=$FSNAME --device-size=$OSTSIZE --mgsnode=$MGSNID -
 
 MDS_MOUNT_OPTS=${MDS_MOUNT_OPTS:-"-o loop,user_xattr"}
 OST_MOUNT_OPTS=${OST_MOUNT_OPTS:-"-o loop"}
-mgs_MOUNT_OPTS=${MGS_MOUNT_OPTS:-"-o loop"}
-
+MGS_MOUNT_OPTS=${MGS_MOUNT_OPTS:-$MDS_MOUNT_OPTS}
 
 #client
 MOUNT=${MOUNT:-/mnt/${FSNAME}}
@@ -118,10 +116,12 @@ DIR2=${DIR2:-$MOUNT2}
 if [ $UID -ne 0 ]; then
         log "running as non-root uid $UID"
         RUNAS_ID="$UID"
+        RUNAS_GID=`id -g $USER`
         RUNAS=""
 else
         RUNAS_ID=${RUNAS_ID:-500}
-        RUNAS=${RUNAS:-"runas -u $RUNAS_ID"}
+        RUNAS_GID=${RUNAS_GID:-$RUNAS_ID}
+        RUNAS=${RUNAS:-"runas -u $RUNAS_ID -g $RUNAS_GID"}
 fi
 
 PDSH=${PDSH:-no_dsh}

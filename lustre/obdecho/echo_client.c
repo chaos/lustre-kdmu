@@ -1308,7 +1308,7 @@ static int echo_create_object(struct echo_device *ed, int on_target,
                 if (lsm->lsm_stripe_size == 0)
                         lsm->lsm_stripe_size = CFS_PAGE_SIZE;
 
-                idx = ll_rand();
+                idx = cfs_rand();
 
                 /* setup stripes: indices + default ids if required */
                 for (i = 0; i < lsm->lsm_stripe_count; i++) {
@@ -1697,7 +1697,7 @@ static int echo_client_brw_ioctl(int rw, struct obd_export *exp,
         struct obd_device *obd = class_exp2obd(exp);
         struct echo_device *ed = obd2echo_dev(obd);
         struct echo_client_obd *ec = ed->ed_ec;
-        struct obd_trans_info dummy_oti = { .oti_thread = NULL };
+        struct obd_trans_info dummy_oti = { 0 };
         struct obdo *oa = &data->ioc_obdo1;
         struct echo_object *eco;
         int rc;

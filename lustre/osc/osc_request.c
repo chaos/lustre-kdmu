@@ -943,7 +943,7 @@ static int osc_shrink_grant_interpret(const struct lu_env *env,
         LASSERT(body);
         osc_update_grant(cli, body);
 out:
-        OBD_FREE_PTR(oa);
+        OBDO_FREE(oa);
         return rc;
 }
 
@@ -1087,11 +1087,21 @@ static void osc_init_grant(struct client_obd *cli, struct obd_connect_data *ocd)
                 cli->cl_avail_grant = ocd->ocd_grant;
         else
                 cli->cl_avail_grant = ocd->ocd_grant - cli->cl_dirty;
+
+        if (cli->cl_avail_grant < 0) {
+                CWARN("%s: available grant < 0, the OSS is probably not running"
+                      " with patch from bug20278 (%ld) \n",
+                      cli->cl_import->imp_obd->obd_name, cli->cl_avail_grant);
+                /* workaround for 1.6 servers which do not have 
+                 * the patch from bug20278 */
+                cli->cl_avail_grant = ocd->ocd_grant;
+        }
+
         client_obd_list_unlock(&cli->cl_loi_list_lock);
 
-        CDEBUG(D_CACHE, "setting cl_avail_grant: %ld cl_lost_grant: %ld \n",
+        CDEBUG(D_CACHE, "%s, setting cl_avail_grant: %ld cl_lost_grant: %ld \n",
+               cli->cl_import->imp_obd->obd_name,
                cli->cl_avail_grant, cli->cl_lost_grant);
-        LASSERT(cli->cl_avail_grant >= 0);
 
         if (ocd->ocd_connect_flags & OBD_CONNECT_GRANT_SHRINK &&
             cfs_list_empty(&cli->cl_grant_shrink_list))
@@ -2219,9 +2229,6 @@ static int brw_interpret(const struct lu_env *env,
                 obd_count i;
                 for (i = 0; i < aa->aa_page_count; i++)
                         osc_release_write_grant(aa->aa_cli, aa->aa_ppga[i], 1);
-
-                if (aa->aa_oa->o_flags & OBD_FL_TEMPORARY)
-                        OBDO_FREE(aa->aa_oa);
         }
         osc_wake_cache_waiters(cli);
         osc_check_rpcs(env, cli);
@@ -3217,6 +3224,9 @@ static int osc_enqueue_interpret(const struct lu_env *env,
          * osc_enqueue_fini(). */
         ldlm_lock_addref(&handle, mode);
 
+        /* Let CP AST to grant the lock first. */
+        OBD_FAIL_TIMEOUT(OBD_FAIL_OSC_CP_ENQ_RACE, 1);
+
         /* Complete obtaining the lock procedure. */
         rc = ldlm_cli_enqueue_fini(aa->oa_exp, req, aa->oa_ei->ei_type, 1,
                                    mode, aa->oa_flags, aa->oa_lvb,
@@ -4076,7 +4086,7 @@ static int osc_set_info_async(struct obd_export *exp, obd_count keylen,
 
                 CLASSERT(sizeof(*aa) <= sizeof(req->rq_async_args));
                 aa = ptlrpc_req_async_args(req);
-                OBD_ALLOC_PTR(oa);
+                OBDO_ALLOC(oa);
                 if (!oa) {
                         ptlrpc_req_finished(req);
                         RETURN(-ENOMEM);

@@ -201,7 +201,7 @@ void lut_boot_epoch_update(struct lu_target *lut)
 
         rc = lu_env_init(&env, LCT_DT_THREAD);
         if (rc) {
-                CERROR("Can't initialize environment rc=%i\n", rc);
+                CERROR("Can't initialize environment rc=%d\n", rc);
                 return;
         }
 
@@ -216,9 +216,9 @@ void lut_boot_epoch_update(struct lu_target *lut)
          * The recovery is not yet finished and final queue can still be updated
          * with resend requests. Move final list to separate one for processing
          */
-        cfs_spin_lock_bh(&lut->lut_obd->obd_processing_task_lock);
+        cfs_spin_lock(&lut->lut_obd->obd_recovery_task_lock);
         cfs_list_splice_init(&lut->lut_obd->obd_final_req_queue, &client_list);
-        cfs_spin_unlock_bh(&lut->lut_obd->obd_processing_task_lock);
+        cfs_spin_unlock(&lut->lut_obd->obd_recovery_task_lock);
 
         /**
          * go through list of exports participated in recovery and
@@ -230,9 +230,9 @@ void lut_boot_epoch_update(struct lu_target *lut)
                         lut_client_epoch_update(&env, req->rq_export);
         }
         /** return list back at once */
-        cfs_spin_lock_bh(&lut->lut_obd->obd_processing_task_lock);
+        cfs_spin_lock(&lut->lut_obd->obd_recovery_task_lock);
         cfs_list_splice_init(&client_list, &lut->lut_obd->obd_final_req_queue);
-        cfs_spin_unlock_bh(&lut->lut_obd->obd_processing_task_lock);
+        cfs_spin_unlock(&lut->lut_obd->obd_recovery_task_lock);
         /** update server epoch */
         lut_server_data_update(&env, lut, 1);
         lu_env_fini(&env);
