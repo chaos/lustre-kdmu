@@ -805,6 +805,17 @@ test_24v() {
 }
 run_test 24v "list directory with large files (handle hash collision, bug: 17560)"
 
+test_24w() { # bug21506
+        SZ1=234852
+        dd if=/dev/zero of=$DIR/$tfile bs=1M count=1 seek=4096 || return 1
+        dd if=/dev/zero bs=$SZ1 count=1 >> $DIR/$tfile || return 2
+        dd if=$DIR/$tfile of=$DIR/${tfile}_left bs=1M skip=4097 || return 3
+        SZ2=`ls -l $DIR/${tfile}_left | awk '{print $5}'`
+        [ "$SZ1" = "$SZ2" ] || \
+                error "Error reading at the end of the file $tfile"
+}
+run_test 24w "Reading a file larger than 4Gb"
+
 test_25a() {
 	echo '== symlink sanity ============================================='
 
@@ -2349,6 +2360,56 @@ test_39k() {
 }
 run_test 39k "write, utime, close, stat ========================"
 
+# this should be set to future
+TEST_39_ATIME=`date -d "1 year" +%s`
+
+test_39l() {
+	local atime_diff=$(do_facet $SINGLEMDS lctl get_param -n mdd.*.atime_diff)
+
+	mkdir -p $DIR/$tdir
+
+	# test setting directory atime to future
+	touch -a -d @$TEST_39_ATIME $DIR/$tdir
+	local atime=$(stat -c %X $DIR/$tdir)
+	[ "$atime" = $TEST_39_ATIME ] || \
+		error "atime is not set to future: $atime, should be $TEST_39_ATIME"
+
+	# test setting directory atime from future to now
+	local d1=$(date +%s)
+	ls $DIR/$tdir
+	local d2=$(date +%s)
+
+	cancel_lru_locks mdc
+	atime=$(stat -c %X $DIR/$tdir)
+	[ "$atime" -ge "$d1" -a "$atime" -le "$d2" ] || \
+		error "atime is not updated from future: $atime, should be $d1<atime<$d2"
+
+	do_facet $SINGLEMDS lctl set_param -n mdd.*.atime_diff=2
+	sleep 3
+
+	# test setting directory atime when now > dir atime + atime_diff
+	d1=$(date +%s)
+	ls $DIR/$tdir
+	d2=$(date +%s)
+	cancel_lru_locks mdc
+	atime=$(stat -c %X $DIR/$tdir)
+	[ "$atime" -ge "$d1" -a "$atime" -le "$d2" ] || \
+		error "atime is not updated  : $atime, should be $d2"
+
+	do_facet $SINGLEMDS lctl set_param -n mdd.*.atime_diff=60
+	sleep 3
+
+	# test not setting directory atime when now < dir atime + atime_diff
+	ls $DIR/$tdir
+	cancel_lru_locks mdc
+	atime=$(stat -c %X $DIR/$tdir)
+	[ "$atime" -ge "$d1" -a "$atime" -le "$d2" ] || \
+		error "atime is updated to $atime, should remain $d1<atime<$d2"
+
+	do_facet $SINGLEMDS lctl set_param -n mdd.*.atime_diff=$atime_diff
+}
+run_test 39l "directory atime update ==========================="
+
 test_40() {
 	dd if=/dev/zero of=$DIR/f40 bs=4096 count=1
 	$RUNAS $OPENFILE -f O_WRONLY:O_TRUNC $DIR/f40 && error
@@ -3349,6 +3410,39 @@ test_56q() {
 	echo "lfs find -gid and ! -gid passed."
 }
 run_test 56q "check lfs find -gid and ! -gid ==============================="
+
+test_56r() {
+	setup_56 $NUMFILES $NUMDIRS
+	TDIR=$DIR/${tdir}g
+	
+	EXPECTED=12
+	NUMS=`$LFIND -size 0 -t f $TDIR | wc -l`
+	[ $NUMS -eq $EXPECTED ] || \
+		error "lfs find $TDIR -size 0 wrong: found $NUMS, expected $EXPECTED"
+	EXPECTED=0
+	NUMS=`$LFIND ! -size 0 -t f $TDIR | wc -l`
+	[ $NUMS -eq $EXPECTED ] || \
+		error "lfs find $TDIR ! -size 0 wrong: found $NUMS, expected $EXPECTED"
+	echo "test" > $TDIR/56r && sync
+	EXPECTED=1
+	NUMS=`$LFIND -size 5 -t f $TDIR | wc -l`
+	[ $NUMS -eq $EXPECTED ] || \
+		error "lfs find $TDIR -size 5 wrong: found $NUMS, expected $EXPECTED"
+	EXPECTED=1
+	NUMS=`$LFIND -size +5 -t f $TDIR | wc -l`
+	[ $NUMS -eq $EXPECTED ] || \
+		error "lfs find $TDIR -size +5 wrong: found $NUMS, expected $EXPECTED"
+	EXPECTED=13
+	NUMS=`$LFIND -size +0 -t f $TDIR | wc -l`
+	[ $NUMS -eq $EXPECTED ] || \
+		error "lfs find $TDIR -size +0 wrong: found $NUMS, expected $EXPECTED"
+	EXPECTED=0
+	NUMS=`$LFIND ! -size -5 -t f $TDIR | wc -l`
+	[ $NUMS -eq $EXPECTED ] || \
+		error "lfs find $TDIR ! -size -5 wrong: found $NUMS, expected $EXPECTED"
+}
+
+run_test 56r "check lfs find -size works =========================="
 
 test_57a() {
 	# note test will not do anything if MDS is not local

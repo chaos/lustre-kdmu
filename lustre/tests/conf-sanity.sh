@@ -2098,6 +2098,8 @@ test_50g() {
 	[ "$OSTCOUNT" -lt "2" ] && skip_env "$OSTCOUNT < 2, skipping" && return
 	setup
 	start_ost2 || error "Unable to start OST2"
+        wait_osc_import_state mds ost2 FULL
+        wait_osc_import_state client ost2 FULL
 
 	local PARAM="${FSNAME}-OST0001.osc.active"
 
@@ -2206,7 +2208,9 @@ test_52() {
 	[ $? -eq 0 ] || { error "Unable to create tdir"; return 4; }
 	touch $TMP/modified_first
 	[ $? -eq 0 ] || { error "Unable to create temporary file"; return 5; }
-	do_node $ost1node "mkdir -p $ost1tmp && touch $ost1tmp/modified_first"
+	local mtime=$(stat -c %Y $TMP/modified_first)
+	do_node $ost1node "mkdir -p $ost1tmp && touch -m -d @$mtime $ost1tmp/modified_first"
+
 	[ $? -eq 0 ] || { error "Unable to create temporary file"; return 6; }
 	sleep 1
 
@@ -2496,6 +2500,28 @@ test_59() {
 }
 run_test 59 "writeconf mount option"
 
+
+test_58() { # bug 22658
+        [ "$FSTYPE" != "ldiskfs" ] && skip "not supported for $FSTYPE" && return
+	setup
+	mkdir -p $DIR/$tdir
+	createmany -o $DIR/$tdir/$tfile-%d 100
+	# make sure that OSTs do not cancel llog cookies before we unmount the MDS
+#define OBD_FAIL_OBD_LOG_CANCEL_NET      0x601
+	do_facet mds "lctl set_param fail_loc=0x601"
+	unlinkmany $DIR/$tdir/$tfile-%d 100
+	stop mds
+	local MNTDIR=$(facet_mntpt mds)
+	# remove all files from the OBJECTS dir
+	do_facet mds "mount -t ldiskfs $MDSDEV $MNTDIR"
+	do_facet mds "find $MNTDIR/OBJECTS -type f -delete"
+	do_facet mds "umount $MNTDIR"
+	# restart MDS with missing llog files
+	start_mds
+	do_facet mds "lctl set_param fail_loc=0"
+	reformat
+}
+run_test 58 "missing llog files must not prevent MDT from mounting"
 
 if ! combined_mgs_mds ; then
 	stop mgs
