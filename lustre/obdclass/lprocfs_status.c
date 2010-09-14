@@ -287,7 +287,6 @@ lprocfs_add_symlink(const char *name, libcfs_param_entry_t *parent,
 int lprocfs_add_vars(libcfs_param_entry_t *parent,
                      struct lprocfs_vars *list, void *data)
 {
-        void *cb_data = list->data ? list->data : data;
         int rc = 0;
 
         if (parent == NULL || list == NULL)
@@ -297,6 +296,7 @@ int lprocfs_add_vars(libcfs_param_entry_t *parent,
                 libcfs_param_entry_t *cur_lpe, *lpe = NULL;
                 char *pathcopy, *cur, *next, pathbuf[64];
                 int pathsize = strlen(list->name) + 1;
+                void *cb_data = list->data ? list->data : data;
 
                 cur_lpe = libcfs_param_get(parent);
 
