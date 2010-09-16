@@ -172,7 +172,7 @@ static int parse_nid(char *buf, void *value, int quiet)
 
 static int parse_net(char *buf, void *value)
 {
-        __u32 *net = (__u32 *)net;
+        __u32 *net = (__u32 *)value;
 
         *net = libcfs_str2net(buf);
         CDEBUG(D_INFO, "Net %s\n", libcfs_net2str(*net));
@@ -332,7 +332,7 @@ int class_attach(struct lustre_cfg *lcfg)
         cfs_init_rwsem(&obd->obd_observer_link_sem);
         /* recovery data */
         cfs_init_timer(&obd->obd_recovery_timer);
-        cfs_spin_lock_init(&obd->obd_processing_task_lock);
+        cfs_spin_lock_init(&obd->obd_recovery_task_lock);
         cfs_waitq_init(&obd->obd_next_transno_waitq);
         cfs_waitq_init(&obd->obd_evict_inprogress_waitq);
         CFS_INIT_LIST_HEAD(&obd->obd_req_replay_queue);

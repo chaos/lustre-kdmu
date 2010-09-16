@@ -208,7 +208,7 @@ static int filter_txn_stop_cb(const struct lu_env *env,
         cfs_spin_lock(&ofd->ofd_transno_lock);
         if (txn->th_result != 0) {
                 if (info->fti_transno != 0) {
-                        CERROR("Replay transno "LPU64" failed: rc %i\n",
+                        CERROR("Replay transno "LPU64" failed: rc %d\n",
                                info->fti_transno, txn->th_result);
                         info->fti_transno = 0;
                 }

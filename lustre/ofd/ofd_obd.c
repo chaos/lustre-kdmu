@@ -926,8 +926,7 @@ static int filter_orphans_destroy(const struct lu_env *env,
         obd_id                     last, id;
         int                        skip_orphan;
         int                        rc = 0;
-        obd_id                     mds_id = oa->o_id;
-        obd_seq                    gr = oa->o_seq;
+        struct ost_id              oi = oa->o_oi;
         ENTRY;
 
         info->fti_no_need_trans = 1;
@@ -936,29 +935,29 @@ static int filter_orphans_destroy(const struct lu_env *env,
 
         //LASSERT(cfs_mutex_try_down(&ofd->ofd_create_locks[gr]) != 0);
 
-        last = filter_last_id(ofd, gr);
+        last = filter_last_id(ofd, oa->o_seq);
         CWARN("%s: deleting orphan objects from "LPU64" to "LPU64"\n",
-              filter_obd(ofd)->obd_name, mds_id + 1, last);
+              filter_obd(ofd)->obd_name, oa->o_id + 1, last);
 
-        for (id = last; id > mds_id; id--) {
-                fid_ostid_unpack(&info->fti_fid, &oa->o_oi, 0);
+        for (oi.oi_id = last; oi.oi_id > oa->o_id; oi.oi_id--) {
+                fid_ostid_unpack(&info->fti_fid, &oi, 0);
                 rc = filter_destroy_by_fid(env, ofd, &info->fti_fid);
                 if (rc && rc != -ENOENT) /* this is pretty fatal... */
                         CEMERG("error destroying precreated id "LPU64": %d\n",
                                id, rc);
                 if (!skip_orphan) {
-                        filter_last_id_set(ofd, id - 1, gr);
+                        filter_last_id_set(ofd, id - 1, oa->o_seq);
                         /* update last_id on disk periodically so that if we
                          * restart * we don't need to re-scan all of the just
                          * deleted objects. */
                         if ((id & 511) == 0)
-                                filter_last_id_write(env, ofd, gr, 0);
+                                filter_last_id_write(env, ofd, oa->o_seq, 0);
                 }
         }
         CDEBUG(D_HA, "%s: after destroy: set last_objids["LPU64"] = "LPU64"\n",
-               filter_obd(ofd)->obd_name, gr, mds_id);
+               filter_obd(ofd)->obd_name, oa->o_seq, oa->o_id);
         if (!skip_orphan) {
-                rc = filter_last_id_write(env, ofd, gr, NULL);
+                rc = filter_last_id_write(env, ofd, oa->o_seq, NULL);
         } else {
                 /* don't reuse orphan object, return last used objid */
                 oa->o_id = last;

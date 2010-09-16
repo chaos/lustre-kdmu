@@ -122,8 +122,16 @@ static int dio_complete_routine(struct bio *bio, unsigned int done, int error)
         /* CAVEAT EMPTOR: possibly in IRQ context
          * DO NOT record procfs stats here!!! */
 
-        if (bio->bi_size)                       /* Not complete */
-                return 1;
+#ifdef HAVE_BIO_ENDIO_2ARG
+       /* The "bi_size" check was needed for kernels < 2.6.24 in order to
+        * handle the case where a SCSI request error caused this callback
+        * to be called before all of the biovecs had been processed.
+        * Without this check the server thread will hang.  In newer kernels
+        * the bio_end_io routine is never called for partial completions,
+        * so this check is no longer needed. */
+        if (bio->bi_size)                      /* Not complete */
+                DIO_RETURN(1);
+#endif
 
         if (unlikely(iobuf == NULL)) {
                 CERROR("***** bio->bi_private is NULL!  This should never "
@@ -427,7 +435,6 @@ int osd_get_bufs(const struct lu_env *env, struct dt_object *d, loff_t pos,
                 if (lb->page == NULL)
                         GOTO(cleanup, rc = -ENOMEM);
 
-#if 0
                 /* DLM locking protects us from write and truncate competing
                  * for same region, but truncate can leave dirty page in the
                  * cache. it's possible the writeout on a such a page is in
@@ -436,9 +443,7 @@ int osd_get_bufs(const struct lu_env *env, struct dt_object *d, loff_t pos,
                  * be able to proceed in filter_commitrw_write(). thus let's
                  * just wait for writeout completion, should be rare enough.
                  * -bzzz */
-                if (obd->u.filter.fo_writethrough_cache)
-                        wait_on_page_writeback(lb->page);
-#endif
+                wait_on_page_writeback(lb->page);
                 BUG_ON(PageWriteback(lb->page));
 
                 lu_object_get(&d->do_lu);

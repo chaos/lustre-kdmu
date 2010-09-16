@@ -103,7 +103,6 @@ int mdd_init_obd(const struct lu_env *env, struct mdd_device *mdd,
         struct lustre_cfg_bufs *bufs;
         struct lustre_cfg      *lcfg;
         struct obd_device      *obd;
-        struct mds_obd         *mds;
         ENTRY;
 
         mds_id = lu_site2md(mdd2lu_dev(mdd)->ld_site)->ms_node_id;
@@ -146,9 +145,10 @@ int mdd_init_obd(const struct lu_env *env, struct mdd_device *mdd,
                 LBUG();
         }
 
-        mds = &obd->u.mds;
-        mds->mds_next_dev = mdd->mdd_child;
+        cfs_spin_lock(&obd->obd_dev_lock);
         obd->obd_recovering = 1;
+        cfs_spin_unlock(&obd->obd_dev_lock);
+        obd->u.mds.mds_next_dev = mdd->mdd_child;
         obd->u.mds.mds_id = mds_id;
         rc = class_setup(obd, lcfg);
         if (rc)
@@ -277,8 +277,8 @@ static int mdd_lov_set_dir_md(const struct lu_env *env,
 
         /* if { size, offset, count } = { 0, -1, 0 } and no pool (i.e. all default
          * values specified) then delete default striping from dir. */
-        if (lum->lmm_stripe_size == 0 && lum->lmm_stripe_count == 0 &&
-            lum->lmm_stripe_offset == (typeof(lum->lmm_stripe_offset))(-1) &&
+        if (LOVEA_DELETE_VALUES(lum->lmm_stripe_size, lum->lmm_stripe_count,
+                                lum->lmm_stripe_offset) &&
             lum->lmm_magic != LOV_USER_MAGIC_V3) {
                 rc = mdd_xattr_set_txn(env, obj, &LU_BUF_NULL,
                                        XATTR_NAME_LOV, 0, handle);

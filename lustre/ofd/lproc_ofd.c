@@ -304,7 +304,9 @@ int lprocfs_filter_wr_degraded(libcfs_file_t *file, const char *buffer,
         if (rc)
                 return rc;
 
+        cfs_spin_lock(&ofd->ofd_flags_lock);
         ofd->ofd_raid_degraded = !!val;
+        cfs_spin_unlock(&ofd->ofd_flags_lock);
 
         return count;
 }
@@ -357,8 +359,10 @@ int lprocfs_filter_wr_syncjournal(libcfs_file_t *file, const char *buffer,
         if (val < 0)
                 return -EINVAL;
 
+        cfs_spin_lock(&ofd->ofd_flags_lock);
         ofd->ofd_syncjournal = !!val;
         filter_slc_set(ofd);
+        cfs_spin_unlock(&ofd->ofd_flags_lock);
 
         return count;
 }
@@ -408,7 +412,9 @@ int lprocfs_filter_wr_sync_lock_cancel(libcfs_file_t *file, const char *buffer,
         if (val < 0 || val > 2)
                 return -EINVAL;
 
+        cfs_spin_lock(&ofd->ofd_flags_lock);
         ofd->ofd_sync_lock_cancel = val;
+        cfs_spin_unlock(&ofd->ofd_flags_lock);
         return count;
 }
 

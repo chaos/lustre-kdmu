@@ -115,6 +115,7 @@ struct obd_statfs {
  * *STRIPE* - set/get lov_user_md
  * *INFO    - set/get lov_user_mds_data
  */
+/* see <lustre_obd.h> for ioctl numberss 101-150 */
 #define LL_IOC_GETFLAGS                 _IOR ('f', 151, long)
 #define LL_IOC_SETFLAGS                 _IOW ('f', 152, long)
 #define LL_IOC_CLRFLAGS                 _IOW ('f', 153, long)
@@ -132,9 +133,7 @@ struct obd_statfs {
 #define IOC_LOV_GETINFO                 _IOWR('f', 165, struct lov_user_mds_data *)
 #define LL_IOC_FLUSHCTX                 _IOW ('f', 166, long)
 #define LL_IOC_RMTACL                   _IOW ('f', 167, long)
-
 #define LL_IOC_GETOBDCOUNT              _IOR ('f', 168, long)
-
 #define LL_IOC_LLOOP_ATTACH             _IOWR('f', 169, long)
 #define LL_IOC_LLOOP_DETACH             _IOWR('f', 170, long)
 #define LL_IOC_LLOOP_INFO               _IOWR('f', 171, long)
@@ -142,8 +141,9 @@ struct obd_statfs {
 #define LL_IOC_PATH2FID                 _IOR ('f', 173, long)
 #define LL_IOC_GET_CONNECT_FLAGS        _IOWR('f', 174, __u64 *)
 #define LL_IOC_GET_MDTIDX               _IOR ('f', 175, int)
+#define LL_IOC_HSM_CT_START             _IOW ('f', 176,struct lustre_kernelcomm)
+/* see <lustre_obd.h> for ioctl numbers 177-210 */
 
-#define LL_IOC_HSM_CT_START             _IOW ('f', 178, struct lustre_kernelcomm *)
 
 #define LL_STATFS_MDC           1
 #define LL_STATFS_LOV           2
@@ -483,7 +483,9 @@ enum changelog_rec_type {
         CL_SETATTR  = 14,
         CL_XATTR    = 15,
         CL_HSM      = 16, /* HSM specific events, see flags */
-        CL_TIME     = 17, /* mtime, atime, ctime change only */
+        CL_MTIME    = 17, /* Precedence: setattr > mtime > ctime > atime */
+        CL_CTIME    = 18,
+        CL_ATIME    = 19,
         CL_LAST
 };
 
@@ -491,7 +493,7 @@ static inline const char *changelog_type2str(int type) {
         static const char *changelog_str[] = {
                 "MARK",  "CREAT", "MKDIR", "HLINK", "SLINK", "MKNOD", "UNLNK",
                 "RMDIR", "RNMFM", "RNMTO", "OPEN",  "CLOSE", "IOCTL", "TRUNC",
-                "SATTR", "XATTR", "HSM",   "TIME"  };
+                "SATTR", "XATTR", "HSM",   "MTIME", "CTIME", "ATIME"  };
         if (type >= 0 && type < CL_LAST)
                 return changelog_str[type];
         return NULL;

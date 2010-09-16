@@ -153,7 +153,7 @@ rm -rf $DIR/[Rdfs][0-9]*
 # $RUNAS_ID may get set incorrectly somewhere else
 [ $UID -eq 0 -a $RUNAS_ID -eq 0 ] && error "\$RUNAS_ID set to 0, but \$UID is also 0!"
 
-check_runas_id $RUNAS_ID $RUNAS_ID $RUNAS
+check_runas_id $RUNAS_ID $RUNAS_GID $RUNAS
 
 build_test_filter
 
@@ -327,16 +327,16 @@ test_6g() {
         $RUNAS mkdir $DIR/d6g/d || error
         chmod g+s $DIR/d6g/d || error
         mkdir $DIR/d6g/d/subdir
-	$CHECKSTAT -g \#$RUNAS_ID $DIR/d6g/d/subdir || error
+	$CHECKSTAT -g \#$RUNAS_GID $DIR/d6g/d/subdir || error
 }
 run_test 6g "Is new dir in sgid dir inheriting group?"
 
 test_6h() { # bug 7331
 	[ $RUNAS_ID -eq $UID ] && skip_env "RUNAS_ID = UID = $UID -- skipping" && return
 	touch $DIR/f6h || error "touch failed"
-	chown $RUNAS_ID:$RUNAS_ID $DIR/f6h || error "initial chown failed"
-	$RUNAS -G$RUNAS_ID chown $RUNAS_ID:0 $DIR/f6h && error "chown worked"
-	$CHECKSTAT -t file -u \#$RUNAS_ID -g \#$RUNAS_ID $DIR/f6h || error
+	chown $RUNAS_ID:$RUNAS_GID $DIR/f6h || error "initial chown failed"
+	$RUNAS -G$RUNAS_GID chown $RUNAS_ID:0 $DIR/f6h && error "chown worked"
+	$CHECKSTAT -t file -u \#$RUNAS_ID -g \#$RUNAS_GID $DIR/f6h || error
 }
 run_test 6h "$RUNAS chown RUNAS_ID.0 .../f6h (should return error)"
 
@@ -588,13 +588,13 @@ run_test 21 "write to dangling link ============================"
 test_22() {
 	WDIR=$DIR/$tdir
 	mkdir -p $WDIR
-	chown $RUNAS_ID $WDIR
+	chown $RUNAS_ID:$RUNAS_GID $WDIR
 	(cd $WDIR || error "cd $WDIR failed";
 	$RUNAS tar cf - /etc/hosts /etc/sysconfig/network | \
 	$RUNAS tar xf -)
 	ls -lR $WDIR/etc || error "ls -lR $WDIR/etc failed"
 	$CHECKSTAT -t dir $WDIR/etc || error "checkstat -t dir failed"
-	$CHECKSTAT -u \#$RUNAS_ID $WDIR/etc || error "checkstat -u failed"
+	$CHECKSTAT -u \#$RUNAS_ID -g \#$RUNAS_GID $WDIR/etc || error "checkstat -u failed"
 }
 run_test 22 "unpack tar archive as non-root user ==============="
 
@@ -1388,6 +1388,22 @@ test_27z() {
         check_seq_oid $DIR/$tdir/$tfile-2 || return 6
 }
 run_test 27z "check SEQ/OID on the MDT and OST filesystems"
+
+test_27A() { # b=19102
+        local restore_size=`$GETSTRIPE -s $MOUNT`
+        local restore_count=`$GETSTRIPE -c $MOUNT`
+        local restore_offset=`$GETSTRIPE -o $MOUNT`
+        $SETSTRIPE -c 0 -o -1 -s 0 $MOUNT
+        local default_size=`$GETSTRIPE -s $MOUNT`
+        local default_count=`$GETSTRIPE -c $MOUNT`
+        local default_offset=`$GETSTRIPE -o $MOUNT`
+        local dsize=$((1024 * 1024))
+        [ $default_size -eq $dsize ] || error "stripe size $default_size != $dsize"
+        [ $default_count -eq 1 ] || error "stripe count $default_count != 1"
+        [ $default_offset -eq -1 ] || error "stripe offset $default_offset != -1"
+        $SETSTRIPE -c $restore_count -o $restore_offset -s $restore_size $MOUNT
+}
+run_test 27A "check filesystem-wide default LOV EA values"
 
 # createtest also checks that device nodes are created and
 # then visible correctly (#2091)
@@ -3346,14 +3362,14 @@ test_56q() {
 
 	setup_56 $NUMFILES $NUMDIRS
 
-	chgrp $RUNAS_ID $TDIR/file* || error "chown $DIR/${tdir}g/file$i failed"
+	chgrp $RUNAS_GID $TDIR/file* || error "chown $DIR/${tdir}g/file$i failed"
 	EXPECTED=$NUMFILES
-	NUMS="`$LFIND -gid $RUNAS_ID $TDIR | wc -l`"
+	NUMS="`$LFIND -gid $RUNAS_GID $TDIR | wc -l`"
 	[ $NUMS -eq $EXPECTED ] || \
 		error "lfs find -gid $TDIR wrong: found $NUMS, expected $EXPECTED"
 
 	EXPECTED=$(( ($NUMFILES+1) * $NUMDIRS + 1))
-	NUMS="`$LFIND ! -gid $RUNAS_ID $TDIR | wc -l`"
+	NUMS="`$LFIND ! -gid $RUNAS_GID $TDIR | wc -l`"
 	[ $NUMS -eq $EXPECTED ] || \
 		error "lfs find ! -gid $TDIR wrong: found $NUMS, expected $EXPECTED"
 
@@ -3860,7 +3876,7 @@ test_72() { # bug 5695 - Test that on 2.6 remove_suid works properly
 	[ "$RUNAS_ID" = "$UID" ] && skip_env "RUNAS_ID = UID = $UID -- skipping" && return
 
         # Check that testing environment is properly set up. Skip if not
-        FAIL_ON_ERROR=false check_runas_id_ret $RUNAS_ID $RUNAS_ID $RUNAS || {
+        FAIL_ON_ERROR=false check_runas_id_ret $RUNAS_ID $RUNAS_GID $RUNAS || {
                 skip_env "User $RUNAS_ID does not exist - skipping"
                 return 0
         }
@@ -4499,6 +4515,7 @@ test_101d() {
 
     set_read_ahead $old_READAHEAD
     rm -f $file
+    wait_delete_completed
 
     [ $time_ra_ON -lt $time_ra_OFF ] ||
         error "read-ahead enabled  time read (${time_ra_ON}s) is more than
@@ -4803,7 +4820,7 @@ test_102k() {
         local default_size=`$GETSTRIPE -s $test_kdir`
         local default_count=`$GETSTRIPE -c $test_kdir`
         local default_offset=`$GETSTRIPE -o $test_kdir`
-        $SETSTRIPE -s 65536 -i 1 -c 2 $test_kdir || error 'dir setstripe failed'
+        $SETSTRIPE -s 65536 -i 1 -c $OSTCOUNT $test_kdir || error 'dir setstripe failed'
         setfattr -n trusted.lov $test_kdir
         local stripe_size=`$GETSTRIPE -s $test_kdir`
         local stripe_count=`$GETSTRIPE -c $test_kdir`
@@ -6453,11 +6470,11 @@ som_mode_switch() {
         if [ x$som = x"enabled" ]; then
                 [ $((gl2 - gl1)) -gt 0 ] && error "no glimpse RPC is expected"
                 MOUNTOPT=`echo $MOUNTOPT | sed 's/som_preview//g'`
-                do_facet mgs "$LCTL conf_param $FSNAME.mdt.som=disabled"
+                do_facet mgs "$LCTL conf_param mdt.$FSNAME.som=disabled"
         else
                 [ $((gl2 - gl1)) -gt 0 ] || error "some glimpse RPC is expected"
                 MOUNTOPT="$MOUNTOPT,som_preview"
-                do_facet mgs "$LCTL conf_param $FSNAME.mdt.som=enabled"
+                do_facet mgs "$LCTL conf_param mdt.$FSNAME.som=enabled"
         fi
 
         # do remount to make new mount-conf parameters actual
@@ -7612,7 +7629,20 @@ test_216() { # bug 20317
 }
 run_test 216 "check lockless direct write works and updates file size and kms correctly"
 
-test_217() { # bug 15384
+test_217() { # bug 22430
+	local node
+	for node in $(nodes_list); do
+		if [[ $node = *-* ]] ; then
+			echo "lctl ping $node@$NETTYPE"
+			lctl ping $node@$NETTYPE
+		else
+			echo "skipping $node (no hiphen detected)"
+		fi
+	done
+}
+run_test 217 "check lctl ping for hostnames with hiphen ('-')"
+
+test_218() { # bug 15384
     #cleanup/setup to check params_tree build/remove correctly
     cleanup
     setup
@@ -7632,7 +7662,7 @@ test_217() { # bug 15384
     fi
     rm -f $DIR/$tfile
 }
-run_test 217 "compare parameters from /proc and params_tree"
+run_test 218 "compare parameters from /proc and params_tree"
 
 #
 # tests that do cleanup/setup should be run at the end

@@ -319,9 +319,9 @@ static int lprocfs_filter_wr_cache(libcfs_file_t *file, const char *buffer,
         if (rc)
                 return rc;
 
-        cfs_spin_lock_bh(&obd->obd_processing_task_lock);
-        obd->u.filter.fo_read_cache = val;
-        cfs_spin_unlock_bh(&obd->obd_processing_task_lock);
+        cfs_spin_lock_bh(&obd->u.filter.fo_flags_lock);
+        obd->u.filter.fo_read_cache = !!val;
+        cfs_spin_unlock_bh(&obd->u.filter.fo_flags_lock);
         return count;
 }
 
@@ -353,9 +353,9 @@ static int lprocfs_filter_wr_wcache(libcfs_file_t *file, const char *buffer,
         if (rc)
                 return rc;
 
-        cfs_spin_lock_bh(&obd->obd_processing_task_lock);
-        obd->u.filter.fo_writethrough_cache = val;
-        cfs_spin_unlock_bh(&obd->obd_processing_task_lock);
+        cfs_spin_lock(&obd->u.filter.fo_flags_lock);
+        obd->u.filter.fo_writethrough_cache = !!val;
+        cfs_spin_unlock(&obd->u.filter.fo_flags_lock);
         return count;
 }
 
@@ -395,9 +395,9 @@ int lprocfs_filter_wr_degraded(libcfs_file_t *file, const char *buffer,
         if (rc)
                 return rc;
 
-        cfs_spin_lock(&obd->obd_osfs_lock);
+        cfs_spin_lock(&obd->u.filter.fo_flags_lock);
         obd->u.filter.fo_raid_degraded = !!val;
-        cfs_spin_unlock(&obd->obd_osfs_lock);
+        cfs_spin_unlock(&obd->u.filter.fo_flags_lock);
         return count;
 }
 

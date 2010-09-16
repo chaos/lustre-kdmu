@@ -485,7 +485,7 @@ int filter_stack_init(const struct lu_env *env,
         rc = tmp->ld_ops->ldo_process_config(env, tmp, cfg);
         if (rc)
                 GOTO(out, rc);
-        
+
         rc = tmp->ld_ops->ldo_prepare(env, d, tmp);
         GOTO(out, rc);
 
@@ -510,7 +510,7 @@ static void filter_stack_fini(const struct lu_env *env,
 
         info = lu_context_key_get(&env->le_ctx, &filter_thread_key);
         LASSERT(info != NULL);
-        
+
         lu_site_purge(env, ls, ~0);
 
         /* process cleanup, pass mdt obd name to get obd umount flags */
@@ -621,6 +621,9 @@ static int filter_init0(const struct lu_env *env, struct filter_device *m,
 
         m->ofd_fmd_max_num = FILTER_FMD_MAX_NUM_DEFAULT;
         m->ofd_fmd_max_age = FILTER_FMD_MAX_AGE_DEFAULT;
+
+        cfs_spin_lock_init(&m->ofd_flags_lock);
+        m->ofd_raid_degraded = 0;
         m->ofd_syncjournal = 0;
         filter_slc_set(m);
 
@@ -870,6 +873,7 @@ static void filter_key_exit(const struct lu_context *ctx,
         info->fti_no_need_trans = 0;
 
         memset(&info->fti_attr, 0, sizeof info->fti_attr);
+        memset(&info->fti_lvb, 0, sizeof info->fti_lvb);
 }
 
 struct lu_context_key filter_thread_key = {
