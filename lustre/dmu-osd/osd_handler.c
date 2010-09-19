@@ -771,7 +771,7 @@ static int osd_trans_start(const struct lu_env *env, struct dt_device *d,
 
         rc = dt_txn_hook_start(env, d, th);
         if (rc != 0)
-                RETURN(ERR_PTR(rc));
+                RETURN(rc);
 
         rc = udmu_tx_assign(oh->ot_tx, TXG_WAIT);
         if (unlikely(rc != 0)) {
