@@ -771,6 +771,7 @@ void udmu_object_write(udmu_objset_t *uos, dmu_buf_t *db, struct dmu_tx *tx,
  */
 void udmu_object_getattr(dmu_buf_t *db, vnattr_t *vap)
 {
+        dmu_buf_t *dbi = (dmu_buf_impl_t *) db;
         dnode_t *dn;
 
         znode_phys_t *zp = db->db_data;
@@ -793,8 +794,8 @@ void udmu_object_getattr(dmu_buf_t *db, vnattr_t *vap)
         vap->va_nlink    = zp->zp_links;
         vap->va_rdev     = zp->zp_rdev;
 
-        DB_DNODE_ENTER((dmu_buf_impl_t *) db);
-        dn = DB_DNODE((dmu_buf_impl_t *) db);
+        DB_DNODE_ENTER(dbi);
+        dn = DB_DNODE(dbi);
 
         vap->va_blksize = dn->dn_datablksz;
         vap->va_blkbits = dn->dn_datablkshift;
@@ -802,7 +803,7 @@ void udmu_object_getattr(dmu_buf_t *db, vnattr_t *vap)
         vap->va_nblocks = DN_USED_BYTES(dn->dn_phys) >> SPA_MINBLOCKSHIFT;
         vap->va_mask |= DMU_AT_NBLOCKS | DMU_AT_BLKSIZE;
 
-        DB_DNODE_EXIT((dmu_buf_impl_t *) db);
+        DB_DNODE_EXIT(dbi);
 }
 
 /*
@@ -1038,15 +1039,16 @@ uint64_t udmu_object_get_id(dmu_buf_t *db)
 
 int udmu_object_is_zap(dmu_buf_t *db)
 {
+        dmu_buf_impl_t *dbi = (dmu_buf_impl_t *) db;
         dnode_t *dn;
         int rc;
 
-        DB_DNODE_ENTER((dmu_buf_impl_t *) db);
+        DB_DNODE_ENTER(dbi);
 
-        dn = DB_DNODE((dmu_buf_impl_t *) db);
+        dn = DB_DNODE(dbi);
         rc = dn->dn_type == DMU_OT_DIRECTORY_CONTENTS;
 
-        DB_DNODE_EXIT((dmu_buf_impl_t *) db);
+        DB_DNODE_EXIT(dbi);
 
         return rc;
 }
@@ -1116,28 +1118,30 @@ void udmu_tx_cb_register(dmu_tx_t *tx, udmu_tx_callback_func_t *func, void *data
 int udmu_indblk_overhead(dmu_buf_t *db, unsigned long *used,
                          unsigned long *overhead)
 {
+        dmu_buf_impl_t *dbi = (dmu_buf_impl_t *) db;
         dnode_t *dn;
 
-        DB_DNODE_ENTER((dmu_buf_impl_t *) db);
+        DB_DNODE_ENTER(dbi);
 
-        dn = DB_DNODE((dmu_buf_impl_t *) db);
+        dn = DB_DNODE(dbi);
         *overhead = (2 * (*used)) / (1 << dn->dn_phys->dn_indblkshift);
 
-        DB_DNODE_EXIT((dmu_buf_impl_t *) db);
+        DB_DNODE_EXIT(dbi);
 
         return 0;
 }
 
 int udmu_get_blocksize(dmu_buf_t *db, long *blksz)
 {
+        dmu_buf_impl_t *dbi = (dmu_buf_impl_t *) db;
         dnode_t *dn;
 
-        DB_DNODE_ENTER((dmu_buf_impl_t *) db);
+        DB_DNODE_ENTER(dbi);
 
-        dn = DB_DNODE((dmu_buf_impl_t *) db);
+        dn = DB_DNODE(dbi);
         *blksz = dn->dn_datablksz;
 
-        DB_DNODE_EXIT((dmu_buf_impl_t *) db);
+        DB_DNODE_EXIT(dbi);
 
         return 0;
 }
