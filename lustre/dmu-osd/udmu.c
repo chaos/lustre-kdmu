@@ -771,7 +771,7 @@ void udmu_object_write(udmu_objset_t *uos, dmu_buf_t *db, struct dmu_tx *tx,
  */
 void udmu_object_getattr(dmu_buf_t *db, vnattr_t *vap)
 {
-        dmu_buf_t *dbi = (dmu_buf_impl_t *) db;
+        dmu_buf_impl_t *dbi = (dmu_buf_impl_t *) db;
         dnode_t *dn;
 
         znode_phys_t *zp = db->db_data;
