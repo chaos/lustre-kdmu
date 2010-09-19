@@ -923,7 +923,7 @@ static int filter_orphans_destroy(const struct lu_env *env,
                                   struct obdo *oa)
 {
         struct filter_thread_info *info = filter_info(env);
-        obd_id                     last, id;
+        obd_id                     last;
         int                        skip_orphan;
         int                        rc = 0;
         struct ost_id              oi = oa->o_oi;
@@ -944,13 +944,13 @@ static int filter_orphans_destroy(const struct lu_env *env,
                 rc = filter_destroy_by_fid(env, ofd, &info->fti_fid);
                 if (rc && rc != -ENOENT) /* this is pretty fatal... */
                         CEMERG("error destroying precreated id "LPU64": %d\n",
-                               id, rc);
+                               oi.oi_id, rc);
                 if (!skip_orphan) {
-                        filter_last_id_set(ofd, id - 1, oa->o_seq);
+                        filter_last_id_set(ofd, oi.oi_id - 1, oa->o_seq);
                         /* update last_id on disk periodically so that if we
                          * restart * we don't need to re-scan all of the just
                          * deleted objects. */
-                        if ((id & 511) == 0)
+                        if ((oi.oi_id & 511) == 0)
                                 filter_last_id_write(env, ofd, oa->o_seq, 0);
                 }
         }
