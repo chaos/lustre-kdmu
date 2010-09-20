@@ -1136,7 +1136,6 @@ static struct page
         OBD_PAGE_ALLOC(page, CFS_ALLOC_HIGH | CFS_ALLOC_STD | CFS_ALLOC_COLD);
         if (!page)
                return ERR_PTR(-ENOMEM);
-
         rc = mdc_getpage(exp, &lmo->lmo_fid, index, oc, page, req);
         if (unlikely(rc)) {
                 OBD_PAGE_FREE(page);
@@ -1151,6 +1150,7 @@ static struct page
                 lmo->lmo_root.lmo_tree_nrpages ++;
         cfs_spin_unlock(&lmo->lmo_root.lmo_tree_lock);
         if (likely(rc == 0)) {
+                page_cache_get(page);
                 page_cache_get(page);
                 SetPageUptodate(page);
         } else {
@@ -1210,7 +1210,7 @@ static struct page
                                 page = NULL;
                         }
                 } else {
-                        page_cache_release(page);
+                        mdc_release_page(root, page);
                         page = ERR_PTR(-EIO);
                 }
 
@@ -1227,14 +1227,6 @@ int mdc_put_page(struct obd_export *exp, struct md_op_data *op_data, struct page
 
         mdc_release_page(&lmo->lmo_root, page);
         return 0;
-}
-
-static void mdc_release_page_locked(struct lmo_page_root *root, struct page *page)
-{
-        if (cfs_atomic_dec_return(&page->_count) == 1) {
-                radix_tree_delete(&root->lmo_tree_root, page->index);
-                OBD_PAGE_FREE(page);
-        }
 }
 
 #define PAGE_VEC_COUNT          12
@@ -1268,7 +1260,13 @@ static int mdc_cancel_page(struct obd_export *exp, struct lmv_stripe_md *lsm,
                 idx = pvec[nr - 1]->index + 1;
                 for (i = 0; i < nr; ++i) {
                         page = pvec[i];
-                        mdc_release_page_locked(root, page);
+                        /* Delete the page from the radix tree, so it can not
+                         * be located by other threads
+                         */
+                        radix_tree_delete(&root->lmo_tree_root, page->index);
+                        if (cfs_atomic_dec_return(&page->_count) == 1) {
+                                OBD_PAGE_FREE(page);
+                        }
                 }
         }
         cfs_spin_unlock(&root->lmo_tree_lock);
