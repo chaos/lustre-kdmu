@@ -2072,6 +2072,9 @@ static int lov_iocontrol(unsigned int cmd, struct obd_export *exp, int len,
         case LL_IOC_LOV_SETEA:
                 rc = lov_setea(exp, karg, uarg);
                 break;
+
+#ifdef HAVE_QUOTA_SUPPORT
+
         case OBD_IOC_QUOTACTL: {
                 struct if_quotactl *qctl = karg;
                 struct lov_tgt_desc *tgt = NULL;
@@ -2119,6 +2122,14 @@ static int lov_iocontrol(unsigned int cmd, struct obd_export *exp, int len,
                 OBD_FREE_PTR(oqctl);
                 break;
         }
+
+#else /* HAVE_QUOTA_SUPPORT */
+
+        case OBD_IOC_QUOTACTL:
+                RETURN(-ENOTSUPP);
+
+#endif /* HAVE_QUOTA_SUPPORT */
+
         default: {
                 int set = 0;
 
@@ -2814,9 +2825,6 @@ struct obd_ops lov_obd_ops = {
         .o_putref              = lov_putref,
 };
 
-static quota_interface_t *quota_interface;
-extern quota_interface_t lov_quota_interface;
-
 cfs_mem_cache_t *lov_oinfo_slab;
 
 extern struct lu_kmem_descr lov_caches[];
@@ -2845,16 +2853,10 @@ int __init lov_init(void)
         }
         lprocfs_lov_init_vars(&lvars);
 
-        cfs_request_module("lquota");
-        quota_interface = PORTAL_SYMBOL_GET(lov_quota_interface);
-        init_obd_quota_ops(quota_interface, &lov_obd_ops);
-
         rc = class_register_type(&lov_obd_ops, NULL, lvars.module_vars,
                                  LUSTRE_LOV_NAME, &lov_device_type);
 
         if (rc) {
-                if (quota_interface)
-                        PORTAL_SYMBOL_PUT(lov_quota_interface);
                 rc2 = cfs_mem_cache_destroy(lov_oinfo_slab);
                 LASSERT(rc2 == 0);
                 lu_kmem_fini(lov_caches);
@@ -2870,9 +2872,6 @@ static void /*__exit*/ lov_exit(void)
 
         lu_device_type_fini(&lov_device_type);
         lu_kmem_fini(lov_caches);
-
-        if (quota_interface)
-                PORTAL_SYMBOL_PUT(lov_quota_interface);
 
         class_unregister_type(LUSTRE_LOV_NAME);
         rc = cfs_mem_cache_destroy(lov_oinfo_slab);

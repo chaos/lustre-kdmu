@@ -60,9 +60,6 @@
 
 #define REQUEST_MINOR 244
 
-static quota_interface_t *quota_interface;
-extern quota_interface_t mdc_quota_interface;
-
 static int mdc_cleanup(struct obd_device *obd);
 
 int mdc_unpack_capa(struct obd_export *exp, struct ptlrpc_request *req,
@@ -1378,10 +1375,6 @@ static int mdc_iocontrol(unsigned int cmd, struct obd_export *exp, int len,
                 GOTO(out, rc);
         }
 #endif
-        case OBD_IOC_POLL_QUOTACHECK:
-                rc = lquota_poll_check(quota_interface, exp,
-                                       (struct if_quotacheck *)karg);
-                GOTO(out, rc);
         case OBD_IOC_PING_TARGET:
                 rc = ptlrpc_obd_ping(obd);
                 GOTO(out, rc);
@@ -2275,14 +2268,8 @@ int __init mdc_init(void)
         struct lprocfs_static_vars lvars = { 0 };
         lprocfs_mdc_init_vars(&lvars);
 
-        cfs_request_module("lquota");
-        quota_interface = PORTAL_SYMBOL_GET(mdc_quota_interface);
-        init_obd_quota_ops(quota_interface, &mdc_obd_ops);
-
         rc = class_register_type(&mdc_obd_ops, &mdc_md_ops, lvars.module_vars,
                                  LUSTRE_MDC_NAME, NULL);
-        if (rc && quota_interface)
-                PORTAL_SYMBOL_PUT(mdc_quota_interface);
 
         RETURN(rc);
 }
@@ -2290,9 +2277,6 @@ int __init mdc_init(void)
 #ifdef __KERNEL__
 static void /*__exit*/ mdc_exit(void)
 {
-        if (quota_interface)
-                PORTAL_SYMBOL_PUT(mdc_quota_interface);
-
         class_unregister_type(LUSTRE_MDC_NAME);
 }
 

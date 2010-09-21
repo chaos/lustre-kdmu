@@ -229,7 +229,6 @@ init_test_env() {
     esac
     export LOAD_MODULES_REMOTE=${LOAD_MODULES_REMOTE:-false}
     export USE_QUOTA=${USE_QUOTA:-no}
-    zfs && USE_QUOTA=no
 
     # Paths on remote nodes, if different
     export RLUSTRE=${RLUSTRE:-$LUSTRE}

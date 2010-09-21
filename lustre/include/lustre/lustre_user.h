@@ -359,7 +359,7 @@ liblustreapi.c:2893: warning: format '%lx' expects type 'long unsigned int *', b
 #define LUSTRE_Q_INVALIDATE  0x80000b     /* invalidate quota data */
 #define LUSTRE_Q_FINVALIDATE 0x80000c     /* invalidate filter quota data */
 
-#define UGQUOTA 2       /* set both USRQUOTA and GRPQUOTA */
+#define UGQUOTA 2       /* set both CFS_USRQUOTA and CFS_GRPQUOTA */
 
 struct if_quotacheck {
         char                    obd_type[16];

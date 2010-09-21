@@ -945,24 +945,13 @@ static int osd_init_capa_ctxt(const struct lu_env *env, struct dt_device *d,
 /**
  * Concurrency: serialization provided by callers.
  */
-static void osd_init_quota_ctxt(const struct lu_env *env, struct dt_device *d,
-                               struct dt_quota_ctxt *ctxt, void *data)
+static int osd_quota_setup(const struct lu_env *env, struct dt_device *d,
+                                void *data)
 {
-        struct obd_device *obd = (void *)ctxt;
-        struct osd_device *osd;
-        ENTRY;
-
-        osd = osd_dt_dev(d);
-        LASSERT(osd_sb(osd));
-
-        obd->u.obt.obt_sb = osd_sb(osd);
-
-        OBD_SET_CTXT_MAGIC(&obd->obd_lvfs_ctxt);
-        obd->obd_lvfs_ctxt.pwdmnt = osd->od_mnt;
-        obd->obd_lvfs_ctxt.pwd = osd->od_mnt->mnt_root;
-        obd->obd_lvfs_ctxt.fs = get_ds();
-
-        EXIT;
+        return 0;
+}
+static void osd_quota_cleanup(const struct lu_env *env, struct dt_device *d)
+{
 }
 
 /**
@@ -1100,7 +1089,10 @@ static const struct dt_device_operations osd_dt_ops = {
         .dt_ro             = osd_ro,
         .dt_commit_async   = osd_commit_async,
         .dt_init_capa_ctxt = osd_init_capa_ctxt,
-        .dt_init_quota_ctxt= osd_init_quota_ctxt,
+        .dt_quota          = {
+                .dt_setup   = osd_quota_setup,
+                .dt_cleanup = osd_quota_cleanup,
+        },
         .dt_label_get      = osd_label_get,
         .dt_label_set      = osd_label_set
 };

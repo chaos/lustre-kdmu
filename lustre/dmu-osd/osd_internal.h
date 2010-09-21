@@ -43,6 +43,7 @@
 #define _OSD_INTERNAL_H
 
 #include <dt_object.h>
+#include <osd_quota.h>
 
 struct inode;
 
@@ -75,6 +76,11 @@ struct osd_thread_info {
 
         struct osd_fid_pack    oti_fid_pack;
 };
+
+typedef struct osd_quota_context {
+        struct dt_object *qc_slave_uid_dto;
+        struct dt_object *qc_slave_gid_dto;
+} osd_quota_context_t;
 
 /*
  * osd device.
@@ -120,7 +126,39 @@ struct osd_device {
         char                      od_label[MAXNAMELEN];
 
         int                       od_reserved_fraction;
+        osd_quota_context_t       od_qctxt;
 };
+
+struct osd_object {
+        struct dt_object       oo_dt;
+        /*
+         * Inode for file system object represented by this osd_object. This
+         * inode is pinned for the whole duration of lu_object life.
+         *
+         * Not modified concurrently (either setup early during object
+         * creation, or assigned by osd_object_create() under write lock).
+         */
+        dmu_buf_t               *oo_db;
+
+        /* protects inode attributes. */
+        cfs_semaphore_t         oo_guard;
+        cfs_rw_semaphore_t      oo_sem;
+
+        uint64_t                oo_mode;
+        uint64_t                oo_type;
+};
+
+#define IT_REC_SIZE 256
+
+struct osd_zap_it {
+        zap_cursor_t            *ozi_zc;
+        struct osd_object       *ozi_obj;
+        struct lustre_capa      *ozi_capa;
+        unsigned                 ozi_reset:1;     /* 1 -- no need to advance */
+        char                     ozi_name[NAME_MAX + 1];
+        char                     ozi_rec[IT_REC_SIZE];
+};
+#define DT_IT2DT(it) (&((struct osd_zap_it *)it)->ozi_obj->oo_dt)
 
 int osd_statfs(const struct lu_env *env, struct dt_device *d, struct obd_statfs *osfs);
 
@@ -144,5 +182,20 @@ void osd_lprocfs_time_start(const struct lu_env *env);
 void osd_lprocfs_time_end(const struct lu_env *env,
                           struct osd_device *osd, int op);
 #endif
+
+/* osd_quota.c */
+void osd_set_quota_index_ops(struct dt_object *dt);
+int  osd_qctxt_init(const struct lu_env *env, struct lu_device *lu_dev);
+void osd_qctxt_finish(const struct lu_env *env, struct lu_device *d);
+#ifdef LPROCFS
+void osd_quota_procfs_init(struct osd_device *osd);
+#endif
+
+/* osd_handler.c */
+struct osd_object *osd_dt_obj(const struct dt_object *d);
+struct osd_device  *osd_obj2dev (const struct osd_object *o);
+void osd_zap_it_fini(const struct lu_env *env, struct dt_it *di);
+int osd_zap_it_next(const struct lu_env *env, struct dt_it *di);
+struct osd_device *osd_dev(const struct lu_device *d);
 
 #endif /* _OSD_INTERNAL_H */

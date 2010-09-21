@@ -2015,8 +2015,8 @@ static int mdd_create(const struct lu_env *env,
                                 block_count = 1;
                                 break;
                         }
-                        if (qcids[USRQUOTA] == qpids[USRQUOTA] &&
-                            qcids[GRPQUOTA] == qpids[GRPQUOTA]) {
+                        if (qcids[CFS_USRQUOTA] == qpids[CFS_USRQUOTA] &&
+                            qcids[CFS_GRPQUOTA] == qpids[CFS_GRPQUOTA]) {
                                 block_count += 1;
                                 same = 1;
                         }

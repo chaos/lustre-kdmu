@@ -297,6 +297,61 @@ quota_show_check() {
         fi
 }
 
+get_used_bytes() {
+        id=$1
+        g_or_u=$2
+        ost_or_mdt=$3
+        if [ "$ost_or_mdt" == "mdt" ]; then
+            used=`do_facet $SINGLEMDS $LCTL get_param -n osd-*.${FSNAME}-MDT*.${g_or_u}quota | awk '{if ($1 == id) print $2}' id=$id`
+        else
+            used=`do_facet ost1 $LCTL get_param -n osd-*.${FSNAME}-OST*0.${g_or_u}quota | awk '{if ($1 == id) print $2}' id=$id`
+        fi
+        [ -z $used ] && used=0
+        echo $used
+}
+
+SANITY_QUOTA_USERS="quota15_1 quota15_2 quota15_3 quota15_4 quota15_5 quota15_6 \
+                    quota15_7 quota15_8 quota15_9 quota15_10 quota15_11 quota15_12 \
+                    quota15_13 quota15_14 quota15_15 quota15_16 quota15_17 quota15_18 \
+                    quota15_19 quota15_20 quota15_21 quota15_22 quota15_23 quota15_24 \
+                    quota15_25 quota15_26 quota15_27 quota15_28 quota15_29 quota15_30"
+test_200() {
+	mkdir -p $DIR/$tdir
+	chmod 777 $DIR/$tdir
+	for i in $SANITY_QUOTA_USERS; do
+            echo $i
+            uid=`awk -F: '{if ($1 == id) print $3}' id=$i /etc/passwd`
+            # all users are in the group "quota_usr"
+            gid=`awk -F: '$1 ~ /quota_usr/ {print $3}' /etc/group`
+            echo $uid, $gid
+            old_mdt_uid=`get_used_bytes $uid "u" "mdt"`
+            old_mdt_gid=`get_used_bytes $gid "g" "mdt"`
+            # ost doesn't record uid/gid per object
+            old_ost_uid=`get_used_bytes $uid "u" "ost"`
+            old_ost_gid=`get_used_bytes $gid "g" "ost"`
+            towrite=$RANDOM
+            runas -u $uid -g $gid $LFS setstripe $DIR/$tdir/$i -i 0 -c 1
+            runas -u $uid -g $gid dd if=/dev/zero of=$DIR/$tdir/$i bs=$towrite count=1
+            # This sleep will go away when bug 22624 is fixed
+            sync; sleep 60; sync
+            new_mdt_uid=`get_used_bytes $uid "u" "mdt"`
+            new_mdt_gid=`get_used_bytes $gid "g" "mdt"`
+            new_ost_uid=`get_used_bytes $uid "u" "ost"`
+            new_ost_gid=`get_used_bytes $gid "g" "ost"`
+            echo $old_mdt_uid $old_mdt_gid $old_ost_uid $old_ost_gid
+            echo $new_mdt_uid $new_mdt_gid $new_ost_uid $new_ost_gid
+            [ $((new_mdt_uid - old_mdt_uid)) -le 0 ] && error "On mdt, blocks used by uer($uid) is decreased or no changed!"
+            [ $((new_mdt_gid - old_mdt_gid)) -le 0 ] && error "On mdt, blocks used by group($gid) is decreased or no changed!"
+            [ $((new_mdt_uid - old_mdt_uid)) -gt 1048576 ] && error "On mdt, blocks used by uer($uid) is increased too much!"
+            [ $((new_mdt_gid - old_mdt_gid)) -gt 1048576 ] && error "On mdt, blocks used by group($gid) is increased too much!"
+            [ $((new_ost_uid - old_ost_uid)) -le 0 ] && error "On ost, blocks usd by user($uid) is decreased or no changed!"
+            [ $((new_ost_gid - old_ost_gid)) -le 0 ] && error "On ost, blocks usd by group($gid) is decreased or no changed!"
+        done
+        rm -rf $DIR/$tdir/quota*
+}
+run_test 200 "Testing quota callback on DMU OSD b=22962"
+exit
+
 # set quota
 quota_init() {
 	$LFS quotacheck -ug $DIR

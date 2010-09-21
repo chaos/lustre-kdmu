@@ -1780,10 +1780,10 @@ static int mdt_quotactl_handle(struct mdt_thread_info *info)
                         RETURN(-EPERM);
 
 
-                if (oqctl->qc_type == USRQUOTA)
+                if (oqctl->qc_type == CFS_USRQUOTA)
                         id = lustre_idmap_lookup_uid(NULL, idmap, 0,
                                                      oqctl->qc_id);
-                else if (oqctl->qc_type == GRPQUOTA)
+                else if (oqctl->qc_type == CFS_GRPQUOTA)
                         id = lustre_idmap_lookup_gid(NULL, idmap, 0,
                                                      oqctl->qc_id);
                 else
@@ -4343,9 +4343,7 @@ static void mdt_fini(const struct lu_env *env, struct mdt_device *m)
         mdt_obd_llog_cleanup(obd);
         obd_exports_barrier(obd);
         obd_zombie_barrier();
-#ifdef HAVE_QUOTA_SUPPORT
         next->md_ops->mdo_quota.mqo_cleanup(env, next);
-#endif
         lut_fini(env, &m->mdt_lut);
         mdt_fs_cleanup(env, m);
         upcall_cache_cleanup(m->mdt_identity_cache);
@@ -4481,9 +4479,7 @@ static int mdt_init0(const struct lu_env *env, struct mdt_device *m,
         struct lu_site            *s;
         struct md_site            *mite;
         const char                *identity_upcall = "NONE";
-#ifdef HAVE_QUOTA_SUPPORT
         struct md_device          *next;
-#endif
         int                        rc;
         int                        node_id;
         ENTRY;
@@ -4664,13 +4660,6 @@ static int mdt_init0(const struct lu_env *env, struct mdt_device *m,
 
         mdt_adapt_sptlrpc_conf(obd, 1);
 
-#ifdef HAVE_QUOTA_SUPPORT
-        next = m->mdt_child;
-        rc = next->md_ops->mdo_quota.mqo_setup(env, next, NULL);
-        if (rc)
-                GOTO(err_llog_cleanup, rc);
-#endif
-
         target_recovery_init(&m->mdt_lut, mdt_recovery_handle);
 
         rc = mdt_start_ptlrpc_service(m);
@@ -4678,6 +4667,11 @@ static int mdt_init0(const struct lu_env *env, struct mdt_device *m,
                 GOTO(err_recovery, rc);
 
         ping_evictor_start();
+
+        next = m->mdt_child;
+        rc = next->md_ops->mdo_quota.mqo_setup(env, next, NULL);
+        if (rc)
+                GOTO(err_stop_service, rc);
 
         rc = lu_site_init_finish(s);
         if (rc)
@@ -4697,13 +4691,11 @@ static int mdt_init0(const struct lu_env *env, struct mdt_device *m,
         RETURN(0);
 
 err_stop_service:
+        next->md_ops->mdo_quota.mqo_cleanup(env, next);
         ping_evictor_stop();
         mdt_stop_ptlrpc_service(m);
 err_recovery:
         target_recovery_fini(obd);
-#ifdef HAVE_QUOTA_SUPPORT
-        next->md_ops->mdo_quota.mqo_cleanup(env, next);
-#endif
 err_llog_cleanup:
         mdt_llog_ctxt_unclone(env, m, LLOG_CHANGELOG_ORIG_CTXT);
         mdt_obd_llog_cleanup(obd);

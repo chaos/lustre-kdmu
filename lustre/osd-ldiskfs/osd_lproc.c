@@ -113,6 +113,10 @@ int osd_procfs_init(struct osd_device *osd, const char *name)
                 GOTO(out, rc);
         }
 
+#ifdef LPROCFS
+        osd_quota_procfs_init(osd);
+#endif
+
         rc = osd_stats_init(osd);
 
         EXIT;

@@ -66,59 +66,24 @@ struct filter_object *filter_object_find_or_create(const struct lu_env *env,
                                                    const struct lu_fid *fid,
                                                    struct lu_attr *attr)
 {
-        struct filter_object *fo;
-        struct dt_object *next;
-        struct thandle *th;
-        struct dt_object_format dof;
-        int rc;
+        struct lu_object *fo_obj;
+        struct dt_object *dto;
+        enum dt_format_type dt_type;
         ENTRY;
 
-        fo = filter_object_find(env, ofd, fid);
-        if (IS_ERR(fo))
-                RETURN(fo);
+        if (fid_oid(fid) == QUOTA_SLAVE_UID_OID ||
+            fid_oid(fid) == QUOTA_SLAVE_GID_OID)
+                dt_type = DFT_INDEX;
+        else
+                dt_type = dt_mode_to_dft(S_IFREG);
 
-        LASSERT(fo != NULL);
-        if (filter_object_exists(fo))
-                RETURN(fo);
+        dto = dt_find_or_create(env, ofd->ofd_osd, fid, dt_type, attr);
+        if (IS_ERR(dto))
+                RETURN((struct filter_object *)dto);
 
-        dof.dof_type = dt_mode_to_dft(S_IFREG);
-
-        next = filter_object_child(fo);
-        LASSERT(next != NULL);
-
-        th = filter_trans_create(env, ofd);
-        if (IS_ERR(th))
-                GOTO(out, rc = PTR_ERR(th));
-
-        rc = dt_declare_create(env, next, attr, NULL, &dof, th);
-        LASSERT(rc == 0);
-
-        rc = filter_trans_start(env, ofd, th);
-        if (rc)
-                GOTO(trans_stop, rc);
-
-        filter_write_lock(env, fo);
-        if (filter_object_exists(fo))
-                GOTO(unlock, rc = 0);
-
-        CDEBUG(D_OTHER, "create new object %lu:%llu\n",
-               (unsigned long) fid->f_oid, fid->f_seq);
-
-        rc = dt_create(env, next, attr, NULL, &dof, th);
-        LASSERT(rc == 0);
-        LASSERT(filter_object_exists(fo));
-
-unlock:
-        filter_write_unlock(env, fo);
-
-trans_stop:
-        filter_trans_stop(env, ofd, th);
-out:
-        if (rc) {
-                filter_object_put(env, fo);
-                RETURN(ERR_PTR(rc));
-        }
-        RETURN(fo);
+        fo_obj = lu_object_locate(dto->do_lu.lo_header,
+                                  ofd->ofd_dt_dev.dd_lu_dev.ld_type);
+        RETURN(filter_obj(fo_obj));
 }
 
 void filter_object_put(const struct lu_env *env, struct filter_object *fo)

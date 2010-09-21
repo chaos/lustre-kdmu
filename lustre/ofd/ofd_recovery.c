@@ -43,6 +43,7 @@
 #define DEBUG_SUBSYSTEM S_FILTER
 
 #include <libcfs/libcfs.h>
+#include <lustre_quota.h>
 #include "ofd_internal.h"
 
 struct thandle *filter_trans_create0(const struct lu_env *env,
@@ -258,7 +259,7 @@ int filter_fs_setup(const struct lu_env *env, struct filter_device *ofd,
         struct lu_fid fid;
         struct filter_object *fo;
         struct lu_attr attr;
-        int rc = 0;
+        int i, rc = 0;
         ENTRY;
 
         if (OBD_FAIL_CHECK(OBD_FAIL_MDS_FS_SETUP))
@@ -300,6 +301,18 @@ int filter_fs_setup(const struct lu_env *env, struct filter_device *ofd,
         ofd->ofd_last_group_file = filter_object_child(fo);
         rc = filter_groups_init(env, ofd);
         LASSERT(rc == 0);
+
+        for (i = CFS_USRQUOTA; i < CFS_MAXQUOTAS; ++i) {
+                lu_local_obj_fid(&fid, (i == CFS_USRQUOTA) ? QUOTA_SLAVE_UID_OID :
+                                                             QUOTA_SLAVE_GID_OID);
+                memset(&attr, 0, sizeof(attr));
+                attr.la_valid = LA_MODE;
+                attr.la_mode = S_IFREG | 0666;
+
+                fo = filter_object_find_or_create(env, ofd, &fid, &attr);
+                LASSERT(!IS_ERR(fo));
+                filter_object_put(env, fo);
+        }
 
         RETURN(0);
 

@@ -63,9 +63,6 @@
 #include <lustre_param.h>
 #include "osc_internal.h"
 
-static quota_interface_t *quota_interface = NULL;
-extern quota_interface_t osc_quota_interface;
-
 static void osc_release_ppga(struct brw_page **ppga, obd_count count);
 static int brw_interpret(const struct lu_env *env,
                          struct ptlrpc_request *req, void *data, int rc);
@@ -1504,7 +1501,7 @@ static int osc_brw_fini_request(struct ptlrpc_request *req, int rc)
         /* set/clear over quota flag for a uid/gid */
         if (lustre_msg_get_opc(req->rq_reqmsg) == OST_WRITE &&
             body->oa.o_valid & (OBD_MD_FLUSRQUOTA | OBD_MD_FLGRPQUOTA)) {
-                unsigned int qid[MAXQUOTAS] = { body->oa.o_uid, body->oa.o_gid };
+                unsigned int qid[CFS_MAXQUOTAS] = { body->oa.o_uid, body->oa.o_gid };
 
                 CDEBUG(D_QUOTA, "setdq for [%u %u] with valid "LPX64", flags %x\n",
                        body->oa.o_uid, body->oa.o_gid, body->oa.o_valid,
@@ -2955,27 +2952,6 @@ int osc_queue_async_io(const struct lu_env *env,
             !cfs_list_empty(&oap->oap_rpc_item))
                 RETURN(-EBUSY);
 
-        /* check if the file's owner/group is over quota */
-        if ((cmd & OBD_BRW_WRITE) && !(cmd & OBD_BRW_NOQUOTA)) {
-                struct cl_object *obj;
-                struct cl_attr    attr; /* XXX put attr into thread info */
-                unsigned int qid[MAXQUOTAS];
-
-                obj = cl_object_top(osc_oap2cl_page(oap)->cp_obj);
-
-                cl_object_attr_lock(obj);
-                rc = cl_object_attr_get(env, obj, &attr);
-                cl_object_attr_unlock(obj);
-
-                qid[USRQUOTA] = attr.cat_uid;
-                qid[GRPQUOTA] = attr.cat_gid;
-                if (rc == 0 &&
-                    lquota_chkdq(quota_interface, cli, qid) == NO_QUOTA)
-                        rc = -EDQUOT;
-                if (rc)
-                        RETURN(rc);
-        }
-
         if (loi == NULL)
                 loi = lsm->lsm_oinfo[0];
 
@@ -3835,10 +3811,6 @@ static int osc_iocontrol(unsigned int cmd, struct obd_export *exp, int len,
                 err = ptlrpc_set_import_active(obd->u.cli.cl_import,
                                                data->ioc_offset);
                 GOTO(out, err);
-        case OBD_IOC_POLL_QUOTACHECK:
-                err = lquota_poll_check(quota_interface, exp,
-                                        (struct if_quotacheck *)karg);
-                GOTO(out, err);
         case OBD_IOC_PING_TARGET:
                 err = ptlrpc_obd_ping(obd);
                 GOTO(out, err);
@@ -4455,9 +4427,6 @@ int osc_cleanup(struct obd_device *obd)
         ptlrpc_lprocfs_unregister_obd(obd);
         lprocfs_obd_cleanup(obd);
 
-        /* free memory of osc quota cache */
-        lquota_cleanup(quota_interface, obd);
-
         rc = client_obd_cleanup(obd);
 
         ptlrpcd_decref();
@@ -4546,16 +4515,9 @@ int __init osc_init(void)
 
         lprocfs_osc_init_vars(&lvars);
 
-        cfs_request_module("lquota");
-        quota_interface = PORTAL_SYMBOL_GET(osc_quota_interface);
-        lquota_init(quota_interface);
-        init_obd_quota_ops(quota_interface, &osc_obd_ops);
-
         rc = class_register_type(&osc_obd_ops, NULL, lvars.module_vars,
                                  LUSTRE_OSC_NAME, &osc_device_type);
         if (rc) {
-                if (quota_interface)
-                        PORTAL_SYMBOL_PUT(osc_quota_interface);
                 lu_kmem_fini(osc_caches);
                 RETURN(rc);
         }
@@ -4578,10 +4540,6 @@ int __init osc_init(void)
 static void /*__exit*/ osc_exit(void)
 {
         lu_device_type_fini(&osc_device_type);
-
-        lquota_exit(quota_interface);
-        if (quota_interface)
-                PORTAL_SYMBOL_PUT(osc_quota_interface);
 
         class_unregister_type(LUSTRE_OSC_NAME);
         lu_kmem_fini(osc_caches);

@@ -26,38 +26,44 @@
  * GPL HEADER END
  */
 /*
- * Copyright (c) 2008, 2010, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
  * This file is part of Lustre, http://www.lustre.org/
  * Lustre is a trademark of Sun Microsystems, Inc.
+ */
+/*
+ * This file is part of Lustre, http://www.lustre.org/
+ * Lustre is a trademark of Sun Microsystems, Inc.
  *
- * lustre/mdd/mdd_quota.c
+ * lustre/include/osd_quota.h
  *
- * Lustre Metadata Server (mdd) routines
+ * Quota data and functions are common to all osds
  *
- * Author: Fan Yong <Yong.Fan@Sun.Com>
+ * Author: Landen Tian <landen@sun.com>
  */
 
-#include "mdd_internal.h"
+#ifndef _OSD_QUOTA_H
+#define _OSD_QUOTA_H
 
-int mdd_quota_setup(const struct lu_env *env, struct md_device *m,
-                    void *data)
-{
-        struct mdd_device *mdd = lu2mdd_dev(&m->md_lu_dev);
-        struct dt_device *dt = mdd->mdd_child;
-        ENTRY;
+#include <lustre_fid.h>
 
-        RETURN(dt->dd_ops->dt_quota.dt_setup(env, dt, data));
-}
+typedef struct osd_quota_entry {
+        uint64_t qe_id;
+        uint64_t qe_value;
+} osd_quota_entry_t;
 
-int mdd_quota_cleanup(const struct lu_env *env, struct md_device *m)
-{
-        struct mdd_device *mdd = lu2mdd_dev(&m->md_lu_dev);
-        struct dt_device *dt = mdd->mdd_child;
-        ENTRY;
+/** XXX: it will be used by ldiskfs-osd later  */
+struct osd_quota_slave_rec { /* 32 bytes */
+        __u64 blimit;  /* local limit on allocated blocks */
+        __u64 bspace;  /* current space in use */
+        __u64 ilimit;  /* local limit on allocated inodes/blocks */
+        __u64 ispace;  /* current # inodes in use */
+};
 
-        dt->dd_ops->dt_quota.dt_cleanup(env, dt);
-        RETURN(0);
-}
+#define QUOTA_OP_USER_FILE     "lquota_v2.user"
+#define QUOTA_OP_GROUP_FILE    "lquota_v2.group"
+
+#endif /* _OSD_QUOTA_H */
+

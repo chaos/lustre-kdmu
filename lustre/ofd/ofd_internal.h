@@ -103,9 +103,6 @@ static inline void lprocfs_filter_init_vars(struct lprocfs_static_vars *lvars)
 }
 #endif
 
-/* Quota stuff */
-extern quota_interface_t *filter_quota_interface_ref;
-
 /* Capability */
 
 void blacklist_add(uid_t uid);

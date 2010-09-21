@@ -268,7 +268,7 @@ int filter_quota_adjust_qunit(struct obd_export *exp,
                               struct lustre_quota_ctxt *qctxt)
 {
         struct obd_device *obd = exp->exp_obd;
-        unsigned int id[MAXQUOTAS] = { 0, 0 };
+        unsigned int id[CFS_MAXQUOTAS] = { 0, 0 };
         int rc = 0;
         ENTRY;
 
@@ -280,9 +280,9 @@ int filter_quota_adjust_qunit(struct obd_export *exp,
                 RETURN(rc);
         }
         if (QAQ_IS_GRP(oqaq))
-                id[GRPQUOTA] = oqaq->qaq_id;
+                id[CFS_GRPQUOTA] = oqaq->qaq_id;
         else
-                id[USRQUOTA] = oqaq->qaq_id;
+                id[CFS_USRQUOTA] = oqaq->qaq_id;
 
         if (rc > 0) {
                 rc = qctxt_adjust_qunit(obd, qctxt, id, 1, 0, NULL);
