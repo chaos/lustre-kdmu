@@ -1347,7 +1347,8 @@ mdd_declare_and_start_attr_set(const struct lu_env *env, struct md_object *obj,
                 GOTO(out, rc);
 
         /* XXX: use appropriate len? */
-        rc = mdo_declare_xattr_set(env, mdd_obj, 4096, XATTR_NAME_ACL_ACCESS, 0, handle);
+        rc = mdo_declare_xattr_set(env, mdd_obj, 4096, XATTR_NAME_ACL_ACCESS, 0,
+                                   handle);
         if (rc)
                 GOTO(out, rc);
 
@@ -1636,7 +1637,7 @@ static int mdd_xattr_sanity_check(const struct lu_env *env,
         if ((uc->mu_fsuid != tmp_la->la_uid) &&
             !mdd_capable(uc, CFS_CAP_FOWNER))
                 RETURN(-EPERM);
- 
+
         if (name && !strncmp(XATTR_NAME_LMV, name, strlen(XATTR_NAME_LMV))) {
                 if (mdd_dir_is_empty(env, obj) != 0) {
                         CERROR("Set stripe for a non-empty dir\n");
@@ -1737,6 +1738,12 @@ cleanup:
         RETURN(rc);
 }
 
+static inline void mdd_build_obj_name(char *name, struct mdd_object *mdd_obj)
+{
+        snprintf(name, OBJ_FID_NAME_LEN, LPX64"-%x-%x", fid_seq(mdo2fid(mdd_obj)),
+                 fid_oid(mdo2fid(mdd_obj)), fid_ver(mdo2fid(mdd_obj)));
+}
+
 /* partial unlink */
 static int mdd_ref_del(const struct lu_env *env, struct md_object *obj,
                        struct md_attr *ma)
@@ -1751,7 +1758,9 @@ static int mdd_ref_del(const struct lu_env *env, struct md_object *obj,
         unsigned int qids[MAXQUOTAS] = { 0, 0 };
         int quota_opc = 0;
 #endif
+        char *name = NULL;
         int rc;
+        int isdir;
         ENTRY;
 
         /*
@@ -1766,6 +1775,12 @@ static int mdd_ref_del(const struct lu_env *env, struct md_object *obj,
         handle = mdd_trans_create(env, mdd);
         if (IS_ERR(handle))
                 RETURN(-ENOMEM);
+
+        name = mdd_env_info(env)->mti_obj_name;
+        mdd_build_obj_name(name, mdd_obj);
+        rc = mdd_declare_index_delete(env, mdd->mdd_objects, name, handle);
+        if (rc)
+                GOTO(cleanup2, rc);
 
         rc = mdo_declare_ref_del(env, mdd_obj, handle);
         if (rc)
@@ -1801,6 +1816,12 @@ static int mdd_ref_del(const struct lu_env *env, struct md_object *obj,
                 /* unlink dot */
                 __mdd_ref_del(env, mdd_obj, handle, 1);
         }
+
+        isdir = !! S_ISDIR(lu_object_attr(&obj->mo_lu));
+        rc = mdd_index_delete(env, mdd->mdd_objects, name, isdir, handle,
+                              mdd_object_capa(env, mdd->mdd_objects));
+        if (rc)
+                GOTO(cleanup, rc);
 
         LASSERT(ma->ma_attr.la_valid & LA_CTIME);
         la_copy->la_ctime = ma->ma_attr.la_ctime;
@@ -1867,12 +1888,20 @@ static int mdd_declare_create_obj(const struct lu_env *env,
                                   struct md_attr *ma,
                                   struct thandle *handle)
 {
+        char *name;
         int rc;
         int easize;
         ENTRY;
 
         rc = mdo_declare_create_obj(env, mdd_obj, &ma->ma_attr, NULL, NULL,
                                     handle);
+        if (rc)
+                RETURN(rc);
+
+        name = mdd_env_info(env)->mti_obj_name;
+        mdd_build_obj_name(name, mdd_obj);
+        rc = mdd_declare_index_insert(env, mdd_pobj, mdo2fid(mdd_obj),
+                                      name, S_ISDIR(ma->ma_attr.la_mode), handle);
         if (rc)
                 RETURN(rc);
 
@@ -1957,6 +1986,8 @@ static int mdd_object_create(const struct lu_env *env,
         int block_pending[MAXQUOTAS] = { 0, 0 };
 #endif
         int rc = 0;
+        int inserted = 0;
+        char *name = NULL;
         ENTRY;
 
 #ifdef HAVE_QUOTA_SUPPORT
@@ -2006,6 +2037,16 @@ static int mdd_object_create(const struct lu_env *env,
                                         handle, spec);
         if (rc)
                 GOTO(unlock, rc);
+
+        name = mdd_env_info(env)->mti_obj_name;
+        mdd_build_obj_name(name, mdd_obj);
+        rc = mdd_index_insert(env, mdd->mdd_objects, mdo2fid(mdd_obj),
+                              name, S_ISDIR(ma->ma_attr.la_mode), handle,
+                              mdd_object_capa(env, mdd->mdd_objects));
+        if (rc)
+                GOTO(unlock, rc);
+
+        inserted = 1;
 
         if (spec->sp_cr_flags & MDS_CREATE_SLAVE_OBJ) {
                 /* If creating the slave object, set slave EA here. */
@@ -2102,6 +2143,13 @@ static int mdd_object_create(const struct lu_env *env,
 unlock:
         if (rc == 0)
                 rc = mdd_attr_get_internal(env, mdd_obj, ma);
+        if (rc && inserted == 1) {
+               int rc2 = mdd_index_delete(env, mdd->mdd_objects, name,
+                                          S_ISDIR(ma->ma_attr.la_mode),
+                                          handle, BYPASS_CAPA);
+               if (rc2)
+                      CERROR("error can not cleanup destroy %d\n", rc2);
+        }
         mdd_write_unlock(env, mdd_obj);
 
         mdd_trans_stop(env, mdd, rc, handle);

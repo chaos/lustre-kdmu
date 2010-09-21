@@ -166,7 +166,8 @@ struct mdd_object {
         struct lockdep_map dep_map;
 #endif
 };
-
+/* OBJ_FID_NAME format  seq-oid-ver */
+#define OBJ_FID_NAME_LEN  34
 struct mdd_thread_info {
         struct lu_fid             mti_fid;
         struct lu_fid             mti_fid2; /* used for be & cpu converting */
@@ -190,6 +191,7 @@ struct mdd_thread_info {
         int                       mti_max_cookie_size;
         struct dt_object_format   mti_dof;
         struct obd_quotactl       mti_oqctl;
+        char                      mti_obj_name[OBJ_FID_NAME_LEN + 1];
 };
 
 extern const char orph_index_name[];
@@ -326,6 +328,14 @@ int mdd_dir_is_empty(const struct lu_env *env, struct mdd_object *dir);
 int mdd_declare_index_insert(const struct lu_env *env, struct mdd_object *pobj,
                              const struct lu_fid *lf, const char *name, int is_dir,
                              struct thandle *handle);
+int mdd_index_insert(const struct lu_env *env, struct mdd_object *pobj,
+                     const struct lu_fid *lf, const char *name, int is_dir,
+                     struct thandle *handle, struct lustre_capa *capa);
+int mdd_index_delete(const struct lu_env *env, struct mdd_object *pobj,
+                     const char *name, int is_dir, struct thandle *handle,
+                     struct lustre_capa *capa);
+int mdd_declare_index_delete(const struct lu_env *env, struct mdd_object *pobj,
+                             const char *name, struct thandle *handle);
 /* mdd_lov.c */
 int mdd_unlink_log(const struct lu_env *env, struct mdd_device *mdd,
                    struct mdd_object *mdd_cobj, struct md_attr *ma,
