@@ -1133,7 +1133,7 @@ static struct page
         if (page != NULL)
                 return page;
 #endif
-        OBD_PAGE_ALLOC(page, CFS_ALLOC_HIGH | CFS_ALLOC_STD | CFS_ALLOC_COLD);
+        OBD_PAGE_ALLOC(page, CFS_ALLOC_HIGH | CFS_ALLOC_STD);
         if (!page)
                return ERR_PTR(-ENOMEM);
         rc = mdc_getpage(exp, &lmo->lmo_fid, index, oc, page, req);
