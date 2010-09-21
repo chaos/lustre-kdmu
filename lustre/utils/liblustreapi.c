@@ -2156,7 +2156,7 @@ int llapi_find(char *path, struct find_param *param)
  */
 int llapi_file_fget_mdtidx(int fd, int *mdtidx)
 {
-        if (ioctl(fd, LL_IOC_GET_MDTIDX, &mdtidx) < 0)
+        if (ioctl(fd, LL_IOC_GET_MDTIDX, mdtidx) < 0)
                 return -errno;
         return 0;
 }
