@@ -197,8 +197,6 @@ enum cfs_alloc_flags {
         CFS_ALLOC_IO     = 0x10,
         /* don't report allocation failure to the console */
         CFS_ALLOC_NOWARN = 0x20,
-        /* Cache-cold page */
-        CFS_ALLOC_COLD  = 0x40,
         /* standard allocator flag combination */
         CFS_ALLOC_STD    = CFS_ALLOC_FS | CFS_ALLOC_IO,
         CFS_ALLOC_USER   = CFS_ALLOC_WAIT | CFS_ALLOC_FS | CFS_ALLOC_IO,

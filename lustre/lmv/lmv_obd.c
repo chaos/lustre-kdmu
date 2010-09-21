@@ -942,7 +942,7 @@ static int lmv_placement_policy(struct obd_device *obd,
          * Allocate new fid on target according to operation type and parent
          * home mds.
          */
-        if (lsm != NULL || op_data->op_name == NULL ||
+        if ((lsm != NULL && lsm->mea_count > 1) || op_data->op_name == NULL ||
             op_data->op_opc != LUSTRE_OPC_MKDIR) {
                 /**
                  * Allocate new fid on same mds where parent fid is located and
@@ -2485,6 +2485,8 @@ int lmv_unpack_md(struct obd_export *exp, struct lmv_stripe_md **lsmp,
                 mea_size = lmv_stripe_md_size(stripe_count);
                 OBD_ALLOC(*lsmp, mea_size);
                 (*lsmp)->mea_count = stripe_count;
+                (*lsmp)->mea_default_count = 0;
+                (*lsmp)->mea_default_index = -1;
                 if (*lsmp == NULL)
                         RETURN(-ENOMEM);
                 RETURN(0);
