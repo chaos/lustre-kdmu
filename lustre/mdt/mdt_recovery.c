@@ -1027,7 +1027,12 @@ int mdt_fs_setup(const struct lu_env *env, struct mdt_device *mdt,
                 const struct lu_fid *f = (i == USRQUOTA) ?
                                              &quota_slave_uid_fid :
                                              &quota_slave_gid_fid;
-                o = dt_find_or_create(env, mdt->mdt_bottom, f, DFT_INDEX, NULL);
+                struct dt_object_format dof;
+
+                dof.dof_type = DFT_INDEX;
+                dof.u.dof_idx.di_feat = &dt_quota_slaves_features;
+
+                o = dt_find_or_create(env, mdt->mdt_bottom, f, &dof, NULL);
                 if (IS_ERR(o)) {
                         rc = PTR_ERR(o);
                         CERROR("cannot create quota %s file: rc = %d\n",

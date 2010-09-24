@@ -68,16 +68,16 @@ struct filter_object *filter_object_find_or_create(const struct lu_env *env,
 {
         struct lu_object *fo_obj;
         struct dt_object *dto;
-        enum dt_format_type dt_type;
+        struct dt_object_format dof;
         ENTRY;
 
         if (fid_oid(fid) == QUOTA_SLAVE_UID_OID ||
             fid_oid(fid) == QUOTA_SLAVE_GID_OID)
-                dt_type = DFT_INDEX;
+                dof.dof_type = DFT_INDEX;
         else
-                dt_type = dt_mode_to_dft(S_IFREG);
+                dof.dof_type = dt_mode_to_dft(S_IFREG);
 
-        dto = dt_find_or_create(env, ofd->ofd_osd, fid, dt_type, attr);
+        dto = dt_find_or_create(env, ofd->ofd_osd, fid, &dof, attr);
         if (IS_ERR(dto))
                 RETURN((struct filter_object *)dto);
 

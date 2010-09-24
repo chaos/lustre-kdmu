@@ -696,7 +696,7 @@ struct dt_object *dt_store_open(const struct lu_env *env,
 struct dt_object *dt_find_or_create(const struct lu_env *env,
                                     struct dt_device *dt,
                                     const struct lu_fid *fid,
-                                    const enum dt_format_type dt_type,
+                                    struct dt_object_format *dof,
                                     struct lu_attr *attr);
 
 struct dt_object *dt_locate(const struct lu_env *env,

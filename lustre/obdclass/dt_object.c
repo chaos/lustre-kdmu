@@ -388,12 +388,11 @@ EXPORT_SYMBOL(dt_store_open);
 struct dt_object *dt_find_or_create(const struct lu_env *env,
                                     struct dt_device *dt,
                                     const struct lu_fid *fid,
-                                    const enum dt_format_type dt_type,
+                                    struct dt_object_format *dof,
                                     struct lu_attr *at)
 {
         struct dt_object *dto;
         struct thandle *th;
-        struct dt_object_format dof;
         struct lu_attr attr;
         int rc;
         ENTRY;
@@ -405,8 +404,6 @@ struct dt_object *dt_find_or_create(const struct lu_env *env,
         LASSERT(dto != NULL);
         if (dt_object_exists(dto))
                 RETURN(dto);
-
-        dof.dof_type = dt_type;
 
         LASSERT(dto != NULL);
         th = dt_trans_create(env, dt);
@@ -420,7 +417,7 @@ struct dt_object *dt_find_or_create(const struct lu_env *env,
                 at = &attr;
         }
 
-        rc = dt_declare_create(env, dto, at, NULL, &dof, th);
+        rc = dt_declare_create(env, dto, at, NULL, dof, th);
         LASSERT(rc == 0);
 
         rc = dt->dd_ops->dt_trans_start(env, dt, th);
@@ -434,7 +431,7 @@ struct dt_object *dt_find_or_create(const struct lu_env *env,
         CDEBUG(D_OTHER, "create new object %lu:%llu\n",
                (unsigned long) fid->f_oid, fid->f_seq);
 
-        rc = dt_create(env, dto, at, NULL, &dof, th);
+        rc = dt_create(env, dto, at, NULL, dof, th);
         LASSERT(rc == 0);
         LASSERT(dt_object_exists(dto));
 
