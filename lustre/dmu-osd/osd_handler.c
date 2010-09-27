@@ -1167,7 +1167,7 @@ static int osd_declare_object_create(const struct lu_env *env,
          * XXX: this is a very short-term solution to reserve space
          * for unlinks. by default 1/25 of space is reserved.
          */
-        if (fid->f_seq != LU_LLOG_LUSTRE_SEQ) {
+        if (fid->f_seq != FID_SEQ_LLOG) {
                 rc = osd_check_for_reserved_space(osd);
                 if (rc)
                         RETURN(rc);

@@ -61,7 +61,7 @@ int cmm_fld_lookup(struct cmm_device *cm, const struct lu_fid *fid,
         LASSERT(fid_is_sane(fid));
 
         if (fid_seq(fid) == FID_SEQ_LOCAL_FILE ||
-            fid_seq(fid) == LU_LLOG_LUSTRE_SEQ) {
+            fid_seq(fid) == FID_SEQ_LLOG) {
                 *mds = cm->cmm_local_num;
                 RETURN(rc);
         }

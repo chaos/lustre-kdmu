@@ -93,15 +93,15 @@ enum {
 #define FID_SEQ_LOCAL_FILE      (FID_SEQ_START + 1)
 
 /** special fid seq: used for .lustre objects. */
-#define LU_DOT_LUSTRE_SEQ       (FID_SEQ_START + 0x02ULL)
+#define FID_SEQ_DOT_LUSTRE      (FID_SEQ_START + 0x02ULL)
 
 /* Note that reserved SEQ numbers below 12 will conflict with ldiskfs
  * inodes in the IGIF namespace, so these reserved SEQ numbers must be
- * used sparingly until ldiskfs-based MDT backends and/or IGIF FIDs 
+ * used sparingly until ldiskfs-based MDT backends and/or IGIF FIDs
  * have been completely removed. */
 
 /** special fid seq: used for llog objects. */
-#define LU_LLOG_LUSTRE_SEQ       (FID_SEQ_START + 0x03ULL)
+#define FID_SEQ_LLOG            (FID_SEQ_START + 0x03ULL)
 /** fid sequence for distributed fs objects */
 #define FID_SEQ_DISTRIBUTED_START     (FID_SEQ_START + 0x400ULL)
 

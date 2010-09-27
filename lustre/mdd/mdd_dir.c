@@ -2361,7 +2361,7 @@ static struct thandle *
 mdd_declare_and_start_rename(const struct lu_env *env, struct md_object *src_pobj,
                              struct mdd_object *mdd_sobj,struct md_object *tgt_pobj,
                              struct md_object *tobj, const char *sname,
-                             const char *tname, const struct lu_fid *lf, 
+                             const char *tname, const struct lu_fid *lf,
                              int is_dir, struct md_attr *ma)
 {
         struct mdd_object *mdd_spobj = md2mdd_obj(src_pobj);
