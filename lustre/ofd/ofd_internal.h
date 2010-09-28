@@ -89,9 +89,6 @@ void filter_tally(struct obd_export *exp, struct page **pages, int nr_pages,
 int lproc_filter_attach_seqstat(struct obd_device *dev);
 void lprocfs_filter_init_vars(struct lprocfs_static_vars *lvars);
 
-/* Quota stuff */
-extern quota_interface_t *filter_quota_interface_ref;
-
 /* Capability */
 
 void blacklist_add(uid_t uid);

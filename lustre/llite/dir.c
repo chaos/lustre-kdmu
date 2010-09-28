@@ -1071,6 +1071,9 @@ out_free:
                 obd_ioctl_freedata(buf, len);
                 RETURN(rc);
         }
+
+#ifdef HAVE_QUOTA_SUPPORT
+
         case OBD_IOC_QUOTACHECK: {
                 struct obd_quotactl *oqctl;
                 int error = 0;
@@ -1158,8 +1161,8 @@ out_free:
                                 GOTO(out_quotactl, rc = -EPERM);
                         break;
                 case Q_GETQUOTA:
-                        if (((type == USRQUOTA && cfs_curproc_euid() != id) ||
-                             (type == GRPQUOTA && !in_egroup_p(id))) &&
+                        if (((type == CFS_USRQUOTA && cfs_curproc_euid() != id) ||
+                             (type == CFS_GRPQUOTA && !in_egroup_p(id))) &&
                             (!cfs_capable(CFS_CAP_SYS_ADMIN) ||
                              sbi->ll_flags & LL_SBI_RMT_CLIENT))
                                 GOTO(out_quotactl, rc = -EPERM);
@@ -1241,6 +1244,17 @@ out_free:
                 OBD_FREE_PTR(qctl);
                 RETURN(rc);
         }
+
+#else /* HAVE_QUOTA_SUPPORT */
+
+        case OBD_IOC_QUOTACHECK:
+        case OBD_IOC_POLL_QUOTACHECK:
+        case OBD_IOC_QUOTACTL:
+
+                RETURN(-ENOTSUPP);
+
+#endif /* HAVE_QUOTA_SUPPORT */
+
         case OBD_IOC_GETNAME: {
                 struct obd_device *obd = class_exp2obd(sbi->ll_dt_exp);
                 if (!obd)

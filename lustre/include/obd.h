@@ -61,7 +61,6 @@
 #include <lu_ref.h>
 #include <lustre_lib.h>
 #include <lustre_export.h>
-#include <lustre_quota.h>
 #include <lustre_fld.h>
 #include <lustre_capa.h>
 
@@ -235,9 +234,6 @@ struct obd_device_target {
 #endif /* __linux__ */
         struct lu_target         *obt_lut;
         __u64                     obt_mount_count;
-        cfs_semaphore_t           obt_quotachecking;
-        struct lustre_quota_ctxt  obt_qctxt;
-        lustre_quota_version_t    obt_qfmt;
         cfs_rw_semaphore_t        obt_rwsem;
 #if defined(__linux__)
         struct vfsmount          *obt_vfsmnt;
@@ -340,9 +336,6 @@ struct filter_obd {
         cfs_spinlock_t           fo_llog_list_lock;
 
         struct brw_stats         fo_filter_stats;
-        struct lustre_quota_ctxt fo_quota_ctxt;
-        cfs_spinlock_t           fo_quotacheck_lock;
-        cfs_atomic_t             fo_quotachecking;
 
         int                      fo_fmd_max_num; /* per exp filter_mod_data */
         int                      fo_fmd_max_age; /* jiffies to fmd expiry */
@@ -550,9 +543,6 @@ struct mds_obd {
         __u32                            mds_lov_objid_lastpage;
         __u32                            mds_lov_objid_lastidx;
 
-
-        struct lustre_quota_info         mds_quota_info;
-        cfs_rw_semaphore_t               mds_qonoff_sem;
         cfs_semaphore_t                  mds_health_sem;
         unsigned long                    mds_fl_user_xattr:1,
                                          mds_fl_acl:1,
@@ -1402,16 +1392,6 @@ struct obd_ops {
         int (*o_health_check)(struct obd_device *);
         struct obd_uuid *(*o_get_uuid) (struct obd_export *exp);
 
-        /* quota methods */
-        int (*o_quotacheck)(struct obd_device *, struct obd_export *,
-                            struct obd_quotactl *);
-        int (*o_quotactl)(struct obd_device *, struct obd_export *,
-                          struct obd_quotactl *);
-        int (*o_quota_adjust_qunit)(struct obd_export *exp,
-                                    struct quota_adjust_qunit *oqaq,
-                                    struct lustre_quota_ctxt *qctxt);
-
-
         int (*o_ping)(struct obd_export *exp);
 
         /* pools methods */
@@ -1625,18 +1605,6 @@ static inline void obd_transno_commit_cb(struct obd_device *obd, __u64 transno,
         }
         if (transno > obd->obd_last_committed)
                 obd->obd_last_committed = transno;
-}
-
-static inline void init_obd_quota_ops(quota_interface_t *interface,
-                                      struct obd_ops *obd_ops)
-{
-        if (!interface)
-                return;
-
-        LASSERT(obd_ops);
-        obd_ops->o_quotacheck = QUOTA_OP(interface, check);
-        obd_ops->o_quotactl = QUOTA_OP(interface, ctl);
-        obd_ops->o_quota_adjust_qunit = QUOTA_OP(interface, adjust_qunit);
 }
 
 static inline struct lustre_capa *oinfo_capa(struct obd_info *oinfo)

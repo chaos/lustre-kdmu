@@ -1644,6 +1644,8 @@ extern void lustre_swab_mdt_ioepoch (struct mdt_ioepoch *b);
 #define Q_GETOCMD(oqc) \
         ((oqc)->qc_cmd == Q_GETOINFO || (oqc)->qc_cmd == Q_GETOQUOTA)
 
+#define Q_COPY(out, in, member) (out)->member = (in)->member
+
 #define QCTL_COPY(out, in)              \
 do {                                    \
         Q_COPY(out, in, qc_cmd);        \

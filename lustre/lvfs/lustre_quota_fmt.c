@@ -63,7 +63,7 @@
 
 #ifdef HAVE_QUOTA_SUPPORT
 
-static const uint lustre_initqversions[][MAXQUOTAS] = {
+static const uint lustre_initqversions[][CFS_MAXQUOTAS] = {
         [LUSTRE_QUOTA_V2] = LUSTRE_INITQVERSIONS_V2
 };
 

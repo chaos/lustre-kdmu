@@ -333,7 +333,6 @@ int lprocfs_filter_rd_syncjournal(char *page, char **start, off_t off,
 {
         struct obd_device *obd;
         struct filter_device *ofd;
-        int rc;
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         ofd = filter_dev(obd->obd_lu_dev);
@@ -376,7 +375,6 @@ int lprocfs_filter_rd_sync_lock_cancel(char *page, char **start, off_t off,
 {
         struct obd_device *obd;
         struct filter_device *ofd;
-        int rc;
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         ofd = filter_dev(obd->obd_lu_dev);

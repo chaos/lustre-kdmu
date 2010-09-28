@@ -60,8 +60,8 @@ extern quota_interface_t *mds_quota_interface_ref;
 
 static inline void mdd_quota_wrapper(struct lu_attr *la, unsigned int *qids)
 {
-        qids[USRQUOTA] = la->la_uid;
-        qids[GRPQUOTA] = la->la_gid;
+        qids[CFS_USRQUOTA] = la->la_uid;
+        qids[CFS_GRPQUOTA] = la->la_gid;
 }
 #endif
 
@@ -385,6 +385,10 @@ int mdd_readpage(const struct lu_env *env, struct md_object *obj,
                  const struct lu_rdpg *rdpg);
 
 /* mdd_quota.c*/
+int mdd_quota_setup(const struct lu_env *env, struct md_device *m,
+                    void *data);
+int mdd_quota_cleanup(const struct lu_env *env, struct md_device *m);
+
 #ifdef HAVE_QUOTA_SUPPORT
 int mdd_quota_notify(const struct lu_env *env, struct md_device *m);
 int mdd_quota_setup(const struct lu_env *env, struct md_device *m,

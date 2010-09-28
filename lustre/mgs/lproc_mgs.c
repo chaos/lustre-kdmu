@@ -199,7 +199,7 @@ static int mgs_live_seq_show(libcfs_seq_file_t *seq, void *v)
         cfs_down(&fsdb->fsdb_sem);
 
         LIBCFS_SEQ_PRINTF(seq, "fsname: %s\n", fsdb->fsdb_name);
-        LIBCFS_SEQ_PRINTF(seq, "flags: %#x     gen: %d\n",
+        LIBCFS_SEQ_PRINTF(seq, "flags: %#lx     gen: %d\n",
                           fsdb->fsdb_flags, fsdb->fsdb_gen);
         for (i = 0; i < INDEX_MAP_SIZE * 8; i++)
                  if (cfs_test_bit(i, fsdb->fsdb_mdt_index_map))

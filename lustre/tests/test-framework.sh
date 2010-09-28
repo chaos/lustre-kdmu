@@ -229,7 +229,6 @@ init_test_env() {
     esac
     export LOAD_MODULES_REMOTE=${LOAD_MODULES_REMOTE:-false}
     export USE_QUOTA=${USE_QUOTA:-no}
-    zfs && USE_QUOTA=no
 
     # Paths on remote nodes, if different
     export RLUSTRE=${RLUSTRE:-$LUSTRE}
@@ -2138,15 +2137,15 @@ formatall() {
     [ "$OSTFSTYPE" ] && OSTFSTYPE_OPT="--backfstype $OSTFSTYPE"
 
     if ! combined_mgs_mds ; then
-        add mgs $(mkfs_opts mgs) $FSTYPE_OPT --reformat $MGSDEV || exit 10
+        add mgs $(mkfs_opts mgs) $MGSFSTYPE_OPT --reformat $MGSDEV || exit 10
     fi
 
     for num in `seq $MDSCOUNT`; do
         echo "Format mds$num: $(mdsdevname $num)"
         if $VERBOSE; then
-            add mds$num $(mkfs_opts mds) $FSTYPE_OPT --reformat $(mdsdevname $num) || exit 10
+            add mds$num $(mkfs_opts mds) $MDSFSTYPE_OPT --reformat $(mdsdevname $num) || exit 10
         else
-            add mds$num $(mkfs_opts mds) $FSTYPE_OPT --reformat $(mdsdevname $num) > /dev/null || exit 10
+            add mds$num $(mkfs_opts mds) $MDSFSTYPE_OPT --reformat $(mdsdevname $num) > /dev/null || exit 10
         fi
     done
 
@@ -2155,9 +2154,9 @@ formatall() {
     for num in `seq $OSTCOUNT`; do
         echo "Format ost$num: $(ostdevname $num)"
         if $VERBOSE; then
-            add ost$num $(mkfs_opts ost${num}) $FSTYPE_OPT --reformat `ostdevname $num` || exit 10
+            add ost$num $(mkfs_opts ost${num}) $OSTFSTYPE_OPT --reformat `ostdevname $num` || exit 10
         else
-            add ost$num $(mkfs_opts ost${num}) $FSTYPE_OPT --reformat `ostdevname $num` > /dev/null || exit 10
+            add ost$num $(mkfs_opts ost${num}) $OSTFSTYPE_OPT --reformat `ostdevname $num` > /dev/null || exit 10
         fi
     done
 }

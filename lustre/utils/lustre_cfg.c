@@ -780,12 +780,12 @@ static int listparam_display(struct params_opts *popt, char *pattern)
                                 /* Here, we have to convert '.' to '/' again,
                                  * same as what we did in get_patter().
                                  * Because, to list param recursively,
-                                 * the matched params will be added "/*",
+                                 * the matched params will be added "/ *",
                                  * and then passed again.
                                  * For example,
                                  * $lctl list_param -R ost.*
                                  * Round1. get ost.num_refs and ost.OSS;
-                                 * Round2. try to list ost.OSS/*, but this '.'
+                                 * Round2. try to list ost.OSS/ *, but this '.'
                                  * will be treated as a wildcard, not a separator.
                                  */
                                 strrpl(valuename, '.', '/');

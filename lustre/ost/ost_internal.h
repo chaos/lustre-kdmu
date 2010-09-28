@@ -67,9 +67,6 @@ struct ost_thread_local_cache *ost_tls(struct ptlrpc_request *r);
 #define OSS_MIN_CREATE_THREADS  2UL
 #define OSS_MAX_CREATE_THREADS 16UL
 
-/* Quota stuff */
-extern quota_interface_t *quota_interface;
-
 void lprocfs_ost_init_vars(struct lprocfs_static_vars *lvars);
 
 /* Here "ostid" maybe part of "oa", the return value of "ostid_id()" depends on

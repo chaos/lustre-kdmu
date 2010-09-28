@@ -26,38 +26,22 @@
  * GPL HEADER END
  */
 /*
- * Copyright (c) 2008, 2010, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
  * This file is part of Lustre, http://www.lustre.org/
  * Lustre is a trademark of Sun Microsystems, Inc.
  *
- * lustre/mdd/mdd_quota.c
+ * lustre/osd-ldiskfs/osd_quota.c
  *
- * Lustre Metadata Server (mdd) routines
+ * Quota code is specific to ldiskfs
  *
- * Author: Fan Yong <Yong.Fan@Sun.Com>
+ * Author: Landen Tian <landen@sun.com>
  */
+#include <osd_quota.h>
 
-#include "mdd_internal.h"
-
-int mdd_quota_setup(const struct lu_env *env, struct md_device *m,
-                    void *data)
+#include "osd_quota_internal.h"
+void osd_quota_procfs_init(struct osd_device *osd)
 {
-        struct mdd_device *mdd = lu2mdd_dev(&m->md_lu_dev);
-        struct dt_device *dt = mdd->mdd_child;
-        ENTRY;
-
-        RETURN(dt->dd_ops->dt_quota.dt_setup(env, dt, data));
-}
-
-int mdd_quota_cleanup(const struct lu_env *env, struct md_device *m)
-{
-        struct mdd_device *mdd = lu2mdd_dev(&m->md_lu_dev);
-        struct dt_device *dt = mdd->mdd_child;
-        ENTRY;
-
-        dt->dd_ops->dt_quota.dt_cleanup(env, dt);
-        RETURN(0);
 }

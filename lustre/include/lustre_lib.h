@@ -84,11 +84,7 @@ int do_set_info_async(struct obd_import *imp,
 
 /* quotacheck callback, dqacq/dqrel callback handler */
 int target_handle_qc_callback(struct ptlrpc_request *req);
-#ifdef HAVE_QUOTA_SUPPORT
-int target_handle_dqacq_callback(struct ptlrpc_request *req);
-#else
 #define target_handle_dqacq_callback(req) ldlm_callback_reply(req, -ENOTSUPP)
-#endif
 
 #define OBD_RECOVERY_MAX_TIME (obd_timeout * 18) /* b13079 */
 

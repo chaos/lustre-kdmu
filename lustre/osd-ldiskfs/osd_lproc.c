@@ -111,6 +111,8 @@ int osd_procfs_init(struct osd_device *osd, const char *name)
                 GOTO(out, rc);
         }
 
+        osd_quota_procfs_init(osd);
+
         rc = osd_stats_init(osd);
         lprocfs_put_lperef(osd->od_proc_entry);
 
