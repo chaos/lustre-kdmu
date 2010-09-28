@@ -72,10 +72,12 @@ struct filter_object *filter_object_find_or_create(const struct lu_env *env,
         ENTRY;
 
         if (fid_oid(fid) == QUOTA_SLAVE_UID_OID ||
-            fid_oid(fid) == QUOTA_SLAVE_GID_OID)
+            fid_oid(fid) == QUOTA_SLAVE_GID_OID) {
                 dof.dof_type = DFT_INDEX;
-        else
+                dof.u.dof_idx.di_feat = &dt_quota_slaves_features;
+        } else {
                 dof.dof_type = dt_mode_to_dft(S_IFREG);
+        }
 
         dto = dt_find_or_create(env, ofd->ofd_osd, fid, &dof, attr);
         if (IS_ERR(dto))
