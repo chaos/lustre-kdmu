@@ -140,13 +140,20 @@ struct lustre_qunit_size {
         struct lustre_quota_ctxt *lqs_ctxt; /** quota ctxt */
 };
 
-#define LQS_IS_GRP(lqs)    ((lqs)->lqs_flags & LQUOTA_FLAGS_GRP)
-#define LQS_IS_ADJBLK(lqs) ((lqs)->lqs_flags & LQUOTA_FLAGS_ADJBLK)
-#define LQS_IS_ADJINO(lqs) ((lqs)->lqs_flags & LQUOTA_FLAGS_ADJINO)
+#define LQS_IS_GRP(lqs)      ((lqs)->lqs_flags & LQUOTA_FLAGS_GRP)
+#define LQS_IS_ADJBLK(lqs)   ((lqs)->lqs_flags & LQUOTA_FLAGS_ADJBLK)
+#define LQS_IS_ADJINO(lqs)   ((lqs)->lqs_flags & LQUOTA_FLAGS_ADJINO)
+#define LQS_IS_RECOVERY(lqs) ((lqs)->lqs_flags & LQUOTA_FLAGS_RECOVERY)
+#define LQS_IS_SETQUOTA(lqs) ((lqs)->lqs_flags & LQUOTA_FLAGS_SETQUOTA)
 
-#define LQS_SET_GRP(lqs)    ((lqs)->lqs_flags |= LQUOTA_FLAGS_GRP)
-#define LQS_SET_ADJBLK(lqs) ((lqs)->lqs_flags |= LQUOTA_FLAGS_ADJBLK)
-#define LQS_SET_ADJINO(lqs) ((lqs)->lqs_flags |= LQUOTA_FLAGS_ADJINO)
+#define LQS_SET_GRP(lqs)      ((lqs)->lqs_flags |= LQUOTA_FLAGS_GRP)
+#define LQS_SET_ADJBLK(lqs)   ((lqs)->lqs_flags |= LQUOTA_FLAGS_ADJBLK)
+#define LQS_SET_ADJINO(lqs)   ((lqs)->lqs_flags |= LQUOTA_FLAGS_ADJINO)
+#define LQS_SET_RECOVERY(lqs) ((lqs)->lqs_flags |= LQUOTA_FLAGS_RECOVERY)
+#define LQS_SET_SETQUOTA(lqs) ((lqs)->lqs_flags |= LQUOTA_FLAGS_SETQUOTA)
+
+#define LQS_CLEAR_RECOVERY(lqs) ((lqs)->lqs_flags &= ~LQUOTA_FLAGS_RECOVERY)
+#define LQS_CLEAR_SETQUOTA(lqs) ((lqs)->lqs_flags &= ~LQUOTA_FLAGS_SETQUOTA)
 
 /* In the hash for lustre_qunit_size, the key is decided by
  * grp_or_usr and uid/gid, in here, I combine these two values,
@@ -201,7 +208,7 @@ static inline void lqs_initref(struct lustre_qunit_size *lqs)
 #define DQUOT_DEBUG(dquot, fmt, arg...)                                       \
         CDEBUG(D_QUOTA, "refcnt(%u) id(%u) type(%u) off(%llu) flags(%lu) "    \
                "bhardlimit("LPU64") curspace("LPU64") ihardlimit("LPU64") "   \
-               "curinodes("LPU64"): " fmt, dquot->dq_refcnt,                  \
+               "curinodes("LPU64"): " fmt, cfs_atomic_read(&dquot->dq_refcnt),\
                dquot->dq_id, dquot->dq_type, dquot->dq_off,  dquot->dq_flags, \
                dquot->dq_dqb.dqb_bhardlimit, dquot->dq_dqb.dqb_curspace,      \
                dquot->dq_dqb.dqb_ihardlimit, dquot->dq_dqb.dqb_curinodes,     \

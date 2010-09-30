@@ -150,7 +150,7 @@ test_smoke () {
 
     # error counters in "lst show_error" should be checked
     check_lst_err $log
-    
+    lst_cleanup_all    
 }
 run_test smoke "lst regression test"
 
