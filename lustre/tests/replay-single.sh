@@ -21,7 +21,7 @@ require_dsh_mds || exit 0
 
 # Skip these tests
 # bug number:  17466 18857
-ALWAYS_EXCEPT="61d   33a 33b 89    $REPLAY_SINGLE_EXCEPT"
+ALWAYS_EXCEPT="61d   33a 33b    $REPLAY_SINGLE_EXCEPT"
 
 #                                                  63 min  7 min  AT AT AT AT"
 [ "$SLOW" = "no" ] && EXCEPT_SLOW="1 2 3 4 6 12 16 44a      44b    65 66 67 68"
@@ -1561,7 +1561,7 @@ at_cleanup () {
     echo "Cleaning up AT ..."
     if [ -n "$ATOLDBASE" ]; then
         local at_history=$($LCTL get_param -n at_history)
-        do_facet mds "lctl set_param at_history=$at_history" || true
+        do_facet $SINGLEMDS "lctl set_param at_history=$at_history" || true
         do_facet ost1 "lctl set_param at_history=$at_history" || true
     fi
 
@@ -1601,9 +1601,9 @@ at_start()
     done
 
     if [ -z "$ATOLDBASE" ]; then
-	ATOLDBASE=$(do_facet mds "lctl get_param -n at_history")
+	ATOLDBASE=$(do_facet $SINGLEMDS "lctl get_param -n at_history")
         # speed up the timebase so we can check decreasing AT
-        do_facet mds "lctl set_param at_history=8" || true
+        do_facet $SINGLEMDS "lctl set_param at_history=8" || true
         do_facet ost1 "lctl set_param at_history=8" || true
 
 	# sleep for a while to cool down, should be > 8s and also allow
@@ -1626,9 +1626,9 @@ test_65a() #bug 3055
                awk '/portal 12/ {print $5}'`
     REQ_DELAY=$((${REQ_DELAY} + ${REQ_DELAY} / 4 + 5))
 
-    do_facet mds lctl set_param fail_val=$((${REQ_DELAY} * 1000))
+    do_facet $SINGLEMDS lctl set_param fail_val=$((${REQ_DELAY} * 1000))
 #define OBD_FAIL_PTLRPC_PAUSE_REQ        0x50a
-    do_facet mds sysctl -w lustre.fail_loc=0x8000050a
+    do_facet $SINGLEMDS sysctl -w lustre.fail_loc=0x8000050a
     createmany -o $DIR/$tfile 10 > /dev/null
     unlinkmany $DIR/$tfile 10 > /dev/null
     # check for log message
@@ -1683,18 +1683,18 @@ test_66a() #bug 3055
     at_start || return 0
     lctl get_param -n mdc.${FSNAME}-MDT0000-mdc-*.timeouts | grep "portal 12"
     # adjust 5s at a time so no early reply is sent (within deadline)
-    do_facet mds "sysctl -w lustre.fail_val=5000"
+    do_facet $SINGLEMDS "sysctl -w lustre.fail_val=5000"
 #define OBD_FAIL_PTLRPC_PAUSE_REQ        0x50a
-    do_facet mds "sysctl -w lustre.fail_loc=0x8000050a"
+    do_facet $SINGLEMDS "sysctl -w lustre.fail_loc=0x8000050a"
     createmany -o $DIR/$tfile 20 > /dev/null
     unlinkmany $DIR/$tfile 20 > /dev/null
     lctl get_param -n mdc.${FSNAME}-MDT0000-mdc-*.timeouts | grep "portal 12"
-    do_facet mds "sysctl -w lustre.fail_val=10000"
-    do_facet mds "sysctl -w lustre.fail_loc=0x8000050a"
+    do_facet $SINGLEMDS "sysctl -w lustre.fail_val=10000"
+    do_facet $SINGLEMDS "sysctl -w lustre.fail_loc=0x8000050a"
     createmany -o $DIR/$tfile 20 > /dev/null
     unlinkmany $DIR/$tfile 20 > /dev/null
     lctl get_param -n mdc.${FSNAME}-MDT0000-mdc-*.timeouts | grep "portal 12"
-    do_facet mds "sysctl -w lustre.fail_loc=0"
+    do_facet $SINGLEMDS "sysctl -w lustre.fail_loc=0"
     sleep 9
     createmany -o $DIR/$tfile 20 > /dev/null
     unlinkmany $DIR/$tfile 20 > /dev/null
@@ -1755,9 +1755,9 @@ test_67b() #bug 3055
     # exhaust precreations on ost1
     local OST=$(lfs osts | grep ^0": " | awk '{print $2}' | sed -e 's/_UUID$//')
     local mdtosc=$(get_mdtosc_proc_path mds $OST)
-    local last_id=$(do_facet mds lctl get_param -n \
+    local last_id=$(do_facet $SINGLEMDS lctl get_param -n \
         osc.$mdtosc.prealloc_last_id)
-    local next_id=$(do_facet mds lctl get_param -n \
+    local next_id=$(do_facet $SINGLEMDS lctl get_param -n \
         osc.$mdtosc.prealloc_next_id)
 
     mkdir -p $DIR/$tdir/${OST}
@@ -2097,6 +2097,37 @@ test_85a() { #bug 16774
 }
 run_test 85a "check the cancellation of unused locks during recovery(IBITS)"
 
+test_85b() { #bug 16774
+    lctl set_param -n ldlm.cancel_unused_locks_before_replay "1"
+
+    lfs setstripe -o 0 -c 1 $DIR
+
+    for i in `seq 100`; do
+        dd if=/dev/urandom of=$DIR/$tfile-$i bs=4096 count=32 >/dev/null 2>&1
+    done
+
+    cancel_lru_locks osc
+
+    for i in `seq 100`; do
+        dd if=$DIR/$tfile-$i of=/dev/null bs=4096 count=32 >/dev/null 2>&1
+    done
+
+    lov_id=`lctl dl | grep "clilov"`
+    addr=`echo $lov_id | awk '{print $4}' | awk -F '-' '{print $3}'`
+    count=`lctl get_param -n ldlm.namespaces.*OST0000*$addr.lock_unused_count`
+    echo "before recovery: unused locks count = $count"
+
+    fail ost1
+
+    count2=`lctl get_param -n ldlm.namespaces.*OST0000*$addr.lock_unused_count`
+    echo "after recovery: unused locks count = $count2"
+
+    if [ $count2 -ge $count ]; then
+        error "unused locks are not canceled"
+    fi
+}
+run_test 85b "check the cancellation of unused locks during recovery(EXTENT)"
+
 test_86() {
         local clients=${CLIENTS:-$HOSTNAME}
 
@@ -2219,10 +2250,12 @@ test_88() { #bug 17485
 run_test 88 "MDS should not assign same objid to different files "
 
 test_89() {
+        cancel_lru_locks osc
         mkdir -p $DIR/$tdir
         rm -f $DIR/$tdir/$tfile
-        sleep 2
-        BLOCKS1=$(df $MOUNT | tail -n 1 | awk '{ print $3 }')
+        wait_mds_ost_sync
+        wait_destroy_complete
+        BLOCKS1=$(df -P $MOUNT | tail -n 1 | awk '{ print $3 }')
         lfs setstripe -i 0 -c 1 $DIR/$tdir/$tfile
         dd if=/dev/zero bs=1M count=10 of=$DIR/$tdir/$tfile
         sync
@@ -2232,9 +2265,9 @@ test_89() {
         umount $MOUNT
         mount_facet ost1
         zconf_mount $(hostname) $MOUNT
-	wait_mds_ost_sync
-        df $MOUNT
-        BLOCKS2=$(df $MOUNT | tail -n 1 | awk '{ print $3 }')
+        client_up || return 1
+        wait_mds_ost_sync
+        BLOCKS2=$(df -P $MOUNT | tail -n 1 | awk '{ print $3 }')
         [ "$BLOCKS1" == "$BLOCKS2" ] || error $((BLOCKS2 - BLOCKS1)) blocks leaked
 }
 
