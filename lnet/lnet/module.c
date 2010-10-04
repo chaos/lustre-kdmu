@@ -129,19 +129,32 @@ lnet_ioctl(unsigned int cmd, struct libcfs_ioctl_data *data)
 
 DECLARE_IOCTL_HANDLER(lnet_ioctl_handler, lnet_ioctl);
 
+/* initialize lnet parameters exported with CFS_MODULE_PARAM */
+void
+lnet_modparams_init(void)
+{
+        lnet_apini_sysctl_init();
+        lnet_module_sysctl_init();
+        lnet_router_sysctl_init();
+        lnet_libmove_sysctl_init();
+        lnet_acceptor_sysctl_init();
+}
+
+void
+lnet_modparams_fini(void)
+{
+        libcfs_param_sysctl_fini("lnet", libcfs_param_lnet_root);
+}
+
 int
 init_lnet(void)
 {
         int                  rc;
         ENTRY;
 
-        /* initialize lnet parameters exported with CFS_MODULE_PARAM */
-        lnet_apini_sysctl_init();
-        lnet_module_sysctl_init();
-        lnet_router_sysctl_init();
-        lnet_libmove_sysctl_init();
-        lnet_acceptor_sysctl_init();
-
+#if !defined(__sun__)
+        lnet_modparams_init();
+#endif
         cfs_init_mutex(&lnet_config_mutex);
 
         rc = LNetInit();
@@ -171,6 +184,10 @@ fini_lnet(void)
         LASSERT (rc == 0);
 
         LNetFini();
+
+#if !defined(__sun__)
+        lnet_modparams_fini();
+#endif
 }
 
 EXPORT_SYMBOL(lnet_register_lnd);

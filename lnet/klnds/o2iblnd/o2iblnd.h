@@ -41,35 +41,6 @@
 #ifndef EXPORT_SYMTAB
 # define EXPORT_SYMTAB
 #endif
-#ifndef AUTOCONF_INCLUDED
-#include <linux/config.h>
-#endif
-#include <linux/module.h>
-#include <linux/kernel.h>
-#include <linux/mm.h>
-#include <linux/string.h>
-#include <linux/stat.h>
-#include <linux/errno.h>
-#include <linux/smp_lock.h>
-#include <linux/unistd.h>
-#include <linux/uio.h>
-
-#include <asm/system.h>
-#include <asm/uaccess.h>
-#include <asm/io.h>
-
-#include <linux/init.h>
-#include <linux/fs.h>
-#include <linux/file.h>
-#include <linux/stat.h>
-#include <linux/list.h>
-#include <linux/kmod.h>
-#include <linux/sysctl.h>
-#include <linux/random.h>
-#include <linux/pci.h>
-
-#include <net/sock.h>
-#include <linux/in.h>
 
 #define DEBUG_SUBSYSTEM S_LND
 
@@ -78,14 +49,13 @@
 #include <lnet/lib-lnet.h>
 #include <lnet/lnet-sysctl.h>
 
-#if !HAVE_GFP_T
-typedef int gfp_t;
+#if defined(__linux__)
+#include "o2iblnd_lib-linux.h"
+#elif defined(__sun__)
+#include "o2iblnd_lib-solaris.h"
+#else
+#error Unsupported Operating System
 #endif
-
-#include <rdma/rdma_cm.h>
-#include <rdma/ib_cm.h>
-#include <rdma/ib_verbs.h>
-#include <rdma/ib_fmr_pool.h>
 
 /* tunables fixed at compile time */
 #ifdef CONFIG_SMP
@@ -118,12 +88,11 @@ typedef struct
         int		 *kib_ib_mtu;		/* IB MTU */
         int              *kib_map_on_demand;    /* map-on-demand if RD has more fragments
                                                  * than this value, 0 disable map-on-demand */
-        int              *kib_pmr_pool_size;    /* # physical MR in pool */
-        int              *kib_fmr_pool_size;    /* # FMRs in pool */
-        int              *kib_fmr_flush_trigger; /* When to trigger FMR flush */
-        int              *kib_fmr_cache;        /* enable FMR pool cache? */
+        kib_plat_tunables_t kib_plat_tunes;     /* platform-specific tunables */
+
 #if defined(CONFIG_SYSCTL) && !CFS_SYSFS_MODULE_PARM
-        cfs_sysctl_table_header_t *kib_sysctl;  /* sysctl interface */
+        cfs_sysctl_table_header_t *kib_sysctl;      /* sysctl interface */
+        cfs_sysctl_table_header_t *kib_plat_sysctl; /* platform-specific */
 #endif
 } kib_tunables_t;
 
@@ -178,7 +147,7 @@ kiblnd_concurrent_sends_v1(void)
 /* RX messages (per connection) */
 #define IBLND_RX_MSGS(v)            (IBLND_MSG_QUEUE_SIZE(v) * 2 + IBLND_OOB_MSGS(v))
 #define IBLND_RX_MSG_BYTES(v)       (IBLND_RX_MSGS(v) * IBLND_MSG_SIZE)
-#define IBLND_RX_MSG_PAGES(v)      ((IBLND_RX_MSG_BYTES(v) + PAGE_SIZE - 1) / PAGE_SIZE)
+#define IBLND_RX_MSG_PAGES(v)      ((IBLND_RX_MSG_BYTES(v) + CFS_PAGE_SIZE - 1) / CFS_PAGE_SIZE)
 
 /* WRs and CQEs (per connection) */
 #define IBLND_RECV_WRS(v)            IBLND_RX_MSGS(v)
@@ -210,19 +179,13 @@ typedef struct
 {
         struct ib_device       *ibp_device;             /* device for mapping */
         int                     ibp_npages;             /* # pages */
-        struct page            *ibp_pages[0];           /* page array */
+        kib_page_map_t         *ibp_map;                /* sg[] to map/unmap */
+        int                     ibp_nsgl;               /* sg[] size */
+        cfs_page_t             *ibp_pages[0];           /* page array */
 } kib_pages_t;
 
-struct kib_pmr_pool;
-
-typedef struct {
-        cfs_list_t              pmr_list;               /* chain node */
-        struct ib_phys_buf     *pmr_ipb;                /* physical buffer */
-        struct ib_mr           *pmr_mr;                 /* IB MR */
-        struct kib_pmr_pool    *pmr_pool;               /* owner of this MR */
-        __u64                   pmr_iova;               /* Virtual I/O address */
-        int                     pmr_refcount;           /* reference count */
-} kib_phys_mr_t;
+/* # bytes ibp_map points to */
+#define kiblnd_page_map_size(n) offsetof(kib_page_map_t, pm_sgl[n])
 
 struct kib_pool;
 struct kib_poolset;
@@ -273,55 +236,21 @@ typedef struct {
         kib_pool_t              tpo_pool;               /* pool */
         struct kib_tx          *tpo_tx_descs;           /* all the tx descriptors */
         kib_pages_t            *tpo_tx_pages;           /* premapped tx msg pages */
+        int                     tpo_txs_queued;         /* tpo_tx_descs are queued */
 } kib_tx_pool_t;
-
-typedef struct {
-        kib_poolset_t           pps_poolset;            /* pool-set */
-} kib_pmr_poolset_t;
-
-typedef struct kib_pmr_pool {
-        kib_pool_t              ppo_pool;               /* pool */
-} kib_pmr_pool_t;
-
-typedef struct
-{
-        cfs_spinlock_t          fps_lock;               /* serialize */
-        struct kib_net         *fps_net;                /* IB network */
-        cfs_list_t              fps_pool_list;          /* FMR pool list */
-        __u64                   fps_version;            /* validity stamp */
-        int                     fps_increasing;         /* is allocating new pool */
-        cfs_time_t              fps_next_retry;         /* time stamp for retry if failed to allocate */
-} kib_fmr_poolset_t;
-
-typedef struct
-{
-        cfs_list_t              fpo_list;               /* chain on pool list */
-        kib_fmr_poolset_t      *fpo_owner;              /* owner of this pool */
-        struct ib_fmr_pool     *fpo_fmr_pool;           /* IB FMR pool */
-        cfs_time_t              fpo_deadline;           /* deadline of this pool */
-        int                     fpo_map_count;          /* # of mapped FMR */
-} kib_fmr_pool_t;
-
-typedef struct {
-        struct ib_pool_fmr     *fmr_pfmr;               /* IB pool fmr */
-        kib_fmr_pool_t         *fmr_pool;               /* pool of FMR */
-} kib_fmr_t;
 
 typedef struct kib_net
 {
         __u64                ibn_incarnation;   /* my epoch */
         int                  ibn_init;          /* initialisation state */
         int                  ibn_shutdown;      /* shutting down? */
-        unsigned int         ibn_with_fmr:1;    /* FMR? */
-        unsigned int         ibn_with_pmr:1;    /* PMR? */
+        unsigned int         ibn_alloc_tx_pages:1; /* tx_pages to be alloced */
 
         cfs_atomic_t         ibn_npeers;        /* # peers extant */
         cfs_atomic_t         ibn_nconns;        /* # connections extant */
 
         kib_tx_poolset_t     ibn_tx_ps;         /* tx pool-set */
-        kib_fmr_poolset_t    ibn_fmr_ps;        /* fmr pool-set */
-        kib_pmr_poolset_t    ibn_pmr_ps;        /* pmr pool-set */
-
+        kib_plat_net_t       ibn_plat;          /* platform-specific */
         kib_dev_t           *ibn_dev;           /* underlying IB device */
 } kib_net_t;
 
@@ -482,9 +411,8 @@ typedef struct kib_rx                           /* receive message */
         enum ib_wc_status         rx_status;    /* completion status */
         kib_msg_t                *rx_msg;       /* message buffer (host vaddr) */
         __u64                     rx_msgaddr;   /* message buffer (I/O addr) */
-        DECLARE_PCI_UNMAP_ADDR   (rx_msgunmap); /* for dma_unmap_single() */
-        struct ib_recv_wr         rx_wrq;       /* receive work item... */
-        struct ib_sge             rx_sge;       /* ...and its memory */
+        kib_recv_wr_t             rx_wrq;       /* receive work item... */
+        kib_sge_t                 rx_sge;       /* ...and its memory */
 } kib_rx_t;
 
 #define IBLND_POSTRX_DONT_POST    0             /* don't post */
@@ -506,19 +434,16 @@ typedef struct kib_tx                           /* transmit message */
         lnet_msg_t               *tx_lntmsg[2]; /* lnet msgs to finalize on completion */
         kib_msg_t                *tx_msg;       /* message buffer (host vaddr) */
         __u64                     tx_msgaddr;   /* message buffer (I/O addr) */
-        DECLARE_PCI_UNMAP_ADDR   (tx_msgunmap); /* for dma_unmap_single() */
         int                       tx_nwrq;      /* # send work items */
-        struct ib_send_wr        *tx_wrq;       /* send work items... */
-        struct ib_sge            *tx_sge;       /* ...and their memory */
+        kib_send_wr_t            *tx_wrq;       /* send work items... */
+        kib_sge_t                *tx_sge;       /* ...and their memory */
         kib_rdma_desc_t          *tx_rd;        /* rdma descriptor */
         int                       tx_nfrags;    /* # entries in... */
-        struct scatterlist       *tx_frags;     /* dma_map_sg descriptor */
+        kib_frags_t              *tx_frags;     /* dma_map_sg descriptor */
         __u64                    *tx_pages;     /* rdma phys page addrs */
-        union {
-                kib_phys_mr_t      *pmr;        /* MR for physical buffer */
-                kib_fmr_t           fmr;        /* FMR */
-        }                         tx_u;
+        kib_mr_t                  tx_mr_u;      /* platform specific */
         int                       tx_dmadir;    /* dma direction */
+        kib_tx_plat_t             tx_plat;      /* platform specific */
 } kib_tx_t;
 
 typedef struct kib_connvars
@@ -807,141 +732,33 @@ kiblnd_rd_msg_size(kib_rdma_desc_t *rd, int msgtype, int n)
                offsetof(kib_putack_msg_t, ibpam_rd.rd_frags[n]);
 }
 
-#ifdef HAVE_OFED_IB_DMA_MAP
-
-static inline __u64
-kiblnd_dma_mapping_error(struct ib_device *dev, u64 dma_addr)
-{
-        return ib_dma_mapping_error(dev, dma_addr);
-}
-
-static inline __u64 kiblnd_dma_map_single(struct ib_device *dev,
-                                          void *msg, size_t size,
-                                          enum dma_data_direction direction)
-{
-        return ib_dma_map_single(dev, msg, size, direction);
-}
-
-static inline void kiblnd_dma_unmap_single(struct ib_device *dev,
-                                           __u64 addr, size_t size,
-                                          enum dma_data_direction direction)
-{
-        ib_dma_unmap_single(dev, addr, size, direction);
-}
-
-#define KIBLND_UNMAP_ADDR_SET(p, m, a)  do {} while (0)
-#define KIBLND_UNMAP_ADDR(p, m, a)      (a)
-
-static inline int kiblnd_dma_map_sg(struct ib_device *dev,
-                                    struct scatterlist *sg, int nents,
-                                    enum dma_data_direction direction)
-{
-        return ib_dma_map_sg(dev, sg, nents, direction);
-}
-
-static inline void kiblnd_dma_unmap_sg(struct ib_device *dev,
-                                       struct scatterlist *sg, int nents,
-                                       enum dma_data_direction direction)
-{
-        ib_dma_unmap_sg(dev, sg, nents, direction);
-}
-
-static inline __u64 kiblnd_sg_dma_address(struct ib_device *dev,
-                                          struct scatterlist *sg)
-{
-        return ib_sg_dma_address(dev, sg);
-}
-
-static inline unsigned int kiblnd_sg_dma_len(struct ib_device *dev,
-                                             struct scatterlist *sg)
-{
-        return ib_sg_dma_len(dev, sg);
-}
-
-/* XXX We use KIBLND_CONN_PARAM(e) as writable buffer, it's not strictly
- * right because OFED1.2 defines it as const, to use it we have to add
- * (void *) cast to overcome "const" */
-
-#define KIBLND_CONN_PARAM(e)            ((e)->param.conn.private_data)
-#define KIBLND_CONN_PARAM_LEN(e)        ((e)->param.conn.private_data_len)
-
-#else
-
-static inline __u64
-kiblnd_dma_mapping_error(struct ib_device *dev, dma_addr_t dma_addr)
-{
-        return dma_mapping_error(dma_addr);
-}
-
-static inline dma_addr_t kiblnd_dma_map_single(struct ib_device *dev,
-                                               void *msg, size_t size,
-                                               enum dma_data_direction direction)
-{
-        return dma_map_single(dev->dma_device, msg, size, direction);
-}
-
-static inline void kiblnd_dma_unmap_single(struct ib_device *dev,
-                                           dma_addr_t addr, size_t size,
-                                           enum dma_data_direction direction)
-{
-        dma_unmap_single(dev->dma_device, addr, size, direction);
-}
-
-#define KIBLND_UNMAP_ADDR_SET(p, m, a)  pci_unmap_addr_set(p, m, a)
-#define KIBLND_UNMAP_ADDR(p, m, a)      pci_unmap_addr(p, m)
-
-static inline int kiblnd_dma_map_sg(struct ib_device *dev,
-                                    struct scatterlist *sg, int nents,
-                                    enum dma_data_direction direction)
-{
-        return dma_map_sg(dev->dma_device, sg, nents, direction);
-}
-
-static inline void kiblnd_dma_unmap_sg(struct ib_device *dev,
-                                       struct scatterlist *sg, int nents,
-                                       enum dma_data_direction direction)
-{
-        return dma_unmap_sg(dev->dma_device, sg, nents, direction);
-}
-
-
-static inline dma_addr_t kiblnd_sg_dma_address(struct ib_device *dev,
-                                               struct scatterlist *sg)
-{
-        return sg_dma_address(sg);
-}
-
-
-static inline unsigned int kiblnd_sg_dma_len(struct ib_device *dev,
-                                             struct scatterlist *sg)
-{
-        return sg_dma_len(sg);
-}
-
-#define KIBLND_CONN_PARAM(e)            ((e)->private_data)
-#define KIBLND_CONN_PARAM_LEN(e)        ((e)->private_data_len)
-
-#endif
-
 struct ib_mr *kiblnd_find_rd_dma_mr(kib_net_t *net,
                                     kib_rdma_desc_t *rd);
 struct ib_mr *kiblnd_find_dma_mr(kib_net_t *net,
                                  __u64 addr, __u64 size);
 void kiblnd_map_rx_descs(kib_conn_t *conn);
-void kiblnd_unmap_rx_descs(kib_conn_t *conn);
+void kiblnd_check_rxs_not_posted(kib_conn_t *conn);
 int kiblnd_map_tx(lnet_ni_t *ni, kib_tx_t *tx,
                   kib_rdma_desc_t *rd, int nfrags);
 void kiblnd_unmap_tx(lnet_ni_t *ni, kib_tx_t *tx);
+void kiblnd_init_pool(kib_poolset_t *ps, kib_pool_t *pool, int size);
+void kiblnd_fini_pool(kib_pool_t *pool);
+int kiblnd_init_pool_set(kib_poolset_t *ps, kib_net_t *net,
+                         char *name, int size,
+                         kib_ps_pool_create_t po_create,
+                         kib_ps_pool_destroy_t po_destroy,
+                         kib_ps_node_init_t nd_init,
+                         kib_ps_node_fini_t nd_fini);
+void kiblnd_fini_pool_set(kib_poolset_t *ps);
 void kiblnd_pool_free_node(kib_pool_t *pool, cfs_list_t *node);
 cfs_list_t *kiblnd_pool_alloc_node(kib_poolset_t *ps);
 
-int  kiblnd_fmr_pool_map(kib_fmr_poolset_t *fps, __u64 *pages,
-                         int npages, __u64 iov, kib_fmr_t *fmr);
-void kiblnd_fmr_pool_unmap(kib_fmr_t *fmr, int status);
+void kiblnd_plat_net_fini_pools(kib_net_t *net);
+int kiblnd_plat_net_init_pools(kib_net_t *net);
 
-int  kiblnd_pmr_pool_map(kib_pmr_poolset_t *pps, kib_rdma_desc_t *rd,
-                         __u64 *iova, kib_phys_mr_t **pp_pmr);
-void kiblnd_pmr_pool_unmap(kib_phys_mr_t *pmr);
+int kiblnd_dev_get_attr(kib_dev_t *ibdev);
+struct ib_mr *kiblnd_get_dma_mr(kib_dev_t *ibdev, int mr_access_flags);
+void kiblnd_dereg_mr(kib_dev_t *ibdev, struct ib_mr *mr);
 
 int  kiblnd_startup (lnet_ni_t *ni);
 void kiblnd_shutdown (lnet_ni_t *ni);
@@ -955,8 +772,12 @@ int  kiblnd_connd (void *arg);
 int  kiblnd_scheduler(void *arg);
 int  kiblnd_thread_start (int (*fn)(void *arg), void *arg);
 
-int  kiblnd_alloc_pages (kib_pages_t **pp, int npages);
-void kiblnd_free_pages (kib_pages_t *p);
+int  kiblnd_setup_pages (kib_net_t *net, struct ib_device *dev,
+                         kib_pages_t **pp, int npages,
+                         enum dma_data_direction dir);
+void kiblnd_release_pages (kib_pages_t *p);
+void kiblnd_unmap_pages(kib_pages_t *p);
+int kiblnd_map_pages(kib_net_t *net, kib_pages_t *p);
 
 int  kiblnd_cm_callback(struct rdma_cm_id *cmid,
                         struct rdma_cm_event *event);
@@ -1005,3 +826,13 @@ int  kiblnd_recv(lnet_ni_t *ni, void *private, lnet_msg_t *lntmsg, int delayed,
                  unsigned int niov, struct iovec *iov, lnet_kiov_t *kiov,
                  unsigned int offset, unsigned int mlen, unsigned int rlen);
 
+int kiblnd_iov2frags(struct iovec *iov, int niov,
+                     int offset, int nob, kib_tx_t *tx);
+int kiblnd_kiov2frags(lnet_kiov_t *kiov, int nkiov,
+                      int offset, int nob, kib_tx_t *tx);
+
+int kiblnd_plat_dev_setup(kib_dev_t *ibdev, int acflags);
+void kiblnd_dev_cleanup(kib_dev_t *ibdev);
+
+void kiblnd_plat_modparams_init(void);
+void kiblnd_plat_modparams_fini(void);

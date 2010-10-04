@@ -72,7 +72,6 @@ struct libcfs_param_ctl_table libcfs_param_apini_ctl_table[] = {
                 .mode     = 0444,
                 .read     = libcfs_param_string_read,
                 .write    = libcfs_param_string_write,
-                .writeable_before_startup = 1
         },
         {
                 .name     = "routes",
@@ -114,11 +113,7 @@ lnet_get_networks(void)
         if (*networks != 0)
                 return networks;
 
-#if defined (__sun__)
-        return "tcp0(e1000g1)"; /* temp for testing */
-#else
         return "tcp";
-#endif
 }
 
 void
