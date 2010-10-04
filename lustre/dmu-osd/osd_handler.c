@@ -3063,7 +3063,6 @@ int __init osd_init(void)
         struct lprocfs_static_vars lvars;
 
         lprocfs_osd_init_vars(&lvars);
-        udmu_objset_register_type();
         return class_register_type(&osd_obd_device_ops, NULL, lvars.module_vars,
                                    LUSTRE_ZFS_NAME, &osd_device_type);
 }
