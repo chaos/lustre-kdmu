@@ -54,9 +54,6 @@
 
 #define IOC_MDC_TYPE         'i'
 #define IOC_MDC_MIN_NR       20
-/* Moved to lustre_user.h
-#define IOC_MDC_LOOKUP       _IOWR(IOC_MDC_TYPE, 20, struct obd_ioctl_data *)
-#define IOC_MDC_GETSTRIPE    _IOWR(IOC_MDC_TYPE, 21, struct lov_mds_md *) */
 #define IOC_MDC_MAX_NR       50
 
 #include <lustre/lustre_idl.h>
@@ -64,7 +61,6 @@
 #include <lu_ref.h>
 #include <lustre_lib.h>
 #include <lustre_export.h>
-#include <lustre_quota.h>
 #include <lustre_fld.h>
 #include <lustre_capa.h>
 
@@ -239,9 +235,6 @@ struct obd_device_target {
 #endif /* __linux__ */
         struct lu_target         *obt_lut;
         __u64                     obt_mount_count;
-        cfs_semaphore_t           obt_quotachecking;
-        struct lustre_quota_ctxt  obt_qctxt;
-        lustre_quota_version_t    obt_qfmt;
         cfs_rw_semaphore_t        obt_rwsem;
 #if defined(__linux__)
         struct vfsmount          *obt_vfsmnt;
@@ -307,6 +300,7 @@ struct filter_obd {
         int                  fo_tot_granted_clients;
 
         obd_size             fo_readcache_max_filesize;
+        cfs_spinlock_t       fo_flags_lock;
         int                  fo_read_cache:1,   /**< enable read-only cache */
                              fo_writethrough_cache:1,/**< read cache writes */
                              fo_mds_ost_sync:1, /**< MDS-OST orphan recovery*/
@@ -343,9 +337,6 @@ struct filter_obd {
         cfs_spinlock_t           fo_llog_list_lock;
 
         struct brw_stats         fo_filter_stats;
-        struct lustre_quota_ctxt fo_quota_ctxt;
-        cfs_spinlock_t           fo_quotacheck_lock;
-        cfs_atomic_t             fo_quotachecking;
 
         int                      fo_fmd_max_num; /* per exp filter_mod_data */
         int                      fo_fmd_max_age; /* jiffies to fmd expiry */
@@ -500,6 +491,7 @@ struct client_obd {
 #define CL_NOT_QUOTACHECKED 1   /* client->cl_qchk_stat init value */
 
 struct mgs_obd {
+        struct obd_device_target         mgs_obt;
         struct ptlrpc_service           *mgs_service;
 #if defined(__linux__)
         struct vfsmount                 *mgs_vfsmnt;
@@ -552,9 +544,6 @@ struct mds_obd {
         __u32                            mds_lov_objid_lastpage;
         __u32                            mds_lov_objid_lastidx;
 
-
-        struct lustre_quota_info         mds_quota_info;
-        cfs_rw_semaphore_t               mds_qonoff_sem;
         cfs_semaphore_t                  mds_health_sem;
         unsigned long                    mds_fl_user_xattr:1,
                                          mds_fl_acl:1,
@@ -913,6 +902,8 @@ static inline void oti_free_cookies(struct obd_trans_info *oti)
  * Events signalled through obd_notify() upcall-chain.
  */
 enum obd_notify_event {
+        /* target added */
+        OBD_NOTIFY_CREATE,
         /* Device connect start */
         OBD_NOTIFY_CONNECT,
         /* Device activated */
@@ -1003,6 +994,7 @@ struct obd_llog_group {
 #define MAX_OBD_NAME 128
 #define OBD_DEVICE_MAGIC        0XAB5CD6EF
 #define OBD_DEV_BY_DEVNAME      0xffffd0de
+
 struct obd_device {
         struct obd_type        *obd_type;
         __u32                   obd_magic;
@@ -1014,16 +1006,15 @@ struct obd_device {
         struct lu_device       *obd_lu_dev;
 
         int                     obd_minor;
+        /* bitfield modification is protected by obd_dev_lock */
         unsigned long obd_attached:1,      /* finished attach */
                       obd_set_up:1,        /* finished setup */
                       obd_recovering:1,    /* there are recoverable clients */
                       obd_abort_recovery:1,/* recovery expired */
                       obd_version_recov:1, /* obd uses version checking */
-                      obd_recovery_expired:1,
                       obd_replayable:1,    /* recovery is enabled; inform clients */
                       obd_no_transno:1,    /* no committed-transno notification */
                       obd_no_recov:1,      /* fail instead of retry messages */
-                      obd_req_replaying:1, /* replaying requests */
                       obd_stopping:1,      /* started cleanup */
                       obd_starting:1,      /* started setup */
                       obd_force:1,         /* cleanup with > 0 obd refcount */
@@ -1033,6 +1024,9 @@ struct obd_device {
                       obd_inactive:1,      /* device active/inactive
                                            * (for /proc/status only!!) */
                       obd_process_conf:1;  /* device is processing mgs config */
+        /* use separate field as it is set in interrupt to don't mess with
+         * protection of other bits using _bh lock */
+        unsigned long obd_recovery_expired:1;
         /* uuid-export hash body */
         cfs_hash_t             *obd_uuid_hash;
         /* nid-export hash body */
@@ -1050,7 +1044,7 @@ struct obd_device {
         struct ldlm_namespace  *obd_namespace;
         struct ptlrpc_client    obd_ldlm_client; /* XXX OST/MDS only */
         /* a spinlock is OK for what we do now, may need a semaphore later */
-        cfs_spinlock_t          obd_dev_lock;
+        cfs_spinlock_t          obd_dev_lock; /* protects obd bitfield above */
         cfs_semaphore_t         obd_dev_sem;
         __u64                   obd_last_committed;
         struct fsfilt_operations *obd_fsops;
@@ -1071,11 +1065,14 @@ struct obd_device {
         int                              obd_connected_clients;
         int                              obd_stale_clients;
         int                              obd_delayed_clients;
-        cfs_spinlock_t                   obd_processing_task_lock; /* BH lock (timer) */
+        /* this lock protects all recovery list_heads, timer and
+         * obd_next_recovery_transno value */
+        cfs_spinlock_t                   obd_recovery_task_lock;
         __u64                            obd_next_recovery_transno;
         int                              obd_replayed_requests;
         int                              obd_requests_queued_for_recovery;
         cfs_waitq_t                      obd_next_transno_waitq;
+        /* protected by obd_recovery_task_lock */
         cfs_timer_t                      obd_recovery_timer;
         time_t                           obd_recovery_start; /* seconds */
         time_t                           obd_recovery_end; /* seconds, for lprocfs_status */
@@ -1087,6 +1084,7 @@ struct obd_device {
         int                              obd_replayed_locks;
         cfs_atomic_t                     obd_req_replay_clients;
         cfs_atomic_t                     obd_lock_replay_clients;
+        /* all lists are protected by obd_recovery_task_lock */
         cfs_list_t                       obd_req_replay_queue;
         cfs_list_t                       obd_lock_replay_queue;
         cfs_list_t                       obd_final_req_queue;
@@ -1400,16 +1398,6 @@ struct obd_ops {
         int (*o_health_check)(struct obd_device *);
         struct obd_uuid *(*o_get_uuid) (struct obd_export *exp);
 
-        /* quota methods */
-        int (*o_quotacheck)(struct obd_device *, struct obd_export *,
-                            struct obd_quotactl *);
-        int (*o_quotactl)(struct obd_device *, struct obd_export *,
-                          struct obd_quotactl *);
-        int (*o_quota_adjust_qunit)(struct obd_export *exp,
-                                    struct quota_adjust_qunit *oqaq,
-                                    struct lustre_quota_ctxt *qctxt);
-
-
         int (*o_ping)(struct obd_export *exp);
 
         /* pools methods */
@@ -1623,18 +1611,6 @@ static inline void obd_transno_commit_cb(struct obd_device *obd, __u64 transno,
         }
         if (transno > obd->obd_last_committed)
                 obd->obd_last_committed = transno;
-}
-
-static inline void init_obd_quota_ops(quota_interface_t *interface,
-                                      struct obd_ops *obd_ops)
-{
-        if (!interface)
-                return;
-
-        LASSERT(obd_ops);
-        obd_ops->o_quotacheck = QUOTA_OP(interface, check);
-        obd_ops->o_quotactl = QUOTA_OP(interface, ctl);
-        obd_ops->o_quota_adjust_qunit = QUOTA_OP(interface, adjust_qunit);
 }
 
 static inline struct lustre_capa *oinfo_capa(struct obd_info *oinfo)

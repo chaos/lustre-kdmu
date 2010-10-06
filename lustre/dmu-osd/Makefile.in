@@ -1,5 +1,5 @@
 MODULES := osd_zfs
-osd_zfs-objs := osd_handler.o osd_lproc.o udmu.o udmu_util.o
+osd_zfs-objs := osd_handler.o osd_lproc.o udmu.o udmu_util.o osd_quota.o
 
 EXTRA_PRE_CFLAGS := -DDMU_OSD_BUILD @ZFS_EXTRA_PRE_CFLAGS@ @SPL_EXTRA_PRE_CFLAGS@
 

@@ -40,236 +40,24 @@
  * Author: Fan Yong <Yong.Fan@Sun.Com>
  */
 
-#ifdef HAVE_QUOTA_SUPPORT
-
 #include "mdd_internal.h"
-
-int mdd_quota_notify(const struct lu_env *env, struct md_device *m)
-{
-        struct mdd_device *mdd = lu2mdd_dev(&m->md_lu_dev);
-        struct obd_device *obd = mdd->mdd_obd_dev;
-        ENTRY;
-
-        lquota_setinfo(mds_quota_interface_ref, obd, (void *)1);
-        RETURN(0);
-}
 
 int mdd_quota_setup(const struct lu_env *env, struct md_device *m,
                     void *data)
 {
         struct mdd_device *mdd = lu2mdd_dev(&m->md_lu_dev);
-        struct obd_device *obd = mdd->mdd_obd_dev;
         struct dt_device *dt = mdd->mdd_child;
-        int rc;
         ENTRY;
 
-	LASSERT(obd->obd_fsops != NULL);
-        dt->dd_ops->dt_init_quota_ctxt(env, dt, (void *)obd, data);
-        rc = lquota_setup(mds_quota_interface_ref, obd);
-        RETURN(rc);
+        RETURN(dt->dd_ops->dt_quota.dt_setup(env, dt, data));
 }
 
 int mdd_quota_cleanup(const struct lu_env *env, struct md_device *m)
 {
         struct mdd_device *mdd = lu2mdd_dev(&m->md_lu_dev);
-        struct obd_device *obd = mdd->mdd_obd_dev;
-        int rc1, rc2;
+        struct dt_device *dt = mdd->mdd_child;
         ENTRY;
 
-        rc1 = lquota_cleanup(mds_quota_interface_ref, obd);
-        rc2 = lquota_fs_cleanup(mds_quota_interface_ref, obd);
-        RETURN(rc1 ? : rc2);
+        dt->dd_ops->dt_quota.dt_cleanup(env, dt);
+        RETURN(0);
 }
-
-int mdd_quota_recovery(const struct lu_env *env, struct md_device *m)
-{
-        struct mdd_device *mdd = lu2mdd_dev(&m->md_lu_dev);
-        struct obd_device *obd = mdd->mdd_obd_dev;
-        int rc;
-        ENTRY;
-
-        rc = lquota_recovery(mds_quota_interface_ref, obd);
-        RETURN(rc);
-}
-
-int mdd_quota_check(const struct lu_env *env, struct md_device *m,
-                    __u32 type)
-{
-        struct mdd_device *mdd = lu2mdd_dev(&m->md_lu_dev);
-        struct obd_device *obd = mdd->mdd_obd_dev;
-        struct obd_export *exp = md_quota(env)->mq_exp;
-        struct obd_quotactl *oqctl = &mdd_env_info(env)->mti_oqctl;
-        int rc;
-        ENTRY;
-
-        oqctl->qc_type = type;
-        rc = lquota_check(mds_quota_interface_ref, obd, exp, oqctl);
-        RETURN(rc);
-}
-
-int mdd_quota_on(const struct lu_env *env, struct md_device *m,
-                 __u32 type)
-{
-        struct mdd_device *mdd = lu2mdd_dev(&m->md_lu_dev);
-        struct obd_device *obd = mdd->mdd_obd_dev;
-        struct obd_quotactl *oqctl = &mdd_env_info(env)->mti_oqctl;
-        int rc;
-        ENTRY;
-
-        oqctl->qc_cmd = Q_QUOTAON;
-        oqctl->qc_type = type;
-        rc = lquota_ctl(mds_quota_interface_ref, obd, oqctl);
-        RETURN(rc);
-}
-
-int mdd_quota_off(const struct lu_env *env, struct md_device *m,
-                  __u32 type)
-{
-        struct mdd_device *mdd = lu2mdd_dev(&m->md_lu_dev);
-        struct obd_device *obd = mdd->mdd_obd_dev;
-        struct obd_quotactl *oqctl = &mdd_env_info(env)->mti_oqctl;
-        int rc;
-        ENTRY;
-
-        oqctl->qc_cmd = Q_QUOTAOFF;
-        oqctl->qc_type = type;
-        rc = lquota_ctl(mds_quota_interface_ref, obd, oqctl);
-        RETURN(rc);
-}
-
-int mdd_quota_setinfo(const struct lu_env *env, struct md_device *m,
-                      __u32 type, __u32 id, struct obd_dqinfo *dqinfo)
-{
-        struct mdd_device *mdd = lu2mdd_dev(&m->md_lu_dev);
-        struct obd_device *obd = mdd->mdd_obd_dev;
-        struct obd_quotactl *oqctl = &mdd_env_info(env)->mti_oqctl;
-        int rc;
-        ENTRY;
-
-        oqctl->qc_cmd = Q_SETINFO;
-        oqctl->qc_type = type;
-        oqctl->qc_id = id;
-        oqctl->qc_dqinfo = *dqinfo;
-        rc = lquota_ctl(mds_quota_interface_ref, obd, oqctl);
-        RETURN(rc);
-}
-
-int mdd_quota_getinfo(const struct lu_env *env, const struct md_device *m,
-                      __u32 type, __u32 id, struct obd_dqinfo *dqinfo)
-{
-        struct mdd_device *mdd = lu2mdd_dev(
-                                 &((struct md_device *)m)->md_lu_dev);
-        struct obd_device *obd = mdd->mdd_obd_dev;
-        struct obd_quotactl *oqctl = &mdd_env_info(env)->mti_oqctl;
-        int rc;
-        ENTRY;
-
-        oqctl->qc_cmd = Q_GETINFO;
-        oqctl->qc_type = type;
-        oqctl->qc_id = id;
-        rc = lquota_ctl(mds_quota_interface_ref, obd, oqctl);
-        *dqinfo = oqctl->qc_dqinfo;
-        RETURN(rc);
-}
-
-int mdd_quota_setquota(const struct lu_env *env, struct md_device *m,
-                       __u32 type, __u32 id, struct obd_dqblk *dqblk)
-{
-        struct mdd_device *mdd = lu2mdd_dev(&m->md_lu_dev);
-        struct obd_device *obd = mdd->mdd_obd_dev;
-        struct obd_quotactl *oqctl = &mdd_env_info(env)->mti_oqctl;
-        int rc;
-        ENTRY;
-
-        oqctl->qc_cmd = Q_SETQUOTA;
-        oqctl->qc_type = type;
-        oqctl->qc_id = id;
-        oqctl->qc_dqblk = *dqblk;
-        rc = lquota_ctl(mds_quota_interface_ref, obd, oqctl);
-        RETURN(rc);
-}
-
-int mdd_quota_getquota(const struct lu_env *env, const struct md_device *m,
-                       __u32 type, __u32 id, struct obd_dqblk *dqblk)
-{
-        struct mdd_device *mdd = lu2mdd_dev(
-                                 &((struct md_device *)m)->md_lu_dev);
-        struct obd_device *obd = mdd->mdd_obd_dev;
-        struct obd_quotactl *oqctl = &mdd_env_info(env)->mti_oqctl;
-        int rc;
-        ENTRY;
-
-        oqctl->qc_cmd = Q_GETQUOTA;
-        oqctl->qc_type = type;
-        oqctl->qc_id = id;
-        rc = lquota_ctl(mds_quota_interface_ref, obd, oqctl);
-        *dqblk = oqctl->qc_dqblk;
-        RETURN(rc);
-}
-
-int mdd_quota_getoinfo(const struct lu_env *env, const struct md_device *m,
-                       __u32 type, __u32 id, struct obd_dqinfo *dqinfo)
-{
-        struct mdd_device *mdd = lu2mdd_dev(
-                                 &((struct md_device *)m)->md_lu_dev);
-        struct obd_device *obd = mdd->mdd_obd_dev;
-        struct obd_quotactl *oqctl = &mdd_env_info(env)->mti_oqctl;
-        int rc;
-        ENTRY;
-
-        oqctl->qc_cmd = Q_GETOINFO;
-        oqctl->qc_type = type;
-        oqctl->qc_id = id;
-        rc = lquota_ctl(mds_quota_interface_ref, obd, oqctl);
-        *dqinfo = oqctl->qc_dqinfo;
-        RETURN(rc);
-}
-
-int mdd_quota_getoquota(const struct lu_env *env, const struct md_device *m,
-                        __u32 type, __u32 id, struct obd_dqblk *dqblk)
-{
-        struct mdd_device *mdd = lu2mdd_dev(
-                                 &((struct md_device *)m)->md_lu_dev);
-        struct obd_device *obd = mdd->mdd_obd_dev;
-        struct obd_quotactl *oqctl = &mdd_env_info(env)->mti_oqctl;
-        int rc;
-        ENTRY;
-
-        oqctl->qc_cmd = Q_GETOQUOTA;
-        oqctl->qc_type = type;
-        oqctl->qc_id = id;
-        rc = lquota_ctl(mds_quota_interface_ref, obd, oqctl);
-        *dqblk = oqctl->qc_dqblk;
-        RETURN(rc);
-}
-
-int mdd_quota_invalidate(const struct lu_env *env, struct md_device *m,
-                         __u32 type)
-{
-        struct mdd_device *mdd = lu2mdd_dev(&m->md_lu_dev);
-        struct obd_device *obd = mdd->mdd_obd_dev;
-        struct obd_quotactl *oqctl = &mdd_env_info(env)->mti_oqctl;
-        int rc;
-        ENTRY;
-
-        oqctl->qc_cmd = LUSTRE_Q_INVALIDATE;
-        oqctl->qc_type = type;
-        rc = lquota_ctl(mds_quota_interface_ref, obd, oqctl);
-        RETURN(rc);
-}
-
-int mdd_quota_finvalidate(const struct lu_env *env, struct md_device *m,
-                          __u32 type)
-{
-        struct mdd_device *mdd = lu2mdd_dev(&m->md_lu_dev);
-        struct obd_device *obd = mdd->mdd_obd_dev;
-        struct obd_quotactl *oqctl = &mdd_env_info(env)->mti_oqctl;
-        int rc;
-        ENTRY;
-
-        oqctl->qc_cmd = LUSTRE_Q_FINVALIDATE;
-        oqctl->qc_type = type;
-        rc = lquota_ctl(mds_quota_interface_ref, obd, oqctl);
-        RETURN(rc);
-}
-#endif

@@ -491,50 +491,20 @@ static void lov_lock_fini(const struct lu_env *env,
         EXIT;
 }
 
-/**
- *
- * \retval 0 if state-transition can proceed
- * \retval -ve otherwise.
- */
 static int lov_lock_enqueue_wait(const struct lu_env *env,
                                  struct lov_lock *lck,
                                  struct cl_lock *sublock)
 {
-        struct cl_lock *lock     = lck->lls_cl.cls_lock;
-        struct cl_lock *conflict = sublock->cll_conflict;
-        int result = CLO_REPEAT;
+        struct cl_lock *lock = lck->lls_cl.cls_lock;
+        int             result;
         ENTRY;
 
         LASSERT(cl_lock_is_mutexed(lock));
-        LASSERT(cl_lock_is_mutexed(sublock));
-        LASSERT(sublock->cll_state == CLS_QUEUING);
-        LASSERT(conflict != NULL);
 
-        sublock->cll_conflict = NULL;
         cl_lock_mutex_put(env, lock);
-        cl_lock_mutex_put(env, sublock);
-
-        LASSERT(cl_lock_nr_mutexed(env) == 0);
-
-        cl_lock_mutex_get(env, conflict);
-        cl_lock_cancel(env, conflict);
-        cl_lock_delete(env, conflict);
-        while (conflict->cll_state != CLS_FREEING) {
-                int rc = 0;
-
-                rc = cl_lock_state_wait(env, conflict);
-                if (rc == 0)
-                        continue;
-
-                result = lov_subresult(result, rc);
-                break;
-        }
-        cl_lock_mutex_put(env, conflict);
-        lu_ref_del(&conflict->cll_reference, "cancel-wait", sublock);
-        cl_lock_put(env, conflict);
-
+        result = cl_lock_enqueue_wait(env, sublock, 0);
         cl_lock_mutex_get(env, lock);
-        RETURN(result);
+        RETURN(result ?: CLO_REPEAT);
 }
 
 /**
@@ -1050,7 +1020,7 @@ static int lov_lock_fits_into(const struct lu_env *env,
                  * match against original lock extent.
                  */
                 result = cl_lock_ext_match(&lov->lls_orig, need);
-        CDEBUG(D_DLMTRACE, DDESCR"/"DDESCR" %i %i/%i: %i\n",
+        CDEBUG(D_DLMTRACE, DDESCR"/"DDESCR" %d %d/%d: %d\n",
                PDESCR(&lov->lls_orig), PDESCR(&lov->lls_sub[0].sub_got),
                lov->lls_sub[0].sub_stripe, lov->lls_nr, lov_r0(obj)->lo_nr,
                result);

@@ -302,15 +302,6 @@ struct vfsmount {
 
 
 /*
- * quota definitions (linux/quota.h)
- */
-
-#define MAXQUOTAS 2
-#define USRQUOTA  0		/* element used for user quotas */
-#define GRPQUOTA  1		/* element used for group quotas */
-
-
-/*
  * proc fs routines
  */
 

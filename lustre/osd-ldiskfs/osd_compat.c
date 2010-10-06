@@ -636,6 +636,14 @@ int osd_compat_spec_insert(struct osd_thread_info *info, struct osd_device *osd,
         } else if (fid_oid(fid) == LLOG_CATALOGS_OID) {
                 /* on creation of LAST_GROUP we create legacy OST hierarchy */
                 rc = osd_compat_add_entry(info, osd, root, "CATALOGS", id, th);
+        } else if (fid_oid(fid) == QUOTA_SLAVE_UID_OID) {
+                /* on creation of user quota file we create legacy OST hierarchy */
+                rc = osd_compat_add_entry(info, osd, root, QUOTA_OP_USER_FILE,
+                                          id, th);
+        } else if (fid_oid(fid) == QUOTA_SLAVE_GID_OID) {
+                /* on creation of group quota file we create legacy OST hierarchy */
+                rc = osd_compat_add_entry(info, osd, root, QUOTA_OP_GROUP_FILE,
+                                          id, th);
         } else {
                 /* unknown special file: probably OI can handle this */
         }

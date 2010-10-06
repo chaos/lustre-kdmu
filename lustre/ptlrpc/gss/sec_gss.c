@@ -56,7 +56,6 @@
 #include <linux/slab.h>
 #include <linux/dcache.h>
 #include <linux/fs.h>
-#include <linux/random.h>
 #include <linux/mutex.h>
 #include <asm/atomic.h>
 #else
@@ -1479,8 +1478,6 @@ release_reqbuf:
                 req->rq_reqbuf_len = 0;
         }
 
-        req->rq_reqmsg = NULL;
-
         EXIT;
 }
 
@@ -1613,8 +1610,6 @@ void gss_free_repbuf(struct ptlrpc_sec *sec,
         req->rq_repbuf_len = 0;
         req->rq_repdata = NULL;
         req->rq_repdata_len = 0;
-
-        req->rq_repmsg = NULL;
 }
 
 static int get_enlarged_msgsize(struct lustre_msg *msg,

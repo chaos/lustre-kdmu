@@ -60,46 +60,6 @@ fi
 ])
 
 #
-# LIBCFS_STRUCT_PAGE_LIST
-#
-# 2.6.4 no longer has page->list
-#
-AC_DEFUN([LIBCFS_STRUCT_PAGE_LIST],
-[AC_MSG_CHECKING([if struct page has a list field])
-LB_LINUX_TRY_COMPILE([
-	#include <linux/mm.h>
-],[
-	struct page page;
-	&page.list;
-],[
-	AC_MSG_RESULT([yes])
-	AC_DEFINE(HAVE_PAGE_LIST, 1, [struct page has a list field])
-],[
-	AC_MSG_RESULT([no])
-])
-])
-
-#
-# LIBCFS_STRUCT_SIGHAND
-#
-# red hat 2.4 adds sighand to struct task_struct
-#
-AC_DEFUN([LIBCFS_STRUCT_SIGHAND],
-[AC_MSG_CHECKING([if task_struct has a sighand field])
-LB_LINUX_TRY_COMPILE([
-	#include <linux/sched.h>
-],[
-	struct task_struct p;
-	p.sighand = NULL;
-],[
-	AC_DEFINE(CONFIG_RH_2_4_20, 1, [this kernel contains Red Hat 2.4.20 patches])
-	AC_MSG_RESULT([yes])
-],[
-	AC_MSG_RESULT([no])
-])
-])
-
-#
 # LIBCFS_FUNC_CPU_ONLINE
 #
 # cpu_online is different in rh 2.4, vanilla 2.4, and 2.6
@@ -107,14 +67,14 @@ LB_LINUX_TRY_COMPILE([
 AC_DEFUN([LIBCFS_FUNC_CPU_ONLINE],
 [AC_MSG_CHECKING([if kernel defines cpu_online()])
 LB_LINUX_TRY_COMPILE([
-	#include <linux/sched.h>
+       #include <linux/sched.h>
 ],[
-	cpu_online(0);
+       cpu_online(0);
 ],[
-	AC_MSG_RESULT([yes])
-	AC_DEFINE(HAVE_CPU_ONLINE, 1, [cpu_online found])
+       AC_MSG_RESULT([yes])
+       AC_DEFINE(HAVE_CPU_ONLINE, 1, [cpu_online found])
 ],[
-	AC_MSG_RESULT([no])
+       AC_MSG_RESULT([no])
 ])
 ])
 
@@ -132,25 +92,6 @@ LB_LINUX_TRY_COMPILE([
 ],[
 	AC_MSG_RESULT([yes])
 	AC_DEFINE(HAVE_GFP_T, 1, [gfp_t found])
-],[
-	AC_MSG_RESULT([no])
-])
-])
-
-#
-# LIBCFS_TYPE_CPUMASK_T
-#
-# same goes for cpumask_t
-#
-AC_DEFUN([LIBCFS_TYPE_CPUMASK_T],
-[AC_MSG_CHECKING([if kernel defines cpumask_t])
-LB_LINUX_TRY_COMPILE([
-	#include <linux/sched.h>
-],[
-	return sizeof (cpumask_t);
-],[
-	AC_MSG_RESULT([yes])
-	AC_DEFINE(HAVE_CPUMASK_T, 1, [cpumask_t found])
 ],[
 	AC_MSG_RESULT([no])
 ])
@@ -175,6 +116,7 @@ AC_DEFUN([LIBCFS_U64_LONG_LONG],
 tmp_flags="$CFLAGS"
 CFLAGS="$CFLAGS -Werror"
 AC_COMPILE_IFELSE([
+	#include <stdio.h>
 	#include <linux/types.h>
 	#include <linux/stddef.h>
 	int main(void) {
@@ -452,22 +394,6 @@ LB_LINUX_TRY_COMPILE([
 ])
 ])
 
-# from 2.6.24 please use sg_init_table
-AC_DEFUN([LIBCFS_SCATTERLIST_INITTABLE],
-[AC_MSG_CHECKING([if sg_init_table is defined])
-LB_LINUX_TRY_COMPILE([
-        #include <linux/scatterlist.h>
-],[
-       sg_init_table(NULL,0);
-],[
-        AC_MSG_RESULT(yes)
-        AC_DEFINE(HAVE_SCATTERLIST_INITTABLE, 1,
-                  [sg_init_table is defined])
-],[
-        AC_MSG_RESULT(NO)
-])
-])
-
 # 2.6.24 
 AC_DEFUN([LIBCFS_NETWORK_NAMESPACE],
 [AC_MSG_CHECKING([for network stack has namespaces])
@@ -703,11 +629,8 @@ AC_DEFUN([LIBCFS_PROG_LINUX],
 [
 LIBCFS_FUNC_CPU_ONLINE
 LIBCFS_TYPE_GFP_T
-LIBCFS_TYPE_CPUMASK_T
 LIBCFS_CONFIG_PANIC_DUMPLOG
 
-LIBCFS_STRUCT_PAGE_LIST
-LIBCFS_STRUCT_SIGHAND
 LIBCFS_FUNC_SHOW_TASK
 LIBCFS_U64_LONG_LONG
 LIBCFS_TASK_RCU
@@ -730,7 +653,6 @@ LIBCFS_NETLINK_CBMUTEX
 # 2.6.24
 LIBCFS_SYSCTL_UNNUMBERED
 LIBCFS_SCATTERLIST_SETPAGE
-LIBCFS_SCATTERLIST_INITTABLE
 LIBCFS_NL_BROADCAST_GFP
 LIBCFS_NETWORK_NAMESPACE
 LIBCFS_NETLINK_NETNS

@@ -12,13 +12,6 @@ init_test_env $@
 . ${CONFIG:=$LUSTRE/tests/cfg/$NAME.sh}
 init_logging
 
-if [ "$FAILURE_MODE" = "HARD" ] && mixed_ost_devs; then
-    CONFIG_EXCEPTIONS="52"
-    echo -n "Several ost services on one ost node are used with FAILURE_MODE=$FAILURE_MODE. "
-    echo "Except the tests: $CONFIG_EXCEPTIONS"
-    ALWAYS_EXCEPT="$ALWAYS_EXCEPT $CONFIG_EXCEPTIONS"
-fi
-
 require_dsh_mds || exit 0
 
 # also long tests: 19, 21a, 21e, 21f, 23, 27
@@ -1083,7 +1076,9 @@ run_test 60 "Add Changelog entries during MDS failover"
 
 test_61()
 {
-	local cflags='osc.*-OST0000-osc-MDT*.connect_flags'
+	local mdtosc=$(get_mdtosc_proc_path $SINGLEMDS $FSNAME-OST0000)
+	mdtosc=${mdtosc/-MDT*/-MDT\*}
+	local cflags="osc.$mdtosc.connect_flags"
 	do_facet $SINGLEMDS "lctl get_param -n $cflags" |grep -q skip_orphan
 	[ $? -ne 0 ] && skip "don't have skip orphan feature" && return
 

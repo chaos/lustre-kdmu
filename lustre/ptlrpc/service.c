@@ -1237,10 +1237,10 @@ static int ptlrpc_hpreq_init(struct ptlrpc_service *svc,
                         RETURN(rc);
         }
         if (req->rq_export && req->rq_ops) {
-                cfs_spin_lock(&req->rq_export->exp_lock);
+                cfs_spin_lock_bh(&req->rq_export->exp_rpc_lock);
                 cfs_list_add(&req->rq_exp_list,
                              &req->rq_export->exp_queued_rpc);
-                cfs_spin_unlock(&req->rq_export->exp_lock);
+                cfs_spin_unlock_bh(&req->rq_export->exp_rpc_lock);
         }
 
         RETURN(0);
@@ -1251,9 +1251,9 @@ static void ptlrpc_hpreq_fini(struct ptlrpc_request *req)
 {
         ENTRY;
         if (req->rq_export && req->rq_ops) {
-                cfs_spin_lock(&req->rq_export->exp_lock);
+                cfs_spin_lock_bh(&req->rq_export->exp_rpc_lock);
                 cfs_list_del_init(&req->rq_exp_list);
-                cfs_spin_unlock(&req->rq_export->exp_lock);
+                cfs_spin_unlock_bh(&req->rq_export->exp_rpc_lock);
         }
         EXIT;
 }
@@ -2158,7 +2158,7 @@ static int ptlrpc_main(void *arg)
                 ptlrpc_check_rqbd_pool(svc);
 
                 if (svc->srv_threads_started < svc->srv_threads_max &&
-                    svc->srv_n_active_reqs >= (svc->srv_threads_started - 1)) 
+                    svc->srv_n_active_reqs >= (svc->srv_threads_started - 2))
                         /* Ignore return code - we tried... */
                         ptlrpc_start_thread(dev, svc);
 

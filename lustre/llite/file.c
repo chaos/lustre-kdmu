@@ -1874,6 +1874,30 @@ loff_t ll_file_seek(struct file *file, loff_t offset, int origin)
         RETURN(retval);
 }
 
+#ifdef HAVE_FLUSH_OWNER_ID
+int ll_flush(struct file *file, fl_owner_t id)
+#else
+int ll_flush(struct file *file)
+#endif
+{
+        struct inode *inode = file->f_dentry->d_inode;
+        struct ll_inode_info *lli = ll_i2info(inode);
+        struct lov_stripe_md *lsm = lli->lli_smd;
+        int rc, err;
+
+        /* catch async errors that were recorded back when async writeback
+         * failed for pages in this mapping. */
+        rc = lli->lli_async_rc;
+        lli->lli_async_rc = 0;
+        if (lsm) {
+                err = lov_test_and_clear_async_rc(lsm);
+                if (rc == 0)
+                        rc = err;
+        }
+
+        return rc ? -EIO : 0;
+}
+
 int ll_fsync(struct file *file, struct dentry *dentry, int data)
 {
         struct inode *inode = dentry->d_inode;
@@ -2052,10 +2076,12 @@ int ll_file_noflock(struct file *file, int cmd, struct file_lock *file_lock)
         RETURN(-ENOSYS);
 }
 
-int ll_have_md_lock(struct inode *inode, __u64 bits)
+int ll_have_md_lock(struct inode *inode, __u64 bits,  ldlm_mode_t l_req_mode)
 {
         struct lustre_handle lockh;
         ldlm_policy_data_t policy = { .l_inodebits = {bits}};
+        ldlm_mode_t mode = (l_req_mode == LCK_MINMODE) ?
+                                (LCK_CR|LCK_CW|LCK_PR|LCK_PW) : l_req_mode;
         struct lu_fid *fid;
         int flags;
         ENTRY;
@@ -2064,11 +2090,12 @@ int ll_have_md_lock(struct inode *inode, __u64 bits)
                RETURN(0);
 
         fid = &ll_i2info(inode)->lli_fid;
-        CDEBUG(D_INFO, "trying to match res "DFID"\n", PFID(fid));
+        CDEBUG(D_INFO, "trying to match res "DFID" mode %s\n", PFID(fid),
+               ldlm_lockname[mode]);
 
         flags = LDLM_FL_BLOCK_GRANTED | LDLM_FL_CBPENDING | LDLM_FL_TEST_LOCK;
         if (md_lock_match(ll_i2mdexp(inode), flags, fid, LDLM_IBITS, &policy,
-                          LCK_CR|LCK_CW|LCK_PR|LCK_PW, &lockh)) {
+                          mode, &lockh)) {
                 RETURN(1);
         }
         RETURN(0);
@@ -2177,7 +2204,7 @@ int __ll_inode_revalidate_it(struct dentry *dentry, struct lookup_intent *it,
                 }
 
                 ll_lookup_finish_locks(&oit, dentry);
-        } else if (!ll_have_md_lock(dentry->d_inode, ibits)) {
+        } else if (!ll_have_md_lock(dentry->d_inode, ibits, LCK_MINMODE)) {
                 struct ll_sb_info *sbi = ll_i2sbi(dentry->d_inode);
                 obd_valid valid = OBD_MD_FLGETATTR;
                 struct md_op_data *op_data;
@@ -2254,7 +2281,7 @@ int ll_getattr_it(struct vfsmount *mnt, struct dentry *de,
                 return res;
 
         stat->dev = inode->i_sb->s_dev;
-        if (cfs_curproc_is_32bit())
+        if (ll_need_32bit_api(ll_i2sbi(inode)))
                 stat->ino = cl_fid_build_ino32(&lli->lli_fid);
         else
                 stat->ino = inode->i_ino;
@@ -2461,6 +2488,7 @@ struct file_operations ll_file_operations = {
         .splice_read    = ll_file_splice_read,
 #endif
         .fsync          = ll_fsync,
+        .flush          = ll_flush
 };
 
 struct file_operations ll_file_operations_flock = {
@@ -2480,6 +2508,7 @@ struct file_operations ll_file_operations_flock = {
         .splice_read    = ll_file_splice_read,
 #endif
         .fsync          = ll_fsync,
+        .flush          = ll_flush,
 #ifdef HAVE_F_OP_FLOCK
         .flock          = ll_file_flock,
 #endif
@@ -2504,6 +2533,7 @@ struct file_operations ll_file_operations_noflock = {
         .splice_read    = ll_file_splice_read,
 #endif
         .fsync          = ll_fsync,
+        .flush          = ll_flush,
 #ifdef HAVE_F_OP_FLOCK
         .flock          = ll_file_noflock,
 #endif

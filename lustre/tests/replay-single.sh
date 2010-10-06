@@ -21,20 +21,13 @@ require_dsh_mds || exit 0
 
 # Skip these tests
 # bug number:  22449 23366 23364    19960 23365 17466 18857
-ALWAYS_EXCEPT="14    20b   22 23 25 65a   66a   61d   33a 33b $REPLAY_SINGLE_EXCEPT"
+ALWAYS_EXCEPT="14    20b   22 23 25 65a   66a   61d   33a 33b 89 $REPLAY_SINGLE_EXCEPT"
 
 # lodosp
 # 20b -- FAIL: after 74332 > before 34288 
 # 34  -- lod_parse_striping()) ASSERTION(md->lod_ost[idx]) failed: idx 0
 # 65b -- HEAD doesn't pass it either
 ALWAYS_EXCEPT="$ALWAYS_EXCEPT 20b 34 65b"
-
-if [ "$FAILURE_MODE" = "HARD" ] && mixed_ost_devs; then
-    CONFIG_EXCEPTIONS="0b 42 47 61a 61c"
-    echo -n "Several ost services on one ost node are used with FAILURE_MODE=$FAILURE_MODE. "
-    echo "Except the tests: $CONFIG_EXCEPTIONS"
-    ALWAYS_EXCEPT="$ALWAYS_EXCEPT $CONFIG_EXCEPTIONS"
-fi
 
 #                                                  63 min  7 min  AT AT AT AT"
 [ "$SLOW" = "no" ] && EXCEPT_SLOW="1 2 3 4 6 12 16 44a      44b    65 66 67 68"
@@ -897,7 +890,9 @@ test_41() {
     do_facet client dd if=/dev/zero of=$f bs=4k count=1 || return 3
     cancel_lru_locks osc
     # fail ost2 and read from ost1
-    local osc2dev=`do_facet $SINGLEMDS "lctl get_param -n devices | grep ${ost2_svc}-os[cp]-MDT0000" | awk '{print $1}'`
+    local mdtosc=$(get_mdtosc_proc_path $SINGLEMDS $ost2_svc)
+    local osc2dev=$(do_facet $SINGLEMDS "lctl get_param -n devices" | \
+        grep $mdtosc | awk '{print $1}')
     [ -z "$osc2dev" ] && echo "OST: $ost2_svc" && lctl get_param -n devices && return 4
     do_facet $SINGLEMDS $LCTL --device $osc2dev deactivate || return 1
     do_facet client dd if=$f of=/dev/null bs=4k count=1 || return 3
@@ -1071,7 +1066,9 @@ test_48() {
 run_test 48 "MDS->OSC failure during precreate cleanup (2824)"
 
 test_50() {
-    local oscdev=`do_facet $SINGLEMDS lctl get_param -n devices | grep ${ost1_svc}-os[cp]-MDT0000 | awk '{print $1}'`
+    local mdtosc=$(get_mdtosc_proc_path $SINGLEMDS $ost1_svc) 
+    local oscdev=$(do_facet $SINGLEMDS "lctl get_param -n devices" | \
+        grep $mdtosc | awk '{print $1}')
     [ "$oscdev" ] || return 1
     do_facet $SINGLEMDS $LCTL --device $oscdev recover || return 2
     do_facet $SINGLEMDS $LCTL --device $oscdev recover || return 3
@@ -1536,13 +1533,13 @@ test_61c() {
 }
 run_test 61c "test race mds llog sync vs llog cleanup"
 
-test_61d() { # bug 16002 # bug 17466
-    shutdown_facet $SINGLEMDS
-#define OBD_FAIL_OBD_LLOG_SETUP        0x605
-    do_facet $SINGLEMDS "lctl set_param fail_loc=0x605"
-    start $SINGLEMDS `mdsdevname 1` $MDS_MOUNT_OPTS && error "mds start should have failed"
-    do_facet $SINGLEMDS "lctl set_param fail_loc=0"
-    start $SINGLEMDS `mdsdevname 1` $MDS_MOUNT_OPTS || error "cannot restart mds"
+test_61d() { # bug 16002 # bug 17466 # bug 22137
+#   OBD_FAIL_OBD_LLOG_SETUP        0x605
+    stop mgs
+    do_facet mgs "lctl set_param fail_loc=0x80000605"
+    start mgs $MGSDEV $MGS_MOUNT_OPTS && error "mgs start should have failed"
+    do_facet mgs "lctl set_param fail_loc=0"
+    start mgs $MGSDEV $MGS_MOUNT_OPTS || error "cannot restart mgs"
 }
 run_test 61d "error in llog_setup should cleanup the llog context correctly"
 
@@ -1763,9 +1760,11 @@ test_67b() #bug 3055
 
     # exhaust precreations on ost1
     local OST=$(lfs osts | grep ^0": " | awk '{print $2}' | sed -e 's/_UUID$//')
-    local mdtosc=$(get_mdtosc_proc_path $OST)
-    local last_id=$(do_facet mds lctl get_param -n os[cp].$mdtosc.prealloc_last_id)
-    local next_id=$(do_facet mds lctl get_param -n os[cp].$mdtosc.prealloc_next_id)
+    local mdtosc=$(get_mdtosc_proc_path mds $OST)
+    local last_id=$(do_facet mds lctl get_param -n \
+        os[cp].$mdtosc.prealloc_last_id)
+    local next_id=$(do_facet mds lctl get_param -n \
+        os[cp].$mdtosc.prealloc_next_id)
 
     mkdir -p $DIR/$tdir/${OST}
     lfs setstripe $DIR/$tdir/${OST} -o 0 -c 1 || error "setstripe"
@@ -2080,6 +2079,30 @@ test_84a() {
 }
 run_test 84a "stale open during export disconnect"
 
+test_85a() { #bug 16774
+    lctl set_param -n ldlm.cancel_unused_locks_before_replay "1"
+
+    for i in `seq 100`; do
+        echo "tag-$i" > $DIR/$tfile-$i
+        grep -q "tag-$i" $DIR/$tfile-$i || error "f2-$i"
+    done
+
+    lov_id=`lctl dl | grep "clilov"`
+    addr=`echo $lov_id | awk '{print $4}' | awk -F '-' '{print $3}'`
+    count=`lctl get_param -n ldlm.namespaces.*MDT0000*$addr.lock_unused_count`
+    echo "before recovery: unused locks count = $count"
+
+    fail $SINGLEMDS
+
+    count2=`lctl get_param -n ldlm.namespaces.*MDT0000*$addr.lock_unused_count`
+    echo "after recovery: unused locks count = $count2"
+
+    if [ $count2 -ge $count ]; then
+        error "unused locks are not canceled"
+    fi
+}
+run_test 85a "check the cancellation of unused locks during recovery(IBITS)"
+
 test_86() {
         local clients=${CLIENTS:-$HOSTNAME}
 
@@ -2125,6 +2148,103 @@ test_87b() {
     fi
 }
 run_test 87b "write replay with changed data (checksum resend)"
+
+test_88() { #bug 17485
+    mkdir -p $DIR/$tdir
+    mkdir -p $TMP/$tdir
+
+    lfs setstripe $DIR/$tdir -o 0 -c 1 || error "setstripe"
+
+    replay_barrier ost1
+    replay_barrier mds1
+
+    # exhaust precreations on ost1
+    local OST=$(lfs osts | grep ^0": " | awk '{print $2}' | sed -e 's/_UUID$//')
+    local mdtosc=$(get_mdtosc_proc_path $OST)
+    local last_id=$(do_facet mds1 lctl get_param -n osc.$mdtosc.prealloc_last_id)
+    local next_id=$(do_facet mds1 lctl get_param -n osc.$mdtosc.prealloc_next_id)
+    echo "before test: last_id = $last_id, next_id = $next_id" 
+
+    echo "Creating to objid $last_id on ost $OST..."
+    createmany -o $DIR/$tdir/f-%d $next_id $((last_id - next_id + 2))
+
+    #create some files to use some uncommitted objids
+    last_id=$(($last_id + 1))
+    createmany -o $DIR/$tdir/f-%d $last_id 8
+
+    last_id2=$(do_facet mds1 lctl get_param -n osc.$mdtosc.prealloc_last_id)
+    next_id2=$(do_facet mds1 lctl get_param -n osc.$mdtosc.prealloc_next_id)
+    echo "before recovery: last_id = $last_id2, next_id = $next_id2" 
+
+    shutdown_facet mds1
+    shutdown_facet ost1
+
+    reboot_facet mds1
+    change_active mds1
+    wait_for mds1
+    mount_facet mds1 || error "Restart of mds failed"
+
+    reboot_facet ost1
+    change_active ost1
+    wait_for ost1
+    mount_facet ost1 || error "Restart of ost1 failed"
+
+    clients_up
+
+    last_id2=$(do_facet mds1 lctl get_param -n osc.$mdtosc.prealloc_last_id)
+    next_id2=$(do_facet mds1 lctl get_param -n osc.$mdtosc.prealloc_next_id)
+    echo "after recovery: last_id = $last_id2, next_id = $next_id2" 
+
+    # create new files, which should use new objids, and ensure the orphan 
+    # cleanup phase for ost1 is completed at the same time
+    for i in `seq 8`; do
+        file_id=$(($last_id + 10 + $i))
+        dd if=/dev/urandom of=$DIR/$tdir/f-$file_id bs=4096 count=128
+    done
+
+    # if the objids were not recreated, then "ls" will failed for -ENOENT
+    ls -l $DIR/$tdir/* || error "can't get the status of precreated files"
+
+    local file_id
+    # write into previously created files
+    for i in `seq 8`; do
+        file_id=$(($last_id + $i))
+        dd if=/dev/urandom of=$DIR/$tdir/f-$file_id bs=4096 count=128
+        cp -f $DIR/$tdir/f-$file_id $TMP/$tdir/
+    done
+
+    # compare the content
+    for i in `seq 8`; do
+        file_id=$(($last_id + $i))
+        cmp $TMP/$tdir/f-$file_id $DIR/$tdir/f-$file_id || error "the content" \
+        "of file is modified!"
+    done
+
+    rm -fr $TMP/$tdir
+}
+run_test 88 "MDS should not assign same objid to different files "
+
+test_89() {
+        mkdir -p $DIR/$tdir
+        rm -f $DIR/$tdir/$tfile
+        sleep 2
+        BLOCKS1=$(df $MOUNT | tail -n 1 | awk '{ print $3 }')
+        lfs setstripe -i 0 -c 1 $DIR/$tdir/$tfile
+        dd if=/dev/zero bs=1M count=10 of=$DIR/$tdir/$tfile
+        sync
+        stop ost1
+        facet_failover $SINGLEMDS
+        rm $DIR/$tdir/$tfile
+        umount $MOUNT
+        mount_facet ost1
+        zconf_mount $(hostname) $MOUNT
+	wait_mds_ost_sync
+        df $MOUNT
+        BLOCKS2=$(df $MOUNT | tail -n 1 | awk '{ print $3 }')
+        [ "$BLOCKS1" == "$BLOCKS2" ] || error $((BLOCKS2 - BLOCKS1)) blocks leaked
+}
+
+run_test 89 "no disk space leak on late ost connection"
 
 equals_msg `basename $0`: test complete, cleaning up
 check_and_cleanup_lustre

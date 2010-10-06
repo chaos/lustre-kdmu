@@ -91,6 +91,8 @@
 #ifndef _LUSTRE_IDL_H_
 #define _LUSTRE_IDL_H_
 
+#include <libcfs/libcfs.h> /* for LASSERT, LPUX64, etc */
+
 /* Defn's shared with user-space. */
 #include <lustre/lustre_user.h>
 
@@ -1198,8 +1200,6 @@ enum obdo_flags {
 
         /* mask for local-only flag, which won't be sent over network */
         OBD_FL_LOCAL_MASK   = 0xF0000000,
-        /* temporary OBDO used by osc_brw_async (see bug 18364) */
-        OBD_FL_TEMPORARY    = 0x10000000,
 };
 
 #define LOV_MAGIC_V1      0x0BD10BD0
@@ -1654,6 +1654,8 @@ extern void lustre_swab_mdt_ioepoch (struct mdt_ioepoch *b);
 #define Q_GETOCMD(oqc) \
         ((oqc)->qc_cmd == Q_GETOINFO || (oqc)->qc_cmd == Q_GETOQUOTA)
 
+#define Q_COPY(out, in, member) (out)->member = (in)->member
+
 #define QCTL_COPY(out, in)              \
 do {                                    \
         Q_COPY(out, in, qc_cmd);        \
@@ -1691,6 +1693,8 @@ extern void lustre_swab_quota_adjust_qunit(struct quota_adjust_qunit *q);
 #define LQUOTA_FLAGS_ADJINO    8UL   /* adjust the inode qunit size */
 #define LQUOTA_FLAGS_CHG_QS   16UL   /* indicate whether it has capability of
                                       * OBD_CONNECT_CHANGE_QS */
+#define LQUOTA_FLAGS_RECOVERY 32UL   /* recovery is going on a uid/gid */
+#define LQUOTA_FLAGS_SETQUOTA 64UL   /* being setquota on a uid/gid */
 
 /* flags is specific for quota_adjust_qunit */
 #define LQUOTA_QAQ_CREATE_LQS  (1 << 31) /* when it is set, need create lqs */
@@ -2488,7 +2492,7 @@ struct llog_size_change_rec {
 /** bits covering all \a changelog_rec_type's */
 #define CHANGELOG_ALLMASK 0XFFFFFFFF
 /** default \a changelog_rec_type mask */
-#define CHANGELOG_DEFMASK CHANGELOG_ALLMASK
+#define CHANGELOG_DEFMASK CHANGELOG_ALLMASK & ~(1 << CL_ATIME)
 
 /* changelog llog name, needed by client replicators */
 #define CHANGELOG_CATALOG "changelog_catalog"

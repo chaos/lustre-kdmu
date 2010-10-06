@@ -1190,7 +1190,6 @@ static int lod_object_start(const struct lu_env *env, struct lu_object *o)
 static void lod_object_free(const struct lu_env *env, struct lu_object *o)
 {
         struct lod_object *mo = lu2lod_obj(o);
-        int                i;
         ENTRY;
 
         /*

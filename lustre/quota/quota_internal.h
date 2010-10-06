@@ -51,10 +51,164 @@
 
 #ifdef __KERNEL__
 
+#ifdef LPROCFS
+enum {
+        LQUOTA_FIRST_STAT = 0,
+        /** @{ */
+        /**
+         * these four are for measuring quota requests, for both of
+         * quota master and quota slaves
+         */
+        LQUOTA_SYNC_ACQ = LQUOTA_FIRST_STAT,
+        LQUOTA_SYNC_REL,
+        LQUOTA_ASYNC_ACQ,
+        LQUOTA_ASYNC_REL,
+        /** }@ */
+        /** @{ */
+        /**
+         * these four measure how much time I/O threads spend on dealing
+         * with quota before and after writing data or creating files,
+         * only for quota slaves(lquota_chkquota and lquota_pending_commit)
+         */
+        LQUOTA_WAIT_FOR_CHK_BLK,
+        LQUOTA_WAIT_FOR_CHK_INO,
+        LQUOTA_WAIT_FOR_COMMIT_BLK,
+        LQUOTA_WAIT_FOR_COMMIT_INO,
+        /** }@ */
+        /** @{ */
+        /**
+         * these two are for measuring time waiting return of quota reqs
+         * (qctxt_wait_pending_dqacq), only for quota salves
+         */
+        LQUOTA_WAIT_PENDING_BLK_QUOTA,
+        LQUOTA_WAIT_PENDING_INO_QUOTA,
+        /** }@ */
+        /** @{ */
+        /**
+         * these two are for those when they are calling
+         * qctxt_wait_pending_dqacq, the quota req has returned already,
+         * only for quota salves
+         */
+        LQUOTA_NOWAIT_PENDING_BLK_QUOTA,
+        LQUOTA_NOWAIT_PENDING_INO_QUOTA,
+        /** }@ */
+        /** @{ */
+        /**
+         * these are for quota ctl
+         */
+        LQUOTA_QUOTA_CTL,
+        /** }@ */
+        /** @{ */
+        /**
+         * these are for adjust quota qunit, for both of
+         * quota master and quota slaves
+         */
+        LQUOTA_ADJUST_QUNIT,
+        LQUOTA_LAST_STAT
+        /** }@ */
+};
+#endif  /* LPROCFS */
+
+struct lustre_qunit_size {
+        cfs_hlist_node_t lqs_hash; /** the hash entry */
+        unsigned int lqs_id;        /** id of user/group */
+        unsigned long lqs_flags;    /** 31st bit is QB_SET, 30th bit is QI_SET
+                                     * other bits are same as LQUOTA_FLAGS_*
+                                     */
+        unsigned long lqs_iunit_sz; /** Unit size of file quota currently */
+        /**
+         * Trigger dqacq when available file quota
+         * less than this value, trigger dqrel
+         * when more than this value + 1 iunit
+         */
+        unsigned long lqs_itune_sz;
+        unsigned long lqs_bunit_sz; /** Unit size of block quota currently */
+        unsigned long lqs_btune_sz; /** See comment of lqs itune sz */
+        /** the blocks reached ost and don't finish */
+        unsigned long lqs_bwrite_pending;
+        /** the filess reached mds and don't finish */
+        unsigned long lqs_iwrite_pending;
+        /** when files are allocated/released, this value will record it */
+        long long lqs_ino_rec;
+        /** when blocks are allocated/released, this value will record it */
+        long long lqs_blk_rec;
+        cfs_atomic_t lqs_refcount;
+        cfs_time_t lqs_last_bshrink;   /** time of last block shrink */
+        cfs_time_t lqs_last_ishrink;   /** time of last file shrink */
+        cfs_spinlock_t lqs_lock;
+        unsigned long long lqs_key;    /** hash key */
+        struct lustre_quota_ctxt *lqs_ctxt; /** quota ctxt */
+};
+
+#define LQS_IS_GRP(lqs)      ((lqs)->lqs_flags & LQUOTA_FLAGS_GRP)
+#define LQS_IS_ADJBLK(lqs)   ((lqs)->lqs_flags & LQUOTA_FLAGS_ADJBLK)
+#define LQS_IS_ADJINO(lqs)   ((lqs)->lqs_flags & LQUOTA_FLAGS_ADJINO)
+#define LQS_IS_RECOVERY(lqs) ((lqs)->lqs_flags & LQUOTA_FLAGS_RECOVERY)
+#define LQS_IS_SETQUOTA(lqs) ((lqs)->lqs_flags & LQUOTA_FLAGS_SETQUOTA)
+
+#define LQS_SET_GRP(lqs)      ((lqs)->lqs_flags |= LQUOTA_FLAGS_GRP)
+#define LQS_SET_ADJBLK(lqs)   ((lqs)->lqs_flags |= LQUOTA_FLAGS_ADJBLK)
+#define LQS_SET_ADJINO(lqs)   ((lqs)->lqs_flags |= LQUOTA_FLAGS_ADJINO)
+#define LQS_SET_RECOVERY(lqs) ((lqs)->lqs_flags |= LQUOTA_FLAGS_RECOVERY)
+#define LQS_SET_SETQUOTA(lqs) ((lqs)->lqs_flags |= LQUOTA_FLAGS_SETQUOTA)
+
+#define LQS_CLEAR_RECOVERY(lqs) ((lqs)->lqs_flags &= ~LQUOTA_FLAGS_RECOVERY)
+#define LQS_CLEAR_SETQUOTA(lqs) ((lqs)->lqs_flags &= ~LQUOTA_FLAGS_SETQUOTA)
+
+/* In the hash for lustre_qunit_size, the key is decided by
+ * grp_or_usr and uid/gid, in here, I combine these two values,
+ * which will make comparing easier and more efficient */
+#define LQS_KEY(is_grp, id)  ((is_grp ? 1ULL << 32: 0) + id)
+#define LQS_KEY_ID(key)      (key & 0xffffffff)
+#define LQS_KEY_GRP(key)     (key >> 32)
+
+static inline void __lqs_getref(struct lustre_qunit_size *lqs)
+{
+        int count = cfs_atomic_inc_return(&lqs->lqs_refcount);
+
+        if (count == 2) /* quota_create_lqs */
+                cfs_atomic_inc(&lqs->lqs_ctxt->lqc_lqs);
+        CDEBUG(D_INFO, "lqs=%p refcount %d\n", lqs, count);
+}
+
+static inline void lqs_getref(struct lustre_qunit_size *lqs)
+{
+        __lqs_getref(lqs);
+}
+
+static inline void __lqs_putref(struct lustre_qunit_size *lqs)
+{
+        LASSERT(cfs_atomic_read(&lqs->lqs_refcount) > 0);
+
+        if (cfs_atomic_dec_return(&lqs->lqs_refcount) == 1)
+                if (cfs_atomic_dec_and_test(&lqs->lqs_ctxt->lqc_lqs))
+                        cfs_waitq_signal(&lqs->lqs_ctxt->lqc_lqs_waitq);
+        CDEBUG(D_INFO, "lqs=%p refcount %d\n",
+               lqs, cfs_atomic_read(&lqs->lqs_refcount));
+}
+
+static inline void lqs_putref(struct lustre_qunit_size *lqs)
+{
+        __lqs_putref(lqs);
+}
+
+static inline void lqs_initref(struct lustre_qunit_size *lqs)
+{
+        cfs_atomic_set(&lqs->lqs_refcount, 0);
+}
+
+/* user quota is turned on on filter */
+#define LQC_USRQUOTA_FLAG (1 << 0)
+/* group quota is turned on on filter */
+#define LQC_GRPQUOTA_FLAG (1 << 1)
+
+#define UGQUOTA2LQC(id) ((Q_TYPEMATCH(id, USRQUOTA) ? LQC_USRQUOTA_FLAG : 0) | \
+                         (Q_TYPEMATCH(id, GRPQUOTA) ? LQC_GRPQUOTA_FLAG : 0))
+
 #define DQUOT_DEBUG(dquot, fmt, arg...)                                       \
         CDEBUG(D_QUOTA, "refcnt(%u) id(%u) type(%u) off(%llu) flags(%lu) "    \
                "bhardlimit("LPU64") curspace("LPU64") ihardlimit("LPU64") "   \
-               "curinodes("LPU64"): " fmt, dquot->dq_refcnt,                  \
+               "curinodes("LPU64"): " fmt, cfs_atomic_read(&dquot->dq_refcnt),\
                dquot->dq_id, dquot->dq_type, dquot->dq_off,  dquot->dq_flags, \
                dquot->dq_dqb.dqb_bhardlimit, dquot->dq_dqb.dqb_curspace,      \
                dquot->dq_dqb.dqb_ihardlimit, dquot->dq_dqb.dqb_curinodes,     \
@@ -147,7 +301,20 @@ int dquot_create_oqaq(struct lustre_quota_ctxt *qctxt, struct lustre_dquot
                       *dquot, __u32 ost_num, __u32 mdt_num, int type,
                       struct quota_adjust_qunit *oqaq);
 int generic_quota_on(struct obd_device *, struct obd_quotactl *, int);
-#endif
+
+#define QUOTA_MASTER_READY(qctxt)   (qctxt)->lqc_setup = 1
+#define QUOTA_MASTER_UNREADY(qctxt) (qctxt)->lqc_setup = 0
+
+/* If the (quota limit < qunit * slave count), the slave which can't
+ * acquire qunit should set it's local limit as MIN_QLIMIT */
+#define MIN_QLIMIT      1
+
+#else
+
+#define QUOTA_MASTER_READY(qctxt)
+#define QUOTA_MASTER_UNREADY(qctxt)
+
+#endif /* !__KERNEL__ */
 
 /* quota_ctl.c */
 int mds_quota_ctl(struct obd_device *obd, struct obd_export *exp,

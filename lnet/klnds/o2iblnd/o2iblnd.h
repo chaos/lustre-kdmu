@@ -65,7 +65,6 @@
 #include <linux/list.h>
 #include <linux/kmod.h>
 #include <linux/sysctl.h>
-#include <linux/random.h>
 #include <linux/pci.h>
 
 #include <net/sock.h>
@@ -413,7 +412,7 @@ typedef struct
 typedef struct
 {
         /* First 2 fields fixed FOR ALL TIME */
-        __u32             ibm_magic;            /* I'm an openibnal message */
+        __u32             ibm_magic;            /* I'm an ibnal message */
         __u16             ibm_version;          /* this is my version number */
 
         __u8              ibm_type;             /* msg type */

@@ -32,16 +32,21 @@ echo "--- env ---" >&2
 set -x
 
 [ "$SHARED_DIRECTORY" ] || \
-    { skip "$0: Empty SHARED_DIRECTORY" && exit 0; }
+    { FAIL_ON_ERROR=true skip_env "$0 Empty SHARED_DIRECTORY" && exit 0; }
 
-[ -n "$CLIENTS" ] || { skip "$0 Need two or more remote clients" && exit 0; }
+[ -n "$CLIENTS" ] || \
+    { FAIL_ON_ERROR=true skip_env "$0 Need two or more remote clients" && exit 0; }
+
 [ $CLIENTCOUNT -ge 3 ] || \
-    { skip "$0 Need two or more clients, have $CLIENTCOUNT" && exit 0; }
+    { FAIL_ON_ERROR=true skip_env "$0 Need two or more remote clients, have $((CLIENTCOUNT - 1))" && exit 0; }
 
 END_RUN_FILE=${END_RUN_FILE:-$SHARED_DIRECTORY/end_run_file}
 LOAD_PID_FILE=${LOAD_PID_FILE:-$TMP/client-load.pid}
 
 remote_mds_nodsh && skip "remote MDS with nodsh" && exit 0
+
+[[ $FAILURE_MODE = SOFT ]] && \
+    log "WARNING: $0 is not functional with FAILURE_MODE = SOFT, bz22797"
 
 build_test_filter
 
@@ -119,7 +124,7 @@ summary_and_cleanup () {
     # the one we are really interested in.
         if [ -n "$END_RUN_NODE" ]; then
             var=$(client_var_name $END_RUN_NODE)_load
-            echo "Client load failed on node $END_RUN_NODE" 
+            echo "Client load failed on node $END_RUN_NODE"
             echo
             echo "client $END_RUN_NODE load stdout and debug files :
               ${TESTSUITELOG}_run_${!var}.sh-${END_RUN_NODE}
@@ -242,11 +247,11 @@ while [ $ELAPSED -lt $DURATION -a ! -e $END_RUN_FILE ]; do
     log "Starting failover on $SERVERFACET"
 
     facet_failover "$SERVERFACET" || exit 1
-    if ! wait_recovery_complete $SERVERFACET $((TIMEOUT * 10)); then 
+    if ! wait_recovery_complete $SERVERFACET ; then
         echo "$SERVERFACET recovery is not completed!"
         exit 7
     fi
- 
+
     boot_node $FAIL_CLIENT
     echo "Reintegrating $FAIL_CLIENT"
     zconf_mount $FAIL_CLIENT $MOUNT || exit $?
@@ -265,10 +270,10 @@ while [ $ELAPSED -lt $DURATION -a ! -e $END_RUN_FILE ]; do
     # not for all clients.
     if [ -e $END_RUN_FILE ]; then
         read END_RUN_NODE < $END_RUN_FILE
-        [[ $END_RUN_NODE = $FAIL_CLIENT ]] && 
+        [[ $END_RUN_NODE = $FAIL_CLIENT ]] &&
             rm -f $END_RUN_FILE || exit 13
     fi
-   
+
     restart_client_loads $FAIL_CLIENT $ERRORS_OK || exit $?
 
     # Check that not failed clients loads are still running.
@@ -282,7 +287,6 @@ while [ $ELAPSED -lt $DURATION -a ! -e $END_RUN_FILE ]; do
 
     CURRENT_TS=$(date +%s)
     ELAPSED=$((CURRENT_TS - START_TS))
- 
     sleep=$((SERVER_FAILOVER_PERIOD-(CURRENT_TS - it_time_start)))
 
     # keep count the number of itterations when
@@ -296,8 +300,8 @@ This iteration, the load was only applied for sleep=$sleep seconds.
 Estimated max recovery time : $max_recov_time
 Probably the hardware is taking excessively long to boot.
 Try to increase SERVER_FAILOVER_PERIOD (current is $SERVER_FAILOVER_PERIOD), bug 20918"
-        [ $reqfail -gt $REQFAIL ] && exit 6 
-    fi  
+        [ $reqfail -gt $REQFAIL ] && exit 6
+    fi
 
     log " Number of failovers:
 $(numfailovers)                and counting..."
@@ -306,7 +310,7 @@ $(numfailovers)                and counting..."
          break
     fi
 
-    if [ $sleep -gt 0 ]; then 
+    if [ $sleep -gt 0 ]; then
         echo "sleeping $sleep seconds ... "
         sleep $sleep
     fi

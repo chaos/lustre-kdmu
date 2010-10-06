@@ -312,6 +312,7 @@ enum stats_track_type {
 #define LL_SBI_LRU_RESIZE       0x400 /* lru resize support */
 #define LL_SBI_LAZYSTATFS       0x800 /* lazystatfs mount option */
 #define LL_SBI_SOM_PREVIEW      0x1000 /* SOM preview mount option */
+#define LL_SBI_32BIT_API        0x2000 /* generate 32 bit inodes. */
 
 /* default value for ll_sb_info->contention_time */
 #define SBI_DEFAULT_CONTENTION_SECONDS     60
@@ -537,6 +538,15 @@ struct it_cb_data {
 __u32 ll_i2suppgid(struct inode *i);
 void ll_i2gids(__u32 *suppgids, struct inode *i1,struct inode *i2);
 
+static inline int ll_need_32bit_api(struct ll_sb_info *sbi)
+{
+#if BITS_PER_LONG == 32
+        return 1;
+#else
+        return unlikely(cfs_curproc_is_32bit() || (sbi->ll_flags & LL_SBI_32BIT_API));
+#endif
+}
+
 #define LLAP_MAGIC 98764321
 
 extern cfs_mem_cache_t *ll_async_page_slab;
@@ -614,7 +624,7 @@ extern struct file_operations ll_file_operations_flock;
 extern struct file_operations ll_file_operations_noflock;
 extern struct inode_operations ll_file_inode_operations;
 extern int ll_inode_revalidate_it(struct dentry *, struct lookup_intent *);
-extern int ll_have_md_lock(struct inode *inode, __u64 bits);
+extern int ll_have_md_lock(struct inode *inode, __u64 bits, ldlm_mode_t l_req_mode);
 extern ldlm_mode_t ll_take_md_lock(struct inode *inode, __u64 bits,
                                    struct lustre_handle *lockh);
 int __ll_inode_revalidate_it(struct dentry *, struct lookup_intent *,  __u64 bits);

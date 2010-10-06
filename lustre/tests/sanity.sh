@@ -157,7 +157,7 @@ rm -rf $DIR/[Rdfs][0-9]*
 # $RUNAS_ID may get set incorrectly somewhere else
 [ $UID -eq 0 -a $RUNAS_ID -eq 0 ] && error "\$RUNAS_ID set to 0, but \$UID is also 0!"
 
-check_runas_id $RUNAS_ID $RUNAS_ID $RUNAS
+check_runas_id $RUNAS_ID $RUNAS_GID $RUNAS
 
 build_test_filter
 
@@ -331,16 +331,16 @@ test_6g() {
         $RUNAS mkdir $DIR/d6g/d || error
         chmod g+s $DIR/d6g/d || error
         mkdir $DIR/d6g/d/subdir
-	$CHECKSTAT -g \#$RUNAS_ID $DIR/d6g/d/subdir || error
+	$CHECKSTAT -g \#$RUNAS_GID $DIR/d6g/d/subdir || error
 }
 run_test 6g "Is new dir in sgid dir inheriting group?"
 
 test_6h() { # bug 7331
 	[ $RUNAS_ID -eq $UID ] && skip_env "RUNAS_ID = UID = $UID -- skipping" && return
 	touch $DIR/f6h || error "touch failed"
-	chown $RUNAS_ID:$RUNAS_ID $DIR/f6h || error "initial chown failed"
-	$RUNAS -G$RUNAS_ID chown $RUNAS_ID:0 $DIR/f6h && error "chown worked"
-	$CHECKSTAT -t file -u \#$RUNAS_ID -g \#$RUNAS_ID $DIR/f6h || error
+	chown $RUNAS_ID:$RUNAS_GID $DIR/f6h || error "initial chown failed"
+	$RUNAS -G$RUNAS_GID chown $RUNAS_ID:0 $DIR/f6h && error "chown worked"
+	$CHECKSTAT -t file -u \#$RUNAS_ID -g \#$RUNAS_GID $DIR/f6h || error
 }
 run_test 6h "$RUNAS chown RUNAS_ID.0 .../f6h (should return error)"
 
@@ -523,6 +523,17 @@ test_17i() { #bug 20018
 }
 run_test 17i "don't panic on short symlink"
 
+test_17k() { #bug 22301
+        rsync --help | grep -q xattr ||
+                skip_env "$(rsync --version| head -1) does not support xattrs"
+        mkdir -p $DIR/{$tdir,$tdir.new}
+        touch $DIR/$tdir/$tfile
+        ln -s $DIR/$tdir/$tfile $DIR/$tdir/$tfile.lnk
+        rsync -av -X $DIR/$tdir/ $DIR/$tdir.new ||
+                error "rsync failed with xattrs enabled"
+}
+run_test 17k "symlinks: rsync with xattrs enabled ========================="
+
 test_18() {
 	touch $DIR/f
 	ls $DIR || error
@@ -581,13 +592,13 @@ run_test 21 "write to dangling link ============================"
 test_22() {
 	WDIR=$DIR/$tdir
 	mkdir -p $WDIR
-	chown $RUNAS_ID $WDIR
+	chown $RUNAS_ID:$RUNAS_GID $WDIR
 	(cd $WDIR || error "cd $WDIR failed";
 	$RUNAS tar cf - /etc/hosts /etc/sysconfig/network | \
 	$RUNAS tar xf -)
 	ls -lR $WDIR/etc || error "ls -lR $WDIR/etc failed"
 	$CHECKSTAT -t dir $WDIR/etc || error "checkstat -t dir failed"
-	$CHECKSTAT -u \#$RUNAS_ID $WDIR/etc || error "checkstat -u failed"
+	$CHECKSTAT -u \#$RUNAS_ID -g \#$RUNAS_GID $WDIR/etc || error "checkstat -u failed"
 }
 run_test 22 "unpack tar archive as non-root user ==============="
 
@@ -824,6 +835,17 @@ test_24v() {
 }
 run_test 24v "list directory with large files (handle hash collision, bug: 17560)"
 
+test_24w() { # bug21506
+        SZ1=234852
+        dd if=/dev/zero of=$DIR/$tfile bs=1M count=1 seek=4096 || return 1
+        dd if=/dev/zero bs=$SZ1 count=1 >> $DIR/$tfile || return 2
+        dd if=$DIR/$tfile of=$DIR/${tfile}_left bs=1M skip=4097 || return 3
+        SZ2=`ls -l $DIR/${tfile}_left | awk '{print $5}'`
+        [ "$SZ1" = "$SZ2" ] || \
+                error "Error reading at the end of the file $tfile"
+}
+run_test 24w "Reading a file larger than 4Gb"
+
 test_25a() {
 	echo '== symlink sanity ============================================='
 
@@ -1045,10 +1067,14 @@ exhaust_precreations() {
 			  sed -e 's/_UUID$//;s/^.*-//')
 
 	# on the mdt's osc
-	local last_id=$(do_facet mds${MDSIDX} lctl get_param -n osp.*${OST}-osp-${MDT_INDEX}.prealloc_last_id)
-	local next_id=$(do_facet mds${MDSIDX} lctl get_param -n osp.*${OST}-osp-${MDT_INDEX}.prealloc_next_id)
+	local mdtosc_proc1=$(get_mdtosc_proc_path mds${MDSIDX} $OST)
+	local last_id=$(do_facet mds${MDSIDX} lctl get_param -n \
+        osp.$mdtosc_proc1.prealloc_last_id)
+	local next_id=$(do_facet mds${MDSIDX} lctl get_param -n \
+        osp.$mdtosc_proc1.prealloc_next_id)
 
-	do_facet mds${MDSIDX} lctl get_param osp.*OST*-osp-${MDT_INDEX}.prealloc*
+	local mdtosc_proc2=$(get_mdtosc_proc_path mds${MDSIDX})
+	do_facet mds${MDSIDX} lctl get_param os[cp].$mdtosc_proc2.prealloc*
 
 	mkdir -p $DIR/$tdir/${OST}
 	$SETSTRIPE $DIR/$tdir/${OST} -i $OSTIDX -c 1
@@ -1058,7 +1084,7 @@ exhaust_precreations() {
 	sleep_maxage
 	echo "Creating to objid $last_id on ost $OST..."
 	createmany -o $DIR/$tdir/${OST}/f $next_id $((last_id - next_id + 2))
-	do_facet mds${MDSIDX} lctl get_param osp.*OST*-osp-${MDT_INDEX}.prealloc*
+	do_facet mds${MDSIDX} lctl get_param osp.$mdtosc_proc2.prealloc*
 	do_facet ost$((OSTIDX + 1)) lctl set_param fail_loc=$FAILLOC
 }
 
@@ -1270,8 +1296,11 @@ test_27y() {
         [ "$OSTCOUNT" -lt "2" ] && skip_env "$OSTCOUNT < 2 OSTs -- skipping" && return
         remote_mds_nodsh && skip "remote MDS with nodsh" && return
 
-        local last_id=$(do_facet $SINGLEMDS lctl get_param -n osp.*0000-osp-MDT0000.prealloc_last_id)
-        local next_id=$(do_facet $SINGLEMDS lctl get_param -n osp.*0000-osp-MDT0000.prealloc_next_id)
+        local mdtosc=$(get_mdtosc_proc_path $SINGLEMDS $FSNAME-OST0000)
+        local last_id=$(do_facet $SINGLEMDS lctl get_param -n \
+            osp.$mdtosc.prealloc_last_id)
+        local next_id=$(do_facet $SINGLEMDS lctl get_param -n \
+            osp.$mdtosc.prealloc_next_id)
         local fcount=$((last_id - next_id))
         [ $fcount -eq 0 ] && skip "not enough space on OST0" && return
         [ $fcount -gt $OSTCOUNT ] && fcount=$OSTCOUNT
@@ -1376,6 +1405,22 @@ test_27z() {
         check_seq_oid $DIR/$tdir/$tfile-2 || return 6
 }
 run_test 27z "check SEQ/OID on the MDT and OST filesystems"
+
+test_27A() { # b=19102
+        local restore_size=`$GETSTRIPE -s $MOUNT`
+        local restore_count=`$GETSTRIPE -c $MOUNT`
+        local restore_offset=`$GETSTRIPE -o $MOUNT`
+        $SETSTRIPE -c 0 -o -1 -s 0 $MOUNT
+        local default_size=`$GETSTRIPE -s $MOUNT`
+        local default_count=`$GETSTRIPE -c $MOUNT`
+        local default_offset=`$GETSTRIPE -o $MOUNT`
+        local dsize=$((1024 * 1024))
+        [ $default_size -eq $dsize ] || error "stripe size $default_size != $dsize"
+        [ $default_count -eq 1 ] || error "stripe count $default_count != 1"
+        [ $default_offset -eq -1 ] || error "stripe offset $default_offset != -1"
+        $SETSTRIPE -c $restore_count -o $restore_offset -s $restore_size $MOUNT
+}
+run_test 27A "check filesystem-wide default LOV EA values"
 
 # createtest also checks that device nodes are created and
 # then visible correctly (#2091)
@@ -2348,6 +2393,56 @@ test_39k() {
 }
 run_test 39k "write, utime, close, stat ========================"
 
+# this should be set to future
+TEST_39_ATIME=`date -d "1 year" +%s`
+
+test_39l() {
+	local atime_diff=$(do_facet $SINGLEMDS lctl get_param -n mdd.*.atime_diff)
+
+	mkdir -p $DIR/$tdir
+
+	# test setting directory atime to future
+	touch -a -d @$TEST_39_ATIME $DIR/$tdir
+	local atime=$(stat -c %X $DIR/$tdir)
+	[ "$atime" = $TEST_39_ATIME ] || \
+		error "atime is not set to future: $atime, should be $TEST_39_ATIME"
+
+	# test setting directory atime from future to now
+	local d1=$(date +%s)
+	ls $DIR/$tdir
+	local d2=$(date +%s)
+
+	cancel_lru_locks mdc
+	atime=$(stat -c %X $DIR/$tdir)
+	[ "$atime" -ge "$d1" -a "$atime" -le "$d2" ] || \
+		error "atime is not updated from future: $atime, should be $d1<atime<$d2"
+
+	do_facet $SINGLEMDS lctl set_param -n mdd.*.atime_diff=2
+	sleep 3
+
+	# test setting directory atime when now > dir atime + atime_diff
+	d1=$(date +%s)
+	ls $DIR/$tdir
+	d2=$(date +%s)
+	cancel_lru_locks mdc
+	atime=$(stat -c %X $DIR/$tdir)
+	[ "$atime" -ge "$d1" -a "$atime" -le "$d2" ] || \
+		error "atime is not updated  : $atime, should be $d2"
+
+	do_facet $SINGLEMDS lctl set_param -n mdd.*.atime_diff=60
+	sleep 3
+
+	# test not setting directory atime when now < dir atime + atime_diff
+	ls $DIR/$tdir
+	cancel_lru_locks mdc
+	atime=$(stat -c %X $DIR/$tdir)
+	[ "$atime" -ge "$d1" -a "$atime" -le "$d2" ] || \
+		error "atime is updated to $atime, should remain $d1<atime<$d2"
+
+	do_facet $SINGLEMDS lctl set_param -n mdd.*.atime_diff=$atime_diff
+}
+run_test 39l "directory atime update ==========================="
+
 test_40() {
 	dd if=/dev/zero of=$DIR/f40 bs=4096 count=1
 	$RUNAS $OPENFILE -f O_WRONLY:O_TRUNC $DIR/f40 && error
@@ -2410,12 +2505,10 @@ stop_writeback() {
 
 # ensure that all stripes have some grant before we test client-side cache
 setup_test42() {
-	[ "$SETUP_TEST42" ] && return
 	for i in `seq -f $DIR/f42-%g 1 $OSTCOUNT`; do
 		dd if=/dev/zero of=$i bs=4k count=1
 		rm $i
 	done
-	SETUP_TEST42=DONE
 }
 
 # Tests 42* verify that our behaviour is correct WRT caching, file closure,
@@ -3006,7 +3099,8 @@ test_53() {
 	local ostnum
 
 	# only test MDT0000
-        for value in $(do_facet $SINGLEMDS lctl get_param os[cp].*-os[cp]-MDT0000.prealloc_last_id) ; do
+        local mdtosc=$(get_mdtosc_proc_path $SINGLEMDS)
+        for value in $(do_facet $SINGLEMDS lctl get_param os[cp].$mdtosc.prealloc_last_id) ; do
                 param=`echo ${value[0]} | cut -d "=" -f1`
                 ostname=`echo $param | cut -d "." -f2 | cut -d - -f 1-2`
                 mds_last=$(do_facet $SINGLEMDS lctl get_param -n $param)
@@ -3335,20 +3429,53 @@ test_56q() {
 
 	setup_56 $NUMFILES $NUMDIRS
 
-	chgrp $RUNAS_ID $TDIR/file* || error "chown $DIR/${tdir}g/file$i failed"
+	chgrp $RUNAS_GID $TDIR/file* || error "chown $DIR/${tdir}g/file$i failed"
 	EXPECTED=$NUMFILES
-	NUMS="`$LFIND -gid $RUNAS_ID $TDIR | wc -l`"
+	NUMS="`$LFIND -gid $RUNAS_GID $TDIR | wc -l`"
 	[ $NUMS -eq $EXPECTED ] || \
 		error "lfs find -gid $TDIR wrong: found $NUMS, expected $EXPECTED"
 
 	EXPECTED=$(( ($NUMFILES+1) * $NUMDIRS + 1))
-	NUMS="`$LFIND ! -gid $RUNAS_ID $TDIR | wc -l`"
+	NUMS="`$LFIND ! -gid $RUNAS_GID $TDIR | wc -l`"
 	[ $NUMS -eq $EXPECTED ] || \
 		error "lfs find ! -gid $TDIR wrong: found $NUMS, expected $EXPECTED"
 
 	echo "lfs find -gid and ! -gid passed."
 }
 run_test 56q "check lfs find -gid and ! -gid ==============================="
+
+test_56r() {
+	setup_56 $NUMFILES $NUMDIRS
+	TDIR=$DIR/${tdir}g
+	
+	EXPECTED=12
+	NUMS=`$LFIND -size 0 -t f $TDIR | wc -l`
+	[ $NUMS -eq $EXPECTED ] || \
+		error "lfs find $TDIR -size 0 wrong: found $NUMS, expected $EXPECTED"
+	EXPECTED=0
+	NUMS=`$LFIND ! -size 0 -t f $TDIR | wc -l`
+	[ $NUMS -eq $EXPECTED ] || \
+		error "lfs find $TDIR ! -size 0 wrong: found $NUMS, expected $EXPECTED"
+	echo "test" > $TDIR/56r && sync
+	EXPECTED=1
+	NUMS=`$LFIND -size 5 -t f $TDIR | wc -l`
+	[ $NUMS -eq $EXPECTED ] || \
+		error "lfs find $TDIR -size 5 wrong: found $NUMS, expected $EXPECTED"
+	EXPECTED=1
+	NUMS=`$LFIND -size +5 -t f $TDIR | wc -l`
+	[ $NUMS -eq $EXPECTED ] || \
+		error "lfs find $TDIR -size +5 wrong: found $NUMS, expected $EXPECTED"
+	EXPECTED=13
+	NUMS=`$LFIND -size +0 -t f $TDIR | wc -l`
+	[ $NUMS -eq $EXPECTED ] || \
+		error "lfs find $TDIR -size +0 wrong: found $NUMS, expected $EXPECTED"
+	EXPECTED=0
+	NUMS=`$LFIND ! -size -5 -t f $TDIR | wc -l`
+	[ $NUMS -eq $EXPECTED ] || \
+		error "lfs find $TDIR ! -size -5 wrong: found $NUMS, expected $EXPECTED"
+}
+
+run_test 56r "check lfs find -size works =========================="
 
 test_57a() {
 	# note test will not do anything if MDS is not local
@@ -3850,7 +3977,7 @@ test_72() { # bug 5695 - Test that on 2.6 remove_suid works properly
 	[ "$RUNAS_ID" = "$UID" ] && skip_env "RUNAS_ID = UID = $UID -- skipping" && return
 
         # Check that testing environment is properly set up. Skip if not
-        FAIL_ON_ERROR=false check_runas_id_ret $RUNAS_ID $RUNAS_ID $RUNAS || {
+        FAIL_ON_ERROR=false check_runas_id_ret $RUNAS_ID $RUNAS_GID $RUNAS || {
                 skip_env "User $RUNAS_ID does not exist - skipping"
                 return 0
         }
@@ -3926,6 +4053,14 @@ test_74b() { # bug 13310
 	rm -f $DIR/f74b
 }
 run_test 74b "ldlm_enqueue freed-export error path, touch (shouldn't LBUG)"
+
+test_74c() {
+#define OBD_FAIL_LDLM_NEW_LOCK
+	lctl set_param fail_loc=0x80000319
+	touch $DIR/$tfile && error "Touch successful"
+	true
+}
+run_test 74c "ldlm_lock_create error path, (shouldn't LBUG)"
 
 num_inodes() {
 	awk '/lustre_inode_cache/ {print $2; exit}' /proc/slabinfo
@@ -4374,28 +4509,23 @@ test_101() {
 }
 run_test 101 "check read-ahead for random reads ================"
 
-export SETUP_TEST101=no
-setup_test101() {
-	[ "$SETUP_TEST101" = "yes" ] && return
+setup_test101b() {
 	mkdir -p $DIR/$tdir
 	STRIPE_SIZE=1048576
 	STRIPE_COUNT=$OSTCOUNT
 	STRIPE_OFFSET=0
 
-	trap cleanup_test101 EXIT
+	trap cleanup_test101b EXIT
 	# prepare the read-ahead file
 	$SETSTRIPE $DIR/$tfile -s $STRIPE_SIZE -i $STRIPE_OFFSET -c $OSTCOUNT
 
 	dd if=/dev/zero of=$DIR/$tfile bs=1024k count=100 2> /dev/null
-	SETUP_TEST101=yes
 }
 
-cleanup_test101() {
-	[ "$SETUP_TEST101" = "yes" ] || return
+cleanup_test101b() {
 	trap 0
 	rm -rf $DIR/$tdir
-        rm -f $DIR/$tfile
-	SETUP_TEST101=no
+	rm -f $DIR/$tfile
 }
 
 calc_total() {
@@ -4429,7 +4559,7 @@ test_101b() {
 	local FILE_LENGTH=$((STRIPE_SIZE*100))
 	local ITERATION=$((FILE_LENGTH/STRIDE_SIZE))
 	# prepare the read-ahead file
-	setup_test101
+	setup_test101b
 	cancel_lru_locks osc
 	for BIDX in 2 4 8 16 32 64 128 256
 	do
@@ -4443,7 +4573,7 @@ test_101b() {
 		cancel_lru_locks osc
 		ra_check_101 $BSIZE
 	done
-	cleanup_test101
+	cleanup_test101b
 	true
 }
 run_test 101b "check stride-io mode read-ahead ================="
@@ -4486,6 +4616,7 @@ test_101d() {
 
     set_read_ahead $old_READAHEAD
     rm -f $file
+    wait_delete_completed
 
     [ $time_ra_ON -lt $time_ra_OFF ] ||
         error "read-ahead enabled  time read (${time_ra_ON}s) is more than
@@ -4493,9 +4624,7 @@ test_101d() {
 }
 run_test 101d "file read with and without read-ahead enabled  ================="
 
-export SETUP_TEST102=no
 setup_test102() {
-	[ "$SETUP_TEST102" = "yes" ] && return
 	mkdir -p $DIR/$tdir
 	chown $RUNAS_ID $DIR/$tdir
 	STRIPE_SIZE=65536
@@ -4522,14 +4651,12 @@ setup_test102() {
 
 	cd $DIR
 	$1 $TAR cf $TMP/f102.tar $tdir --xattrs
-	SETUP_TEST102=yes
 }
 
 cleanup_test102() {
 	trap 0
-	[ "$SETUP_TEST102" = "yes" ] || return 0
 	rm -f $TMP/f102.tar
-	SETUP_TEST102=no
+	rm -rf $DIR/d0.sanity/d102
 }
 
 test_102a() {
@@ -4792,7 +4919,7 @@ test_102k() {
         local default_size=`$GETSTRIPE -s $test_kdir`
         local default_count=`$GETSTRIPE -c $test_kdir`
         local default_offset=`$GETSTRIPE -o $test_kdir`
-        $SETSTRIPE -s 65536 -i 1 -c 2 $test_kdir || error 'dir setstripe failed'
+        $SETSTRIPE -s 65536 -i 1 -c $OSTCOUNT $test_kdir || error 'dir setstripe failed'
         setfattr -n trusted.lov $test_kdir
         local stripe_size=`$GETSTRIPE -s $test_kdir`
         local stripe_count=`$GETSTRIPE -c $test_kdir`
@@ -6088,6 +6215,7 @@ set_dir_limits () {
                 devs=$(do_node $node "lctl get_param -n devices" | awk '($3 ~ "mdt" && $4 ~ "MDT") { print $4 }')
 	        for dev in $devs; do
 		        mntdev=$(do_node $node "lctl get_param -n osd*.$dev.mntdev")
+		        do_node $node "test -e $LDPROC/\\\$(basename $mntdev)/max_dir_size" || LDPROC=/sys/fs/ldiskfs
 		        do_node $node "echo $1 >$LDPROC/\\\$(basename $mntdev)/max_dir_size"
 		done
 	done
@@ -7600,6 +7728,19 @@ test_216() { # bug 20317
         rm $DIR/$tfile
 }
 run_test 216 "check lockless direct write works and updates file size and kms correctly"
+
+test_217() { # bug 22430
+	local node
+	for node in $(nodes_list); do
+		if [[ $node = *-* ]] ; then
+			echo "lctl ping $node@$NETTYPE"
+			lctl ping $node@$NETTYPE
+		else
+			echo "skipping $node (no hiphen detected)"
+		fi
+	done
+}
+run_test 217 "check lctl ping for hostnames with hiphen ('-')"
 
 #
 # tests that do cleanup/setup should be run at the end

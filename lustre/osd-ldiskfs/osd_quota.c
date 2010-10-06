@@ -32,6 +32,18 @@
 /*
  * This file is part of Lustre, http://www.lustre.org/
  * Lustre is a trademark of Sun Microsystems, Inc.
+ *
+ * lustre/osd-ldiskfs/osd_quota.c
+ *
+ * Quota code is specific to ldiskfs
+ *
+ * Author: Landen Tian <landen@sun.com>
  */
+#include <osd_quota.h>
 
-#include "openiblnd_cb.c"
+#include "osd_quota_internal.h"
+#ifdef LPROCFS
+void osd_quota_procfs_init(struct osd_device *osd)
+{
+}
+#endif

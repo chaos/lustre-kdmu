@@ -51,6 +51,7 @@
 #include <libcfs/list.h>
 /* fid_be_to_cpu() */
 #include <lustre_fid.h>
+#include <osd_quota.h>
 
 struct dt_find_hint {
         struct lu_fid        *dfh_fid;
@@ -384,58 +385,69 @@ struct dt_object *dt_store_open(const struct lu_env *env,
 }
 EXPORT_SYMBOL(dt_store_open);
 
-struct dt_object *dt_reg_open_or_create(const struct lu_env *env,
-                                        struct dt_device *dt,
-                                        const struct lu_fid *fid,
-                                        struct lu_attr *attr)
+struct dt_object *dt_find_or_create(const struct lu_env *env,
+                                    struct dt_device *dt,
+                                    const struct lu_fid *fid,
+                                    struct dt_object_format *dof,
+                                    struct lu_attr *at)
 {
-        struct dt_object_format  dof;
-        struct dt_object        *o;
-        struct thandle          *th;
-        int                      rc;
+        struct dt_object *dto;
+        struct thandle *th;
+        struct lu_attr attr;
+        int rc;
         ENTRY;
 
-        o = dt_locate(env, dt, fid);
-        if (IS_ERR(o))
-                RETURN(o);
+        dto = dt_locate(env, dt, fid);
+        if (unlikely(IS_ERR(dto)))
+                RETURN(dto);
 
-        if (dt_object_exists(o))
-                RETURN(o);
+        LASSERT(dto != NULL);
+        if (dt_object_exists(dto))
+                RETURN(dto);
 
-        dof.dof_type = dt_mode_to_dft(S_IFREG);
-
+        LASSERT(dto != NULL);
         th = dt_trans_create(env, dt);
         if (IS_ERR(th))
                 GOTO(out, rc = PTR_ERR(th));
 
-        rc = dt_declare_create(env, o, attr, NULL, &dof, th);
+        if (at == NULL) {
+                memset(&attr, 0, sizeof(attr));
+                attr.la_valid = LA_MODE;
+                attr.la_mode = S_IFREG | 0666;
+                at = &attr;
+        }
+
+        rc = dt_declare_create(env, dto, at, NULL, dof, th);
+        LASSERT(rc == 0);
+
+        rc = dt->dd_ops->dt_trans_start(env, dt, th);
         if (rc)
                 GOTO(trans_stop, rc);
 
-        rc = dt_trans_start(env, dt, th);
-        if (rc)
-                GOTO(trans_stop, rc);
-
-        dt_write_lock(env, o, 0);
-        if (dt_object_exists(o))
+        dto->do_ops->do_write_lock(env, dto, 0);
+        if (dt_object_exists(dto))
                 GOTO(unlock, rc = 0);
 
-        rc = dt_create(env, o, attr, NULL, &dof, th);
+        CDEBUG(D_OTHER, "create new object %lu:%llu\n",
+               (unsigned long) fid->f_oid, fid->f_seq);
+
+        rc = dt_create(env, dto, at, NULL, dof, th);
+        LASSERT(rc == 0);
+        LASSERT(dt_object_exists(dto));
 
 unlock:
-        dt_write_unlock(env, o);
+        dto->do_ops->do_write_unlock(env, dto);
 
 trans_stop:
-        dt_trans_stop(env, dt, th);
+        dt->dd_ops->dt_trans_stop(env, th);
 out:
         if (rc) {
-                lu_object_put(env, &o->do_lu);
+                lu_object_put(env, &dto->do_lu);
                 RETURN(ERR_PTR(rc));
         }
-        RETURN(o);
+        RETURN(dto);
 }
-EXPORT_SYMBOL(dt_reg_open_or_create);
-
+EXPORT_SYMBOL(dt_find_or_create);
 
 /* dt class init function. */
 int dt_global_init(void)
@@ -489,3 +501,26 @@ EXPORT_SYMBOL(dt_record_write);
 
 const struct dt_index_features dt_directory_features;
 EXPORT_SYMBOL(dt_directory_features);
+
+const struct dt_index_features dt_quota_slaves_features = {
+        .dif_flags       = DT_IND_UPDATE,
+        .dif_keysize_min = sizeof(__u64), /* 64-bit uid/gid */
+        .dif_keysize_max = sizeof(__u64), /* 64-bit uid/gid */
+        .dif_recsize_min = sizeof(struct osd_quota_slave_rec), /* 32 bytes */
+        .dif_recsize_max = sizeof(struct osd_quota_slave_rec), /* 32 bytes */
+};
+EXPORT_SYMBOL(dt_quota_slaves_features);
+
+const struct lu_fid quota_slave_uid_fid = {
+        .f_seq = FID_SEQ_LOCAL_FILE,
+        .f_oid = QUOTA_SLAVE_UID_OID,
+        .f_ver = 0
+};
+EXPORT_SYMBOL(quota_slave_uid_fid);
+
+const struct lu_fid quota_slave_gid_fid = {
+        .f_seq = FID_SEQ_LOCAL_FILE,
+        .f_oid = QUOTA_SLAVE_GID_OID,
+        .f_ver = 0
+};
+EXPORT_SYMBOL(quota_slave_gid_fid);

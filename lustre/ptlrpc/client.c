@@ -1445,6 +1445,12 @@ int ptlrpc_check_set(const struct lu_env *env, struct ptlrpc_request_set *set)
                         LASSERT(req->rq_next_phase != req->rq_phase);
                         LASSERT(req->rq_next_phase != RQ_PHASE_UNDEFINED);
 
+                        /* Abort the bulk, if the request itself has been
+                         * aborted, for instance, on a client eviction. */
+                        if (req->rq_err && req->rq_status == -EINTR &&
+                            req->rq_bulk != NULL)
+                                ptlrpc_abort_bulk(req->rq_bulk);
+
                         /*
                          * Skip processing until reply is unlinked. We
                          * can't return to pool before that and we can't
@@ -2279,7 +2285,7 @@ void ptlrpc_free_committed(struct obd_import *imp)
 
         if (imp->imp_peer_committed_transno == imp->imp_last_transno_checked &&
             imp->imp_generation == imp->imp_last_generation_checked) {
-                CDEBUG(D_RPCTRACE, "%s: skip recheck: last_committed "LPU64"\n",
+                CDEBUG(D_INFO, "%s: skip recheck: last_committed "LPU64"\n",
                        imp->imp_obd->obd_name, imp->imp_peer_committed_transno);
                 EXIT;
                 return;
@@ -2318,7 +2324,7 @@ void ptlrpc_free_committed(struct obd_import *imp)
                         break;
                 }
 
-                DEBUG_REQ(D_RPCTRACE, req, "commit (last_committed "LPU64")",
+                DEBUG_REQ(D_INFO, req, "commit (last_committed "LPU64")",
                           imp->imp_peer_committed_transno);
 free_req:
                 cfs_spin_lock(&req->rq_lock);
@@ -2721,7 +2727,7 @@ void ptlrpc_init_xid(void)
 
         cfs_spin_lock_init(&ptlrpc_last_xid_lock);
         if (now < YEAR_2004) {
-                ll_get_random_bytes(&ptlrpc_last_xid, sizeof(ptlrpc_last_xid));
+                cfs_get_random_bytes(&ptlrpc_last_xid, sizeof(ptlrpc_last_xid));
                 ptlrpc_last_xid >>= 2;
                 ptlrpc_last_xid |= (1ULL << 61);
         } else {

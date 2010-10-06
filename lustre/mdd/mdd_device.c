@@ -394,9 +394,6 @@ int mdd_changelog_llog_write(struct mdd_device         *mdd,
         struct llog_ctxt *ctxt;
         int rc;
 
-        if ((mdd->mdd_cl.mc_mask & (1 << rec->cr.cr_type)) == 0)
-                return 0;
-
         rec->cr_hdr.lrh_len = llog_data_len(sizeof(*rec) + rec->cr.cr_namelen);
         /* llog_lvfs_write_rec sets the llog tail len */
         rec->cr_hdr.lrh_type = CHANGELOG_REC;
@@ -494,7 +491,8 @@ int mdd_changelog_write_header(struct mdd_device *mdd, int markerflags)
         /* Status and action flags */
         rec->cr.cr_markerflags = mdd->mdd_cl.mc_flags | markerflags;
 
-        rc = mdd_changelog_llog_write(mdd, rec, NULL);
+        rc = (mdd->mdd_cl.mc_mask & (1 << CL_MARK)) ?
+                mdd_changelog_llog_write(mdd, rec, NULL) : 0;
 
         /* assume on or off event; reset repeat-access time */
         mdd->mdd_cl.mc_starttime = cfs_time_current_64();
@@ -828,9 +826,9 @@ static int obf_attr_get(const struct lu_env *env, struct md_object *obj,
 #if 0
                 /* XXX: mdd can't access striping information directly */
                 if (ma->ma_need & MA_LOV_DEF) {
-                        rc = mdd_get_default_md(mdd_obj, ma->ma_lmm,
-                                                &ma->ma_lmm_size);
+                        rc = mdd_get_default_md(mdd_obj, ma->ma_lmm);
                         if (rc > 0) {
+                                ma->ma_lmm_size = rc;
                                 ma->ma_valid |= MA_LOV;
                                 rc = 0;
                         }
@@ -1114,6 +1112,35 @@ static int mdd_recovery_complete(const struct lu_env *env,
         struct lu_device *next = &mdd->mdd_child->dd_lu_dev;
         int rc;
         ENTRY;
+
+#if 0
+        LASSERT(mdd != NULL);
+        LASSERT(obd != NULL);
+        /* XXX: Do we need this in new stack? */
+        rc = mdd_lov_set_nextid(env, mdd);
+        if (rc) {
+                CERROR("mdd_lov_set_nextid() failed %d\n",
+                       rc);
+                RETURN(rc);
+        }
+
+        /* XXX: cleanup unlink. */
+        rc = mdd_cleanup_unlink_llog(env, mdd);
+        if (rc) {
+                CERROR("mdd_cleanup_unlink_llog() failed %d\n",
+                       rc);
+                RETURN(rc);
+        }
+        /* Call that with obd_recovering = 1 just to update objids */
+        obd_notify(obd->u.mds.mds_lov_obd, NULL, (obd->obd_async_recov ?
+                    OBD_NOTIFY_SYNC_NONBLOCK : OBD_NOTIFY_SYNC), NULL);
+
+        /* Drop obd_recovering to 0 and call o_postrecov to recover mds_lov */
+        cfs_spin_lock(&obd->obd_dev_lock);
+        obd->obd_recovering = 0;
+        cfs_spin_unlock(&obd->obd_dev_lock);
+        obd->obd_type->typ_dt_ops->o_postrecov(obd);
+#endif
 
         /* XXX: orphans handling. */
         __mdd_orphan_cleanup(env, mdd);
@@ -1671,25 +1698,10 @@ const struct md_device_operations mdd_ops = {
         .mdo_update_capa_key= mdd_update_capa_key,
         .mdo_llog_ctxt_get  = mdd_llog_ctxt_get,
         .mdo_iocontrol      = mdd_iocontrol,
-#ifdef HAVE_QUOTA_SUPPORT
         .mdo_quota          = {
-                .mqo_notify      = mdd_quota_notify,
                 .mqo_setup       = mdd_quota_setup,
                 .mqo_cleanup     = mdd_quota_cleanup,
-                .mqo_recovery    = mdd_quota_recovery,
-                .mqo_check       = mdd_quota_check,
-                .mqo_on          = mdd_quota_on,
-                .mqo_off         = mdd_quota_off,
-                .mqo_setinfo     = mdd_quota_setinfo,
-                .mqo_getinfo     = mdd_quota_getinfo,
-                .mqo_setquota    = mdd_quota_setquota,
-                .mqo_getquota    = mdd_quota_getquota,
-                .mqo_getoinfo    = mdd_quota_getoinfo,
-                .mqo_getoquota   = mdd_quota_getoquota,
-                .mqo_invalidate  = mdd_quota_invalidate,
-                .mqo_finvalidate = mdd_quota_finvalidate
         }
-#endif
 };
 
 static struct lu_device_type_operations mdd_device_type_ops = {

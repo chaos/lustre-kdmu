@@ -239,13 +239,6 @@ static int filter_intent_policy(struct ldlm_namespace *ns,
 
         LASSERTF(l->l_glimpse_ast != NULL, "l == %p", l);
         rc = l->l_glimpse_ast(l, NULL); /* this will update the LVB */
-        /* Update the LVB from disk if the AST failed (this is a legal race) */
-        /*
-         * XXX nikita: situation when ldlm_server_glimpse_ast() failed before
-         * sending ast is not handled. This can result in lost client writes.
-         */
-        if (rc != 0)
-                ldlm_res_lvbo_update(res, NULL, 1);
 
         lock_res(res);
         *reply_lvb = *res_lvb;
@@ -636,6 +629,7 @@ static int filter_init0(const struct lu_env *env, struct filter_device *m,
         struct filter_obd *filter;
         struct lustre_mount_info *lmi;
         struct obd_device *obd;
+        struct dt_device  *next;
         int rc;
         ENTRY;
 
@@ -653,6 +647,9 @@ static int filter_init0(const struct lu_env *env, struct filter_device *m,
 
         m->ofd_fmd_max_num = FILTER_FMD_MAX_NUM_DEFAULT;
         m->ofd_fmd_max_age = FILTER_FMD_MAX_AGE_DEFAULT;
+
+        cfs_spin_lock_init(&m->ofd_flags_lock);
+        m->ofd_raid_degraded = 0;
         m->ofd_syncjournal = 0;
         filter_slc_set(m);
 
@@ -662,6 +659,8 @@ static int filter_init0(const struct lu_env *env, struct filter_device *m,
         m->ofd_tot_dirty = 0;
         m->ofd_tot_granted = 0;
         m->ofd_tot_pending = 0;
+
+        m->ofd_max_group = 0;
 
 #if 0
         cfs_rwlock_init(&m->ofd_sptlrpc_lock);
@@ -760,6 +759,13 @@ static int filter_init0(const struct lu_env *env, struct filter_device *m,
 
         target_recovery_init(&m->ofd_lut, ost_handle);
 
+        next = m->ofd_osd;
+        rc = next->dd_ops->dt_quota.dt_setup(env, next, NULL);
+        if (rc) {
+                CERROR("failed to setup quota\n");
+                GOTO(err_fs_cleanup, rc);
+        }
+
         //if (obd->obd_recovering == 0)
         //        filter_postrecov(env, m);
 
@@ -768,6 +774,10 @@ static int filter_init0(const struct lu_env *env, struct filter_device *m,
 
         RETURN(0);
 
+err_fs_cleanup:
+        next->dd_ops->dt_quota.dt_cleanup(env, next);
+        target_recovery_fini(obd);
+        filter_fs_cleanup(env, m);
 err_lut_fini:
         lut_fini(env, &m->ofd_lut);
 err_free_ns:
@@ -786,6 +796,7 @@ static void filter_fini(const struct lu_env *env, struct filter_device *m)
 {
         struct obd_device *obd = filter_obd(m);
         struct lu_device  *d = &m->ofd_dt_dev.dd_lu_dev;
+        struct dt_device  *next;
 
         target_recovery_fini(obd);
 #if 0
@@ -808,6 +819,10 @@ static void filter_fini(const struct lu_env *env, struct filter_device *m)
 #if 0
         sptlrpc_rule_set_free(&m->mdt_sptlrpc_rset);
 #endif
+
+        next = m->ofd_osd;
+        next->dd_ops->dt_quota.dt_cleanup(env, next);
+
         /* 
          * Finish the stack 
          */
@@ -874,6 +889,7 @@ static void filter_key_exit(const struct lu_context *ctx,
         info->fti_no_need_trans = 0;
 
         memset(&info->fti_attr, 0, sizeof info->fti_attr);
+        memset(&info->fti_lvb, 0, sizeof info->fti_lvb);
 }
 
 struct lu_context_key filter_thread_key = {
@@ -909,8 +925,6 @@ static struct lu_device_type filter_device_type = {
         .ldt_ctx_tags = LCT_DT_THREAD
 };
 
-quota_interface_t *filter_quota_interface_ref;
-extern quota_interface_t filter_quota_interface;
 extern struct obd_ops filter_obd_ops;
 
 int __init ofd_init(void)
@@ -920,22 +934,14 @@ int __init ofd_init(void)
 
         lprocfs_filter_init_vars(&lvars);
 
-        cfs_request_module("lquota");
-
         rc = ofd_fmd_init();
         if (rc)
-                GOTO(out, rc);
-
-        //filter_quota_interface_ref = PORTAL_SYMBOL_GET(filter_quota_interface);
-        init_obd_quota_ops(filter_quota_interface_ref, &filter_obd_ops);
+                return(rc);
 
         rc = class_register_type(&filter_obd_ops, NULL, lvars.module_vars,
                                  LUSTRE_OST_NAME, &filter_device_type);
         if (rc) {
                 ofd_fmd_exit();
-out:
-                if (filter_quota_interface_ref)
-                        PORTAL_SYMBOL_PUT(filter_quota_interface);
         }
 
         return rc;
@@ -943,9 +949,6 @@ out:
 
 void __exit ofd_exit(void)
 {
-        if (filter_quota_interface_ref)
-                PORTAL_SYMBOL_PUT(filter_quota_interface);
-
         ofd_fmd_exit();
 
         class_unregister_type(LUSTRE_OST_NAME);

@@ -187,6 +187,8 @@ int ldlm_lock_remove_from_lru_nolock(struct ldlm_lock *lock)
                 struct ldlm_namespace *ns = lock->l_resource->lr_namespace;
                 LASSERT(lock->l_resource->lr_type != LDLM_FLOCK);
                 cfs_list_del_init(&lock->l_lru);
+                if (lock->l_flags & LDLM_FL_SKIPPED)
+                        lock->l_flags &= ~LDLM_FL_SKIPPED;
                 LASSERT(ns->ns_nr_unused > 0);
                 ns->ns_nr_unused--;
                 rc = 1;
@@ -1201,13 +1203,14 @@ struct ldlm_lock *ldlm_lock_create(struct ldlm_namespace *ns,
                         GOTO(out, 0);
         }
 
+        if (OBD_FAIL_CHECK(OBD_FAIL_LDLM_NEW_LOCK))
+                GOTO(out, 0);
+
         RETURN(lock);
 
 out:
-        if (lock->l_lvb_data)
-                OBD_FREE(lock->l_lvb_data, lvb_len);
-        ldlm_interval_free(ldlm_interval_detach(lock));
-        OBD_SLAB_FREE(lock, ldlm_lock_slab, sizeof(*lock));
+        ldlm_lock_destroy(lock);
+        LDLM_LOCK_RELEASE(lock);
         return NULL;
 }
 

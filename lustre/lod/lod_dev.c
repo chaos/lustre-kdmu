@@ -343,6 +343,7 @@ static int lod_init_capa_ctxt(const struct lu_env *env,
         RETURN(rc);
 }
 
+#if 0
 static void lod_init_quota_ctxt(const struct lu_env *env,
                                    struct dt_device *dev,
                                    struct dt_quota_ctxt *ctxt, void *data)
@@ -355,12 +356,13 @@ static void lod_init_quota_ctxt(const struct lu_env *env,
 
         EXIT;
 }
+#endif
 
 static char *lod_label_get(const struct lu_env *env, const struct dt_device *dev)
 {
         struct lod_device *d = dt2lod_dev((struct dt_device *) dev);
-        struct dt_device   *next = d->lod_child;
-        char *l;
+        struct dt_device  *next = d->lod_child;
+        char              *l;
         ENTRY;
 
         l = next->dd_ops->dt_label_get(env, next);
@@ -373,8 +375,8 @@ static int lod_label_set(const struct lu_env *env, const struct dt_device *dev,
                           char *l)
 {
         struct lod_device *d = dt2lod_dev((struct dt_device *) dev);
-        struct dt_device   *next = d->lod_child;
-        int                 rc;
+        struct dt_device  *next = d->lod_child;
+        int                rc;
         ENTRY;
 
         rc = next->dd_ops->dt_label_set(env, next, l);
@@ -382,20 +384,47 @@ static int lod_label_set(const struct lu_env *env, const struct dt_device *dev,
         RETURN(rc);
 }
 
+static int lod_quota_setup(const struct lu_env *env, struct dt_device *dev,
+                           void *data)
+{
+        struct lod_device *d = dt2lod_dev((struct dt_device *) dev);
+        struct dt_device  *next = d->lod_child;
+        int                rc;
+        ENTRY;
+
+        rc = next->dd_ops->dt_quota.dt_setup(env, next, data);
+
+        RETURN(rc);
+}
+
+
+static void lod_quota_cleanup(const struct lu_env *env, struct dt_device *dev)
+{
+        struct lod_device *d = dt2lod_dev((struct dt_device *) dev);
+        struct dt_device  *next = d->lod_child;
+        ENTRY;
+
+        next->dd_ops->dt_quota.dt_cleanup(env, next);
+
+        EXIT;
+}
+
 static const struct dt_device_operations lod_dt_ops = {
-        .dt_root_get       = lod_root_get,
-        .dt_statfs         = lod_statfs,
-        .dt_trans_create   = lod_trans_create,
-        .dt_trans_start    = lod_trans_start,
-        .dt_trans_stop     = lod_trans_stop,
-        .dt_conf_get       = lod_conf_get,
-        .dt_sync           = lod_sync,
-        .dt_ro             = lod_ro,
-        .dt_commit_async   = lod_commit_async,
-        .dt_init_capa_ctxt = lod_init_capa_ctxt,
-        .dt_init_quota_ctxt= lod_init_quota_ctxt,
-        .dt_label_get      = lod_label_get,
-        .dt_label_set      = lod_label_set
+        .dt_root_get         = lod_root_get,
+        .dt_statfs           = lod_statfs,
+        .dt_trans_create     = lod_trans_create,
+        .dt_trans_start      = lod_trans_start,
+        .dt_trans_stop       = lod_trans_stop,
+        .dt_conf_get         = lod_conf_get,
+        .dt_sync             = lod_sync,
+        .dt_ro               = lod_ro,
+        .dt_commit_async     = lod_commit_async,
+        .dt_init_capa_ctxt   = lod_init_capa_ctxt,
+        /*.dt_init_quota_ctxt= lod_init_quota_ctxt,*/
+        .dt_label_get        = lod_label_get,
+        .dt_label_set        = lod_label_set,
+        .dt_quota.dt_setup   = lod_quota_setup,
+        .dt_quota.dt_cleanup = lod_quota_cleanup
 };
 
 static int lod_connect_to_osd(const struct lu_env *env, struct lod_device *m,

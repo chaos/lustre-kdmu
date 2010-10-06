@@ -134,12 +134,6 @@ struct dt_device_operations {
                                    struct dt_device *dev,
                                    int mode, unsigned long timeout,
                                    __u32 alg, struct lustre_capa_key *keys);
-        /**
-         * Initialize quota context.
-         */
-        void (*dt_init_quota_ctxt)(const struct lu_env *env,
-                                   struct dt_device *dev,
-                                   struct dt_quota_ctxt *ctxt, void *data);
 
         /**
          * Get disk label
@@ -152,6 +146,13 @@ struct dt_device_operations {
          */
         int   (*dt_label_set)(const struct lu_env *,
                               const struct dt_device *, char *);
+
+        struct dt_quota_operations {
+                int (*dt_setup)(const struct lu_env *env,
+                                struct dt_device *dev, void *data);
+                void (*dt_cleanup)(const struct lu_env *env,
+                                   struct dt_device *dev);
+        } dt_quota;
 };
 
 struct dt_index_features {
@@ -185,6 +186,9 @@ enum dt_index_flags {
  * names to fids).
  */
 extern const struct dt_index_features dt_directory_features;
+extern const struct dt_index_features dt_quota_slaves_features;
+extern const struct lu_fid quota_slave_uid_fid;
+extern const struct lu_fid quota_slave_gid_fid;
 
 /**
  * This is a general purpose dt allocation hint.
@@ -566,6 +570,8 @@ struct dt_index_operations {
                                       const struct dt_it *di);
                 int           (*load)(const struct lu_env *env,
                                       const struct dt_it *di, __u64 hash);
+                int        (*key_rec)(const struct lu_env *env,
+                                      const struct dt_it *di, void* key_rec);
         } dio_it;
 };
 
@@ -601,6 +607,12 @@ struct dt_object {
         const struct dt_body_operations   *do_body_ops;
         const struct dt_index_operations  *do_index_ops;
 };
+
+static inline struct dt_object * lu2dt(struct lu_object *l)
+{
+        LASSERT(l == NULL || IS_ERR(l) || lu_device_is_dt(l->lo_dev));
+        return container_of0(l, struct dt_object, do_lu);
+}
 
 int  dt_object_init(struct dt_object *obj,
                     struct lu_object_header *h, struct lu_device *d);
@@ -697,10 +709,11 @@ struct dt_object *dt_store_open(const struct lu_env *env,
                                 const char *filename,
                                 struct lu_fid *fid);
 
-struct dt_object *dt_reg_open_or_create(const struct lu_env *env,
-                                        struct dt_device *dt,
-                                        const struct lu_fid *fid,
-                                        struct lu_attr *attr);
+struct dt_object *dt_find_or_create(const struct lu_env *env,
+                                    struct dt_device *dt,
+                                    const struct lu_fid *fid,
+                                    struct dt_object_format *dof,
+                                    struct lu_attr *attr);
 
 struct dt_object *dt_locate(const struct lu_env *env,
                             struct dt_device *dev,

@@ -4,6 +4,7 @@ LUSTRE=${LUSTRE:-$(cd $(dirname $0)/..; echo $PWD)}
 . $LUSTRE/tests/test-framework.sh
 init_test_env $@
 . ${CONFIG:=$LUSTRE/tests/cfg/$NAME.sh}
+init_logging
 
 #
 ALWAYS_EXCEPT="$ALWAYS_EXCEPT $LNET_SELFTEST_EXCEPT"
@@ -99,7 +100,7 @@ test_smoke_sub () {
 
     echo $LST run b
     echo sleep 1
-    echo "$LST stat --delay 10 c s &"
+    echo "$LST stat --delay 10 --timeout 10 c s &"
     echo 'pid=$!'
     echo 'trap "cleanup $pid" INT TERM'
     echo sleep $smoke_DURATION
@@ -149,7 +150,7 @@ test_smoke () {
 
     # error counters in "lst show_error" should be checked
     check_lst_err $log
-    
+    lst_cleanup_all    
 }
 run_test smoke "lst regression test"
 

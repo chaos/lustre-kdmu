@@ -60,11 +60,6 @@
 #error Unsupported operating system.
 #endif
 
-/* prng.c */
-unsigned int ll_rand(void);        /* returns a random 32-bit integer */
-void ll_srand(unsigned int, unsigned int);     /* seed the generator */
-void ll_get_random_bytes(void *buf, int size);
-
 /* target.c */
 struct ptlrpc_request;
 struct obd_export;
@@ -89,11 +84,7 @@ int do_set_info_async(struct obd_import *imp,
 
 /* quotacheck callback, dqacq/dqrel callback handler */
 int target_handle_qc_callback(struct ptlrpc_request *req);
-#ifdef HAVE_QUOTA_SUPPORT
-int target_handle_dqacq_callback(struct ptlrpc_request *req);
-#else
 #define target_handle_dqacq_callback(req) ldlm_callback_reply(req, -ENOTSUPP)
-#endif
 
 #define OBD_RECOVERY_MAX_TIME (obd_timeout * 18) /* b13079 */
 
@@ -494,20 +485,18 @@ static inline void obd_ioctl_freedata(char *buf, int len)
 #define OBD_IOC_CHANGELOG_SEND         _IOW ('f', 148, OBD_IOC_DATA_TYPE)
 #define OBD_IOC_GETDEVICE              _IOWR ('f', 149, OBD_IOC_DATA_TYPE)
 #define OBD_IOC_FID2PATH               _IOWR ('f', 150, OBD_IOC_DATA_TYPE)
-#define OBD_IOC_CHANGELOG_REG          _IOW ('f', 151, OBD_IOC_DATA_TYPE)
-#define OBD_IOC_CHANGELOG_DEREG        _IOW ('f', 152, OBD_IOC_DATA_TYPE)
-#define OBD_IOC_CHANGELOG_CLEAR        _IOW ('f', 153, OBD_IOC_DATA_TYPE)
-
+/* see <lustre/lustre_user.h> for ioctls 151-153 */
 #define OBD_IOC_LOV_SETSTRIPE          _IOW ('f', 154, OBD_IOC_DATA_TYPE)
 #define OBD_IOC_LOV_GETSTRIPE          _IOW ('f', 155, OBD_IOC_DATA_TYPE)
 #define OBD_IOC_LOV_SETEA              _IOW ('f', 156, OBD_IOC_DATA_TYPE)
-
+/* see <lustre/lustre_user.h> for ioctls 157-159 */
 #define OBD_IOC_QUOTACHECK             _IOW ('f', 160, int)
 #define OBD_IOC_POLL_QUOTACHECK        _IOR ('f', 161, struct if_quotacheck *)
 #define OBD_IOC_QUOTACTL               _IOWR('f', 162, struct if_quotactl *)
-
-#define OBD_IOC_MOUNTOPT               _IOWR('f', 170, OBD_IOC_DATA_TYPE)
-
+/* see <lustre/lustre_user.h> for ioctls 163-175 */
+#define OBD_IOC_CHANGELOG_REG          _IOW ('f', 177, struct obd_ioctl_data)
+#define OBD_IOC_CHANGELOG_DEREG        _IOW ('f', 178, struct obd_ioctl_data)
+#define OBD_IOC_CHANGELOG_CLEAR        _IOW ('f', 179, struct obd_ioctl_data)
 #define OBD_IOC_RECORD                 _IOWR('f', 180, OBD_IOC_DATA_TYPE)
 #define OBD_IOC_ENDRECORD              _IOWR('f', 181, OBD_IOC_DATA_TYPE)
 #define OBD_IOC_PARSE                  _IOWR('f', 182, OBD_IOC_DATA_TYPE)
@@ -540,6 +529,10 @@ static inline void obd_ioctl_freedata(char *buf, int len)
 /* Until such time as we get_info the per-stripe maximum from the OST,
  * we define this to be 2T - 4k, which is the ext3 maxbytes. */
 #define LUSTRE_STRIPE_MAXBYTES 0x1fffffff000ULL
+
+/* Special values for remove LOV EA from disk */
+#define LOVEA_DELETE_VALUES(size, count, offset) (size == 0 && count == 0 && \
+                                                 offset == (typeof(offset))(-1))
 
 /* #define POISON_BULK 0 */
 

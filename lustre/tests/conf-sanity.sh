@@ -16,6 +16,12 @@ ONLY=${ONLY:-"$*"}
 ALWAYS_EXCEPT="$CONF_SANITY_EXCEPT"
 # UPDATE THE COMMENT ABOVE WITH BUG NUMBERS WHEN CHANGING ALWAYS_EXCEPT!
 
+if [ "$FAILURE_MODE" = "HARD" ]; then
+	CONFIG_EXCEPTIONS="24a " && \
+	echo "Except the tests: $CONFIG_EXCEPTIONS for FAILURE_MODE=$FAILURE_MODE, bug 23573" && \
+	ALWAYS_EXCEPT="$ALWAYS_EXCEPT $CONFIG_EXCEPTIONS"
+fi
+
 SRCDIR=`dirname $0`
 PATH=$PWD/$SRCDIR:$SRCDIR:$SRCDIR/../utils:$PATH
 
@@ -60,14 +66,16 @@ writeconf1() {
 	stop ${facet} -f
 	rm -f ${facet}active
 	# who knows if/where $TUNEFS is installed?  Better reformat if it fails...
-	do_facet ${facet} "$TUNEFS --writeconf $dev" ||
+	do_facet ${facet} "$TUNEFS --quiet --writeconf $dev" ||
 		{ echo "tunefs failed, reformatting instead" && reformat_and_config && return 1; }
 	return 0
 }
 
 writeconf() {
-	# if writeconf failed, we reformatted
-	writeconf1 mds $MDSDEV || return 0
+	# we need ldiskfs
+	load_modules
+	# if writeconf fails anywhere, we reformat everything
+	writeconf1 mds `mdsdevname 1` || return 0
 	writeconf1 ost1 `ostdevname 1` || return 0
 	writeconf1 ost2 `ostdevname 2` || return 0
 }
@@ -92,7 +100,7 @@ reformat_and_config() {
 
 start_mgs () {
 	echo "start mgs"
-	start mgs $MGSDEV $mgs_MOUNT_OPTS
+	start mgs $MGSDEV $MGS_MOUNT_OPTS
 }
 
 start_mds() {
@@ -101,7 +109,14 @@ start_mds() {
 	local num=$(echo $facet | tr -d "mds")
 	local dev=$(mdsdevname $num)
 	echo "start mds service on `facet_active_host $facet`"
-	start $facet ${dev} $MDS_MOUNT_OPTS || return 94
+	start $facet ${dev} $MDS_MOUNT_OPTS $@ || return 94
+}
+
+start_mgsmds() {
+	if ! combined_mgs_mds ; then
+		start_mgs
+	fi
+	start_mds $@
 }
 
 stop_mds() {
@@ -112,7 +127,7 @@ stop_mds() {
 
 start_ost() {
 	echo "start ost1 service on `facet_active_host ost1`"
-	start ost1 `ostdevname 1` $OST_MOUNT_OPTS || return 95
+	start ost1 `ostdevname 1` $OST_MOUNT_OPTS $@ || return 95
 }
 
 stop_ost() {
@@ -123,7 +138,7 @@ stop_ost() {
 
 start_ost2() {
 	echo "start ost2 service on `facet_active_host ost2`"
-	start ost2 `ostdevname 2` $OST_MOUNT_OPTS || return 92
+	start ost2 `ostdevname 2` $OST_MOUNT_OPTS $@ || return 92
 }
 
 stop_ost2() {
@@ -866,7 +881,9 @@ test_29() {
 	fi
 
 	# check MDT too
-	local MPROC="osc.$FSNAME-OST0001-osc-[M]*.active"
+	local mdtosc=$(get_mdtosc_proc_path $SINGLEMDS $FSNAME-OST0001)
+	mdtosc=${mdtosc/-MDT*/-MDT\*}
+	local MPROC="osc.$mdtosc.active"
 	local MAX=30
 	local WAIT=0
 	while [ 1 ]; do
@@ -2081,6 +2098,8 @@ test_50g() {
 	[ "$OSTCOUNT" -lt "2" ] && skip_env "$OSTCOUNT < 2, skipping" && return
 	setup
 	start_ost2 || error "Unable to start OST2"
+        wait_osc_import_state mds ost2 FULL
+        wait_osc_import_state client ost2 FULL
 
 	local PARAM="${FSNAME}-OST0001.osc.active"
 
@@ -2189,7 +2208,9 @@ test_52() {
 	[ $? -eq 0 ] || { error "Unable to create tdir"; return 4; }
 	touch $TMP/modified_first
 	[ $? -eq 0 ] || { error "Unable to create temporary file"; return 5; }
-	do_node $ost1node "mkdir -p $ost1tmp && touch $ost1tmp/modified_first"
+	local mtime=$(stat -c %Y $TMP/modified_first)
+	do_node $ost1node "mkdir -p $ost1tmp && touch -m -d @$mtime $ost1tmp/modified_first"
+
 	[ $? -eq 0 ] || { error "Unable to create temporary file"; return 6; }
 	sleep 1
 
@@ -2354,10 +2375,6 @@ test_53b() {
 }
 run_test 53b "check MDT thread count params"
 
-if ! combined_mgs_mds ; then
-	stop mgs
-fi
-
 run_llverfs()
 {
         local dir=$1
@@ -2433,11 +2450,83 @@ test_56() {
 	mount_client $MOUNT || error "Unable to mount client"
 	echo ok
 	$LFS osts
+	[ -n "$ENABLE_QUOTA" ] && { $LFS quotacheck -ug $MOUNT || error "quotacheck has failed" ; }
 	stopall
 	reformat
 }
 run_test 56 "check big indexes"
 
+test_57() { # bug 22656
+	local NID=$(do_facet ost1 "$LCTL get_param nis" | tail -1 | awk '{print $1}')
+	writeconf
+	do_facet ost1 "$TUNEFS --failnode=$NID `ostdevname 1`" || error "tunefs failed"
+	start_mgsmds
+	start_ost && error "OST registration from failnode should fail"
+	stop_mds
+	reformat
+}
+run_test 57 "initial registration from failnode should fail (should return errs)"
+
+count_osts() {
+        do_facet mgs $LCTL get_param mgs.MGS.live.$FSNAME | grep OST | wc -l
+}
+
+test_59() {
+	start_mgsmds >> /dev/null
+	local C1=$(count_osts)
+	if [ $C1 -eq 0 ]; then
+		start_ost >> /dev/null
+		C1=$(count_osts)
+	fi
+	stopall
+	echo "original ost count: $C1 (expect > 0)"
+	[ $C1 -gt 0 ] || error "No OSTs in $FSNAME log"
+	start_mgsmds -o writeconf >> /dev/null || error "MDT start failed"
+	local C2=$(count_osts)
+	echo "after mdt writeconf count: $C2 (expect 0)"
+	[ $C2 -gt 0 ] && error "MDT writeconf should erase OST logs"
+	echo "OST start without writeconf should fail:"
+	start_ost >> /dev/null && error "OST start without writeconf didn't fail"
+	echo "OST start with writeconf should succeed:"
+	start_ost -o writeconf >> /dev/null || error "OST1 start failed"
+	local C3=$(count_osts)
+	echo "after ost writeconf count: $C3 (expect 1)"
+	[ $C3 -eq 1 ] || error "new OST writeconf should add:"
+	start_ost2 -o writeconf >> /dev/null || error "OST2 start failed"
+	local C4=$(count_osts)
+	echo "after ost2 writeconf count: $C4 (expect 2)"
+	[ $C4 -eq 2 ] || error "OST2 writeconf should add log"
+	stop_ost2 >> /dev/null
+	cleanup_nocli >> /dev/null
+}
+run_test 59 "writeconf mount option"
+
+
+test_58() { # bug 22658
+        [ "$FSTYPE" != "ldiskfs" ] && skip "not supported for $FSTYPE" && return
+	setup
+	mkdir -p $DIR/$tdir
+	createmany -o $DIR/$tdir/$tfile-%d 100
+	# make sure that OSTs do not cancel llog cookies before we unmount the MDS
+#define OBD_FAIL_OBD_LOG_CANCEL_NET      0x601
+	do_facet mds "lctl set_param fail_loc=0x601"
+	unlinkmany $DIR/$tdir/$tfile-%d 100
+	stop mds
+	local MNTDIR=$(facet_mntpt mds)
+	# remove all files from the OBJECTS dir
+	do_facet mds "mount -t ldiskfs $MDSDEV $MNTDIR"
+	do_facet mds "find $MNTDIR/OBJECTS -type f -delete"
+	do_facet mds "umount $MNTDIR"
+	# restart MDS with missing llog files
+	start_mds
+	do_facet mds "lctl set_param fail_loc=0"
+	reformat
+}
+run_test 58 "missing llog files must not prevent MDT from mounting"
+
+if ! combined_mgs_mds ; then
+	stop mgs
+fi
 cleanup_gss
 equals_msg `basename $0`: test complete
 [ -f "$TESTSUITELOG" ] && cat $TESTSUITELOG && grep -q FAIL $TESTSUITELOG && exit 1 || true

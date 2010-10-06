@@ -214,7 +214,7 @@ static struct ll_cl_context *ll_cl_init(struct file *file,
                 lcc = ERR_PTR(result);
         }
 
-        CDEBUG(D_VFSTRACE, "%lu@"DFID" -> %i %p %p\n",
+        CDEBUG(D_VFSTRACE, "%lu@"DFID" -> %d %p %p\n",
                vmpage->index, PFID(lu_object_fid(&clob->co_lu)), result,
                env, io);
         return lcc;
@@ -503,7 +503,7 @@ static int cl_read_ahead_page(const struct lu_env *env, struct cl_io *io,
  */
 static int ll_read_ahead_page(const struct lu_env *env, struct cl_io *io,
                               struct cl_page_list *queue,
-                              int index, struct address_space *mapping)
+                              pgoff_t index, struct address_space *mapping)
 {
         struct page      *vmpage;
         struct cl_object *clob  = ll_i2info(mapping->host)->lli_clob;
@@ -587,8 +587,8 @@ static unsigned long
 stride_pg_count(pgoff_t st_off, unsigned long st_len, unsigned long st_pgs,
                 unsigned long off, unsigned long length)
 {
-        unsigned long start = off > st_off ? off - st_off : 0;
-        unsigned long end = off + length > st_off ? off + length - st_off : 0;
+        __u64 start = off > st_off ? off - st_off : 0;
+        __u64 end = off + length > st_off ? off + length - st_off : 0;
         unsigned long start_left = 0;
         unsigned long end_left = 0;
         unsigned long pg_count;
@@ -606,7 +606,7 @@ stride_pg_count(pgoff_t st_off, unsigned long st_len, unsigned long st_pgs,
         if (end_left > st_pgs)
                 end_left = st_pgs;
 
-        CDEBUG(D_READA, "start %lu, end %lu start_left %lu end_left %lu \n",
+        CDEBUG(D_READA, "start "LPU64", end "LPU64" start_left %lu end_left %lu \n",
                start, end, start_left, end_left);
 
         if (start == end)
@@ -638,7 +638,8 @@ static int ras_inside_ra_window(unsigned long idx, struct ra_io_arg *ria)
          * For stride I/O mode, just check whether the idx is inside
          * the ria_pages. */
         return ria->ria_length == 0 || ria->ria_length == ria->ria_pages ||
-               (idx - ria->ria_stoff) % ria->ria_length < ria->ria_pages;
+               (idx >= ria->ria_stoff && (idx - ria->ria_stoff) %
+                ria->ria_length < ria->ria_pages);
 }
 
 static int ll_read_ahead_pages(const struct lu_env *env,

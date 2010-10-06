@@ -6,7 +6,7 @@ subdir-m += ptlrpc
 subdir-m += osc
 subdir-m += obdecho
 subdir-m += mgc
-subdir-m += quota
+#subdir-m += quota
 
 @SERVER_TRUE@subdir-m += mds ofd ost mgs mdt cmm mdd osd-ldiskfs lod osp #obdfilter
 @CLIENT_TRUE@subdir-m += mdc lmv llite fld

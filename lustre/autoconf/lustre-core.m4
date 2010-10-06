@@ -629,6 +629,29 @@ LB_LINUX_TRY_COMPILE([
 ])
 ])
 
+# LC_FLUSH_OWNER_ID
+# starting from 2.6.18 the file_operations .flush
+# method has a new "fl_owner_t id" parameter
+#
+AC_DEFUN([LC_FLUSH_OWNER_ID],
+[AC_MSG_CHECKING([if file_operations .flush has an fl_owner_t id])
+LB_LINUX_TRY_COMPILE([
+        #include <linux/fs.h>
+],[
+        struct file_operations *fops = NULL;
+        fl_owner_t id;
+        int i;
+
+        i = fops->flush(NULL, id);
+],[
+        AC_DEFINE(HAVE_FLUSH_OWNER_ID, 1,
+                [file_operations .flush method has an fl_owner_t id])
+        AC_MSG_RESULT([yes])
+],[
+        AC_MSG_RESULT([no])
+])
+])
+
 #
 # LC_STATFS_DENTRY_PARAM
 # starting from 2.6.18 linux kernel uses dentry instead of
@@ -1917,6 +1940,7 @@ AC_DEFUN([LC_PROG_LINUX],
          LC_UMOUNTBEGIN_HAS_VFSMOUNT
          LC_SEQ_LOCK
          LC_EXPORT_FILEMAP_FDATAWRITE_RANGE
+         LC_FLUSH_OWNER_ID
          if test x$enable_server = xyes ; then
                 LC_EXPORT_INVALIDATE_MAPPING_PAGES
          fi
@@ -2304,7 +2328,7 @@ AC_DEFUN([LC_QUOTA64],
                 AC_MSG_RESULT([yes])
         ],[
         tmp_flags="$EXTRA_KCFLAGS"
-        EXTRA_KCFLAGS="-I $LINUX/fs"
+        EXTRA_KCFLAGS="-I$LINUX/fs"
         LB_LINUX_TRY_COMPILE([
                 #include <linux/kernel.h>
                 #include <linux/fs.h>
@@ -2380,7 +2404,7 @@ AC_DEFUN([LC_CONFIGURE],
 [LC_CONFIG_OBD_BUFFER_SIZE
 
 if test $target_cpu == "i686" -o $target_cpu == "x86_64"; then
-        CFLAGS="$CFLAGS"
+        CFLAGS="$CFLAGS -Werror"
 fi
 
 # include/liblustre.h
@@ -2502,6 +2526,7 @@ AC_DEFUN([LC_CONFIG_FILES],
 lustre/Makefile
 lustre/autoMakefile
 lustre/autoconf/Makefile
+lustre/conf/Makefile
 lustre/contrib/Makefile
 lustre/doc/Makefile
 lustre/include/Makefile

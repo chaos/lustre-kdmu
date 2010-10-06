@@ -660,7 +660,10 @@ static int mdd_changelog_ns_store(const struct lu_env  *env,
         int rc;
         ENTRY;
 
+        /* Not recording */
         if (!(mdd->mdd_cl.mc_flags & CLM_ON))
+                RETURN(0);
+        if ((mdd->mdd_cl.mc_mask & (1 << type)) == 0)
                 RETURN(0);
 
         LASSERT(parent != NULL);
@@ -1582,7 +1585,7 @@ static int mdd_create_data(const struct lu_env *env, struct md_object *pobj,
         if (spec->sp_cr_flags & MDS_OPEN_HAS_EA) {
                 LASSERT(spec->u.sp_ea.eadata != NULL);
                 LASSERT(spec->u.sp_ea.eadatalen > 0);
-                buf.lb_buf = spec->u.sp_ea.eadata;
+                buf.lb_buf = (void *) spec->u.sp_ea.eadata;
                 buf.lb_len = spec->u.sp_ea.eadatalen;
         } else {
                 buf.lb_buf = NULL;
@@ -1983,8 +1986,8 @@ static int mdd_create(const struct lu_env *env,
                                 block_count = 1;
                                 break;
                         }
-                        if (qcids[USRQUOTA] == qpids[USRQUOTA] &&
-                            qcids[GRPQUOTA] == qpids[GRPQUOTA]) {
+                        if (qcids[CFS_USRQUOTA] == qpids[CFS_USRQUOTA] &&
+                            qcids[CFS_GRPQUOTA] == qpids[CFS_GRPQUOTA]) {
                                 block_count += 1;
                                 same = 1;
                         }

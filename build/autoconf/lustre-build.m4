@@ -331,6 +331,7 @@ AC_DEFUN([LB_DEFINE_E2FSPROGS_NAMES],
                        [use alternate names for ldiskfs-enabled e2fsprogs]),
 	[],[withval='no'])
 
+AC_MSG_CHECKING([whether to use alternate names for e2fsprogs])
 if test x$withval = xyes ; then
 	AC_DEFINE(HAVE_LDISKFSPROGS, 1, [enable use of ldiskfsprogs package])
 	E2FSPROGS="ldiskfsprogs"
@@ -441,6 +442,10 @@ if test -r $SPL_OBJ/Module.symvers; then
 	SPL_SYMBOLS=Module.symvers
 elif test -r $SPL_OBJ/Modules.symvers; then
 	SPL_SYMBOLS=Modules.symvers
+elif test -r $SPL_OBJ/module/Module.symvers; then
+	SPL_SYMBOLS=Module.symvers
+elif test -r $SPL_OBJ/module/Modules.symvers; then
+	SPL_SYMBOLS=Modules.symvers
 else
 	SPL_SYMBOLS=$SYMVERFILE
 fi
@@ -451,11 +456,11 @@ AC_SUBST(SPL_SYMBOLS)
 
 AC_DEFUN([LB_SPL_RELEASE],
 [AC_MSG_CHECKING([spl source release])
-if test -r $SPL_DIR/spl_config.h; then
+if test -r $SPL_OBJ/spl_config.h; then
 	tmp_flags="$EXTRA_KCFLAGS"
 	EXTRA_KCFLAGS="-I$SPL_DIR $EXTRA_KCFLAGS"
 	LB_LINUX_TRY_MAKE([
-		#include <$SPL_DIR/spl_config.h>
+		#include <$SPL_OBJ/spl_config.h>
 	],[
 		char *SPL_RELEASE;
 		SPL_RELEASE=SPL_META_VERSION;
@@ -490,7 +495,7 @@ AC_SUBST(SPL_RELEASE)
 AC_DEFUN([LB_SPL_CFLAGS],
 [
 SPL_EXTRA_PRE_CFLAGS="-I$SPL_DIR -I$SPL_DIR/include "
-SPL_EXTRA_PRE_CFLAGS="$SPL_EXTRA_PRE_CFLAGS -include $SPL_DIR/spl_config.h"
+SPL_EXTRA_PRE_CFLAGS="$SPL_EXTRA_PRE_CFLAGS -include $SPL_OBJ/spl_config.h"
 
 AC_SUBST(SPL_EXTRA_PRE_CFLAGS)
 ])
@@ -571,11 +576,7 @@ AC_ARG_WITH([spl-obj],
 		fi
 	],[
 		if test x$with_spl = xyes; then
-			if test -d $SPL_DIR/module; then
-				SPL_OBJ=$SPL_DIR/module
-			else
-				SPL_OBJ=$SPL_DIR
-			fi
+			SPL_OBJ=$SPL_DIR
 		fi
 	])
 
@@ -637,6 +638,10 @@ if test -r $ZFS_OBJ/Module.symvers; then
 	ZFS_SYMBOLS=Module.symvers
 elif test -r $ZFS_OBJ/Modules.symvers; then
 	ZFS_SYMBOLS=Modules.symvers
+elif test -r $ZFS_OBJ/module/Module.symvers; then
+	ZFS_SYMBOLS=Module.symvers
+elif test -r $ZFS_OBJ/module/Modules.symvers; then
+	ZFS_SYMBOLS=Modules.symvers
 else
 	ZFS_SYMBOLS=$SYMVERFILE
 fi
@@ -647,11 +652,11 @@ AC_SUBST(ZFS_SYMBOLS)
 
 AC_DEFUN([LB_ZFS_RELEASE],
 [AC_MSG_CHECKING([zfs source release])
-if test -r $ZFS_DIR/zfs_config.h; then
+if test -r $ZFS_OBJ/zfs_config.h; then
 	tmp_flags="$EXTRA_KCFLAGS"
 	EXTRA_KCFLAGS="-I$ZFS_DIR $EXTRA_KCFLAGS"
 	LB_LINUX_TRY_MAKE([
-		#include <$ZFS_DIR/zfs_config.h>
+		#include <$ZFS_OBJ/zfs_config.h>
 	],[
 		char *ZFS_RELEASE;
 		ZFS_RELEASE=ZFS_META_VERSION;
@@ -685,12 +690,8 @@ AC_SUBST(ZFS_RELEASE)
 
 AC_DEFUN([LB_ZFS_CFLAGS],
 [
-ZFS_EXTRA_PRE_CFLAGS="-I$ZFS_DIR"
-ZFS_EXTRA_PRE_CFLAGS="$ZFS_EXTRA_PRE_CFLAGS -I$ZFS_DIR/module/zcommon/include"
-ZFS_EXTRA_PRE_CFLAGS="$ZFS_EXTRA_PRE_CFLAGS -I$ZFS_DIR/module/avl/include"
-ZFS_EXTRA_PRE_CFLAGS="$ZFS_EXTRA_PRE_CFLAGS -I$ZFS_DIR/module/nvpair/include"
-ZFS_EXTRA_PRE_CFLAGS="$ZFS_EXTRA_PRE_CFLAGS -I$ZFS_DIR/module/zfs/include"
-ZFS_EXTRA_PRE_CFLAGS="$ZFS_EXTRA_PRE_CFLAGS -include $ZFS_DIR/zfs_config.h"
+ZFS_EXTRA_PRE_CFLAGS="-I$ZFS_DIR -I$ZFS_DIR/include"
+ZFS_EXTRA_PRE_CFLAGS="$ZFS_EXTRA_PRE_CFLAGS -include $ZFS_OBJ/zfs_config.h"
 
 AC_SUBST(ZFS_EXTRA_PRE_CFLAGS)
 ])
@@ -777,11 +778,7 @@ AC_ARG_WITH([zfs-obj],
 		fi
 	],[
 		if test x$with_zfs = xyes; then
-			if test -d $ZFS_DIR/module; then
-				ZFS_OBJ=$ZFS_DIR/module
-			else
-				ZFS_OBJ=$ZFS_DIR
-			fi
+			ZFS_OBJ=$ZFS_DIR
 		fi
 	])
 

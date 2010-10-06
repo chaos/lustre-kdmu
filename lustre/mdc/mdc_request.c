@@ -60,9 +60,6 @@
 
 #define REQUEST_MINOR 244
 
-static quota_interface_t *quota_interface;
-extern quota_interface_t mdc_quota_interface;
-
 static int mdc_cleanup(struct obd_device *obd);
 
 int mdc_unpack_capa(struct obd_export *exp, struct ptlrpc_request *req,
@@ -1281,6 +1278,8 @@ out:
         if (cs->cs_buf)
                 OBD_FREE(cs->cs_buf, CR_MAXSIZE);
         OBD_FREE_PTR(cs);
+        /* detach from parent process so we get cleaned up */
+        cfs_daemonize("cl_send");
         return rc;
 }
 
@@ -1375,10 +1374,6 @@ static int mdc_iocontrol(unsigned int cmd, struct obd_export *exp, int len,
                 GOTO(out, rc);
         }
 #endif
-        case OBD_IOC_POLL_QUOTACHECK:
-                rc = lquota_poll_check(quota_interface, exp,
-                                       (struct if_quotacheck *)karg);
-                GOTO(out, rc);
         case OBD_IOC_PING_TARGET:
                 rc = ptlrpc_obd_ping(obd);
                 GOTO(out, rc);
@@ -1905,6 +1900,25 @@ struct obd_uuid *mdc_get_uuid(struct obd_export *exp) {
         return &cli->cl_target_uuid;
 }
 
+/**
+ * Determine whether the lock can be canceled before replaying it during
+ * recovery, non zero value will be return if the lock can be canceled,
+ * or zero returned for not
+ */
+static int mdc_cancel_for_recovery(struct ldlm_lock *lock)
+{
+        if (lock->l_resource->lr_type != LDLM_IBITS)
+                RETURN(0);
+
+        /* FIXME: if we ever get into a situation where there are too many
+         * opened files with open locks on a single node, then we really
+         * should replay these open locks to reget it */
+        if (lock->l_policy_data.l_inodebits.bits & MDS_INODELOCK_OPEN)
+                RETURN(0);
+
+        RETURN(1);
+}
+
 static int mdc_setup(struct obd_device *obd, struct lustre_cfg *cfg)
 {
         struct client_obd *cli = &obd->u.cli;
@@ -1936,6 +1950,8 @@ static int mdc_setup(struct obd_device *obd, struct lustre_cfg *cfg)
         lprocfs_obd_setup(obd, lvars.obd_vars);
         sptlrpc_lprocfs_cliobd_attach(obd);
         ptlrpc_lprocfs_register_obd(obd);
+
+        ns_register_cancel(obd->obd_namespace, mdc_cancel_for_recovery);
 
         rc = obd_llog_init(obd, &obd->obd_olg, obd, NULL);
         if (rc) {
@@ -2272,14 +2288,8 @@ int __init mdc_init(void)
         struct lprocfs_static_vars lvars = { 0 };
         lprocfs_mdc_init_vars(&lvars);
 
-        cfs_request_module("lquota");
-        quota_interface = PORTAL_SYMBOL_GET(mdc_quota_interface);
-        init_obd_quota_ops(quota_interface, &mdc_obd_ops);
-
         rc = class_register_type(&mdc_obd_ops, &mdc_md_ops, lvars.module_vars,
                                  LUSTRE_MDC_NAME, NULL);
-        if (rc && quota_interface)
-                PORTAL_SYMBOL_PUT(mdc_quota_interface);
 
         RETURN(rc);
 }
@@ -2287,9 +2297,6 @@ int __init mdc_init(void)
 #ifdef __KERNEL__
 static void /*__exit*/ mdc_exit(void)
 {
-        if (quota_interface)
-                PORTAL_SYMBOL_PUT(mdc_quota_interface);
-
         class_unregister_type(LUSTRE_MDC_NAME);
 }
 

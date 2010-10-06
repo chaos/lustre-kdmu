@@ -245,20 +245,22 @@ static const struct dt_device_operations osp_dt_ops = {
 
 static int osp_init_last_used(const struct lu_env *env, struct osp_device *m)
 {
-        struct dt_object  *o;
-        struct lu_fid      fid;
-        struct lu_attr     attr;
-        int                rc;
-        struct lu_buf      lb;
-        obd_id             tmp;
-        loff_t             off;
+        struct dt_object_format  dof = { 0 };
+        struct dt_object        *o;
+        struct lu_fid            fid;
+        struct lu_attr           attr;
+        int                      rc;
+        struct lu_buf            lb;
+        obd_id                   tmp;
+        loff_t                   off;
         ENTRY;
 
         memset(&attr, 0, sizeof(attr));
         attr.la_valid = LA_MODE;
         attr.la_mode = S_IFREG | 0666;
         lu_local_obj_fid(&fid, MDD_LOV_OBJ_OID);
-        o = dt_reg_open_or_create(env, m->opd_storage, &fid, &attr);
+        dof.dof_type = DFT_REGULAR;
+        o = dt_find_or_create(env, m->opd_storage, &fid, &dof, &attr);
         if (IS_ERR(o))
                 RETURN(PTR_ERR(o));
 

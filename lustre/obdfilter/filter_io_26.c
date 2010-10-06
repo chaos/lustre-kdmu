@@ -136,8 +136,16 @@ static int dio_complete_routine(struct bio *bio, unsigned int done, int error)
         /* CAVEAT EMPTOR: possibly in IRQ context
          * DO NOT record procfs stats here!!! */
 
-        if (bio->bi_size)                       /* Not complete */
-                return 1;
+#ifdef HAVE_BIO_ENDIO_2ARG
+       /* The "bi_size" check was needed for kernels < 2.6.24 in order to
+        * handle the case where a SCSI request error caused this callback
+        * to be called before all of the biovecs had been processed.
+        * Without this check the server thread will hang.  In newer kernels
+        * the bio_end_io routine is never called for partial completions,
+        * so this check is no longer needed. */
+        if (bio->bi_size)                      /* Not complete */
+                DIO_RETURN(1);
+#endif
 
         if (unlikely(iobuf == NULL)) {
                 CERROR("***** bio->bi_private is NULL!  This should never "
@@ -361,14 +369,17 @@ int filter_do_bio(struct obd_export *exp, struct inode *inode,
 
                                 /* Dang! I have to fragment this I/O */
                                 CDEBUG(D_INODE, "bio++ sz %d vcnt %d(%d) "
-                                       "sectors %d(%d) psg %d(%d) hsg %d(%d)\n",
+                                       "sectors %d(%d) psg %d(%d) hsg %d(%d) "
+                                       "sector %llu next %llu\n",
                                        bio->bi_size,
                                        bio->bi_vcnt, bio->bi_max_vecs,
                                        bio->bi_size >> 9, q->max_sectors,
                                        bio_phys_segments(q, bio),
                                        q->max_phys_segments,
                                        bio_hw_segments(q, bio),
-                                       q->max_hw_segments);
+                                       q->max_hw_segments,
+                                       (u64)bio->bi_sector,
+                                       (u64)sector);
 
                                 record_start_io(iobuf, rw, bio->bi_size, exp);
                                 rc = fsfilt_send_bio(rw, obd, inode, bio);

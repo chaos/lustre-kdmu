@@ -505,7 +505,7 @@ static struct thandle *osd_trans_create(const struct lu_env *env,
         struct osd_thandle     *oh;
         struct thandle         *th;
         ENTRY;
-       
+
         /* on pending IO in this thread should left from prev. request */
         LASSERT(cfs_atomic_read(&iobuf->dr_numreqs) == 0);
 
@@ -516,9 +516,6 @@ static struct thandle *osd_trans_create(const struct lu_env *env,
                 th->th_dev = d;
                 th->th_result = 0;
                 oh->ot_credits = 0;
-                lu_device_get(&d->dd_lu_dev);
-                oh->ot_dev_link = lu_ref_add(&d->dd_lu_dev.ld_reference,
-                                             "osd-tx", th);
         }
         RETURN(th);
 }
@@ -534,7 +531,7 @@ int osd_trans_start(const struct lu_env *env,
         struct osd_device  *dev = osd_dt_dev(d);
         handle_t           *jh;
         struct osd_thandle *oh;
-        int hook_res;
+        int rc;
 
         ENTRY;
 
@@ -544,9 +541,9 @@ int osd_trans_start(const struct lu_env *env,
         LASSERT(oh != NULL);
         LASSERT(oh->ot_handle == NULL);
 
-        hook_res = dt_txn_hook_start(env, d, th);
-        if (hook_res != 0)
-                GOTO(out, hook_res);
+        rc = dt_txn_hook_start(env, d, th);
+        if (rc != 0)
+                GOTO(out, rc);
 
         oh->ot_credits += LDISKFS_QUOTA_INIT_BLOCKS(osd_sb(dev));
 
@@ -564,7 +561,7 @@ int osd_trans_start(const struct lu_env *env,
                 CERROR("  insert: %d, delete: %d\n",
                        oh->ot_declare_insert, oh->ot_declare_delete);
 #endif
-                /* XXX: GOTO(out, hook_res = -EINVAL); */
+                GOTO(out, rc = -EINVAL);
         }
 
         /*
@@ -574,10 +571,14 @@ int osd_trans_start(const struct lu_env *env,
 
         jh = ldiskfs_journal_start_sb(osd_sb(dev), oh->ot_credits >> 1);
         if (!IS_ERR(jh)) {
-                lu_context_init(&th->th_ctx, th->th_tags | LCT_TX_HANDLE);
-                lu_context_enter(&th->th_ctx);
                 oh->ot_handle = jh;
                 LASSERT(oti->oti_txns == 0);
+                lu_context_init(&th->th_ctx, LCT_TX_HANDLE);
+                lu_context_enter(&th->th_ctx);
+
+                lu_device_get(&d->dd_lu_dev);
+                oh->ot_dev_link = lu_ref_add(&d->dd_lu_dev.ld_reference,
+                                             "osd-tx", th);
 
                 /*
                  * XXX: current rule is that we first start tx,
@@ -595,19 +596,12 @@ int osd_trans_start(const struct lu_env *env,
                 }
 
                 oti->oti_txns++;
-                hook_res = 0;
+                rc = 0;
         } else {
-                hook_res = PTR_ERR(jh);
+                rc = PTR_ERR(jh);
         }
-
 out:
-        if (hook_res) {
-                struct lu_device *lud = &d->dd_lu_dev;
-                lu_ref_del_at(&lud->ld_reference, oh->ot_dev_link, "osd-tx", th);
-                lu_device_put(lud);
-                th->th_dev = NULL;
-        }
-        RETURN(hook_res);
+        RETURN(rc);
 }
 
 /*
@@ -915,24 +909,13 @@ static int osd_init_capa_ctxt(const struct lu_env *env, struct dt_device *d,
 /**
  * Concurrency: serialization provided by callers.
  */
-static void osd_init_quota_ctxt(const struct lu_env *env, struct dt_device *d,
-                               struct dt_quota_ctxt *ctxt, void *data)
+static int osd_quota_setup(const struct lu_env *env, struct dt_device *d,
+                                void *data)
 {
-        struct obd_device *obd = (void *)ctxt;
-        struct osd_device *osd;
-        ENTRY;
-
-        osd = osd_dt_dev(d);
-        LASSERT(osd_sb(osd));
-
-        obd->u.obt.obt_sb = osd_sb(osd);
-
-        OBD_SET_CTXT_MAGIC(&obd->obd_lvfs_ctxt);
-        obd->obd_lvfs_ctxt.pwdmnt = osd->od_mnt;
-        obd->obd_lvfs_ctxt.pwd = osd->od_mnt->mnt_root;
-        obd->obd_lvfs_ctxt.fs = get_ds();
-
-        EXIT;
+        return 0;
+}
+static void osd_quota_cleanup(const struct lu_env *env, struct dt_device *d)
+{
 }
 
 /**
@@ -1070,7 +1053,10 @@ static const struct dt_device_operations osd_dt_ops = {
         .dt_ro             = osd_ro,
         .dt_commit_async   = osd_commit_async,
         .dt_init_capa_ctxt = osd_init_capa_ctxt,
-        .dt_init_quota_ctxt= osd_init_quota_ctxt,
+        .dt_quota          = {
+                .dt_setup   = osd_quota_setup,
+                .dt_cleanup = osd_quota_cleanup,
+        },
         .dt_label_get      = osd_label_get,
         .dt_label_set      = osd_label_set
 };
@@ -2390,9 +2376,9 @@ static struct obd_capa *osd_capa_get(const struct lu_env *env,
                 __u32 d[4], s[4];
 
                 s[0] = obj->oo_inode->i_uid;
-                ll_get_random_bytes(&(s[1]), sizeof(__u32));
+                cfs_get_random_bytes(&(s[1]), sizeof(__u32));
                 s[2] = obj->oo_inode->i_gid;
-                ll_get_random_bytes(&(s[3]), sizeof(__u32));
+                cfs_get_random_bytes(&(s[3]), sizeof(__u32));
                 rc = capa_encrypt_id(d, s, key->lk_key, CAPA_HMAC_KEY_MAX_LEN);
                 if (unlikely(rc))
                         RETURN(ERR_PTR(rc));

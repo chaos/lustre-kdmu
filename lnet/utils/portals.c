@@ -195,6 +195,19 @@ lnet_parse_time (time_t *t, char *str)
         return (0);
 }
 
+int
+lnet_parse_nid(char *nid_str, lnet_process_id_t *id_ptr)
+{
+        id_ptr->pid = LNET_PID_ANY;
+        id_ptr->nid = libcfs_str2nid(nid_str);
+        if (id_ptr->nid == LNET_NID_ANY) {
+                fprintf (stderr, "Can't parse nid \"%s\"\n", nid_str);
+                return -1;
+        }
+
+        return 0;
+}
+
 int g_net_is_set (char *cmd)
 {
         if (g_net_set)
@@ -290,6 +303,14 @@ int jt_ptl_network(int argc, char **argv)
         net = libcfs_str2net(argv[1]);
         if (net == LNET_NIDNET(LNET_NID_ANY)) {
                 fprintf(stderr, "Can't parse net %s\n", argv[1]);
+                return -1;
+        }
+
+        if (LNET_NETTYP(net) == CIBLND    ||
+            LNET_NETTYP(net) == OPENIBLND ||
+            LNET_NETTYP(net) == IIBLND    ||
+            LNET_NETTYP(net) == VIBLND) {
+                fprintf(stderr, "Net %s obsoleted\n", libcfs_lnd2str(net));
                 return -1;
         }
 
@@ -544,7 +565,7 @@ jt_ptl_print_peers (int argc, char **argv)
         int                      rc;
 
         if (!g_net_is_compatible (argv[0], SOCKLND, RALND, PTLLND, MXLND,
-                                  OPENIBLND, CIBLND, IIBLND, VIBLND, O2IBLND, 0))
+                                  O2IBLND, 0))
                 return -1;
 
         for (index = 0;;index++) {
@@ -585,7 +606,7 @@ jt_ptl_print_peers (int argc, char **argv)
                                 data.ioc_u32[5] & 0xffff, /* nactiveq */
                                 data.ioc_u32[6] >> 16, /* credits */
                                 data.ioc_u32[6] & 0xffff); /* outstanding_credits */
-                } else if (g_net_is_compatible(NULL, RALND, OPENIBLND, CIBLND, VIBLND, 0)) {
+                } else if (g_net_is_compatible(NULL, RALND, 0)) {
                         printf ("%-20s [%d]@%s:%d\n",
                                 libcfs_nid2str(data.ioc_nid), /* peer nid */
                                 data.ioc_count,   /* peer persistence */
@@ -618,24 +639,12 @@ jt_ptl_add_peer (int argc, char **argv)
         int                      port = 0;
         int                      rc;
 
-        if (!g_net_is_compatible (argv[0], SOCKLND, RALND,
-                                  OPENIBLND, CIBLND, IIBLND, VIBLND, 0))
+        if (!g_net_is_compatible (argv[0], SOCKLND, RALND, 0))
                 return -1;
 
-        if (g_net_is_compatible(NULL, SOCKLND, OPENIBLND, CIBLND, RALND, 0)) {
-                if (argc != 4) {
-                        fprintf (stderr, "usage(tcp,openib,cib,ra): %s nid ipaddr port\n",
-                                 argv[0]);
-                        return 0;
-                }
-        } else if (g_net_is_compatible(NULL, VIBLND, 0)) {
-                if (argc != 3) {
-                        fprintf (stderr, "usage(vib): %s nid ipaddr\n",
-                                 argv[0]);
-                        return 0;
-                }
-        } else if (argc != 2) {
-                fprintf (stderr, "usage(iib): %s nid\n", argv[0]);
+        if (argc != 4) {
+                fprintf (stderr, "usage(tcp,ra): %s nid ipaddr port\n",
+                         argv[0]);
                 return 0;
         }
 
@@ -645,14 +654,12 @@ jt_ptl_add_peer (int argc, char **argv)
                 return -1;
         }
 
-        if (g_net_is_compatible (NULL, SOCKLND, OPENIBLND, CIBLND, VIBLND, RALND, 0) &&
-            lnet_parse_ipaddr (&ip, argv[2]) != 0) {
+        if (lnet_parse_ipaddr (&ip, argv[2]) != 0) {
                 fprintf (stderr, "Can't parse ip addr: %s\n", argv[2]);
                 return -1;
         }
 
-        if (g_net_is_compatible (NULL, SOCKLND, OPENIBLND, CIBLND, RALND, 0) &&
-            lnet_parse_port (&port, argv[3]) != 0) {
+        if (lnet_parse_port (&port, argv[3]) != 0) {
                 fprintf (stderr, "Can't parse port: %s\n", argv[3]);
                 return -1;
         }
@@ -684,7 +691,7 @@ jt_ptl_del_peer (int argc, char **argv)
         int                      rc;
 
         if (!g_net_is_compatible (argv[0], SOCKLND, RALND, MXLND, PTLLND,
-                                  OPENIBLND, CIBLND, IIBLND, VIBLND, O2IBLND, 0))
+                                  O2IBLND, 0))
                 return -1;
 
         if (g_net_is_compatible(NULL, SOCKLND, 0)) {
@@ -753,8 +760,7 @@ jt_ptl_print_connections (int argc, char **argv)
         int                      index;
         int                      rc;
 
-        if (!g_net_is_compatible (argv[0], SOCKLND, RALND, MXLND,
-                                  OPENIBLND, CIBLND, IIBLND, VIBLND, O2IBLND, 0))
+        if (!g_net_is_compatible (argv[0], SOCKLND, RALND, MXLND, O2IBLND, 0))
                 return -1;
 
         for (index = 0; ; index++) {
@@ -819,8 +825,7 @@ int jt_ptl_disconnect(int argc, char **argv)
                 return 0;
         }
 
-        if (!g_net_is_compatible (NULL, SOCKLND, RALND, MXLND,
-                                  OPENIBLND, CIBLND, IIBLND, VIBLND, O2IBLND, 0))
+        if (!g_net_is_compatible (NULL, SOCKLND, RALND, MXLND, O2IBLND, 0))
                 return 0;
 
         if (argc >= 2 &&
@@ -946,12 +951,9 @@ int jt_ptl_ping(int argc, char **argv)
 
         sep = strchr(argv[1], '-');
         if (sep == NULL) {
-                id.pid = LNET_PID_ANY;
-                id.nid = libcfs_str2nid(argv[1]);
-                if (id.nid == LNET_NID_ANY) {
-                        fprintf (stderr, "Can't parse nid \"%s\"\n", argv[1]);
+                rc = lnet_parse_nid(argv[1], &id);
+                if (rc != 0)
                         return -1;
-                }
         } else {
                 char   *end;
 
@@ -961,12 +963,19 @@ int jt_ptl_ping(int argc, char **argv)
                 else
                         id.pid = strtoul(argv[1], &end, 0);
 
-                id.nid = libcfs_str2nid(sep + 1);
+                if (end != sep) { /* assuming '-' is part of hostname */
+                        rc = lnet_parse_nid(argv[1], &id);
+                        if (rc != 0)
+                                return -1;
+                } else {
+                        id.nid = libcfs_str2nid(sep + 1);
 
-                if (end != sep ||
-                    id.nid == LNET_NID_ANY) {
-                        fprintf(stderr, "Can't parse process id \"%s\"\n", argv[1]);
-                        return -1;
+                        if (id.nid == LNET_NID_ANY) {
+                                fprintf(stderr,
+                                        "Can't parse process id \"%s\"\n",
+                                        argv[1]);
+                                return -1;
+                        }
                 }
         }
 

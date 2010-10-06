@@ -33,5 +33,37 @@
  * This file is part of Lustre, http://www.lustre.org/
  * Lustre is a trademark of Sun Microsystems, Inc.
  */
+/*
+ * This file is part of Lustre, http://www.lustre.org/
+ * Lustre is a trademark of Sun Microsystems, Inc.
+ *
+ * lustre/include/osd_quota.h
+ *
+ * Quota data and functions are common to all osds
+ *
+ * Author: Landen Tian <landen@sun.com>
+ */
 
-#include "openiblnd.c"
+#ifndef _OSD_QUOTA_H
+#define _OSD_QUOTA_H
+
+#include <lustre_fid.h>
+
+typedef struct osd_quota_entry {
+        uint64_t qe_id;
+        uint64_t qe_value;
+} osd_quota_entry_t;
+
+/** XXX: it will be used by ldiskfs-osd later  */
+struct osd_quota_slave_rec { /* 32 bytes */
+        __u64 blimit;  /* local limit on allocated blocks */
+        __u64 bspace;  /* current space in use */
+        __u64 ilimit;  /* local limit on allocated inodes/blocks */
+        __u64 ispace;  /* current # inodes in use */
+};
+
+#define QUOTA_OP_USER_FILE     "lquota_v2.user"
+#define QUOTA_OP_GROUP_FILE    "lquota_v2.group"
+
+#endif /* _OSD_QUOTA_H */
+

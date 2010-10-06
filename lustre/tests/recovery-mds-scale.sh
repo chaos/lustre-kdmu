@@ -28,11 +28,13 @@ echo "--- env ---" >&2
 set -x
 
 [ "$SHARED_DIRECTORY" ] || \
-    { skip "$0: Empty SHARED_DIRECTORY" && exit 0; }
+    { FAIL_ON_ERROR=true skip_env "$0 Empty SHARED_DIRECTORY" && exit 0; }
 
-[ -n "$CLIENTS" ] || { skip "$0 Need two or more remote clients" && exit 0; }
+[ -n "$CLIENTS" ] || \
+    { FAIL_ON_ERROR=true skip_env "$0 Need two or more remote clients" && exit 0; }
+
 [ $CLIENTCOUNT -ge 3 ] || \
-    { skip "$0 Need two or more remote clients, have $CLIENTCOUNT" && exit 0; }
+    { FAIL_ON_ERROR=true skip_env "$0 Need two or more remote clients, have $((CLIENTCOUNT - 1))" && exit 0; }
 
 END_RUN_FILE=${END_RUN_FILE:-$SHARED_DIRECTORY/end_run_file}
 LOAD_PID_FILE=${LOAD_PID_FILE:-$TMP/client-load.pid}
@@ -126,7 +128,7 @@ summary_and_cleanup () {
         fi
         rc=1
     fi
-     
+
     echo $(date +'%F %H:%M:%S') Terminating clients loads ...
     echo "$0" >> $END_RUN_FILE
     local result=PASS
@@ -171,7 +173,7 @@ Status: $result: rc=$rc"
 }
 
 #
-# MAIN 
+# MAIN
 #
 log "-----============= $0 starting =============-----"
 
@@ -203,38 +205,37 @@ CURRENT_TS=$START_TS
 
 while [ $ELAPSED -lt $DURATION -a ! -e $END_RUN_FILE ]; do
 
-    # In order to perform the 
+    # In order to perform the
     # expected number of failovers, we need to account the following :
     # 1) the time that has elapsed during the client load checking
     # 2) time takes for failover
 
     it_time_start=$(date +%s)
-    
+
     SERVERFACET=$(get_random_entry $SERVERS)
     var=${SERVERFACET}_numfailovers
 
-    # Check that our client loads are still running. If any have died, 
-    # that means they have died outside of recovery, which is unacceptable.    
+    # Check that our client loads are still running. If any have died,
+    # that means they have died outside of recovery, which is unacceptable.
 
     log "==== Checking the clients loads BEFORE failover -- failure NOT OK \
-    ELAPSED=$ELAPSED DURATION=$DURATION PERIOD=$SERVER_FAILOVER_PERIOD" 
+    ELAPSED=$ELAPSED DURATION=$DURATION PERIOD=$SERVER_FAILOVER_PERIOD"
 
     if ! check_client_loads $NODES_TO_USE; then
         exit 4
     fi
 
     log "Wait $SERVERFACET recovery complete before doing next failover ...."
-    if [[ $(server_numfailovers $SERVERFACET) != 0 ]]; then
-        if ! wait_recovery_complete $SERVERFACET ; then
-            echo "$SERVERFACET recovery is not completed!"
-            exit 7
-        fi
+
+    if ! wait_recovery_complete $SERVERFACET ; then
+        echo "$SERVERFACET recovery is not completed!"
+        exit 7
     fi
 
     log "Checking clients are in FULL state before doing next failover"
     if ! wait_clients_import_state $NODES_TO_USE $SERVERFACET FULL; then
         echo "Clients import not FULL, please consider to increase SERVER_FAILOVER_PERIOD=$SERVER_FAILOVER_PERIOD !"
-        
+
     fi
     log "Starting failover on $SERVERFACET"
 
@@ -252,10 +253,10 @@ while [ $ELAPSED -lt $DURATION -a ! -e $END_RUN_FILE ]; do
     # Increment the number of failovers
     val=$((${!var} + 1))
     eval $var=$val
- 
+
     CURRENT_TS=$(date +%s)
     ELAPSED=$((CURRENT_TS - START_TS))
- 
+
     sleep=$((SERVER_FAILOVER_PERIOD-(CURRENT_TS - it_time_start)))
 
     # keep count the number of itterations when
@@ -269,8 +270,8 @@ This iteration, the load was only applied for sleep=$sleep seconds.
 Estimated max recovery time : $max_recov_time
 Probably the hardware is taking excessively long to boot.
 Try to increase SERVER_FAILOVER_PERIOD (current is $SERVER_FAILOVER_PERIOD), bug 20918"
-        [ $reqfail -gt $REQFAIL ] && exit 6 
-    fi  
+        [ $reqfail -gt $REQFAIL ] && exit 6
+    fi
 
     log "$SERVERFACET has failed over ${!var} times, and counting..."
 
@@ -278,7 +279,7 @@ Try to increase SERVER_FAILOVER_PERIOD (current is $SERVER_FAILOVER_PERIOD), bug
          break
     fi
 
-    if [ $sleep -gt 0 ]; then 
+    if [ $sleep -gt 0 ]; then
         echo "sleeping $sleep seconds ... "
         sleep $sleep
     fi

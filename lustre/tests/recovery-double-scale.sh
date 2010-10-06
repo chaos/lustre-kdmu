@@ -30,11 +30,13 @@ echo "--- env ---" >&2
 set -x
 
 [ "$SHARED_DIRECTORY" ] || \
-    { skip "$0: Empty SHARED_DIRECTORY" && exit 0; }
+    { FAIL_ON_ERROR=true skip_env "$0 Empty SHARED_DIRECTORY" && exit 0; }
 
-[ -n "$CLIENTS" ] || { skip "$0 Need two or more remote clients" && exit 0; }
+[ -n "$CLIENTS" ] || \
+    { FAIL_ON_ERROR=true skip_env "$0 Need two or more remote clients" && exit 0; }
+
 [ $CLIENTCOUNT -ge 3 ] || \
-    { skip "$0 Need two or more remote clients, have $CLIENTCOUNT" && exit 0; }
+    { FAIL_ON_ERROR=true skip_env "$0 Need two or more remote clients, have $((CLIENTCOUNT - 1))" && exit 0; }
 
 END_RUN_FILE=${END_RUN_FILE:-$SHARED_DIRECTORY/end_run_file}
 LOAD_PID_FILE=${LOAD_PID_FILE:-$TMP/client-load.pid}
@@ -43,6 +45,9 @@ remote_mds_nodsh && skip "remote MDS with nodsh" && exit 0
 remote_ost_nodsh && skip "remote OST with nodsh" && exit 0
 
 check_timeout || exit 1
+
+[[ $FAILURE_MODE = SOFT ]] && \
+    log "WARNING: $0 is not functional with FAILURE_MODE = SOFT, bz22797"
 
 build_test_filter
 
@@ -74,7 +79,7 @@ reboot_recover_node () {
     # MDS, OST item contains the facet
     case $nodetype in
        MDS|OST )    facet_failover $item
-                [ "$SERIAL" ] && wait_recovery_complete $item $((timeout * 4)) || true
+                [ "$SERIAL" ] && wait_recovery_complete $item || true
                 ;;
        clients) for c in ${item//,/ }; do
                       # make sure the client loads die

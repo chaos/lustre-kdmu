@@ -476,29 +476,30 @@ static int lov_notify(struct obd_device *obd, struct obd_device *watched,
                 /* NULL watched means all osc's in the lov (only for syncs) */
                 /* sync event should be send lov idx as data */
                 struct lov_obd *lov = &obd->u.lov;
-                struct obd_device *tgt_obd;
-                int i;
+                int i, is_sync;
+
+                data = &i;
+                is_sync = (ev == OBD_NOTIFY_SYNC) ||
+                          (ev == OBD_NOTIFY_SYNC_NONBLOCK);
+
                 obd_getref(obd);
                 for (i = 0; i < lov->desc.ld_tgt_count; i++) {
+                        if (!lov->lov_tgts[i])
+                                continue;
+
                         /* don't send sync event if target not
                          * connected/activated */
-                        if (!lov->lov_tgts[i] ||
-                            !lov->lov_tgts[i]->ltd_active)
-                                 continue;
+                        if (is_sync &&  !lov->lov_tgts[i]->ltd_active)
+                                continue;
 
-                        if ((ev == OBD_NOTIFY_SYNC) ||
-                            (ev == OBD_NOTIFY_SYNC_NONBLOCK))
-                                data = &i;
-
-                        tgt_obd = class_exp2obd(lov->lov_tgts[i]->ltd_exp);
-
-                        rc = obd_notify_observer(obd, tgt_obd, ev, data);
+                        rc = obd_notify_observer(obd, lov->lov_tgts[i]->ltd_obd,
+                                                 ev, data);
                         if (rc) {
                                 CERROR("%s: notify %s of %s failed %d\n",
                                        obd->obd_name,
                                        obd->obd_observer->obd_name,
-                                       tgt_obd->obd_name, rc);
-                                break;
+                                       lov->lov_tgts[i]->ltd_obd->obd_name,
+                                       rc);
                         }
                 }
                 obd_putref(obd);
@@ -507,8 +508,8 @@ static int lov_notify(struct obd_device *obd, struct obd_device *watched,
         RETURN(rc);
 }
 
-int lov_add_target(struct obd_device *obd, struct obd_uuid *uuidp,
-                   __u32 index, int gen, int active)
+static int lov_add_target(struct obd_device *obd, struct obd_uuid *uuidp,
+                          __u32 index, int gen, int active)
 {
         struct lov_obd *lov = &obd->u.lov;
         struct lov_tgt_desc *tgt;
@@ -586,7 +587,6 @@ int lov_add_target(struct obd_device *obd, struct obd_uuid *uuidp,
                 RETURN(rc);
         }
 
-        memset(tgt, 0, sizeof(*tgt));
         tgt->ltd_uuid = *uuidp;
         tgt->ltd_obd = tgt_obd;
         /* XXX - add a sanity check on the generation number. */
@@ -601,6 +601,8 @@ int lov_add_target(struct obd_device *obd, struct obd_uuid *uuidp,
 
         CDEBUG(D_CONFIG, "idx=%d ltd_gen=%d ld_tgt_count=%d\n",
                 index, tgt->ltd_gen, lov->desc.ld_tgt_count);
+
+        rc = obd_notify(obd, tgt_obd, OBD_NOTIFY_CREATE, &index);
 
         if (lov->lov_connects == 0) {
                 /* lov_connect hasn't been called yet. We'll do the
@@ -2073,6 +2075,9 @@ static int lov_iocontrol(unsigned int cmd, struct obd_export *exp, int len,
         case LL_IOC_LOV_SETEA:
                 rc = lov_setea(exp, karg, uarg);
                 break;
+
+#ifdef HAVE_QUOTA_SUPPORT
+
         case OBD_IOC_QUOTACTL: {
                 struct if_quotactl *qctl = karg;
                 struct lov_tgt_desc *tgt = NULL;
@@ -2120,6 +2125,14 @@ static int lov_iocontrol(unsigned int cmd, struct obd_export *exp, int len,
                 OBD_FREE_PTR(oqctl);
                 break;
         }
+
+#else /* HAVE_QUOTA_SUPPORT */
+
+        case OBD_IOC_QUOTACTL:
+                RETURN(-ENOTSUPP);
+
+#endif /* HAVE_QUOTA_SUPPORT */
+
         default: {
                 int set = 0;
 
@@ -2815,9 +2828,6 @@ struct obd_ops lov_obd_ops = {
         .o_putref              = lov_putref,
 };
 
-static quota_interface_t *quota_interface;
-extern quota_interface_t lov_quota_interface;
-
 cfs_mem_cache_t *lov_oinfo_slab;
 
 extern struct lu_kmem_descr lov_caches[];
@@ -2846,16 +2856,10 @@ int __init lov_init(void)
         }
         lprocfs_lov_init_vars(&lvars);
 
-        cfs_request_module("lquota");
-        quota_interface = PORTAL_SYMBOL_GET(lov_quota_interface);
-        init_obd_quota_ops(quota_interface, &lov_obd_ops);
-
         rc = class_register_type(&lov_obd_ops, NULL, lvars.module_vars,
                                  LUSTRE_LOV_NAME, &lov_device_type);
 
         if (rc) {
-                if (quota_interface)
-                        PORTAL_SYMBOL_PUT(lov_quota_interface);
                 rc2 = cfs_mem_cache_destroy(lov_oinfo_slab);
                 LASSERT(rc2 == 0);
                 lu_kmem_fini(lov_caches);
@@ -2871,9 +2875,6 @@ static void /*__exit*/ lov_exit(void)
 
         lu_device_type_fini(&lov_device_type);
         lu_kmem_fini(lov_caches);
-
-        if (quota_interface)
-                PORTAL_SYMBOL_PUT(lov_quota_interface);
 
         class_unregister_type(LUSTRE_LOV_NAME);
         rc = cfs_mem_cache_destroy(lov_oinfo_slab);

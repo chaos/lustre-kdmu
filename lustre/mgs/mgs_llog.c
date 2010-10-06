@@ -1307,7 +1307,7 @@ static int mgs_write_log_lov(struct obd_device *obd, struct fs_db *fsdb,
         lovdesc->ld_default_stripe_count = 1;
         lovdesc->ld_pattern = LOV_PATTERN_RAID0;
         lovdesc->ld_default_stripe_size = 1024 * 1024;
-        lovdesc->ld_default_stripe_offset = 0;
+        lovdesc->ld_default_stripe_offset = -1;
         lovdesc->ld_qos_maxage = QOS_DEFAULT_MAXAGE;
         sprintf((char*)lovdesc->ld_uuid.uuid, "%s_UUID", lovname);
         /* can these be the same? */
@@ -1408,7 +1408,7 @@ static int mgs_write_log_failnids(struct obd_device *obd,
 
         /* Pull failnid info out of params string */
         while (class_find_param(ptr, PARAM_FAILNODE, &ptr) == 0) {
-                while (class_parse_nid(ptr, &nid, &ptr) == 0) {
+                while (class_parse_nid(ptr, &nid, &ptr, 0) == 0) {
                         if (failnodeuuid == NULL) {
                                 /* We don't know the failover node name,
                                    so just use the first nid as the uuid */
@@ -2191,13 +2191,12 @@ static int mgs_srpc_set_param_disk(struct obd_device *obd,
         /* obsolete old one */
         mgs_modify(obd, fsdb, mti, logname, mti->mti_svname, comment, CM_SKIP);
 
-        if (!mgs_param_empty(param)) {
-                /* write the new one */
-                rc = mgs_write_log_direct(obd, fsdb, logname, lcfg,
-                                          mti->mti_svname, comment);
-                if (rc)
-                        CERROR("err %d writing log %s\n", rc, logname);
-        }
+        /* write the new one */
+        rc = mgs_write_log_direct(obd, fsdb, logname, lcfg,
+                                  mti->mti_svname, comment);
+        if (rc)
+                CERROR("err %d writing log %s\n", rc, logname);
+
 out:
         name_destroy(&logname);
 out_lcfg:
@@ -2333,7 +2332,7 @@ static int mgs_srpc_set_param(struct obd_device *obd,
                               char *param)
 {
         char                   *copy;
-        int                     rc, copy_size, del;
+        int                     rc, copy_size;
         ENTRY;
 
 #ifndef HAVE_GSS
@@ -2347,12 +2346,9 @@ static int mgs_srpc_set_param(struct obd_device *obd,
                 return -ENOMEM;
         memcpy(copy, param, copy_size);
 
-        del = mgs_param_empty(param);
-        if (!del) {
-                rc = mgs_srpc_set_param_mem(fsdb, mti->mti_svname, param);
-                if (rc)
-                        goto out_free;
-        }
+        rc = mgs_srpc_set_param_mem(fsdb, mti->mti_svname, param);
+        if (rc)
+                goto out_free;
 
         /* previous steps guaranteed the syntax is correct */
         rc = mgs_srpc_set_param_disk(obd, fsdb, mti, copy);

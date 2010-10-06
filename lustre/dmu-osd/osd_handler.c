@@ -49,17 +49,9 @@
 /* LUSTRE_VERSION_CODE */
 #include <lustre_ver.h>
 
-//#include <lvfs.h>
+#include <lustre_quota.h>
 #include <libcfs/libcfs.h>
 #include <lustre_fsfilt.h>
-
-#ifndef FALSE
-#      define  FALSE   (0)
-#endif
-
-#ifndef TRUE
-#      define  TRUE    (1)
-#endif
 
 /*
  * struct OBD_{ALLOC,FREE}*()
@@ -82,28 +74,17 @@
 
 #include "osd_internal.h"
 
+#ifndef FALSE
+#      define  FALSE   (0)
+#endif
+
+#ifndef TRUE
+#      define  TRUE    (1)
+#endif
+
 #define LUSTRE_ROOT_FID_SEQ     0
 
 #define DMU_PROP_NAME_LABEL     "label"
-
-struct osd_object {
-        struct dt_object       oo_dt;
-        /*
-         * Inode for file system object represented by this osd_object. This
-         * inode is pinned for the whole duration of lu_object life.
-         *
-         * Not modified concurrently (either setup early during object
-         * creation, or assigned by osd_object_create() under write lock).
-         */
-        dmu_buf_t               *oo_db;
-
-        /* protects inode attributes. */
-        cfs_semaphore_t         oo_guard;
-        cfs_rw_semaphore_t      oo_sem;
-
-        uint64_t                oo_mode;
-        uint64_t                oo_type;
-};
 
 enum {
         OSD_OI_FID_SMALL,
@@ -162,10 +143,7 @@ static int osd_trans_start(const struct lu_env *env, struct dt_device *d,
                            struct thandle *th);
 
 static struct osd_object  *osd_obj          (const struct lu_object *o);
-static struct osd_device  *osd_dev          (const struct lu_device *d);
 static struct osd_device  *osd_dt_dev       (const struct dt_device *d);
-static struct osd_object  *osd_dt_obj       (const struct dt_object *d);
-static struct osd_device  *osd_obj2dev      (const struct osd_object *o);
 static struct lu_device   *osd2lu_dev       (struct osd_device *osd);
 static struct lu_device   *osd_device_fini  (const struct lu_env *env,
                                              struct lu_device *d);
@@ -366,6 +344,16 @@ static void vnattr2lu_attr(vnattr_t *vap, struct lu_attr *la)
 static void osd_fid2str(char *buf, const struct lu_fid *fid)
 {
         LASSERT(fid->f_seq != LUSTRE_ROOT_FID_SEQ);
+        if (unlikely(fid_seq(fid) == FID_SEQ_LOCAL_FILE)) {
+                if (fid_oid(fid) == QUOTA_SLAVE_UID_OID) {
+                        strncpy(buf, QUOTA_OP_USER_FILE, 32);
+                        return;
+                }
+                if (fid_oid(fid) == QUOTA_SLAVE_GID_OID) {
+                        strncpy(buf, QUOTA_OP_GROUP_FILE, 32);
+                        return;
+                }
+        }
         sprintf(buf, "%llx-%x", fid->f_seq, fid->f_oid);
 }
 
@@ -617,7 +605,6 @@ static struct thandle *osd_trans_create(const struct lu_env *env,
         struct osd_thandle *oh;
         struct thandle *th;
         dmu_tx_t *tx;
-        int hook_res;
         ENTRY;
 
         tx = udmu_tx_create(&osd->od_objset);
@@ -634,7 +621,6 @@ static struct thandle *osd_trans_create(const struct lu_env *env,
         oh->ot_tx = tx;
         th = &oh->ot_super;
         th->th_result = 0;
-
         RETURN(th);
 }
 
@@ -649,9 +635,13 @@ static int osd_trans_start(const struct lu_env *env, struct dt_device *d,
         ENTRY;
 
         oh = container_of0(th, struct osd_thandle, ot_super);
+        LASSERT(oh);
+        LASSERT(oh->ot_tx);
 
-        /* TODO: hook_start shoud be here, so upper layers will be able to
-         * declare own transaction usage */
+        rc = dt_txn_hook_start(env, d, th);
+        if (rc != 0)
+                RETURN(rc);
+
         rc = udmu_tx_assign(oh->ot_tx, TXG_WAIT);
         if (unlikely(rc != 0)) {
                 /* dmu will call commit callback with error code during abort */
@@ -660,13 +650,9 @@ static int osd_trans_start(const struct lu_env *env, struct dt_device *d,
                 /* add commit callback */
                 udmu_tx_cb_register(oh->ot_tx, osd_trans_commit_cb, (void *)oh);
                 oh->ot_assigned = 1;
-
-                th->th_dev = d;
-                lu_device_get(&d->dd_lu_dev);
-                lu_context_init(&th->th_ctx, th->th_tags | LCT_TX_HANDLE);
+                lu_context_init(&th->th_ctx, LCT_TX_HANDLE);
                 lu_context_enter(&th->th_ctx);
-
-                rc = dt_txn_hook_start(env, d, th);
+                lu_device_get(&d->dd_lu_dev);
         }
 
         RETURN(-rc);
@@ -686,16 +672,9 @@ static int osd_trans_stop(const struct lu_env *env, struct thandle *th)
         oh = container_of0(th, struct osd_thandle, ot_super);
 
         if (oh->ot_assigned == 0) {
-
                 LASSERT(oh->ot_tx);
                 udmu_tx_abort(oh->ot_tx);
-
-                lu_device_put(&th->th_dev->dd_lu_dev);
-                th->th_dev = NULL;
-                lu_context_exit(&th->th_ctx);
-                lu_context_fini(&th->th_ctx);
                 OBD_FREE_PTR(oh);
-
                 RETURN(0);
         }
 
@@ -704,7 +683,6 @@ static int osd_trans_stop(const struct lu_env *env, struct thandle *th)
                 CERROR("Failure in transaction hook: %d\n", result);
 
         txg = udmu_get_txg(&osd->od_objset, oh->ot_tx);
-        
         udmu_tx_commit(oh->ot_tx);
 
         if (th->th_sync)
@@ -762,6 +740,64 @@ static int osd_init_capa_ctxt(const struct lu_env *env, struct dt_device *d,
         RETURN(0);
 }
 
+static int osd_quota_setup(const struct lu_env *env, struct dt_device *d,
+                           void *data)
+{
+        struct osd_device *osd    = osd_dt_dev(d);
+        struct lu_device  *lu_dev = osd2lu_dev(osd);
+        int i, rc = 0;
+        ENTRY;
+
+        osd->od_qctxt.qc_slave_uid_dto = NULL;
+        osd->od_qctxt.qc_slave_gid_dto = NULL;
+        for (i = CFS_USRQUOTA; i < CFS_MAXQUOTAS; ++i) {
+                const struct lu_fid *fid;
+                struct lu_object *obj;
+                struct dt_object *dto;
+
+                if (i == USRQUOTA)
+                        fid = &quota_slave_uid_fid;
+                else
+                        fid = &quota_slave_gid_fid;
+
+                obj = lu_object_find(env, lu_dev, fid, NULL);
+                LASSERT(obj);
+                if (!IS_ERR(obj)) {
+                        obj = lu_object_locate(obj->lo_header, lu_dev->ld_type);
+                        dto = container_of(obj, struct dt_object, do_lu);
+                        if (!i)
+                                osd->od_qctxt.qc_slave_uid_dto = dto;
+                        else
+                                osd->od_qctxt.qc_slave_gid_dto = dto;
+                        if ((rc = dto->do_ops->do_index_try(env, dto,
+                             &dt_quota_slaves_features)) < 0) {
+                                CERROR("Initializing slave %s index failed\n",
+                                       (i == USRQUOTA) ? "uid" : "gid");
+                                RETURN(rc);
+                        }
+                } else {
+                        CERROR("Initializing slave %s failed\n",
+                               (i == USRQUOTA) ? "uid" : "gid");
+                        RETURN(PTR_ERR(obj));
+                }
+        }
+        RETURN(rc);
+}
+
+static void osd_quota_cleanup(const struct lu_env *env, struct dt_device *d)
+{
+        struct osd_device *osd = osd_dt_dev(d);
+
+        if ( osd->od_qctxt.qc_slave_uid_dto) {
+                lu_object_put(env, &osd->od_qctxt.qc_slave_uid_dto->do_lu);
+                osd->od_qctxt.qc_slave_uid_dto = NULL;
+        }
+        if ( osd->od_qctxt.qc_slave_gid_dto) {
+                lu_object_put(env, &osd->od_qctxt.qc_slave_gid_dto->do_lu);
+                osd->od_qctxt.qc_slave_gid_dto = NULL;
+        }
+}
+
 static char *osd_label_get(const struct lu_env *env, const struct dt_device *d)
 {
         struct osd_device *dev = osd_dt_dev(d);
@@ -809,6 +845,10 @@ static struct dt_device_operations osd_dt_ops = {
         .dt_commit_async   = osd_commit_async,
         .dt_ro             = osd_ro,
         .dt_init_capa_ctxt = osd_init_capa_ctxt,
+        .dt_quota          = {
+                .dt_setup   = osd_quota_setup,
+                .dt_cleanup = osd_quota_cleanup,
+        },
         .dt_label_get      = osd_label_get,
         .dt_label_set      = osd_label_set
 };
@@ -1383,17 +1423,6 @@ int osd_fid_unpack(struct lu_fid *fid, const struct osd_fid_pack *pack)
         return result;
 }
 
-#define IT_REC_SIZE 256
-
-struct osd_zap_it {
-        zap_cursor_t            *ozi_zc;
-        struct osd_object       *ozi_obj;
-        struct lustre_capa      *ozi_capa;
-        unsigned                 ozi_reset:1;     /* 1 -- no need to advance */
-        char                     ozi_name[NAME_MAX + 1];
-        char                     ozi_rec[IT_REC_SIZE];
-};
-
 static struct dt_it *osd_zap_it_init(const struct lu_env *env,
                                      struct dt_object *dt,
                                      struct lustre_capa *capa)
@@ -1425,7 +1454,7 @@ static struct dt_it *osd_zap_it_init(const struct lu_env *env,
         RETURN(ERR_PTR(-ENOMEM));
 }
 
-static void osd_zap_it_fini(const struct lu_env *env, struct dt_it *di)
+void osd_zap_it_fini(const struct lu_env *env, struct dt_it *di)
 {
         struct osd_zap_it *it = (struct osd_zap_it *)di;
         struct osd_object *obj;
@@ -1495,7 +1524,7 @@ static void osd_zap_it_put(const struct lu_env *env, struct dt_it *di)
  * \retval   0, iterator not reached to end
  * \retval -ve, on error
  */
-static int osd_zap_it_next(const struct lu_env *env, struct dt_it *di)
+int osd_zap_it_next(const struct lu_env *env, struct dt_it *di)
 {
         struct osd_zap_it *it = (struct osd_zap_it *)di;
         int                rc;
@@ -1814,6 +1843,8 @@ static int osd_index_try(const struct lu_env *env, struct dt_object *dt,
          */
         if (udmu_object_is_zap(obj->oo_db))
                 dt->do_index_ops = &osd_index_ops;
+
+        osd_set_quota_index_ops(dt);
         RETURN(0);
 }
 
@@ -2971,18 +3002,18 @@ static struct osd_device *osd_dt_dev(const struct dt_device *d)
         return container_of0(d, struct osd_device, od_dt_dev);
 }
 
-static struct osd_device *osd_dev(const struct lu_device *d)
+struct osd_device *osd_dev(const struct lu_device *d)
 {
         LASSERT(lu_device_is_osd(d));
         return osd_dt_dev(container_of0(d, struct dt_device, dd_lu_dev));
 }
 
-static struct osd_object *osd_dt_obj(const struct dt_object *d)
+struct osd_object *osd_dt_obj(const struct dt_object *d)
 {
         return osd_obj(&d->do_lu);
 }
 
-static struct osd_device *osd_obj2dev(const struct osd_object *o)
+struct osd_device *osd_obj2dev(const struct osd_object *o)
 {
         return osd_dev(o->oo_dt.do_lu.lo_dev);
 }
@@ -3056,7 +3087,6 @@ int __init osd_init(void)
         lprocfs_osd_init_vars(&lvars);
         return class_register_type(&osd_obd_device_ops, NULL, lvars.module_vars,
                                    LUSTRE_ZFS_NAME, &osd_device_type);
-        
 }
 
 #ifdef __KERNEL__

@@ -399,17 +399,19 @@ int ll_readdir(struct file *filp, void *cookie, filldir_t filldir)
         struct inode         *inode = filp->f_dentry->d_inode;
         struct ll_inode_info *info  = ll_i2info(inode);
         __u64                 pos   = filp->f_pos;
+        struct ll_sb_info    *sbi  = ll_i2sbi(inode);
         struct page          *page;
         struct ll_dir_chain   chain;
-        int rc;
+        int rc, need_32bit;
         int done;
         int shift;
         __u16 type;
         ENTRY;
 
-        CDEBUG(D_VFSTRACE, "VFS Op:inode=%lu/%u(%p) pos %lu/%llu\n",
+        need_32bit = ll_need_32bit_api(sbi);
+        CDEBUG(D_VFSTRACE, "VFS Op:inode=%lu/%u(%p) pos %lu/%llu 32bit_api %d\n",
                inode->i_ino, inode->i_generation, inode,
-               (unsigned long)pos, i_size_read(inode));
+               (unsigned long)pos, i_size_read(inode), need_32bit);
 
         if (pos == DIR_END_OFF)
                 /*
@@ -467,7 +469,7 @@ int ll_readdir(struct file *filp, void *cookie, filldir_t filldir)
                                 fid  = ent->lde_fid;
                                 name = ent->lde_name;
                                 fid_le_to_cpu(&fid, &fid);
-                                if (cfs_curproc_is_32bit())
+                                if (need_32bit)
                                         ino = cl_fid_build_ino32(&fid);
                                 else
                                         ino = cl_fid_build_ino(&fid);
@@ -1069,6 +1071,9 @@ out_free:
                 obd_ioctl_freedata(buf, len);
                 RETURN(rc);
         }
+
+#ifdef HAVE_QUOTA_SUPPORT
+
         case OBD_IOC_QUOTACHECK: {
                 struct obd_quotactl *oqctl;
                 int error = 0;
@@ -1156,8 +1161,8 @@ out_free:
                                 GOTO(out_quotactl, rc = -EPERM);
                         break;
                 case Q_GETQUOTA:
-                        if (((type == USRQUOTA && cfs_curproc_euid() != id) ||
-                             (type == GRPQUOTA && !in_egroup_p(id))) &&
+                        if (((type == CFS_USRQUOTA && cfs_curproc_euid() != id) ||
+                             (type == CFS_GRPQUOTA && !in_egroup_p(id))) &&
                             (!cfs_capable(CFS_CAP_SYS_ADMIN) ||
                              sbi->ll_flags & LL_SBI_RMT_CLIENT))
                                 GOTO(out_quotactl, rc = -EPERM);
@@ -1239,6 +1244,17 @@ out_free:
                 OBD_FREE_PTR(qctl);
                 RETURN(rc);
         }
+
+#else /* HAVE_QUOTA_SUPPORT */
+
+        case OBD_IOC_QUOTACHECK:
+        case OBD_IOC_POLL_QUOTACHECK:
+        case OBD_IOC_QUOTACTL:
+
+                RETURN(-ENOTSUPP);
+
+#endif /* HAVE_QUOTA_SUPPORT */
+
         case OBD_IOC_GETNAME: {
                 struct obd_device *obd = class_exp2obd(sbi->ll_dt_exp);
                 if (!obd)
