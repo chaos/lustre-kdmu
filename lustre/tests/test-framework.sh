@@ -147,6 +147,7 @@ init_test_env() {
     fi
     export LST=${LST:-"$LUSTRE/../lnet/utils/lst"}
     [ ! -f "$LST" ] && export LST=$(which lst)
+    export SGPDDSURVEY=${SGPDDSURVEY:-$(which sgpdd-survey)}
     export MDSRATE=${MDSRATE:-"$LUSTRE/tests/mpi/mdsrate"}
     [ ! -f "$MDSRATE" ] && export MDSRATE=$(which mdsrate 2> /dev/null)
     if ! echo $PATH | grep -q $LUSTRE/tests/racer; then
@@ -235,6 +236,7 @@ init_test_env() {
     export RPWD=${RPWD:-$PWD}
     export I_MOUNTED=${I_MOUNTED:-"no"}
     if [ ! -f /lib/modules/$(uname -r)/kernel/fs/lustre/mds.ko -a \
+        ! -f /lib/modules/$(uname -r)/updates/kernel/fs/lustre/mds.ko -a \
         ! -f `dirname $0`/../mds/mds.ko ]; then
         export CLIENTMODSONLY=yes
     fi
@@ -682,12 +684,12 @@ quota_save_version() {
 
     [ -n "$type" ] && { $LFS quotacheck -$type $MOUNT || error "quotacheck has failed"; }
 
-    do_facet mgs "lctl conf_param mdd.${fsname}-MDT*.quota_type=$spec"
+    do_facet mgs "lctl conf_param ${fsname}-MDT*.mdd.quota_type=$spec"
     local varsvc
     local osts=$(get_facets OST)
     for ost in ${osts//,/ }; do
         varsvc=${ost}_svc
-        do_facet mgs "lctl conf_param ost.${!varsvc}.quota_type=$spec"
+        do_facet mgs "lctl conf_param ${!varsvc}.ost.quota_type=$spec"
     done
 }
 
@@ -1593,11 +1595,6 @@ h2elan() {
     fi
 }
 declare -fx h2elan
-
-h2openib() {
-    h2name_or_ip "$1" "openib"
-}
-declare -fx h2openib
 
 h2o2ib() {
     h2name_or_ip "$1" "o2ib"
@@ -4144,11 +4141,6 @@ gather_logs () {
     local list=$1
 
     local ts=$(date +%s)
-
-    # bug 20237, comment 11
-    # It would also be useful to provide the option
-    # of writing the file to an NFS directory so it doesn't need to be copied.
-    local tmp=$TMP
     local docp=true
     [ -f $LOGDIR/shared ] && docp=false
  
@@ -4454,16 +4446,11 @@ wait_flavor()
     local res=0
 
     for ((i=0;i<20;i++)); do
-        echo -n "checking..."
+        echo -n "checking $dir..."
         res=$(do_check_flavor $dir $flavor)
-        if [ $res -eq $expect ]; then
-            echo "found $res $flavor connections of $dir, OK"
-            return 0
-        else
-            echo "found $res $flavor connections of $dir, not ready ($expect)"
-            return 0
-            sleep 4
-        fi
+        echo "found $res/$expect $flavor connections"
+        [ $res -eq $expect ] && return 0
+        sleep 4
     done
 
     echo "Error checking $flavor of $dir: expect $expect, actual $res"
@@ -4484,7 +4471,7 @@ restore_to_default_flavor()
         for rule in `do_facet mgs lctl get_param -n $proc 2>/dev/null | grep ".srpc.flavor."`; do
             echo "remove rule: $rule"
             spec=`echo $rule | awk -F = '{print $1}'`
-            do_facet mgs "$LCTL conf_param $spec="
+            do_facet mgs "$LCTL conf_param -d $spec"
         done
     fi
 
@@ -4649,3 +4636,18 @@ duplicate_mdt_files() {
     done
     do_umount
 }
+
+run_sgpdd () {
+    local devs=${1//,/ }
+    shift
+    local params=$@
+    local rslt=$TMP/sgpdd_survey
+
+    # sgpdd-survey cleanups ${rslt}.* files
+
+    local cmd="rslt=$rslt $params scsidevs=\"$devs\" $SGPDDSURVEY"
+    echo + $cmd
+    eval $cmd
+    cat ${rslt}.detail
+}
+

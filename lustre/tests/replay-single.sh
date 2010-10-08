@@ -21,7 +21,7 @@ require_dsh_mds || exit 0
 
 # Skip these tests
 # bug number:  22449 23366 23364    19960 23365 17466 18857
-ALWAYS_EXCEPT="14    20b   22 23 25 65a   66a   61d   33a 33b $REPLAY_SINGLE_EXCEPT"
+ALWAYS_EXCEPT="14    20b   22 23 25 65a   66a   61d   33a 33b 89 $REPLAY_SINGLE_EXCEPT"
 
 #                                                  63 min  7 min  AT AT AT AT"
 [ "$SLOW" = "no" ] && EXCEPT_SLOW="1 2 3 4 6 12 16 44a      44b    65 66 67 68"
@@ -2073,6 +2073,30 @@ test_84a() {
 }
 run_test 84a "stale open during export disconnect"
 
+test_85a() { #bug 16774
+    lctl set_param -n ldlm.cancel_unused_locks_before_replay "1"
+
+    for i in `seq 100`; do
+        echo "tag-$i" > $DIR/$tfile-$i
+        grep -q "tag-$i" $DIR/$tfile-$i || error "f2-$i"
+    done
+
+    lov_id=`lctl dl | grep "clilov"`
+    addr=`echo $lov_id | awk '{print $4}' | awk -F '-' '{print $3}'`
+    count=`lctl get_param -n ldlm.namespaces.*MDT0000*$addr.lock_unused_count`
+    echo "before recovery: unused locks count = $count"
+
+    fail $SINGLEMDS
+
+    count2=`lctl get_param -n ldlm.namespaces.*MDT0000*$addr.lock_unused_count`
+    echo "after recovery: unused locks count = $count2"
+
+    if [ $count2 -ge $count ]; then
+        error "unused locks are not canceled"
+    fi
+}
+run_test 85a "check the cancellation of unused locks during recovery(IBITS)"
+
 test_86() {
         local clients=${CLIENTS:-$HOSTNAME}
 
@@ -2193,6 +2217,28 @@ test_88() { #bug 17485
     rm -fr $TMP/$tdir
 }
 run_test 88 "MDS should not assign same objid to different files "
+
+test_89() {
+        mkdir -p $DIR/$tdir
+        rm -f $DIR/$tdir/$tfile
+        sleep 2
+        BLOCKS1=$(df $MOUNT | tail -n 1 | awk '{ print $3 }')
+        lfs setstripe -i 0 -c 1 $DIR/$tdir/$tfile
+        dd if=/dev/zero bs=1M count=10 of=$DIR/$tdir/$tfile
+        sync
+        stop ost1
+        facet_failover $SINGLEMDS
+        rm $DIR/$tdir/$tfile
+        umount $MOUNT
+        mount_facet ost1
+        zconf_mount $(hostname) $MOUNT
+	wait_mds_ost_sync
+        df $MOUNT
+        BLOCKS2=$(df $MOUNT | tail -n 1 | awk '{ print $3 }')
+        [ "$BLOCKS1" == "$BLOCKS2" ] || error $((BLOCKS2 - BLOCKS1)) blocks leaked
+}
+
+run_test 89 "no disk space leak on late ost connection"
 
 equals_msg `basename $0`: test complete, cleaning up
 check_and_cleanup_lustre

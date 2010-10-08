@@ -433,10 +433,8 @@ int params_list(const char *pattern, struct params_entry_list **pel_ptr)
         if (preg_head) {
                 rc = params_match("params_root", preg_head, &pel);
                 params_free_preglist(preg_head);
-                if ((*pel_ptr)->pel_next == NULL) {
-                        fprintf(stderr, "param \"%s\" not found!\n", pattern);
+                if ((*pel_ptr)->pel_next == NULL)
                         rc = -ESRCH;
-                }
         }
 
         return rc;

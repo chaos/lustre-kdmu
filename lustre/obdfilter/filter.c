@@ -290,7 +290,6 @@ static int filter_export_stats_init(struct obd_device *obd,
 
         RETURN(0);
  clean:
-        lprocfs_exp_cleanup(exp);
         return rc;
 }
 
@@ -1798,13 +1797,6 @@ static int filter_intent_policy(struct ldlm_namespace *ns,
 
         LASSERTF(l->l_glimpse_ast != NULL, "l == %p", l);
         rc = l->l_glimpse_ast(l, NULL); /* this will update the LVB */
-        /* Update the LVB from disk if the AST failed (this is a legal race) */
-        /*
-         * XXX nikita: situation when ldlm_server_glimpse_ast() failed before
-         * sending ast is not handled. This can result in lost client writes.
-         */
-        if (rc != 0)
-                ldlm_res_lvbo_update(res, NULL, 1);
 
         lock_res(res);
         *reply_lvb = *res_lvb;
@@ -2817,7 +2809,6 @@ static int filter_connect(const struct lu_env *env,
 cleanup:
         if (rc) {
                 class_disconnect(lexp);
-                lprocfs_exp_cleanup(lexp);
                 *exp = NULL;
         } else {
                 *exp = lexp;

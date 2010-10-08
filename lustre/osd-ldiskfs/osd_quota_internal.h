@@ -74,10 +74,6 @@ struct lustre_quota_info {
 
 #endif
 
-#define DQ_STATUS_AVAIL         0x0     /* Available dquot */
-#define DQ_STATUS_SET           0x01    /* Sombody is setting dquot */
-#define DQ_STATUS_RECOVERY      0x02    /* dquot is in recovery */
-
 struct lustre_mem_dqblk {
         __u64 dqb_bhardlimit;	/**< absolute limit on disk blks alloc */
         __u64 dqb_bsoftlimit;	/**< preferred limit on disk blks */
@@ -95,7 +91,7 @@ struct lustre_dquot {
         /** Protect the data in lustre_dquot */
         cfs_semaphore_t dq_sem;
         /** Use count */
-        int dq_refcnt;
+        cfs_atomic_t dq_refcnt;
         /** Pointer of quota info it belongs to */
         struct lustre_quota_info *dq_info;
         /** Offset of dquot on disk */
@@ -104,8 +100,6 @@ struct lustre_dquot {
         unsigned int dq_id;
         /** Type of quota (CFS_USRQUOTA, CFS_GRPQUOUTA) */
         int dq_type;
-        /** See DQ_STATUS_ */
-        unsigned short dq_status;
         /** See DQ_ in quota.h */
         unsigned long dq_flags;
         /** Diskquota usage */

@@ -221,7 +221,7 @@ static int lov_rd_desc_uuid(char *page, char **start, off_t off, int count,
                                      lov->desc.ld_uuid.uuid);
 }
 
-/* free priority (0-256): how badly user wants to choose empty osts */
+/* free priority (0-255): how badly user wants to choose empty osts */ 
 static int lov_rd_qos_priofree(char *page, char **start, off_t off, int count,
                                int *eof, void *data)
 {
@@ -233,9 +233,8 @@ static int lov_rd_qos_priofree(char *page, char **start, off_t off, int count,
         LASSERT(dev != NULL);
         lov = &dev->u.lov;
 
-        /* Round the conversion; see below */
         return libcfs_param_snprintf(page, count, data, LP_STR, "%d%%\n",
-                                 (lov->lov_qos.lq_prio_free * 100 + 128) >> 8);
+                                     (lov->lov_qos.lq_prio_free * 100) >> 8);
 }
 
 static int lov_wr_qos_priofree(libcfs_file_t *file, const char *buffer,
@@ -252,12 +251,9 @@ static int lov_wr_qos_priofree(libcfs_file_t *file, const char *buffer,
         if (rc)
                 return rc;
 
-        if (val > 100 || val < 0)
+        if (val > 100)
                 return -EINVAL;
-        /* We're converting a 0-100% range to 0-256.
-         * Add some rounding so that when we convert back to %
-         * for printout below, we end up with the original value */
-        lov->lov_qos.lq_prio_free = ((val << 8) + 50) / 100;
+        lov->lov_qos.lq_prio_free = (val << 8) / 100;
         lov->lov_qos.lq_dirty = 1;
         lov->lov_qos.lq_reset = 1;
         return count;
@@ -275,7 +271,7 @@ static int lov_rd_qos_thresholdrr(char *page, char **start, off_t off,
         lov = &dev->u.lov;
 
         return libcfs_param_snprintf(page, count, data, LP_STR, "%d%%\n",
-                        ((lov->lov_qos.lq_threshold_rr * 100) + 128) >> 8);
+                                     (lov->lov_qos.lq_threshold_rr * 100) >> 8);
 }
 
 static int lov_wr_qos_thresholdrr(libcfs_file_t *file, const char *buffer,
@@ -296,7 +292,7 @@ static int lov_wr_qos_thresholdrr(libcfs_file_t *file, const char *buffer,
         if (val > 100 || val < 0)
                 return -EINVAL;
 
-        lov->lov_qos.lq_threshold_rr = ((val << 8) + 50) / 100;
+        lov->lov_qos.lq_threshold_rr = (val << 8) / 100;
         lov->lov_qos.lq_dirty = 1;
         return count;
 }

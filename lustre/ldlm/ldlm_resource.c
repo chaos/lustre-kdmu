@@ -64,6 +64,8 @@ libcfs_param_entry_t *ldlm_type_proc_dir = NULL;
 libcfs_param_entry_t *ldlm_ns_proc_dir = NULL;
 libcfs_param_entry_t *ldlm_svc_proc_dir = NULL;
 
+extern unsigned int ldlm_cancel_unused_locks_before_replay;
+
 #ifdef __KERNEL__
 static int ldlm_proc_dump_ns(libcfs_file_t *file, const char *buffer,
                              unsigned long count, void *data)
@@ -77,7 +79,10 @@ int ldlm_proc_setup(void)
 {
         int rc;
         struct lprocfs_vars list[] = {
-                { "dump_namespaces", NULL, NULL, ldlm_proc_dump_ns, NULL },
+                { "dump_namespaces", NULL, ldlm_proc_dump_ns, NULL },
+                { "cancel_unused_locks_before_replay",
+                  lprocfs_rd_uint, lprocfs_wr_uint,
+                  &ldlm_cancel_unused_locks_before_replay, NULL },
                 { NULL }};
         ENTRY;
         LASSERT(ldlm_ns_proc_dir == NULL);
