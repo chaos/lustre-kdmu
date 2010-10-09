@@ -2473,13 +2473,14 @@ EXPORT_SYMBOL(lprocfs_obd_wr_recovery_time_hard);
 int lprocfs_obd_rd_mntdev(char *page, char **start, off_t off,
                           int count, int *eof, void *data)
 {
-        struct obd_device *obd = (struct obd_device *)data;
+        struct obd_device *obd;
 
+        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         LASSERT(obd != NULL);
         LASSERT(obd->u.obt.obt_vfsmnt->mnt_devname);
-        *eof = 1;
-        return snprintf(page, count, "%s\n",
-                        obd->u.obt.obt_vfsmnt->mnt_devname);
+
+        return libcfs_param_snprintf(page, count, data, LP_STR, "%s\n",
+                                     obd->u.obt.obt_vfsmnt->mnt_devname);
 }
 EXPORT_SYMBOL(lprocfs_obd_rd_mntdev);
 
