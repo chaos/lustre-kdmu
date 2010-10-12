@@ -153,7 +153,7 @@ rm -rf $DIR/[Rdfs][0-9]*
 # $RUNAS_ID may get set incorrectly somewhere else
 [ $UID -eq 0 -a $RUNAS_ID -eq 0 ] && error "\$RUNAS_ID set to 0, but \$UID is also 0!"
 
-check_runas_id $RUNAS_ID $RUNAS_ID $RUNAS
+check_runas_id $RUNAS_ID $RUNAS_GID $RUNAS
 
 build_test_filter
 
@@ -327,16 +327,16 @@ test_6g() {
         $RUNAS mkdir $DIR/d6g/d || error
         chmod g+s $DIR/d6g/d || error
         mkdir $DIR/d6g/d/subdir
-	$CHECKSTAT -g \#$RUNAS_ID $DIR/d6g/d/subdir || error
+	$CHECKSTAT -g \#$RUNAS_GID $DIR/d6g/d/subdir || error
 }
 run_test 6g "Is new dir in sgid dir inheriting group?"
 
 test_6h() { # bug 7331
 	[ $RUNAS_ID -eq $UID ] && skip_env "RUNAS_ID = UID = $UID -- skipping" && return
 	touch $DIR/f6h || error "touch failed"
-	chown $RUNAS_ID:$RUNAS_ID $DIR/f6h || error "initial chown failed"
-	$RUNAS -G$RUNAS_ID chown $RUNAS_ID:0 $DIR/f6h && error "chown worked"
-	$CHECKSTAT -t file -u \#$RUNAS_ID -g \#$RUNAS_ID $DIR/f6h || error
+	chown $RUNAS_ID:$RUNAS_GID $DIR/f6h || error "initial chown failed"
+	$RUNAS -G$RUNAS_GID chown $RUNAS_ID:0 $DIR/f6h && error "chown worked"
+	$CHECKSTAT -t file -u \#$RUNAS_ID -g \#$RUNAS_GID $DIR/f6h || error
 }
 run_test 6h "$RUNAS chown RUNAS_ID.0 .../f6h (should return error)"
 
@@ -519,6 +519,17 @@ test_17i() { #bug 20018
 }
 run_test 17i "don't panic on short symlink"
 
+test_17k() { #bug 22301
+        rsync --help | grep -q xattr ||
+                skip_env "$(rsync --version| head -1) does not support xattrs"
+        mkdir -p $DIR/{$tdir,$tdir.new}
+        touch $DIR/$tdir/$tfile
+        ln -s $DIR/$tdir/$tfile $DIR/$tdir/$tfile.lnk
+        rsync -av -X $DIR/$tdir/ $DIR/$tdir.new ||
+                error "rsync failed with xattrs enabled"
+}
+run_test 17k "symlinks: rsync with xattrs enabled ========================="
+
 test_18() {
 	touch $DIR/f
 	ls $DIR || error
@@ -577,13 +588,13 @@ run_test 21 "write to dangling link ============================"
 test_22() {
 	WDIR=$DIR/$tdir
 	mkdir -p $WDIR
-	chown $RUNAS_ID $WDIR
+	chown $RUNAS_ID:$RUNAS_GID $WDIR
 	(cd $WDIR || error "cd $WDIR failed";
 	$RUNAS tar cf - /etc/hosts /etc/sysconfig/network | \
 	$RUNAS tar xf -)
 	ls -lR $WDIR/etc || error "ls -lR $WDIR/etc failed"
 	$CHECKSTAT -t dir $WDIR/etc || error "checkstat -t dir failed"
-	$CHECKSTAT -u \#$RUNAS_ID $WDIR/etc || error "checkstat -u failed"
+	$CHECKSTAT -u \#$RUNAS_ID -g \#$RUNAS_GID $WDIR/etc || error "checkstat -u failed"
 }
 run_test 22 "unpack tar archive as non-root user ==============="
 
@@ -1039,10 +1050,14 @@ exhaust_precreations() {
 			  sed -e 's/_UUID$//;s/^.*-//')
 
 	# on the mdt's osc
-	local last_id=$(do_facet mds${MDSIDX} lctl get_param -n osc.*${OST}-osc-${MDT_INDEX}.prealloc_last_id)
-	local next_id=$(do_facet mds${MDSIDX} lctl get_param -n osc.*${OST}-osc-${MDT_INDEX}.prealloc_next_id)
+	local mdtosc_proc1=$(get_mdtosc_proc_path mds${MDSIDX} $OST)
+	local last_id=$(do_facet mds${MDSIDX} lctl get_param -n \
+        osc.$mdtosc_proc1.prealloc_last_id)
+	local next_id=$(do_facet mds${MDSIDX} lctl get_param -n \
+        osc.$mdtosc_proc1.prealloc_next_id)
 
-	do_facet mds${MDSIDX} lctl get_param osc.*OST*-osc-${MDT_INDEX}.prealloc*
+	local mdtosc_proc2=$(get_mdtosc_proc_path mds${MDSIDX})
+	do_facet mds${MDSIDX} lctl get_param osc.$mdtosc_proc2.prealloc*
 
 	mkdir -p $DIR/$tdir/${OST}
 	$SETSTRIPE $DIR/$tdir/${OST} -i $OSTIDX -c 1
@@ -1051,7 +1066,7 @@ exhaust_precreations() {
 	do_facet ost$((OSTIDX + 1)) lctl set_param fail_loc=0x215
 	echo "Creating to objid $last_id on ost $OST..."
 	createmany -o $DIR/$tdir/${OST}/f $next_id $((last_id - next_id + 2))
-	do_facet mds${MDSIDX} lctl get_param osc.*OST*-osc-${MDT_INDEX}.prealloc*
+	do_facet mds${MDSIDX} lctl get_param osc.$mdtosc_proc2.prealloc*
 	do_facet ost$((OSTIDX + 1)) lctl set_param fail_loc=$FAILLOC
 	sleep_maxage
 }
@@ -1264,8 +1279,11 @@ test_27y() {
         [ "$OSTCOUNT" -lt "2" ] && skip_env "$OSTCOUNT < 2 OSTs -- skipping" && return
         remote_mds_nodsh && skip "remote MDS with nodsh" && return
 
-        local last_id=$(do_facet $SINGLEMDS lctl get_param -n osc.*0000-osc-MDT0000.prealloc_last_id)
-        local next_id=$(do_facet $SINGLEMDS lctl get_param -n osc.*0000-osc-MDT0000.prealloc_next_id)
+        local mdtosc=$(get_mdtosc_proc_path $SINGLEMDS $FSNAME-OST0000)
+        local last_id=$(do_facet $SINGLEMDS lctl get_param -n \
+            osc.$mdtosc.prealloc_last_id)
+        local next_id=$(do_facet $SINGLEMDS lctl get_param -n \
+            osc.$mdtosc.prealloc_next_id)
         local fcount=$((last_id - next_id))
         [ $fcount -eq 0 ] && skip "not enough space on OST0" && return
         [ $fcount -gt $OSTCOUNT ] && fcount=$OSTCOUNT
@@ -1370,6 +1388,22 @@ test_27z() {
         check_seq_oid $DIR/$tdir/$tfile-2 || return 6
 }
 run_test 27z "check SEQ/OID on the MDT and OST filesystems"
+
+test_27A() { # b=19102
+        local restore_size=`$GETSTRIPE -s $MOUNT`
+        local restore_count=`$GETSTRIPE -c $MOUNT`
+        local restore_offset=`$GETSTRIPE -o $MOUNT`
+        $SETSTRIPE -c 0 -o -1 -s 0 $MOUNT
+        local default_size=`$GETSTRIPE -s $MOUNT`
+        local default_count=`$GETSTRIPE -c $MOUNT`
+        local default_offset=`$GETSTRIPE -o $MOUNT`
+        local dsize=$((1024 * 1024))
+        [ $default_size -eq $dsize ] || error "stripe size $default_size != $dsize"
+        [ $default_count -eq 1 ] || error "stripe count $default_count != 1"
+        [ $default_offset -eq -1 ] || error "stripe offset $default_offset != -1"
+        $SETSTRIPE -c $restore_count -o $restore_offset -s $restore_size $MOUNT
+}
+run_test 27A "check filesystem-wide default LOV EA values"
 
 # createtest also checks that device nodes are created and
 # then visible correctly (#2091)
@@ -1486,7 +1520,7 @@ test_31f() { # bug 4554
 	$SETSTRIPE $DIR/d31f -s 1048576 -c 1
 	cp /etc/hosts $DIR/d31f
 	ls -l $DIR/d31f
-	$DIR/d31f/hosts
+	$GETSTRIPE $DIR/d31f/hosts
 	multiop_bg_pause $DIR/d31f D_c || return 1
 	MULTIPID2=$!
 
@@ -2404,12 +2438,10 @@ stop_writeback() {
 
 # ensure that all stripes have some grant before we test client-side cache
 setup_test42() {
-	[ "$SETUP_TEST42" ] && return
 	for i in `seq -f $DIR/f42-%g 1 $OSTCOUNT`; do
 		dd if=/dev/zero of=$i bs=4k count=1
 		rm $i
 	done
-	SETUP_TEST42=DONE
 }
 
 # Tests 42* verify that our behaviour is correct WRT caching, file closure,
@@ -3000,7 +3032,8 @@ test_53() {
 	local ostnum
 
 	# only test MDT0000
-        for value in $(do_facet $SINGLEMDS lctl get_param os[cp].*-os[cp]-MDT0000.prealloc_last_id) ; do
+        local mdtosc=$(get_mdtosc_proc_path $SINGLEMDS)
+        for value in $(do_facet $SINGLEMDS lctl get_param os[cp].$mdtosc.prealloc_last_id) ; do
                 param=`echo ${value[0]} | cut -d "=" -f1`
                 ostname=`echo $param | cut -d "." -f2 | cut -d - -f 1-2`
                 mds_last=$(do_facet $SINGLEMDS lctl get_param -n $param)
@@ -3083,17 +3116,6 @@ test_54e() {
 	echo $string > $f || error
 }
 run_test 54e "console/tty device works in lustre ======================"
-
-check_fstype() {
-	grep -q $FSTYPE /proc/filesystems && return 1
-	modprobe $FSTYPE
-	grep -q $FSTYPE /proc/filesystems && return 1
-	insmod ../$FSTYPE/$FSTYPE.o
-	grep -q $FSTYPE /proc/filesystems && return 1
-	insmod ../$FSTYPE/$FSTYPE.ko
-	grep -q $FSTYPE /proc/filesystems && return 1
-	return 0
-}
 
 test_55() {
         rm -rf $DIR/d55
@@ -3340,14 +3362,14 @@ test_56q() {
 
 	setup_56 $NUMFILES $NUMDIRS
 
-	chgrp $RUNAS_ID $TDIR/file* || error "chown $DIR/${tdir}g/file$i failed"
+	chgrp $RUNAS_GID $TDIR/file* || error "chown $DIR/${tdir}g/file$i failed"
 	EXPECTED=$NUMFILES
-	NUMS="`$LFIND -gid $RUNAS_ID $TDIR | wc -l`"
+	NUMS="`$LFIND -gid $RUNAS_GID $TDIR | wc -l`"
 	[ $NUMS -eq $EXPECTED ] || \
 		error "lfs find -gid $TDIR wrong: found $NUMS, expected $EXPECTED"
 
 	EXPECTED=$(( ($NUMFILES+1) * $NUMDIRS + 1))
-	NUMS="`$LFIND ! -gid $RUNAS_ID $TDIR | wc -l`"
+	NUMS="`$LFIND ! -gid $RUNAS_GID $TDIR | wc -l`"
 	[ $NUMS -eq $EXPECTED ] || \
 		error "lfs find ! -gid $TDIR wrong: found $NUMS, expected $EXPECTED"
 
@@ -3854,7 +3876,7 @@ test_72() { # bug 5695 - Test that on 2.6 remove_suid works properly
 	[ "$RUNAS_ID" = "$UID" ] && skip_env "RUNAS_ID = UID = $UID -- skipping" && return
 
         # Check that testing environment is properly set up. Skip if not
-        FAIL_ON_ERROR=false check_runas_id_ret $RUNAS_ID $RUNAS_ID $RUNAS || {
+        FAIL_ON_ERROR=false check_runas_id_ret $RUNAS_ID $RUNAS_GID $RUNAS || {
                 skip_env "User $RUNAS_ID does not exist - skipping"
                 return 0
         }
@@ -3930,6 +3952,14 @@ test_74b() { # bug 13310
 	rm -f $DIR/f74b
 }
 run_test 74b "ldlm_enqueue freed-export error path, touch (shouldn't LBUG)"
+
+test_74c() {
+#define OBD_FAIL_LDLM_NEW_LOCK
+	lctl set_param fail_loc=0x80000319
+	touch $DIR/$tfile && error "Touch successful"
+	true
+}
+run_test 74c "ldlm_lock_create error path, (shouldn't LBUG)"
 
 num_inodes() {
 	awk '/lustre_inode_cache/ {print $2; exit}' /proc/slabinfo
@@ -4378,28 +4408,23 @@ test_101() {
 }
 run_test 101 "check read-ahead for random reads ================"
 
-export SETUP_TEST101=no
-setup_test101() {
-	[ "$SETUP_TEST101" = "yes" ] && return
+setup_test101b() {
 	mkdir -p $DIR/$tdir
 	STRIPE_SIZE=1048576
 	STRIPE_COUNT=$OSTCOUNT
 	STRIPE_OFFSET=0
 
-	trap cleanup_test101 EXIT
+	trap cleanup_test101b EXIT
 	# prepare the read-ahead file
 	$SETSTRIPE $DIR/$tfile -s $STRIPE_SIZE -i $STRIPE_OFFSET -c $OSTCOUNT
 
 	dd if=/dev/zero of=$DIR/$tfile bs=1024k count=100 2> /dev/null
-	SETUP_TEST101=yes
 }
 
-cleanup_test101() {
-	[ "$SETUP_TEST101" = "yes" ] || return
+cleanup_test101b() {
 	trap 0
 	rm -rf $DIR/$tdir
-        rm -f $DIR/$tfile
-	SETUP_TEST101=no
+	rm -f $DIR/$tfile
 }
 
 calc_total() {
@@ -4433,7 +4458,7 @@ test_101b() {
 	local FILE_LENGTH=$((STRIPE_SIZE*100))
 	local ITERATION=$((FILE_LENGTH/STRIDE_SIZE))
 	# prepare the read-ahead file
-	setup_test101
+	setup_test101b
 	cancel_lru_locks osc
 	for BIDX in 2 4 8 16 32 64 128 256
 	do
@@ -4447,7 +4472,7 @@ test_101b() {
 		cancel_lru_locks osc
 		ra_check_101 $BSIZE
 	done
-	cleanup_test101
+	cleanup_test101b
 	true
 }
 run_test 101b "check stride-io mode read-ahead ================="
@@ -4490,6 +4515,7 @@ test_101d() {
 
     set_read_ahead $old_READAHEAD
     rm -f $file
+    wait_delete_completed
 
     [ $time_ra_ON -lt $time_ra_OFF ] ||
         error "read-ahead enabled  time read (${time_ra_ON}s) is more than
@@ -4497,9 +4523,7 @@ test_101d() {
 }
 run_test 101d "file read with and without read-ahead enabled  ================="
 
-export SETUP_TEST102=no
 setup_test102() {
-	[ "$SETUP_TEST102" = "yes" ] && return
 	mkdir -p $DIR/$tdir
 	chown $RUNAS_ID $DIR/$tdir
 	STRIPE_SIZE=65536
@@ -4526,14 +4550,12 @@ setup_test102() {
 
 	cd $DIR
 	$1 $TAR cf $TMP/f102.tar $tdir --xattrs
-	SETUP_TEST102=yes
 }
 
 cleanup_test102() {
 	trap 0
-	[ "$SETUP_TEST102" = "yes" ] || return 0
 	rm -f $TMP/f102.tar
-	SETUP_TEST102=no
+	rm -rf $DIR/d0.sanity/d102
 }
 
 test_102a() {
@@ -4798,7 +4820,7 @@ test_102k() {
         local default_size=`$GETSTRIPE -s $test_kdir`
         local default_count=`$GETSTRIPE -c $test_kdir`
         local default_offset=`$GETSTRIPE -o $test_kdir`
-        $SETSTRIPE -s 65536 -i 1 -c 2 $test_kdir || error 'dir setstripe failed'
+        $SETSTRIPE -s 65536 -i 1 -c $OSTCOUNT $test_kdir || error 'dir setstripe failed'
         setfattr -n trusted.lov $test_kdir
         local stripe_size=`$GETSTRIPE -s $test_kdir`
         local stripe_count=`$GETSTRIPE -c $test_kdir`
@@ -6448,11 +6470,11 @@ som_mode_switch() {
         if [ x$som = x"enabled" ]; then
                 [ $((gl2 - gl1)) -gt 0 ] && error "no glimpse RPC is expected"
                 MOUNTOPT=`echo $MOUNTOPT | sed 's/som_preview//g'`
-                do_facet mgs "$LCTL conf_param $FSNAME.mdt.som=disabled"
+                do_facet mgs "$LCTL conf_param mdt.$FSNAME.som=disabled"
         else
                 [ $((gl2 - gl1)) -gt 0 ] || error "some glimpse RPC is expected"
                 MOUNTOPT="$MOUNTOPT,som_preview"
-                do_facet mgs "$LCTL conf_param $FSNAME.mdt.som=enabled"
+                do_facet mgs "$LCTL conf_param mdt.$FSNAME.som=enabled"
         fi
 
         # do remount to make new mount-conf parameters actual
@@ -7607,7 +7629,20 @@ test_216() { # bug 20317
 }
 run_test 216 "check lockless direct write works and updates file size and kms correctly"
 
-test_217() { # bug 15384
+test_217() { # bug 22430
+	local node
+	for node in $(nodes_list); do
+		if [[ $node = *-* ]] ; then
+			echo "lctl ping $node@$NETTYPE"
+			lctl ping $node@$NETTYPE
+		else
+			echo "skipping $node (no hiphen detected)"
+		fi
+	done
+}
+run_test 217 "check lctl ping for hostnames with hiphen ('-')"
+
+test_218() { # bug 15384
     #cleanup/setup to check params_tree build/remove correctly
     cleanup
     setup
@@ -7627,7 +7662,7 @@ test_217() { # bug 15384
     fi
     rm -f $DIR/$tfile
 }
-run_test 217 "compare parameters from /proc and params_tree"
+run_test 218 "compare parameters from /proc and params_tree"
 
 #
 # tests that do cleanup/setup should be run at the end

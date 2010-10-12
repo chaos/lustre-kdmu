@@ -403,6 +403,7 @@ extern cfs_psdev_t libcfs_dev;
 extern cfs_rw_semaphore_t cfs_tracefile_sem;
 extern cfs_semaphore_t cfs_trace_thread_sem;
 extern cfs_rw_semaphore_t _lprocfs_lock;
+extern cfs_rw_semaphore_t kg_sem;
 
 extern void libcfs_init_nidstrings(void);
 extern int libcfs_arch_init(void);
@@ -423,6 +424,7 @@ static int init_libcfs_module(void)
         cfs_init_mutex(&cfs_trace_thread_sem);
         cfs_init_rwsem(&ioctl_list_sem);
         cfs_init_rwsem(&_lprocfs_lock);
+        cfs_init_rwsem(&kg_sem);
         CFS_INIT_LIST_HEAD(&ioctl_list);
         libcfs_param_root_init();
 
@@ -505,6 +507,7 @@ static void exit_libcfs_module(void)
         cfs_fini_rwsem(&ioctl_list_sem);
         cfs_fini_rwsem(&cfs_tracefile_sem);
         cfs_fini_rwsem(&_lprocfs_lock);
+        cfs_fini_rwsem(&kg_sem);
 
         lc_watchdog_fini();
         libcfs_arch_cleanup();

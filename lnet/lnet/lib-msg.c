@@ -72,7 +72,7 @@ lnet_enq_event_locked (lnet_eq_t *eq, lnet_event_t *ev)
 
         /* There is no race since both event consumers and event producers
          * take the LNET_LOCK, so we don't screw around with memory
-         * barriers, setting the sequence number last or wierd structure
+         * barriers, setting the sequence number last or weird structure
          * layout assertions. */
         *eq_slot = *ev;
 
@@ -85,7 +85,7 @@ lnet_enq_event_locked (lnet_eq_t *eq, lnet_event_t *ev)
         if (cfs_waitq_active(&the_lnet.ln_waitq))
                 cfs_waitq_broadcast(&the_lnet.ln_waitq);
 #else
-# ifndef HAVE_PTHREAD
+# ifndef HAVE_LIBPTHREAD
         /* LNetEQPoll() calls into _the_ LND to wait for action */
 # else
         /* Wake anyone waiting in LNetEQPoll() */

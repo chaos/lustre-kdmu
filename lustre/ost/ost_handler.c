@@ -310,7 +310,8 @@ static int ost_statfs(struct ptlrpc_request *req)
         osfs = req_capsule_server_get(&req->rq_pill, &RMF_OBD_STATFS);
 
         req->rq_status = obd_statfs(req->rq_export->exp_obd, osfs,
-                                    cfs_time_current_64() - CFS_HZ, 0);
+                                    cfs_time_shift_64(-OBD_STATFS_CACHE_SECONDS),
+                                    0);
         if (req->rq_status != 0)
                 CERROR("ost: statfs failed: rc %d\n", req->rq_status);
 
@@ -1012,7 +1013,7 @@ static int ost_brw_write(struct ptlrpc_request *req, struct obd_trans_info *oti)
         int rc, i, j;
         obd_count                client_cksum = 0, server_cksum = 0;
         cksum_type_t             cksum_type = OBD_CKSUM_CRC32;
-        int                      no_reply = 0;
+        int                      no_reply = 0, mmap = 0;
         __u32                    o_uid = 0, o_gid = 0;
         struct ost_thread_local_cache *tls;
         ENTRY;
@@ -1044,10 +1045,6 @@ static int ost_brw_write(struct ptlrpc_request *req, struct obd_trans_info *oti)
         if (body == NULL)
                 GOTO(out, rc = -EFAULT);
 
-        if ((body->oa.o_flags & OBD_BRW_MEMALLOC) &&
-            (exp->exp_connection->c_peer.nid == exp->exp_connection->c_self))
-                libcfs_memory_pressure_set();
-
         objcount = req_capsule_get_size(&req->rq_pill, &RMF_OBD_IOOBJ,
                                         RCL_CLIENT) / sizeof(*ioo);
         ioo = req_capsule_client_get(&req->rq_pill, &RMF_OBD_IOOBJ);
@@ -1070,6 +1067,10 @@ static int ost_brw_write(struct ptlrpc_request *req, struct obd_trans_info *oti)
         if (remote_nb == NULL || niocount != (req_capsule_get_size(&req->rq_pill,
             &RMF_NIOBUF_REMOTE, RCL_CLIENT) / sizeof(*remote_nb)))
                 GOTO(out, rc = -EFAULT);
+
+        if ((remote_nb[0].flags & OBD_BRW_MEMALLOC) &&
+            (exp->exp_connection->c_peer.nid == exp->exp_connection->c_self))
+                cfs_memory_pressure_set();
 
         if (body->oa.o_valid & OBD_MD_FLOSSCAPA) {
                 capa = req_capsule_client_get(&req->rq_pill, &RMF_CAPA1);
@@ -1122,6 +1123,8 @@ static int ost_brw_write(struct ptlrpc_request *req, struct obd_trans_info *oti)
                 if (body->oa.o_valid & OBD_MD_FLFLAGS)
                         cksum_type = cksum_type_unpack(body->oa.o_flags);
         }
+        if (body->oa.o_valid & OBD_MD_FLFLAGS && body->oa.o_flags & OBD_FL_MMAP)
+                mmap = 1;
 
         /* Because we already sync grant info with client when reconnect,
          * grant info will be cleared for resent req, then fed_grant and
@@ -1222,8 +1225,9 @@ static int ost_brw_write(struct ptlrpc_request *req, struct obd_trans_info *oti)
                 repbody->oa.o_cksum = server_cksum;
                 cksum_counter++;
                 if (unlikely(client_cksum != server_cksum)) {
-                        CERROR("client csum %x, server csum %x\n",
-                               client_cksum, server_cksum);
+                        CDEBUG_LIMIT(mmap ? D_INFO : D_ERROR,
+                                     "client csum %x, server csum %x\n",
+                                     client_cksum, server_cksum);
                         cksum_counter = 0;
                 } else if ((cksum_counter & (-cksum_counter)) == cksum_counter){
                         CDEBUG(D_INFO, "Checksum %u from %s OK: %x\n",
@@ -1253,7 +1257,7 @@ static int ost_brw_write(struct ptlrpc_request *req, struct obd_trans_info *oti)
          */
         repbody->oa.o_valid &= ~(OBD_MD_FLMTIME | OBD_MD_FLATIME);
 
-        if (unlikely(client_cksum != server_cksum && rc == 0)) {
+        if (unlikely(client_cksum != server_cksum && rc == 0 &&  !mmap)) {
                 int  new_cksum = ost_checksum_bulk(desc, OST_WRITE, cksum_type);
                 char *msg;
                 char *via;
@@ -1326,14 +1330,6 @@ out_bulk:
         if (desc)
                 ptlrpc_free_bulk(desc);
 out:
-       /* XXX: don't send reply if obd rdonly mode, this can cause data loss
-        * on client, see bug 22190. Remove this when async bulk will be done.
-        * Meanwhile, if this is umount then don't reply anything. */
-        if (req->rq_export->exp_obd->obd_no_transno) {
-                no_reply = req->rq_export->exp_obd->obd_stopping;
-                rc = -EIO;
-        }
-
         if (rc == 0) {
                 oti_to_request(oti, req);
                 target_committed_to_req(req);
@@ -1353,7 +1349,7 @@ out:
                       exp->exp_connection->c_remote_uuid.uuid,
                       libcfs_id2str(req->rq_peer));
         }
-        libcfs_memory_pressure_clr();
+        cfs_memory_pressure_clr();
         RETURN(rc);
 }
 
@@ -1732,6 +1728,45 @@ static int ost_connect_check_sptlrpc(struct ptlrpc_request *req)
         }
 
         return rc;
+}
+
+/* Ensure that data and metadata are synced to the disk when lock is cancelled
+ * (if requested) */
+int ost_blocking_ast(struct ldlm_lock *lock,
+                             struct ldlm_lock_desc *desc,
+                             void *data, int flag)
+{
+        __u32 sync_lock_cancel = 0;
+        __u32 len = sizeof(sync_lock_cancel);
+        int rc = 0;
+        ENTRY;
+
+        rc = obd_get_info(lock->l_export, sizeof(KEY_SYNC_LOCK_CANCEL),
+                          KEY_SYNC_LOCK_CANCEL, &len, &sync_lock_cancel, NULL);
+
+        if (!rc && flag == LDLM_CB_CANCELING &&
+            (lock->l_granted_mode & (LCK_PW|LCK_GROUP)) &&
+            (sync_lock_cancel == ALWAYS_SYNC_ON_CANCEL ||
+             (sync_lock_cancel == BLOCKING_SYNC_ON_CANCEL &&
+              lock->l_flags & LDLM_FL_CBPENDING))) {
+                struct obdo *oa;
+                int rc;
+
+                OBDO_ALLOC(oa);
+                oa->o_id = lock->l_resource->lr_name.name[0];
+                oa->o_seq = lock->l_resource->lr_name.name[1];
+                oa->o_valid = OBD_MD_FLID|OBD_MD_FLGROUP;
+
+                rc = obd_sync(lock->l_export, oa, NULL,
+                              lock->l_policy_data.l_extent.start,
+                              lock->l_policy_data.l_extent.end, NULL);
+                if (rc)
+                        CERROR("Error %d syncing data on lock cancel\n", rc);
+
+                OBDO_FREE(oa);
+        }
+
+        return ldlm_server_blocking_ast(lock, desc, data, flag);
 }
 
 static int ost_filter_recovery_request(struct ptlrpc_request *req,
@@ -2371,7 +2406,7 @@ int ost_handle(struct ptlrpc_request *req)
                 if (OBD_FAIL_CHECK(OBD_FAIL_LDLM_ENQUEUE))
                         RETURN(0);
                 rc = ldlm_handle_enqueue(req, ldlm_server_completion_ast,
-                                         ldlm_server_blocking_ast,
+                                         ost_blocking_ast,
                                          ldlm_server_glimpse_ast);
                 fail = OBD_FAIL_OST_LDLM_REPLY_NET;
                 break;
@@ -2596,13 +2631,9 @@ static int ost_cleanup(struct obd_device *obd)
 
         ping_evictor_stop();
 
-        cfs_spin_lock_bh(&obd->obd_processing_task_lock);
-        if (obd->obd_recovering) {
-                target_cancel_recovery_timer(obd);
-                obd->obd_recovering = 0;
-        }
-        cfs_spin_unlock_bh(&obd->obd_processing_task_lock);
-
+        /* there is no recovery for OST OBD, all recovery is controlled by
+         * obdfilter OBD */
+        LASSERT(obd->obd_recovering == 0);
         cfs_down(&ost->ost_health_sem);
         ptlrpc_unregister_service(ost->ost_service);
         ptlrpc_unregister_service(ost->ost_create_service);

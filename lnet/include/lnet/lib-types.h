@@ -162,7 +162,6 @@ typedef struct {
 #define LNET_PROTO_QSW_MAGIC                0x0be91b93
 #define LNET_PROTO_TCP_MAGIC                0xeebc0ded
 #define LNET_PROTO_PTL_MAGIC                0x50746C4E /* 'PtlN' unique magic */
-#define LNET_PROTO_GM_MAGIC                 0x6d797269 /* 'myri'! */
 #define LNET_PROTO_MX_MAGIC                 0x4d583130 /* 'MX10'! */
 #define LNET_PROTO_ACCEPTOR_MAGIC           0xacce7100
 #define LNET_PROTO_PING_MAGIC               0x70696E67 /* 'ping' */
@@ -196,6 +195,7 @@ typedef struct lnet_msg {
         lnet_process_id_t     msg_target;
         __u32                 msg_type;
 
+        unsigned int          msg_vmflush:1;      /* VM trying to free memory */
         unsigned int          msg_target_is_router:1; /* sending to a router */
         unsigned int          msg_routing:1;      /* being forwarded */
         unsigned int          msg_ack:1;          /* ack on finalize (PUT) */
@@ -306,7 +306,8 @@ typedef struct {
 #define LNET_COOKIE_TYPE_MD    1
 #define LNET_COOKIE_TYPE_ME    2
 #define LNET_COOKIE_TYPE_EQ    3
-#define LNET_COOKIE_TYPES      4
+#define LNET_COOKIE_TYPE_BITS  2
+#define LNET_COOKIE_TYPES      (1 << LNET_COOKIE_TYPE_BITS)
 /* LNET_COOKIE_TYPES must be a power of 2, so the cookie type can be
  * extracted by masking with (LNET_COOKIE_TYPES - 1) */
 
@@ -368,7 +369,7 @@ typedef struct lnet_lnd
         /* query of peer aliveness */
         void (*lnd_query)(struct lnet_ni *ni, lnet_nid_t peer, cfs_time_t *when);
 
-#if defined(__KERNEL__) || defined(HAVE_PTHREAD)
+#if defined(__KERNEL__) || defined(HAVE_LIBPTHREAD)
         /* accept a new connection */
         int (*lnd_accept)(struct lnet_ni *ni, cfs_socket_t *sock);
 #endif
@@ -510,12 +511,20 @@ typedef struct {
 
 /* Options for lnet_portal_t::ptl_options */
 #define LNET_PTL_LAZY               (1 << 0)
+#define LNET_PTL_MATCH_UNIQUE       (1 << 1)    /* unique match, for RDMA */
+#define LNET_PTL_MATCH_WILDCARD     (1 << 2)    /* wildcard match, request portal */
+
+/* ME hash of RDMA portal */
+#define LNET_PORTAL_HASH_BITS        8
+#define LNET_PORTAL_HASH_SIZE       (1 << LNET_PORTAL_HASH_BITS)
+
 typedef struct {
-        cfs_list_t           ptl_ml;   /* match list */
-        cfs_list_t           ptl_msgq; /* messages blocking for MD */
-        __u64                ptl_ml_version;    /* validity stamp, only changed for new attached MD */
-        __u64                ptl_msgq_version;  /* validity stamp */
-        unsigned int         ptl_options;
+        cfs_list_t       *ptl_mhash;            /* match hash */
+        cfs_list_t        ptl_mlist;            /* match list */
+        cfs_list_t        ptl_msgq;             /* messages blocking for MD */
+        __u64             ptl_ml_version;       /* validity stamp, only changed for new attached MD */
+        __u64             ptl_msgq_version;     /* validity stamp */
+        unsigned int      ptl_options;
 } lnet_portal_t;
 
 /* Router Checker states */
@@ -540,7 +549,7 @@ typedef struct
         cfs_semaphore_t   ln_api_mutex;
         cfs_semaphore_t   ln_lnd_mutex;
 #else
-# ifndef HAVE_PTHREAD
+# ifndef HAVE_LIBPTHREAD
         int                    ln_lock;
         int                    ln_api_mutex;
         int                    ln_lnd_mutex;

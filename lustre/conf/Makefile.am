@@ -25,7 +25,7 @@
 #
 
 #
-# Copyright  2008 Sun Microsystems, Inc. All rights reserved
+# Copyright (c) 2003, 2010, Oracle and/or its affiliates. All rights reserved.
 # Use is subject to license terms.
 #
 
@@ -34,12 +34,14 @@
 # Lustre is a trademark of Sun Microsystems, Inc.
 #
 
-EXTRA_DIST = lustre.dtd lustre.schema slapd-lustre.conf lustre2ldif.xsl top.ldif
+EXTRA_DIST = lustre.dtd slapd-lustre.conf lustre2ldif.xsl top.ldif \
+             99-lustre.rules
 ldapconfdir = $(sysconfdir)/openldap
-ldapschemadir = $(sysconfdir)/openldap/schema
 
 if UTILS
-ldapconf_SCRIPTS = slapd-lustre.conf
-ldapschema_SCRIPTS = lustre.schema
-pkgdata_DATA = top.ldif lustre2ldif.xsl
+noinst_SCRIPTS = slapd-lustre.conf
+noinst_DATA = top.ldif lustre2ldif.xsl
 endif
+
+udevrulesdir = $(sysconfdir)/udev/rules.d
+udevrules_DATA = 99-lustre.rules

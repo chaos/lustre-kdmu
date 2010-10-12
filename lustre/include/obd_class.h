@@ -151,6 +151,7 @@ struct config_llog_data {
         cfs_atomic_t                cld_refcount;
         struct config_llog_data    *cld_sptlrpc;/* depended sptlrpc log */
         struct obd_export          *cld_mgcexp;
+        cfs_mutex_t                 cld_lock;
         unsigned int                cld_stopping:1, /* we were told to stop
                                                      * watching */
                                     cld_lostlock:1, /* lock not requeued */
@@ -1599,68 +1600,6 @@ static inline int obd_notify_observer(struct obd_device *observer,
         return rc1 ? rc1 : rc2;
 }
 
-#ifdef HAVE_QUOTA_SUPPORT
-
-static inline int obd_quotacheck(struct obd_export *exp,
-                                 struct obd_quotactl *oqctl)
-{
-        int rc;
-        ENTRY;
-
-        EXP_CHECK_DT_OP(exp, quotacheck);
-        EXP_COUNTER_INCREMENT(exp, quotacheck);
-
-        rc = OBP(exp->exp_obd, quotacheck)(exp->exp_obd, exp, oqctl);
-        RETURN(rc);
-}
-
-static inline int obd_quotactl(struct obd_export *exp,
-                               struct obd_quotactl *oqctl)
-{
-        int rc;
-        ENTRY;
-
-        EXP_CHECK_DT_OP(exp, quotactl);
-        EXP_COUNTER_INCREMENT(exp, quotactl);
-
-        rc = OBP(exp->exp_obd, quotactl)(exp->exp_obd, exp, oqctl);
-        RETURN(rc);
-}
-
-static inline int obd_quota_adjust_qunit(struct obd_export *exp,
-                                         struct quota_adjust_qunit *oqaq,
-                                         struct lustre_quota_ctxt *qctxt)
-{
-#if defined(__KERNEL__)
-        struct timeval work_start;
-        struct timeval work_end;
-        long timediff;
-#endif
-        int rc;
-        ENTRY;
-
-#if defined(__KERNEL__)
-        if (qctxt)
-                cfs_gettimeofday(&work_start);
-#endif
-        EXP_CHECK_DT_OP(exp, quota_adjust_qunit);
-        EXP_COUNTER_INCREMENT(exp, quota_adjust_qunit);
-
-        rc = OBP(exp->exp_obd, quota_adjust_qunit)(exp, oqaq, qctxt);
-
-#if defined(__KERNEL__)
-        if (qctxt) {
-                cfs_gettimeofday(&work_end);
-                timediff = cfs_timeval_sub(&work_end, &work_start, NULL);
-                lprocfs_counter_add(qctxt->lqc_stats, LQUOTA_ADJUST_QUNIT,
-                                    timediff);
-        }
-#endif
-        RETURN(rc);
-}
-
-#endif /* HAVE_QUOTA_SUPPORT */
-
 static inline int obd_health_check(struct obd_device *obd)
 {
         /* returns: 0 on healthy
@@ -2235,6 +2174,6 @@ int mea_name2idx(struct lmv_stripe_md *mea, const char *name, int namelen);
 int raw_name2idx(int hashtype, int count, const char *name, int namelen);
 
 /* prng.c */
-#define ll_generate_random_uuid(uuid_out) ll_get_random_bytes(uuid_out, sizeof(class_uuid_t))
+#define ll_generate_random_uuid(uuid_out) cfs_get_random_bytes(uuid_out, sizeof(class_uuid_t))
 
 #endif /* __LINUX_OBD_CLASS_H */

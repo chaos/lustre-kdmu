@@ -42,7 +42,6 @@
 
 #include <linux/module.h>
 #include <linux/types.h>
-#include <linux/random.h>
 #include <linux/version.h>
 #include <linux/mm.h>
 #include <linux/statfs.h>
@@ -255,7 +254,8 @@ static int client_common_fill_super(struct super_block *sb, char *md, char *dt)
                 GOTO(out_md, err);
         }
 
-        err = obd_statfs(obd, &osfs, cfs_time_current_64() - CFS_HZ, 0);
+        err = obd_statfs(obd, &osfs,
+                         cfs_time_shift_64(-OBD_STATFS_CACHE_SECONDS), 0);
         if (err)
                 GOTO(out_md_fid, err);
 
@@ -414,7 +414,9 @@ static int client_common_fill_super(struct super_block *sb, char *md, char *dt)
         CDEBUG(D_SUPER, "rootfid "DFID"\n", PFID(&sbi->ll_root_fid));
 
         sb->s_op = &lustre_super_operations;
+#if THREAD_SIZE >= 8192
         sb->s_export_op = &lustre_export_operations;
+#endif
 
         /* make root inode
          * XXX: move this to after cbd setup? */
@@ -768,6 +770,11 @@ static int ll_options(char *options, int *flags)
                         goto next;
                 }
                 tmp = ll_set_opt("som_preview", s1, LL_SBI_SOM_PREVIEW);
+                if (tmp) {
+                        *flags |= tmp;
+                        goto next;
+                }
+                tmp = ll_set_opt("32bitapi", s1, LL_SBI_32BIT_API);
                 if (tmp) {
                         *flags |= tmp;
                         goto next;
@@ -1373,10 +1380,10 @@ int ll_statfs(struct dentry *de, struct kstatfs *sfs)
         CDEBUG(D_VFSTRACE, "VFS Op: at "LPU64" jiffies\n", get_jiffies_64());
         ll_stats_ops_tally(ll_s2sbi(sb), LPROC_LL_STAFS, 1);
 
-        /* For now we will always get up-to-date statfs values, but in the
-         * future we may allow some amount of caching on the client (e.g.
-         * from QOS or lprocfs updates). */
-        rc = ll_statfs_internal(sb, &osfs, cfs_time_current_64() - 1, 0);
+        /* Some amount of caching on the client is allowed */
+        rc = ll_statfs_internal(sb, &osfs,
+                                cfs_time_shift_64(-OBD_STATFS_CACHE_SECONDS),
+                                0);
         if (rc)
                 return rc;
 
@@ -1591,6 +1598,9 @@ void ll_update_inode(struct inode *inode, struct lustre_md *md)
                         /* Use old size assignment to avoid
                          * deadlock bz14138 & bz14326 */
                         inode->i_size = body->size;
+
+                        CDEBUG(D_VFSTRACE, "inode=%lu, updating i_size %llu\n",
+                               inode->i_ino, (unsigned long long)body->size);
                 }
 
                 if (body->valid & OBD_MD_FLBLOCKS)

@@ -45,77 +45,87 @@
 
 #include "ofd_internal.h"
 
+static int filter_lvbo_free(struct ldlm_resource *res) {
+        if (res->lr_lvb_obj)
+                filter_object_put(res->lr_lvb_env,
+                                  filter_obj(res->lr_lvb_obj));
+
+        if (res->lr_lvb_data) {
+                LASSERT(res->lr_lvb_env);
+                lu_env_fini(res->lr_lvb_env);
+                OBD_FREE_PTR(res->lr_lvb_env);
+        } else {
+                LASSERT(res->lr_lvb_env == NULL);
+        }
+        return 0;
+}
+
 /* Called with res->lr_lvb_sem held */
 static int filter_lvbo_init(struct ldlm_resource *res)
 {
-        struct ost_lvb *lvb = NULL;
         struct filter_device *ofd;
         struct filter_object *fo;
         struct filter_thread_info *info;
-        struct lu_env env;
+        struct lu_env *env;
         int rc = 0;
         ENTRY;
 
         LASSERT(res);
 
-        /* we only want lvb's for object resources */
-        /* check for internal locks: these have name[1] != 0 */
-        if (res->lr_name.name[1])
+        if (res->lr_lvb_data) {
+                LASSERT(res->lr_lvb_env);
                 RETURN(0);
+        }
 
-        if (res->lr_lvb_data)
-                RETURN(0);
+        LASSERT(res->lr_lvb_env == NULL);
+        OBD_ALLOC_PTR(env);
+        if (env == NULL)
+                RETURN(-ENOMEM);
+
+        rc = lu_env_init(env, LCT_DT_THREAD);
+        if (rc) {
+                OBD_FREE_PTR(env);
+                RETURN(rc);
+        }
+
+        info = filter_info_init(env, NULL);
+
+        res->lr_lvb_data = &info->fti_lvb;
+        res->lr_lvb_len = sizeof(info->fti_lvb);
+        res->lr_lvb_env = env;
+        res->lr_lvb_obj = NULL;
 
         ofd = res->lr_namespace->ns_lvbp;
         LASSERT(ofd != NULL);
 
-        rc = lu_env_init(&env, LCT_DT_THREAD);
-        if (rc)
-                RETURN(rc);
-
-        OBD_ALLOC_PTR(lvb);
-        if (lvb == NULL)
-                GOTO(out, rc = -ENOMEM);
-        res->lr_lvb_data = lvb;
-        res->lr_lvb_len = sizeof(*lvb);
-
-
-        info = filter_info_init(&env, NULL);
         ofd_fid_from_resid(&info->fti_fid, &res->lr_name);
-
-        fo = filter_object_find(&env, ofd, &info->fti_fid);
+        fo = filter_object_find(env, ofd, &info->fti_fid);
         if (IS_ERR(fo))
                 GOTO(out, rc = PTR_ERR(fo));
 
-        if (!filter_object_exists(fo)) {
-                filter_object_put(&env, fo);
-                GOTO(out, rc);
-        }
+        res->lr_lvb_obj = &fo->ofo_obj.do_lu;
+        if (!filter_object_exists(fo))
+                GOTO(out, rc = -ENOENT);
 
-        rc = filter_attr_get(&env, fo, &info->fti_attr);
-        filter_object_put(&env, fo);
-        if (rc == 0) {
-                lvb->lvb_size = info->fti_attr.la_size;
-                lvb->lvb_blocks = info->fti_attr.la_blocks;
-                lvb->lvb_mtime = info->fti_attr.la_mtime;
-                lvb->lvb_atime = info->fti_attr.la_atime;
-                lvb->lvb_ctime = info->fti_attr.la_ctime;
-        } else {
+        rc = filter_attr_get(env, fo, &info->fti_attr);
+        if (rc)
                 GOTO(out, rc);
-        }
+
+        info->fti_lvb.lvb_size = info->fti_attr.la_size;
+        info->fti_lvb.lvb_blocks = info->fti_attr.la_blocks;
+        info->fti_lvb.lvb_mtime = info->fti_attr.la_mtime;
+        info->fti_lvb.lvb_atime = info->fti_attr.la_atime;
+        info->fti_lvb.lvb_ctime = info->fti_attr.la_ctime;
 
         CDEBUG(D_DLMTRACE, "res: "LPX64" initial lvb size: "LPX64", "
                "mtime: "LPX64", blocks: "LPX64"\n",
-               res->lr_name.name[0], lvb->lvb_size,
-               lvb->lvb_mtime, lvb->lvb_blocks);
+               res->lr_name.name[0], info->fti_lvb.lvb_size,
+               info->fti_lvb.lvb_mtime, info->fti_lvb.lvb_blocks);
 
         EXIT;
-
 out:
-        lu_env_fini(&env);
-
-        if (rc && lvb)
-                OST_LVB_SET_ERR(lvb->lvb_blocks, rc);
+        if (rc)
+                OST_LVB_SET_ERR(info->fti_lvb.lvb_blocks, rc);
         /* Don't free lvb data on lookup error */
         return rc;
 }
@@ -135,30 +145,20 @@ static int filter_lvbo_update(struct ldlm_resource *res,
         struct filter_object *fo;
         struct filter_thread_info *info;
         struct ost_lvb *lvb;
-        struct lu_env env;
         int rc = 0;
         ENTRY;
 
         LASSERT(res);
 
-        /* we only want lvb's for object resources */
-        /* check for internal locks: these have name[1] != 0 */
-        if (res->lr_name.name[1])
-                RETURN(0);
-
         cfs_mutex_down(&res->lr_lvb_sem);
         lvb = res->lr_lvb_data;
         if (lvb == NULL) {
                 CERROR("No lvb when running lvbo_update!\n");
-                GOTO(out_mutex, rc = 0);
+                GOTO(out, rc = 0);
         }
-
-        /* XXX: it's too expensive to create env every time */
-        rc = lu_env_init(&env, LCT_DT_THREAD);
-        if (rc)
-                GOTO(out_mutex, rc);
-
-        info = filter_info_init(&env, NULL);
+        LASSERT(res->lr_lvb_env);
+        info = filter_info(res->lr_lvb_env);
+        LASSERT(lvb == &info->fti_lvb);
         /* Update the LVB from the network message */
         if (r != NULL) {
                 struct ost_lvb *new;
@@ -200,15 +200,22 @@ static int filter_lvbo_update(struct ldlm_resource *res,
         ofd = res->lr_namespace->ns_lvbp;
         LASSERT(ofd != NULL);
 
-        ofd_fid_from_resid(&info->fti_fid, &res->lr_name);
+        if (unlikely(res->lr_lvb_obj == NULL)) {
+                ofd_fid_from_resid(&info->fti_fid, &res->lr_name);
+                fo = filter_object_find(res->lr_lvb_env, ofd, &info->fti_fid);
+                if (IS_ERR(fo))
+                        GOTO(out, rc = PTR_ERR(fo));
+                res->lr_lvb_obj = &fo->ofo_obj.do_lu;
+        } else {
+                fo = filter_obj(res->lr_lvb_obj);
+        }
 
-        fo = filter_object_find(&env, ofd, &info->fti_fid);
-        if (IS_ERR(fo))
-                GOTO(out_env, rc = PTR_ERR(fo));
+        if (!filter_object_exists(fo))
+                GOTO(out, rc = -ENOENT);
 
-        rc = filter_attr_get(&env, fo, &info->fti_attr);
+        rc = filter_attr_get(res->lr_lvb_env, fo, &info->fti_attr);
         if (rc)
-                GOTO(out_obj, rc);
+                GOTO(out, rc);
 
         if (info->fti_attr.la_size > lvb->lvb_size || !increase_only) {
                 CDEBUG(D_DLMTRACE, "res: "LPU64" updating lvb size from disk: "
@@ -242,17 +249,13 @@ static int filter_lvbo_update(struct ldlm_resource *res,
                        (unsigned long long)info->fti_attr.la_blocks);
                 lvb->lvb_blocks = info->fti_attr.la_blocks;
         }
-
-out_obj:
-        filter_object_put(&env, fo);
-out_env:
-        lu_env_fini(&env);
-out_mutex:
+out:
         cfs_mutex_up(&res->lr_lvb_sem);
         return rc;
 }
 
 struct ldlm_valblock_ops filter_lvbo = {
         lvbo_init: filter_lvbo_init,
-        lvbo_update: filter_lvbo_update
+        lvbo_update: filter_lvbo_update,
+        lvbo_free:   filter_lvbo_free,
 };

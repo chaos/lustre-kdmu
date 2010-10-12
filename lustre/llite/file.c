@@ -51,28 +51,18 @@
 
 #include "cl_object.h"
 
-static struct ll_file_data *ll_file_data_get(int is_dir)
+struct ll_file_data *ll_file_data_get(void)
 {
         struct ll_file_data *fd;
 
         OBD_SLAB_ALLOC_PTR_GFP(fd, ll_file_data_slab, CFS_ALLOC_IO);
-        if (fd && is_dir) {
-                OBD_ALLOC(fd->fd_dir.lfd_name, LLITE_NAME_LEN);
-                if (unlikely(fd->fd_dir.lfd_name == NULL)) {
-                        OBD_SLAB_FREE_PTR(fd, ll_file_data_slab);
-                        fd = NULL;
-                }
-        }
         return fd;
 }
 
 static void ll_file_data_put(struct ll_file_data *fd)
 {
-        if (fd != NULL) {
-                if (fd->fd_dir.lfd_name)
-                        OBD_FREE(fd->fd_dir.lfd_name, LLITE_NAME_LEN);
+        if (fd != NULL)
                 OBD_SLAB_FREE_PTR(fd, ll_file_data_slab);
-        }
 }
 
 void ll_pack_inode2opdata(struct inode *inode, struct md_op_data *op_data,
@@ -324,7 +314,7 @@ int ll_file_release(struct inode *inode, struct file *file)
         LASSERT(fd != NULL);
 
         /* The last ref on @file, maybe not the the owner pid of statahead.
-         * Different processes can open the same dir, "lli_opendir_key" means:
+         * Different processes can open the same dir, "ll_opendir_key" means:
          * it is me that should stop the statahead thread. */
         if (lli->lli_opendir_key == fd && lli->lli_opendir_pid != 0)
                 ll_stop_statahead(inode, lli->lli_opendir_key);
@@ -519,7 +509,7 @@ int ll_file_open(struct inode *inode, struct file *file)
         file->private_data = NULL; /* prevent ll_local_open assertion */
 #endif
 
-        fd = ll_file_data_get(S_ISDIR(inode->i_mode));
+        fd = ll_file_data_get();
         if (fd == NULL)
                 RETURN(-ENOMEM);
 
@@ -788,6 +778,9 @@ int ll_merge_lvb(struct inode *inode)
         lvb.lvb_ctime = lli->lli_lvb.lvb_ctime;
         rc = obd_merge_lvb(sbi->ll_dt_exp, lli->lli_smd, &lvb, 0);
         cl_isize_write_nolock(inode, lvb.lvb_size);
+
+        CDEBUG(D_VFSTRACE, DFID" updating i_size "LPU64"\n",
+               PFID(&lli->lli_fid), lvb.lvb_size);
         inode->i_blocks = lvb.lvb_blocks;
 
         LTIME_S(inode->i_mtime) = lvb.lvb_mtime;
@@ -1205,24 +1198,16 @@ static ssize_t ll_file_splice_read(struct file *in_file, loff_t *ppos,
 }
 #endif
 
-static int ll_lov_recreate_obj(struct inode *inode, struct file *file,
-                               unsigned long arg)
+static int ll_lov_recreate(struct inode *inode, obd_id id, obd_seq seq,
+                           obd_count ost_idx)
 {
         struct obd_export *exp = ll_i2dtexp(inode);
-        struct ll_recreate_obj ucreatp;
         struct obd_trans_info oti = { 0 };
         struct obdo *oa = NULL;
         int lsm_size;
         int rc = 0;
         struct lov_stripe_md *lsm, *lsm2;
         ENTRY;
-
-        if (!cfs_capable(CFS_CAP_SYS_ADMIN))
-                RETURN(-EPERM);
-
-        if (cfs_copy_from_user(&ucreatp, (struct ll_recreate_obj *)arg,
-                               sizeof(struct ll_recreate_obj)))
-                RETURN(-EFAULT);
 
         OBDO_ALLOC(oa);
         if (oa == NULL)
@@ -1239,9 +1224,9 @@ static int ll_lov_recreate_obj(struct inode *inode, struct file *file,
         if (lsm2 == NULL)
                 GOTO(out, rc = -ENOMEM);
 
-        oa->o_id = ucreatp.lrc_id;
-        oa->o_seq = ucreatp.lrc_seq;
-        oa->o_nlink = ucreatp.lrc_ost_idx;
+        oa->o_id = id;
+        oa->o_seq = seq;
+        oa->o_nlink = ost_idx;
         oa->o_flags |= OBD_FL_RECREATE_OBJS;
         oa->o_valid = OBD_MD_FLID | OBD_MD_FLFLAGS | OBD_MD_FLGROUP;
         obdo_from_inode(oa, inode, &ll_i2info(inode)->lli_fid, OBD_MD_FLTYPE |
@@ -1255,6 +1240,41 @@ out:
         ll_inode_size_unlock(inode, 0);
         OBDO_FREE(oa);
         return rc;
+}
+
+static int ll_lov_recreate_obj(struct inode *inode, unsigned long arg)
+{
+        struct ll_recreate_obj ucreat;
+        ENTRY;
+
+        if (!cfs_capable(CFS_CAP_SYS_ADMIN))
+                RETURN(-EPERM);
+
+        if (cfs_copy_from_user(&ucreat, (struct ll_recreate_obj *)arg,
+                               sizeof(struct ll_recreate_obj)))
+                RETURN(-EFAULT);
+
+        RETURN(ll_lov_recreate(inode, ucreat.lrc_id, 0,
+                               ucreat.lrc_ost_idx));
+}
+
+static int ll_lov_recreate_fid(struct inode *inode, unsigned long arg)
+{
+        struct lu_fid fid;
+        obd_id id;
+        obd_count ost_idx;
+        ENTRY;
+
+        if (!cfs_capable(CFS_CAP_SYS_ADMIN))
+                RETURN(-EPERM);
+
+        if (cfs_copy_from_user(&fid, (struct lu_fid *)arg,
+                               sizeof(struct lu_fid)))
+                RETURN(-EFAULT);
+
+        id = fid_oid(&fid) | ((fid_seq(&fid) & 0xffff) << 32);
+        ost_idx = (fid_seq(&fid) >> 16) & 0xffff;
+        RETURN(ll_lov_recreate(inode, id, 0, ost_idx));
 }
 
 int ll_lov_setstripe_ea_info(struct inode *inode, struct file *file,
@@ -1754,7 +1774,9 @@ int ll_file_ioctl(struct inode *inode, struct file *file, unsigned int cmd,
         case LL_IOC_LOV_GETSTRIPE:
                 RETURN(ll_lov_getstripe(inode, arg));
         case LL_IOC_RECREATE_OBJ:
-                RETURN(ll_lov_recreate_obj(inode, file, arg));
+                RETURN(ll_lov_recreate_obj(inode, arg));
+        case LL_IOC_RECREATE_FID:
+                RETURN(ll_lov_recreate_fid(inode, arg));
         case FSFILT_IOC_FIEMAP:
                 RETURN(ll_ioctl_fiemap(inode, arg));
         case FSFILT_IOC_GETFLAGS:
@@ -1850,6 +1872,30 @@ loff_t ll_file_seek(struct file *file, loff_t offset, int origin)
         }
 
         RETURN(retval);
+}
+
+#ifdef HAVE_FLUSH_OWNER_ID
+int ll_flush(struct file *file, fl_owner_t id)
+#else
+int ll_flush(struct file *file)
+#endif
+{
+        struct inode *inode = file->f_dentry->d_inode;
+        struct ll_inode_info *lli = ll_i2info(inode);
+        struct lov_stripe_md *lsm = lli->lli_smd;
+        int rc, err;
+
+        /* catch async errors that were recorded back when async writeback
+         * failed for pages in this mapping. */
+        rc = lli->lli_async_rc;
+        lli->lli_async_rc = 0;
+        if (lsm) {
+                err = lov_test_and_clear_async_rc(lsm);
+                if (rc == 0)
+                        rc = err;
+        }
+
+        return rc ? -EIO : 0;
 }
 
 int ll_fsync(struct file *file, struct dentry *dentry, int data)
@@ -2232,7 +2278,7 @@ int ll_getattr_it(struct vfsmount *mnt, struct dentry *de,
                 return res;
 
         stat->dev = inode->i_sb->s_dev;
-        if (cfs_curproc_is_32bit())
+        if (ll_need_32bit_api(ll_i2sbi(inode)))
                 stat->ino = cl_fid_build_ino32(&lli->lli_fid);
         else
                 stat->ino = inode->i_ino;
@@ -2439,6 +2485,7 @@ struct file_operations ll_file_operations = {
         .splice_read    = ll_file_splice_read,
 #endif
         .fsync          = ll_fsync,
+        .flush          = ll_flush
 };
 
 struct file_operations ll_file_operations_flock = {
@@ -2458,6 +2505,7 @@ struct file_operations ll_file_operations_flock = {
         .splice_read    = ll_file_splice_read,
 #endif
         .fsync          = ll_fsync,
+        .flush          = ll_flush,
 #ifdef HAVE_F_OP_FLOCK
         .flock          = ll_file_flock,
 #endif
@@ -2482,6 +2530,7 @@ struct file_operations ll_file_operations_noflock = {
         .splice_read    = ll_file_splice_read,
 #endif
         .fsync          = ll_fsync,
+        .flush          = ll_flush,
 #ifdef HAVE_F_OP_FLOCK
         .flock          = ll_file_noflock,
 #endif

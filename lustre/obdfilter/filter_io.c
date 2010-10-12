@@ -153,10 +153,10 @@ obd_size filter_grant_space_left(struct obd_export *exp)
         LASSERT_SPIN_LOCKED(&obd->obd_osfs_lock);
 
         if (cfs_time_before_64(obd->obd_osfs_age,
-                               cfs_time_current_64() - CFS_HZ)) {
+                               cfs_time_shift_64(-OBD_STATFS_CACHE_SECONDS))) {
 restat:
                 rc = fsfilt_statfs(obd, obd->u.obt.obt_sb,
-                                   cfs_time_current_64() + CFS_HZ);
+                                   cfs_time_shift_64(OBD_STATFS_CACHE_SECONDS));
                 if (rc) /* N.B. statfs can't really fail */
                         RETURN(0);
                 statfs_done = 1;
@@ -268,9 +268,8 @@ long filter_grant(struct obd_export *exp, obd_size current_grant,
  * as we might end up waiting on a page he sent in the request we're serving.
  * use __GFP_HIGHMEM so that the pages can use all of the available memory
  * on 32-bit machines
- * use more agressive GFP_HIGHUSER flags from non-local clients to be able to
- * generate more memory pressure, but at the same time use __GFP_NOMEMALLOC
- * in order not to exhaust emergency reserves.
+ * use more aggressive GFP_HIGHUSER flags from non-local clients to be able to
+ * generate more memory pressure.
  *
  * See Bug 19529 and Bug 19917 for details.
  */
@@ -682,9 +681,36 @@ static int filter_preprw_write(int cmd, struct obd_export *exp, struct obdo *oa,
         cleanup_phase = 2;
 
         if (dentry->d_inode == NULL) {
-                CERROR("%s: trying to BRW to non-existent file "LPU64"\n",
-                       obd->obd_name, obj->ioo_id);
-                GOTO(cleanup, rc = -ENOENT);
+                if (exp->exp_obd->obd_recovering) {
+                        struct obdo *noa = oa;
+
+                        if (oa == NULL) {
+                                OBDO_ALLOC(noa);
+                                if (noa == NULL)
+                                        GOTO(recreate_out, rc = -ENOMEM);
+                                noa->o_id = obj->ioo_id;
+                                noa->o_valid = OBD_MD_FLID;
+                        }
+
+                        if (filter_create(exp, noa, NULL, oti) == 0) {
+                                f_dput(dentry);
+                                dentry = filter_fid2dentry(exp->exp_obd, NULL,
+                                                           obj->ioo_seq,
+                                                           obj->ioo_id);
+                        }
+                        if (oa == NULL)
+                                OBDO_FREE(noa);
+                }
+    recreate_out:
+                if (IS_ERR(dentry) || dentry->d_inode == NULL) {
+                        CERROR("%s: BRW to missing obj "LPU64"/"LPU64":rc %d\n",
+                               exp->exp_obd->obd_name,
+                               obj->ioo_id, obj->ioo_seq,
+                               IS_ERR(dentry) ? (int)PTR_ERR(dentry) : -ENOENT);
+                        if (IS_ERR(dentry))
+                                cleanup_phase = 1;
+                        GOTO(cleanup, rc = -ENOENT);
+                }
         }
 
         if (oa->o_valid & (OBD_MD_FLUID | OBD_MD_FLGID) &&
@@ -1000,6 +1026,7 @@ int filter_brw(int cmd, struct obd_export *exp, struct obd_info *oinfo,
                 lnb[i].page = pga[i].pg;
                 rnb[i].offset = pga[i].off;
                 rnb[i].len = pga[i].count;
+                lnb[i].flags = rnb[i].flags = pga[i].flag;
         }
 
         obdo_to_ioobj(oinfo->oi_oa, &ioo);

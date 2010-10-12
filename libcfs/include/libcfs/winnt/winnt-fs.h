@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2008, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -302,15 +302,6 @@ struct vfsmount {
 
 
 /*
- * quota definitions (linux/quota.h)
- */
-
-#define MAXQUOTAS 2
-#define USRQUOTA  0		/* element used for user quotas */
-#define GRPQUOTA  1		/* element used for group quotas */
-
-
-/*
  * proc fs routines
  */
 
@@ -375,10 +366,6 @@ void *radix_tree_lookup(struct radix_tree_root *root, unsigned long index);
 int radix_tree_insert(struct radix_tree_root *root, unsigned long index,
                       void *item);
 void *radix_tree_delete(struct radix_tree_root *root, unsigned long index);
-
-typedef struct cfs_rcu_head {
-    int     foo;
-} cfs_rcu_head_t;
 
 #else  /* !__KERNEL__ */
 

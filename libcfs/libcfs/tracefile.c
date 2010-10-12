@@ -71,6 +71,10 @@ static struct cfs_trace_page *cfs_tage_alloc(int gfp)
         cfs_page_t            *page;
         struct cfs_trace_page *tage;
 
+        /* My caller is trying to free memory */
+        if (!cfs_in_interrupt() && cfs_memory_pressure_get())
+                return NULL;
+
         /*
          * Don't spam console with allocation failures: they will be reported
          * by upper layer anyway.
@@ -309,7 +313,7 @@ int libcfs_debug_vmsg2(cfs_debug_limit_state_t *cdls, int subsys, int mask,
 
                 max_nob = CFS_PAGE_SIZE - tage->used - known_size;
                 if (max_nob <= 0) {
-                        printk(CFS_KERN_EMERG "negative max_nob: %i\n",
+                        printk(CFS_KERN_EMERG "negative max_nob: %d\n",
                                max_nob);
                         mask |= D_ERROR;
                         cfs_trace_put_tcd(tcd);

@@ -117,23 +117,23 @@ command_t cmdlist[] = {
          "Create a new file with a specific striping pattern or\n"
          "set the default striping pattern on an existing directory or\n"
          "delete the default striping pattern from an existing directory\n"
-         "usage: setstripe [--size|-s stripe_size] [--offset|-o start_ost]\n"
-         "                 [--count|-c stripe_count] [--pool|-p <pool>]\n"
-         "                 <dir|filename>\n"
+         "usage: setstripe [--size|-s stripe_size] [--count|-c stripe_count]\n"
+         "                 [--index|-i|--offset|-o start_ost_index]\n"
+         "                 [--pool|-p <pool>] <dir|filename>\n"
          "       or \n"
          "       setstripe -d <dir>   (to delete default striping)\n"
          "\tstripe_size:  Number of bytes on each OST (0 filesystem default)\n"
          "\t              Can be specified with k, m or g (in KB, MB and GB\n"
          "\t              respectively)\n"
-         "\tstart_ost:    OST index of first stripe (-1 filesystem default)\n"
+         "\tstart_ost_index: OST index of first stripe (-1 filesystem default)\n"
          "\tstripe_count: Number of OSTs to stripe over (0 default, -1 all)\n"
          "\tpool:         Name of OST pool"},
         {"getstripe", lfs_getstripe, 0,
          "To list the striping info for a given file or files in a\n"
          "directory or recursively for all files in a directory tree.\n"
          "usage: getstripe [--obd|-O <uuid>] [--quiet | -q] [--verbose | -v]\n"
-         "                 [--count | -c ] [--size | -s ] [--index | -i ]\n"
-         "                 [--offset | -o ] [--pool | -p ] [--directory | -d]\n"
+         "                 [--count | -c ] [--index | -i | --offset | -o ]\n"
+         "                 [--size | -s ] [--pool | -p ] [--directory | -d]\n"
          "                 [--mdt | -M] [--recursive | -r] <dir|file> ..."},
         {"pool_list", lfs_poollist, 0,
          "List pools or pool OSTs\n"
@@ -198,9 +198,9 @@ command_t cmdlist[] = {
          "       -i can be used instead of --inode-softlimit/--inode-grace\n"
          "       -I can be used instead of --inode-hardlimit"},
         {"quota", lfs_quota, 0, "Display disk usage and limits.\n"
-         "usage: quota [-q] [-v] [-o obd_uuid|-i mdt_idx|-I ost_idx]\n"
+         "usage: quota [-q] [-v] [-o <obd_uuid>|-i <mdt_idx>|-I <ost_idx>]\n"
          "             [<-u|-g> <uname>|<uid>|<gname>|<gid>] <filesystem>\n"
-         "       quota [-o obd_uuid|-i mdt_idx|-I ost_idx] -t <-u|-g> <filesystem>"},
+         "       quota [-o <obd_uuid>|-i <mdt_idx>|-I <ost_idx>] -t <-u|-g> <filesystem>"},
         {"quotainv", lfs_quotainv, 0, "Invalidate quota data.\n"
          "usage: quotainv [-u|-g] <filesystem>"},
 #endif
@@ -371,7 +371,7 @@ static int lfs_setstripe(int argc, char **argv)
         }
         /* get the stripe offset */
         if (stripe_off_arg != NULL) {
-                st_offset = strtoul(stripe_off_arg, &end, 0);
+                st_offset = strtol(stripe_off_arg, &end, 0);
                 if (*end != '\0') {
                         fprintf(stderr, "error: %s: bad stripe offset '%s'\n",
                                 argv[0], stripe_off_arg);
@@ -1854,7 +1854,6 @@ static inline char *type2name(int check_type)
                 return "unknown";
 }
 
-
 /* Converts seconds value into format string
  * result is returned in buf
  * Notes:
@@ -1862,12 +1861,12 @@ static inline char *type2name(int check_type)
  *        2. zero fields are not filled (except for p. 3): 5d1s
  *        3. zero seconds value is presented as "0s"
  */
-static void sec2str(time_t seconds, char *buf)
+static char * __sec2str(time_t seconds, char *buf)
 {
         const char spec[] = "smhdw";
         const unsigned long mult[] = {1, 60, 60*60, 24*60*60, 7*24*60*60};
         unsigned long c;
-        char* tail = buf;
+        char *tail = buf;
         int i;
 
         for (i = sizeof(mult) / sizeof(mult[0]) - 1 ; i >= 0; i--) {
@@ -1878,8 +1877,24 @@ static void sec2str(time_t seconds, char *buf)
 
                 seconds %= mult[i];
         }
+
+        return tail;
 }
 
+static void sec2str(time_t seconds, char *buf, int rc)
+{
+        char *tail = buf;
+
+        if (rc)
+                *tail++ = '[';
+
+        tail = __sec2str(seconds, tail);
+
+        if (rc && tail - buf < 39) {
+                *tail++ = ']';
+                *tail++ = 0;
+        }
+}
 
 static void diff2str(time_t seconds, char *buf, time_t now)
 {
@@ -1891,7 +1906,7 @@ static void diff2str(time_t seconds, char *buf, time_t now)
                 strcpy(buf, "none");
                 return;
         }
-        sec2str(seconds - now, buf);
+        __sec2str(seconds - now, buf);
 }
 
 static void print_quota_title(char *name, struct if_quotactl *qctl)
@@ -1999,8 +2014,8 @@ static void print_quota(char *mnt, struct if_quotactl *qctl, int type, int rc)
                 char bgtimebuf[40];
                 char igtimebuf[40];
 
-                sec2str(qctl->qc_dqinfo.dqi_bgrace, bgtimebuf);
-                sec2str(qctl->qc_dqinfo.dqi_igrace, igtimebuf);
+                sec2str(qctl->qc_dqinfo.dqi_bgrace, bgtimebuf, rc);
+                sec2str(qctl->qc_dqinfo.dqi_igrace, igtimebuf, rc);
                 printf("Block grace time: %s; Inode grace time: %s\n",
                        bgtimebuf, igtimebuf);
         }
@@ -2051,7 +2066,8 @@ static int lfs_quota(int argc, char **argv)
                                     .qc_type = UGQUOTA };
         char *obd_type = (char *)qctl.obd_type;
         char *obd_uuid = (char *)qctl.obd_uuid.uuid;
-        int rc, rc1 = 0, rc2 = 0, rc3 = 0, verbose = 0, pass = 0, quiet = 0;
+        int rc, rc1 = 0, rc2 = 0, rc3 = 0,
+            verbose = 0, pass = 0, quiet = 0, inacc;
         char *endptr;
         __u32 valid = QC_GENERAL, idx = 0;
 
@@ -2172,6 +2188,9 @@ ug_output:
         if (qctl.qc_valid != QC_GENERAL)
                 mnt = "";
 
+        inacc = (qctl.qc_cmd == LUSTRE_Q_GETQUOTA) &&
+                ((qctl.qc_dqblk.dqb_valid&(QIF_LIMITS|QIF_USAGE))!=(QIF_LIMITS|QIF_USAGE));
+
         print_quota(mnt, &qctl, QC_GENERAL, rc1);
 
         if (qctl.qc_valid == QC_GENERAL && qctl.qc_cmd != LUSTRE_Q_GETINFO && verbose) {
@@ -2179,7 +2198,7 @@ ug_output:
                 rc3 = print_obd_quota(mnt, &qctl, 0);
         }
 
-        if (rc1 || rc2 || rc3)
+        if (rc1 || rc2 || rc3 || inacc)
                 printf("Some errors happened when getting quota info. "
                        "Some devices may be not working or deactivated. "
                        "The data in \"[]\" is inaccurate.\n");
@@ -2368,10 +2387,14 @@ static int lfs_changelog(int argc, char **argv)
                 time_t secs;
                 struct tm ts;
 
-                if (endrec && rec->cr_index > endrec)
+                if (endrec && rec->cr_index > endrec) {
+                        llapi_changelog_free(&rec);
                         break;
-                if (rec->cr_index < startrec)
+                }
+                if (rec->cr_index < startrec) {
+                        llapi_changelog_free(&rec);
                         continue;
+                }
 
                 secs = rec->cr_time >> 30;
                 gmtime_r(&secs, &ts);

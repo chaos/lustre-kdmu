@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -48,7 +48,6 @@
 #include <linux/slab.h>
 #include <linux/dcache.h>
 #include <linux/fs.h>
-#include <linux/random.h>
 #include <linux/mutex.h>
 #include <linux/crypto.h>
 #else

@@ -1,7 +1,7 @@
 /* -*- mode: c; c-basic-offset: 8; indent-tabs-mode: nil; -*-
  * vim:expandtab:shiftwidth=8:tabstop=8:
  *
- * Copyright 2008 Sun Microsystems, Inc. All rights reserved.
+ * Copyright (c) 2003, 2010, Oracle and/or its affiliates. All rights reserved.
  *
  *   This file is part of Portals, http://www.sf.net/projects/lustre/
  *
@@ -193,6 +193,19 @@ lnet_parse_time (time_t *t, char *str)
                 return (-1);
 
         return (0);
+}
+
+int
+lnet_parse_nid(char *nid_str, lnet_process_id_t *id_ptr)
+{
+        id_ptr->pid = LNET_PID_ANY;
+        id_ptr->nid = libcfs_str2nid(nid_str);
+        if (id_ptr->nid == LNET_NID_ANY) {
+                fprintf (stderr, "Can't parse nid \"%s\"\n", nid_str);
+                return -1;
+        }
+
+        return 0;
 }
 
 int g_net_is_set (char *cmd)
@@ -946,12 +959,9 @@ int jt_ptl_ping(int argc, char **argv)
 
         sep = strchr(argv[1], '-');
         if (sep == NULL) {
-                id.pid = LNET_PID_ANY;
-                id.nid = libcfs_str2nid(argv[1]);
-                if (id.nid == LNET_NID_ANY) {
-                        fprintf (stderr, "Can't parse nid \"%s\"\n", argv[1]);
+                rc = lnet_parse_nid(argv[1], &id);
+                if (rc != 0)
                         return -1;
-                }
         } else {
                 char   *end;
 
@@ -961,12 +971,19 @@ int jt_ptl_ping(int argc, char **argv)
                 else
                         id.pid = strtoul(argv[1], &end, 0);
 
-                id.nid = libcfs_str2nid(sep + 1);
+                if (end != sep) { /* assuming '-' is part of hostname */
+                        rc = lnet_parse_nid(argv[1], &id);
+                        if (rc != 0)
+                                return -1;
+                } else {
+                        id.nid = libcfs_str2nid(sep + 1);
 
-                if (end != sep ||
-                    id.nid == LNET_NID_ANY) {
-                        fprintf(stderr, "Can't parse process id \"%s\"\n", argv[1]);
-                        return -1;
+                        if (id.nid == LNET_NID_ANY) {
+                                fprintf(stderr,
+                                        "Can't parse process id \"%s\"\n",
+                                        argv[1]);
+                                return -1;
+                        }
                 }
         }
 

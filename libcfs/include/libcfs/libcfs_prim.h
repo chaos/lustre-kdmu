@@ -87,10 +87,34 @@ int  cfs_timer_is_armed(cfs_timer_t *t);
 cfs_time_t cfs_timer_deadline(cfs_timer_t *t);
 
 /*
- * Randomize
+ * Memory
  */
-unsigned int ll_rand(void);
-void ll_srand(unsigned int seed1, unsigned int seed2);
-void ll_get_random_bytes(void *buf, int size);
+#ifndef cfs_memory_pressure_get
+#define cfs_memory_pressure_get() (0)
+#endif
+#ifndef cfs_memory_pressure_set
+#define cfs_memory_pressure_set() do {} while (0)
+#endif
+#ifndef cfs_memory_pressure_clr
+#define cfs_memory_pressure_clr() do {} while (0)
+#endif
+
+static inline int cfs_memory_pressure_get_and_set(void)
+{
+        int old = cfs_memory_pressure_get();
+
+        if (!old)
+                cfs_memory_pressure_set();
+        return old;
+}
+
+static inline void cfs_memory_pressure_restore(int old)
+{
+        if (old)
+                cfs_memory_pressure_set();
+        else
+                cfs_memory_pressure_clr();
+        return;
+}
 
 #endif

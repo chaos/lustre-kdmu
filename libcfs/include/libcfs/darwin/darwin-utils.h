@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2008, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -61,7 +61,7 @@ char * ul2dstr(unsigned long address, char *buf, int len);
 #define set_bit(i, a)                           setbit(a, i)
 #define clear_bit(i, a)                         clrbit(a, i)
 
-#define get_random_bytes(buf, len)              read_random(buf, len)
+#define cfs_get_random_bytes_prim(buf, len)     read_random(buf, len)
 
 #endif  /* __KERNEL__ */
 

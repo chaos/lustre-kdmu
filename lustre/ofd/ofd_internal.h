@@ -89,11 +89,6 @@ void filter_tally(struct obd_export *exp, struct page **pages, int nr_pages,
 int lproc_filter_attach_seqstat(struct obd_device *dev);
 void lprocfs_filter_init_vars(struct lprocfs_static_vars *lvars);
 
-#ifdef HAVE_QUOTA_SUPPORT
-/* Quota stuff */
-extern quota_interface_t *filter_quota_interface_ref;
-#endif
-
 /* Capability */
 
 void blacklist_add(uid_t uid);
@@ -144,6 +139,11 @@ struct filter_device {
         int                      ofd_fmd_max_num; /* per ofd filter_mod_data */
         cfs_duration_t           ofd_fmd_max_age; /* time to fmd expiry */
 
+        cfs_spinlock_t           ofd_flags_lock;
+        unsigned long            ofd_raid_degraded:1,
+                                 ofd_syncjournal:1, /* sync journal on writes */
+                                 ofd_sync_lock_cancel:2;/* sync on lock cancel */
+
         /* sptlrpc stuff */
         cfs_rwlock_t             ofd_sptlrpc_lock;
         struct sptlrpc_rule_set  ofd_sptlrpc_rset;
@@ -152,8 +152,6 @@ struct filter_device {
         unsigned int             ofd_fl_oss_capa;
         cfs_list_t               ofd_capa_keys;
         cfs_hlist_head_t        *ofd_capa_hash;
-
-        int                      ofd_raid_degraded;
 };
 
 #define ofd_last_rcvd    ofd_lut.lut_last_rcvd
@@ -278,6 +276,7 @@ struct filter_thread_info {
 
         /* Ops object filename */
         struct lu_name             fti_name;
+        struct ost_lvb             fti_lvb;
 };
 
 extern struct lu_context_key filter_txn_thread_key;
@@ -302,11 +301,9 @@ struct filter_thread_info * filter_info_init(const struct lu_env *env,
 
         info = lu_context_key_get(&env->le_ctx, &filter_thread_key);
         LASSERT(info);
-#if 0
-        LASSERT(info->fti_exp == 0);
-        LASSERT(info->fti_env == 0);
+        LASSERT(info->fti_exp == NULL);
+        LASSERT(info->fti_env == NULL);
         LASSERT(info->fti_attr.la_valid == 0);
-#endif
 
         info->fti_env = env;
         info->fti_exp = exp;
@@ -495,6 +492,9 @@ long filter_grant(const struct lu_env *env, struct obd_export *exp,
                   obd_size fs_space_left);
 void filter_grant_commit(struct obd_export *exp, int niocount,
                          struct niobuf_local *res);
+/* ofd_obd.c */
+int filter_create(struct obd_export *exp, struct obdo *oa,
+                  struct lov_stripe_md **ea, struct obd_trans_info *oti);
 
 /* The same as osc_build_res_name() */
 static inline void ofd_build_resid(const struct lu_fid *fid,
@@ -543,5 +543,15 @@ static inline void filter_info2oti(struct filter_thread_info *info,
         oti->oti_transno = info->fti_transno;
 }
 
+/* sync on lock cancel is useless when we force a journal flush,
+ * and if we enable async journal commit, we should also turn on
+ * sync on lock cancel if it is not enabled already. */
+static inline void filter_slc_set(struct filter_device *ofd)
+{
+        if (ofd->ofd_syncjournal == 1)
+                ofd->ofd_sync_lock_cancel = NEVER_SYNC_ON_CANCEL;
+        else if (ofd->ofd_sync_lock_cancel == NEVER_SYNC_ON_CANCEL)
+                ofd->ofd_sync_lock_cancel = ALWAYS_SYNC_ON_CANCEL;
+}
 
 #endif /* _FILTER_INTERNAL_H */

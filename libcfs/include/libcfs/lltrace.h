@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2008, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -183,18 +183,8 @@ static inline void ltrace_add_processnames(char* fname)
          */
         nob += snprintf(cmdbuf+nob, LTRACE_MAX_NOB, "%02x:%06x:%d:%lu.%06lu ",
                         S_RPC >> 24, D_VFSTRACE, 0, tv.tv_sec, tv.tv_usec);
-
-        if (underuml && (LINUX_VERSION_CODE < KERNEL_VERSION(2,5,0))) {
-                nob += snprintf (cmdbuf+nob, LTRACE_MAX_NOB,
-                                 "(%s:%d:%s() %d | %d+%lu): ",
-                                 "lltrace.h", __LINE__, __FUNCTION__, 0, 0, 0L);
-        }
-        else {
-                nob += snprintf (cmdbuf+nob, LTRACE_MAX_NOB,
-                                 "(%s:%d:%s() %d+%lu): ",
-                                 "lltrace.h", __LINE__, __FUNCTION__, 0, 0L);
-        }
-
+        nob += snprintf (cmdbuf+nob, LTRACE_MAX_NOB, "(%s:%d:%s() %d+%lu): ",
+                         "lltrace.h", __LINE__, __FUNCTION__, 0, 0L);
         nob += snprintf(cmdbuf+nob, LTRACE_MAX_NOB, " %%p %%c\" >> %s", fname);
         system(cmdbuf);
 }

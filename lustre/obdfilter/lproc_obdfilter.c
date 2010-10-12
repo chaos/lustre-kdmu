@@ -90,19 +90,6 @@ static int lprocfs_filter_rd_tot_pending(char *page, char **start, off_t off,
                             obd->u.filter.fo_tot_pending);
 }
 
-static int lprocfs_filter_rd_mntdev(char *page, char **start, off_t off,
-                                    int count, int *eof, void *data)
-{
-        struct obd_device *obd;
-
-        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
-        LASSERT(obd != NULL);
-        LASSERT(obd->u.obt.obt_vfsmnt->mnt_devname);
-
-        return libcfs_param_snprintf(page, count, data, LP_STR, "%s\n",
-                                     obd->u.obt.obt_vfsmnt->mnt_devname);
-}
-
 static int lprocfs_filter_rd_last_id(char *page, char **start, off_t off,
                                      int count, int *eof, void *data)
 {
@@ -332,9 +319,9 @@ static int lprocfs_filter_wr_cache(libcfs_file_t *file, const char *buffer,
         if (rc)
                 return rc;
 
-        cfs_spin_lock_bh(&obd->obd_processing_task_lock);
-        obd->u.filter.fo_read_cache = val;
-        cfs_spin_unlock_bh(&obd->obd_processing_task_lock);
+        cfs_spin_lock_bh(&obd->u.filter.fo_flags_lock);
+        obd->u.filter.fo_read_cache = !!val;
+        cfs_spin_unlock_bh(&obd->u.filter.fo_flags_lock);
         return count;
 }
 
@@ -366,9 +353,9 @@ static int lprocfs_filter_wr_wcache(libcfs_file_t *file, const char *buffer,
         if (rc)
                 return rc;
 
-        cfs_spin_lock_bh(&obd->obd_processing_task_lock);
-        obd->u.filter.fo_writethrough_cache = val;
-        cfs_spin_unlock_bh(&obd->obd_processing_task_lock);
+        cfs_spin_lock(&obd->u.filter.fo_flags_lock);
+        obd->u.filter.fo_writethrough_cache = !!val;
+        cfs_spin_unlock(&obd->u.filter.fo_flags_lock);
         return count;
 }
 
@@ -408,9 +395,85 @@ int lprocfs_filter_wr_degraded(libcfs_file_t *file, const char *buffer,
         if (rc)
                 return rc;
 
-        cfs_spin_lock(&obd->obd_osfs_lock);
+        cfs_spin_lock(&obd->u.filter.fo_flags_lock);
         obd->u.filter.fo_raid_degraded = !!val;
-        cfs_spin_unlock(&obd->obd_osfs_lock);
+        cfs_spin_unlock(&obd->u.filter.fo_flags_lock);
+        return count;
+}
+
+int lprocfs_filter_rd_syncjournal(char *page, char **start, off_t off,
+                                  int count, int *eof, void *data)
+{
+        struct obd_device *obd;
+
+        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        return libcfs_param_snprintf(page, count, data, LP_U32,
+                                     "%u\n", obd->u.filter.fo_syncjournal);
+}
+
+int lprocfs_filter_wr_syncjournal(libcfs_file_t *file, const char *buffer,
+                                  unsigned long count, void *data)
+{
+        struct obd_device *obd;
+        int val;
+        int rc;
+        int flag = 0;
+
+        LIBCFS_PARAM_GET_DATA(obd, data, &flag);
+        rc = lprocfs_write_helper(buffer, count, &val, flag);
+        if (rc)
+                return rc;
+
+        if (val < 0)
+                return -EINVAL;
+
+        obd->u.filter.fo_syncjournal = !!val;
+        filter_slc_set(&obd->u.filter);
+
+        return count;
+}
+
+static char *sync_on_cancel_states[] = {"never",
+                                        "blocking",
+                                        "always" };
+
+int lprocfs_filter_rd_sync_lock_cancel(char *page, char **start, off_t off,
+                                       int count, int *eof, void *data)
+{
+        struct obd_device *obd;
+
+        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        return libcfs_param_snprintf(page, count, data, LP_STR, "%s\n",
+                      sync_on_cancel_states[obd->u.filter.fo_sync_lock_cancel]);
+}
+
+int lprocfs_filter_wr_sync_lock_cancel(libcfs_file_t *file, const char *buffer,
+                                       unsigned long count, void *data)
+{
+        struct obd_device *obd = data;
+        int val = -1;
+        int i;
+        int flag = 0;
+
+        LIBCFS_PARAM_GET_DATA(obd, data, &flag);
+        for (i = 0 ; i < NUM_SYNC_ON_CANCEL_STATES; i++) {
+                if (memcmp(buffer, sync_on_cancel_states[i],
+                    strlen(sync_on_cancel_states[i])) == 0) {
+                        val = i;
+                        break;
+                }
+        }
+        if (val == -1) {
+                int rc;
+                rc = lprocfs_write_helper(buffer, count, &val, flag);
+                if (rc)
+                        return rc;
+        }
+
+        if (val < 0 || val > 2)
+                return -EINVAL;
+
+        obd->u.filter.fo_sync_lock_cancel = val;
         return count;
 }
 
@@ -424,7 +487,7 @@ static struct lprocfs_vars lprocfs_filter_obd_vars[] = {
         { "filesfree",    lprocfs_rd_filesfree,     0, 0 },
         { "filegroups",   lprocfs_filter_rd_groups, 0, 0 },
         { "fstype",       lprocfs_rd_fstype,        0, 0 },
-        { "mntdev",       lprocfs_filter_rd_mntdev, 0, 0 },
+        { "mntdev",       lprocfs_obd_rd_mntdev,    0, 0 },
         { "last_id",      lprocfs_filter_rd_last_id,0, 0 },
         { "tot_dirty",    lprocfs_filter_rd_tot_dirty,   0, 0 },
         { "tot_pending",  lprocfs_filter_rd_tot_pending, 0, 0 },
@@ -460,6 +523,10 @@ static struct lprocfs_vars lprocfs_filter_obd_vars[] = {
         { "mds_sync",     lprocfs_filter_rd_mds_sync, 0, 0},
         { "degraded",     lprocfs_filter_rd_degraded,
                           lprocfs_filter_wr_degraded, 0 },
+        { "sync_journal", lprocfs_filter_rd_syncjournal,
+                          lprocfs_filter_wr_syncjournal, 0 },
+        { "sync_on_lock_cancel", lprocfs_filter_rd_sync_lock_cancel,
+                                 lprocfs_filter_wr_sync_lock_cancel, 0 },
         { 0 }
 };
 

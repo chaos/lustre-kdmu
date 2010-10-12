@@ -6,10 +6,11 @@ subdir-m += ptlrpc
 subdir-m += osc
 subdir-m += obdecho
 subdir-m += mgc
-@QUOTA_TRUE@subdir-m += quota
+#subdir-m += quota
 
 @SERVER_TRUE@subdir-m += mds ofd ost mgs mdt cmm mdd osd-ldiskfs #obdfilter
 @CLIENT_TRUE@subdir-m += mdc lmv llite fld
-@KDMU_TRUE@subdir-m += dmu-osd
+@LDISKFS_ENABLED_TRUE@subdir-m += osd-ldiskfs
+@ZFS_ENABLED_TRUE@subdir-m += dmu-osd
 
 @INCLUDE_RULES@

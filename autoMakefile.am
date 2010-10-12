@@ -2,11 +2,6 @@ SUBDIRS := @LDISKFS_SUBDIR@ @SPL_SUBDIR@ @ZFS_SUBDIR@ . @LIBSYSIO_SUBDIR@ @SNMP_
 DIST_SUBDIRS := @SNMP_DIST_SUBDIR@ libsysio ldiskfs @LUSTREIOKIT_SUBDIR@ @LIBCFS_SUBDIR@ lnet lustre 
 SOURCES_SUBDIRS := @LDISKFS_SUBDIR@ @LIBCFS_SUBDIR@ lnet lustre
 RPM_SUBDIRS := @LDISKFS_SUBDIR@ @LUSTREIOKIT_SUBDIR@
-if LDISKFS_ENABLED
-if !LDISKFS_IN_KERNEL
-EXTRA_SOURCES := @SYMVERFILE@
-endif
-endif
 
 @TESTS_TRUE@BUILD_TESTS = true
 @TESTS_FALSE@BUILD_TESTS = false
@@ -15,14 +10,45 @@ include build/autoMakefile.am.toplevel
 
 EXTRA_DIST += config.h.in debian/*
 
+if LINUX
+all-symvers:
+	rm -f @SYMVERFILE@
+	touch @SYMVERFILE@
 if LDISKFS_ENABLED
 if !LDISKFS_IN_KERNEL
-@SYMVERFILE@: @LDISKFS_DIR@/@SYMVERFILE@
-	touch @SYMVERFILE@
-	-grep -v ldiskfs @SYMVERFILE@ > @SYMVERFILE@.old
-	cat @SYMVERFILE@.old @LDISKFS_DIR@/@SYMVERFILE@ > @SYMVERFILE@
-endif
-endif
+	cat @LDISKFS_DIR@/@SYMVERFILE@ >>@SYMVERFILE@
+endif # !LDISKFS_IN_KERNEL
+endif # LDISKFS_ENABLED
+if ZFS_ENABLED
+	@# Make the exported spl/zfs symbols available to these modules.
+	@# They may be in the root of SPL/ZFS_OBJ when building against
+	@# installed devel headers, or they may be in the module
+	@# subdirectory when building against the spl/zfs source tree.
+	@if [ -f @SPL_OBJ@/@SPL_SYMBOLS@ ]; then \
+		cat @SPL_OBJ@/@SPL_SYMBOLS@ >>@SYMVERFILE@; \
+	elif [ -f @SPL_OBJ@/module/@SPL_SYMBOLS@ ]; then \
+		cat @SPL_OBJ@/module/@SPL_SYMBOLS@ >>@SYMVERFILE@; \
+	else \
+		echo -e "\n" \
+		"*** Missing spl symbols ensure you have built the spl:\n" \
+		"*** - @SPL_OBJ@/@SPL_SYMBOLS@, or\n" \
+		"*** - @SPL_OBJ@/module/@SPL_SYMBOLS@\n"; \
+		exit 1; \
+	fi
+
+	@if [ -f @ZFS_OBJ@/@ZFS_SYMBOLS@ ]; then \
+		cat @ZFS_OBJ@/@ZFS_SYMBOLS@ >>@SYMVERFILE@; \
+	elif [ -f @ZFS_OBJ@/module/@ZFS_SYMBOLS@ ]; then \
+		cat @ZFS_OBJ@/module/@ZFS_SYMBOLS@ >>@SYMVERFILE@; \
+	else \
+		echo -e "\n" \
+		"*** Missing zfs symbols ensure you have built zfs:\n" \
+		"*** - @ZFS_OBJ@/@ZFS_SYMBOLS@, or\n" \
+		"*** - @ZFS_OBJ@/module/@ZFS_SYMBOLS@\n"; \
+		exit 1; \
+	fi
+endif # ZFS_ENABLED
+endif # LINUX
 
 CSTK=/tmp/checkstack
 CSTKO=/tmp/checkstack.orig

@@ -46,6 +46,9 @@
 
 #define CFS_ALLOC_ATOMIC_TRY   CFS_ALLOC_ATOMIC
 
+#define cfs_page_pin(page) do {} while (0)
+#define cfs_page_unpin(page) do {} while (0)
+
 #define cfs_alloc_large(size)           cfs_alloc(size, 0)
 #define cfs_free_large(addr)            cfs_free(addr)
 

@@ -184,11 +184,10 @@ __cfs_fls(unsigned long data)
         int pos = 31;
 
 #if BT_NBIPUL == 64
-        pos += 32;
 
-        if ((data & 0xFFFFFFFF) == 0) {
-                data <<= 32;
-                pos -= 32;
+        if (data & 0xFFFFFFFF00000000) {
+                data >>= 32;
+                pos += 32;
         }
 #endif
 

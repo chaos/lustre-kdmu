@@ -59,6 +59,7 @@ int libcfs_ukuc_start(lustre_kernelcomm *link, int group)
         if (pipe(pfd) < 0)
                 return -errno;
 
+        memset(link, 0, sizeof(*link));
         link->lk_rfd = pfd[0];
         link->lk_wfd = pfd[1];
         link->lk_group = group;
@@ -79,7 +80,7 @@ int libcfs_ukuc_stop(lustre_kernelcomm *link)
  * Allocates memory, returns handle
  *
  * @param link Private descriptor for pipe/socket.
- * @param buf Buffer to read into
+ * @param buf Buffer to read into, must include size for kuc_hdr
  * @param maxsize Maximum message size allowed
  * @param transport Only listen to messages on this transport
  *      (and the generic transport)
@@ -167,7 +168,7 @@ int libcfs_kkuc_msg_put(cfs_file_t *filp, void *payload)
 #ifdef __KERNEL__
         {
                 loff_t offset = 0;
-                rc = cfs_user_write(filp, (char *)payload, kuch->kuc_msglen, 
+                rc = cfs_user_write(filp, (char *)payload, kuch->kuc_msglen,
                                     &offset);
         }
 #endif
@@ -192,7 +193,7 @@ struct kkuc_reg {
 };
 static cfs_list_t kkuc_groups[KUC_GRP_MAX+1] = {};
 /* Protect message sending against remove and adds */
-static CFS_DECLARE_RWSEM(kg_sem);
+cfs_rw_semaphore_t kg_sem;
 
 /** Add a receiver to a broadcast group
  * @param filp pipe to write into

@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2003, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -58,11 +58,7 @@
 #include <linux/string.h>
 #include <linux/stat.h>
 #include <linux/errno.h>
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(2,5,0))
-#include <linux/locks.h>        /* wait_on_buffer */
-#else
 #include <linux/buffer_head.h>  /* wait_on_buffer */
-#endif
 #include <linux/unistd.h>
 #include <net/sock.h>
 #include <linux/uio.h>

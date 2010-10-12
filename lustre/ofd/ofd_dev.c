@@ -485,7 +485,7 @@ int filter_stack_init(const struct lu_env *env,
         rc = tmp->ld_ops->ldo_process_config(env, tmp, cfg);
         if (rc)
                 GOTO(out, rc);
-        
+
         rc = tmp->ld_ops->ldo_prepare(env, d, tmp);
         GOTO(out, rc);
 
@@ -510,7 +510,7 @@ static void filter_stack_fini(const struct lu_env *env,
 
         info = lu_context_key_get(&env->le_ctx, &filter_thread_key);
         LASSERT(info != NULL);
-        
+
         lu_site_purge(env, ls, ~0);
 
         /* process cleanup, pass mdt obd name to get obd umount flags */
@@ -606,6 +606,7 @@ static int filter_init0(const struct lu_env *env, struct filter_device *m,
         struct lustre_mount_info *lmi;
         struct obd_device *obd;
         struct lu_site *s;
+        struct dt_device *next;
         int rc;
         ENTRY;
 
@@ -622,12 +623,19 @@ static int filter_init0(const struct lu_env *env, struct filter_device *m,
         m->ofd_fmd_max_num = FILTER_FMD_MAX_NUM_DEFAULT;
         m->ofd_fmd_max_age = FILTER_FMD_MAX_AGE_DEFAULT;
 
+        cfs_spin_lock_init(&m->ofd_flags_lock);
+        m->ofd_raid_degraded = 0;
+        m->ofd_syncjournal = 0;
+        filter_slc_set(m);
+
         /* grant data */
         cfs_spin_lock_init(&m->ofd_grant_lock);
         cfs_sema_init(&m->ofd_grant_sem, 1);
         m->ofd_tot_dirty = 0;
         m->ofd_tot_granted = 0;
         m->ofd_tot_pending = 0;
+
+        m->ofd_max_group = 0;
 
 #if 0
         cfs_rwlock_init(&m->ofd_sptlrpc_lock);
@@ -736,6 +744,13 @@ static int filter_init0(const struct lu_env *env, struct filter_device *m,
 
         target_recovery_init(&m->ofd_lut, ost_handle);
 
+        next = m->ofd_osd;
+        rc = next->dd_ops->dt_quota.dt_setup(env, next, NULL);
+        if (rc) {
+                CERROR("failed to setup quota\n");
+                GOTO(err_fs_cleanup, rc);
+        }
+
         rc = lu_site_init_finish(s);
         if (rc)
                 GOTO(err_fs_cleanup, rc);
@@ -749,6 +764,7 @@ static int filter_init0(const struct lu_env *env, struct filter_device *m,
         RETURN(0);
 
 err_fs_cleanup:
+        next->dd_ops->dt_quota.dt_cleanup(env, next);
         target_recovery_fini(obd);
         filter_fs_cleanup(env, m);
 err_lut_fini:
@@ -773,35 +789,9 @@ static void filter_fini(const struct lu_env *env, struct filter_device *m)
         struct obd_device *obd = filter_obd(m);
         struct lu_device  *d = &m->ofd_dt_dev.dd_lu_dev;
         struct lu_site    *ls = d->ld_site;
-#if 0
-        int                waited = 0;
-#endif
+        struct dt_device  *next;
 
-        /* At this point, obd exports might still be on the "obd_zombie_exports"
-         * list, and obd_zombie_impexp_thread() is trying to destroy them.
-         * We wait a little bit until all exports (except the self-export)
-         * have been destroyed, because the whole mdt stack might be accessed
-         * in mdt_destroy_export(). This will not be a long time, maybe one or
-         * two seconds are enough. This is not a problem while umounting.
-         *
-         * The three references that should be remaining are the
-         * obd_self_export and the attach and setup references.
-         */
-#if 0
-        /* XXX */
-        while (cfs_atomic_read(&obd->obd_refcount) > 3) {
-                cfs_schedule_timeout(CFS_TASK_UNINT, cfs_time_seconds(1));
-                ++waited;
-                if (waited > 5 && IS_PO2(waited))
-                        LCONSOLE_WARN("Waiting for obd_zombie_impexp_thread "
-                                      "more than %d seconds to destroy all "
-                                      "the exports. The current obd refcount ="
-                                      " %d. Is it stuck there?\n",
-                                      waited, cfs_atomic_read(&obd->obd_refcount));
-        }
-#endif
         target_recovery_fini(obd);
-
 #if 0
         filter_obd_llog_cleanup(obd);
 #endif
@@ -822,6 +812,10 @@ static void filter_fini(const struct lu_env *env, struct filter_device *m)
 #if 0
         sptlrpc_rule_set_free(&m->mdt_sptlrpc_rset);
 #endif
+
+        next = m->ofd_osd;
+        next->dd_ops->dt_quota.dt_cleanup(env, next);
+
         /* 
          * Finish the stack 
          */
@@ -880,13 +874,20 @@ static struct lu_device *filter_device_alloc(const struct lu_env *env,
 
 /* thread context key constructor/destructor */
 LU_KEY_INIT_FINI(filter, struct filter_thread_info);
-LU_CONTEXT_KEY_DEFINE(filter, LCT_DT_THREAD);
-#if 0
 static void filter_key_exit(const struct lu_context *ctx,
                             struct lu_context_key *key, void *data)
 {
         struct filter_thread_info *info = data;
-        memset(info, 0, sizeof(*info));
+        info->fti_exp = NULL;
+        info->fti_env = NULL;
+
+        info->fti_xid = 0;
+        info->fti_transno = 0;
+        info->fti_has_trans = 0;
+        info->fti_no_need_trans = 0;
+
+        memset(&info->fti_attr, 0, sizeof info->fti_attr);
+        memset(&info->fti_lvb, 0, sizeof info->fti_lvb);
 }
 
 struct lu_context_key filter_thread_key = {
@@ -895,7 +896,6 @@ struct lu_context_key filter_thread_key = {
         .lct_fini = filter_key_fini,
         .lct_exit = filter_key_exit
 };
-#endif
 
 /* transaction context key */
 LU_KEY_INIT_FINI(filter_txn, struct filter_txn_info);
@@ -923,11 +923,6 @@ static struct lu_device_type filter_device_type = {
         .ldt_ctx_tags = LCT_DT_THREAD
 };
 
-#ifdef HAVE_QUOTA_SUPPORT
-quota_interface_t *filter_quota_interface_ref;
-extern quota_interface_t filter_quota_interface;
-#endif /* HAVE_QUOTA_SUPPORT */
-
 extern struct obd_ops filter_obd_ops;
 
 int __init ofd_init(void)
@@ -937,39 +932,21 @@ int __init ofd_init(void)
 
         lprocfs_filter_init_vars(&lvars);
 
-#ifdef HAVE_QUOTA_SUPPORT
-        cfs_request_module("lquota");
-#endif
-
         rc = ofd_fmd_init();
         if (rc)
-                GOTO(out, rc);
-
-#ifdef HAVE_QUOTA_SUPPORT
-        //filter_quota_interface_ref = PORTAL_SYMBOL_GET(filter_quota_interface);
-        init_obd_quota_ops(filter_quota_interface_ref, &filter_obd_ops);
-#endif
+                return(rc);
 
         rc = class_register_type(&filter_obd_ops, NULL, lvars.module_vars,
                                  LUSTRE_OST_NAME, &filter_device_type);
         if (rc) {
                 ofd_fmd_exit();
-#ifdef HAVE_QUOTA_SUPPORT
-                if (filter_quota_interface_ref)
-                        PORTAL_SYMBOL_PUT(filter_quota_interface);
-#endif
         }
-out:
+
         return rc;
 }
 
 void __exit ofd_exit(void)
 {
-#ifdef HAVE_QUOTA_SUPPORT
-        if (filter_quota_interface_ref)
-                PORTAL_SYMBOL_PUT(filter_quota_interface);
-#endif
-
         ofd_fmd_exit();
 
         class_unregister_type(LUSTRE_OST_NAME);

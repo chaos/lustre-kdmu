@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2008, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -165,7 +165,8 @@ int get_mountdata(char *dev, struct lustre_disk_data *mo_ldd)
         } else {
                 verrprint("%s: Unable to read %d.%d config %s.\n",
                           progname, LUSTRE_MAJOR, LUSTRE_MINOR, filepnm);
-                goto out_close;
+                ret = 1;
+                goto out_rmdir;
         }
 
 out_close:

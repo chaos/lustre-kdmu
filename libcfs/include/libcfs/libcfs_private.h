@@ -159,7 +159,7 @@ do {                                            \
 #endif /* LIBCFS_DEBUG */
 
 #ifndef LIBCFS_VMALLOC_SIZE
-#define LIBCFS_VMALLOC_SIZE        16384
+#define LIBCFS_VMALLOC_SIZE        (2 << CFS_PAGE_SHIFT) /* 2 pages */
 #endif
 
 #define LIBCFS_ALLOC_GFP(ptr, size, mask)                                 \
@@ -176,8 +176,7 @@ do {                                                                      \
                 break;                                                    \
         }                                                                 \
         libcfs_kmem_inc((ptr), (size));                                   \
-        if (!((mask) & CFS_ALLOC_ZERO))                                   \
-                memset((ptr), 0, (size));                                 \
+        memset((ptr), 0, (size));                                         \
         CDEBUG(D_MALLOC, "kmalloced '" #ptr "': %d at %p (tot %d).\n",    \
                (int)(size), (ptr), cfs_atomic_read (&libcfs_kmemory));    \
 } while (0)
@@ -317,22 +316,30 @@ __u32       libcfs_str2net(const char *str);
 lnet_nid_t  libcfs_str2nid(const char *str);
 int         libcfs_str2anynid(lnet_nid_t *nid, const char *str);
 char       *libcfs_id2str(lnet_process_id_t id);
+int         libcfs_str2server(char *name, int *type, __u32 *idx, char **endptr);
 int         cfs_iswhite(char c);
 void        cfs_free_nidlist(cfs_list_t *list);
 int         cfs_parse_nidlist(char *str, int len, cfs_list_t *list);
 int         cfs_match_nid(lnet_nid_t nid, cfs_list_t *list);
 
+/** \addtogroup lnet_addr
+ * @{ */
 /* how an LNET NID encodes net:address */
+/** extract the address part of an lnet_nid_t */
 #define LNET_NIDADDR(nid)      ((__u32)((nid) & 0xffffffff))
+/** extract the network part of an lnet_nid_t */
 #define LNET_NIDNET(nid)       ((__u32)(((nid) >> 32)) & 0xffffffff)
+/** make an lnet_nid_t from a network part and an address part */
 #define LNET_MKNID(net,addr)   ((((__u64)(net))<<32)|((__u64)(addr)))
 /* how net encodes type:number */
 #define LNET_NETNUM(net)       ((net) & 0xffff)
 #define LNET_NETTYP(net)       (((net) >> 16) & 0xffff)
 #define LNET_MKNET(typ,num)    ((((__u32)(typ))<<16)|((__u32)(num)))
+/** @} lnet_addr */
 
 /* max value for numeric network address */
 #define MAX_NUMERIC_VALUE 0xffffffff
+
 
 /* implication */
 #define ergo(a, b) (!(a) || (b))
@@ -342,6 +349,12 @@ int         cfs_match_nid(lnet_nid_t nid, cfs_list_t *list);
 #ifndef CFS_CURRENT_TIME
 # define CFS_CURRENT_TIME time(0)
 #endif
+
+/* Server types */
+#define SVTYPE_MDT   0x0001
+#define SVTYPE_OST   0x0002
+#define SVTYPE_MGS   0x0004
+#define SVTYPE_ALL   0x0008
 
 /* --------------------------------------------------------------------
  * Light-weight trace
@@ -428,7 +441,7 @@ enum {
          * network addresses depend on them... */
         QSWLND    = 1,
         SOCKLND   = 2,
-        GMLND     = 3,
+        GMLND     = 3, /* obsolete, keep it so that libcfs_nid2str works */
         PTLLND    = 4,
         O2IBLND   = 5,
         CIBLND    = 6,

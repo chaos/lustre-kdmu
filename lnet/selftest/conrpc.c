@@ -375,7 +375,7 @@ lstcon_rpc_trans_postwait(lstcon_rpc_trans_t *trans, int timeout)
         }
 
         CDEBUG(D_NET, "Transaction %s stopped: %d\n",
-               lstcon_rpc_trans_name(trans->tas_opc), rc);
+               lstcon_rpc_trans_name(trans->tas_opc), (int)rc);
 
         lstcon_rpc_trans_stat(trans, lstcon_trans_stat());
 

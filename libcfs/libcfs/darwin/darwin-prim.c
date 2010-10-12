@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2008, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -362,10 +362,6 @@ void cfs_daemonize(char *str)
  * These signal functions almost do nothing now, we 
  * need to investigate more about signal in Darwin.
  */
-cfs_sigset_t cfs_get_blockedsigs()
-{
-        return (cfs_sigset_t)0;
-}
 
 extern int block_procsigmask(struct proc *p,  int bit);
 

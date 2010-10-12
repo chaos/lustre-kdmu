@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -46,6 +46,18 @@
 #include <linux/fs.h>
 #include <linux/quota.h>
 #include <linux/quotaops.h>
+#endif
+
+#ifndef QUOTABLOCK_BITS
+#define QUOTABLOCK_BITS 10
+#endif
+
+#ifndef QUOTABLOCK_SIZE
+#define QUOTABLOCK_SIZE (1 << QUOTABLOCK_BITS)
+#endif
+
+#ifndef toqb
+#define toqb(x) (((x) + QUOTABLOCK_SIZE - 1) >> QUOTABLOCK_BITS)
 #endif
 
 #endif /* _LUSTRE_QUOTA_H */

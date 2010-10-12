@@ -53,6 +53,7 @@
 #include <sys/dmu_tx.h>
 #include <sys/dmu_objset.h>
 #include <sys/dsl_prop.h>
+#include <sys/sa_impl.h>
 
 #include <libcfs/libcfs.h>      /* XXX temp fix for compil. errors in
                                    lustre_idl.h, bug 23267 */
@@ -110,7 +111,7 @@ int udmu_objset_open(char *osname, udmu_objset_t *uos)
 
         memset(uos, 0, sizeof(udmu_objset_t));
 
-        error = dmu_objset_open(osname, DMU_OST_ZFS, DS_MODE_OWNER, &uos->os);
+        error = dmu_objset_own(osname, DMU_OST_ZFS, B_FALSE, uos, &uos->os);
         if (error) {
                 uos->os = NULL;
                 goto out;
@@ -162,7 +163,7 @@ int udmu_objset_open(char *osname, udmu_objset_t *uos)
 
 out:
         if (error && uos->os != NULL)
-                dmu_objset_close(uos->os);
+                dmu_objset_disown(uos->os, uos);
 
 #if 0
         if (error == 0) {
@@ -220,7 +221,7 @@ void udmu_objset_close(udmu_objset_t *uos)
 #endif
 
         /* close the object set */
-        dmu_objset_close(uos->os);
+        dmu_objset_disown(uos->os, uos);
 
         uos->os = NULL;
 }
@@ -336,7 +337,8 @@ int udmu_userprop_set_str(udmu_objset_t *uos, const char *prop_name,
         if (rc != 0)
                 return rc;
 
-        rc = dsl_prop_set(os_name, real_prop, 1, strlen(val) + 1, val);
+        rc = dsl_prop_set(os_name, real_prop, ZPROP_SRC_LOCAL, 1,
+                          strlen(val) + 1, val);
         udmu_userprop_cleanup(&os_name, &real_prop);
 
         return rc;
@@ -362,7 +364,7 @@ int udmu_userprop_get_str(udmu_objset_t *uos, const char *prop_name, char *buf,
         /* We can't just pass buf_size to dsl_prop_get() because it expects the
            exact value size (zap_lookup() requirement), so we must get all props
            and extract the one we want. */
-        rc = dsl_prop_get_all(uos->os, &nvl, TRUE);
+        rc = dsl_prop_get_all(uos->os, &nvl);
         if (rc != 0) {
                 nvl = NULL;
                 goto out;
@@ -770,7 +772,9 @@ void udmu_object_write(udmu_objset_t *uos, dmu_buf_t *db, struct dmu_tx *tx,
  */
 void udmu_object_getattr(dmu_buf_t *db, vnattr_t *vap)
 {
-        dnode_t *dn = ((dmu_buf_impl_t *)db)->db_dnode;
+        dmu_buf_impl_t *dbi = (dmu_buf_impl_t *) db;
+        dnode_t *dn;
+
         znode_phys_t *zp = db->db_data;
 
         vap->va_mask = DMU_AT_ATIME | DMU_AT_MTIME | DMU_AT_CTIME | DMU_AT_MODE
@@ -791,11 +795,16 @@ void udmu_object_getattr(dmu_buf_t *db, vnattr_t *vap)
         vap->va_nlink    = zp->zp_links;
         vap->va_rdev     = zp->zp_rdev;
 
+        DB_DNODE_ENTER(dbi);
+        dn = DB_DNODE(dbi);
+
         vap->va_blksize = dn->dn_datablksz;
         vap->va_blkbits = dn->dn_datablkshift;
         /* in 512-bytes units*/
         vap->va_nblocks = DN_USED_BYTES(dn->dn_phys) >> SPA_MINBLOCKSHIFT;
         vap->va_mask |= DMU_AT_NBLOCKS | DMU_AT_BLKSIZE;
+
+        DB_DNODE_EXIT(dbi);
 }
 
 /*
@@ -1029,12 +1038,20 @@ uint64_t udmu_object_get_id(dmu_buf_t *db)
         return (db->db_object);
 }
 
-int udmu_object_is_zap(dmu_buf_t *_db)
+int udmu_object_is_zap(dmu_buf_t *db)
 {
-        dmu_buf_impl_t *db = (dmu_buf_impl_t *) _db;
-        if (db->db_dnode->dn_type == DMU_OT_DIRECTORY_CONTENTS)
-                return 1;
-        return 0;
+        dmu_buf_impl_t *dbi = (dmu_buf_impl_t *) db;
+        dnode_t *dn;
+        int rc;
+
+        DB_DNODE_ENTER(dbi);
+
+        dn = DB_DNODE(dbi);
+        rc = dn->dn_type == DMU_OT_DIRECTORY_CONTENTS;
+
+        DB_DNODE_EXIT(dbi);
+
+        return rc;
 }
 
 /*
@@ -1102,18 +1119,30 @@ void udmu_tx_cb_register(dmu_tx_t *tx, udmu_tx_callback_func_t *func, void *data
 int udmu_indblk_overhead(dmu_buf_t *db, unsigned long *used,
                          unsigned long *overhead)
 {
-        dnode_t *dn = ((dmu_buf_impl_t *)db)->db_dnode;
+        dmu_buf_impl_t *dbi = (dmu_buf_impl_t *) db;
+        dnode_t *dn;
 
-        *overhead = (2 * (*used))/(1 << dn->dn_phys->dn_indblkshift);
+        DB_DNODE_ENTER(dbi);
+
+        dn = DB_DNODE(dbi);
+        *overhead = (2 * (*used)) / (1 << dn->dn_phys->dn_indblkshift);
+
+        DB_DNODE_EXIT(dbi);
 
         return 0;
 }
 
 int udmu_get_blocksize(dmu_buf_t *db, long *blksz)
 {
-        dnode_t *dn = ((dmu_buf_impl_t *)db)->db_dnode;
+        dmu_buf_impl_t *dbi = (dmu_buf_impl_t *) db;
+        dnode_t *dn;
 
-        *blksz = (dn->dn_datablksz);
+        DB_DNODE_ENTER(dbi);
+
+        dn = DB_DNODE(dbi);
+        *blksz = dn->dn_datablksz;
+
+        DB_DNODE_EXIT(dbi);
 
         return 0;
 }
@@ -1432,5 +1461,61 @@ int udmu_xattr_list(udmu_objset_t *uos, dmu_buf_t *db, void *buf, int buflen)
 
 void udmu_freeze(udmu_objset_t *uos)
 {
-        spa_freeze(uos->os->os->os_spa);
+        spa_freeze(uos->os->os_spa);
+}
+
+/* This is copied from zfs_space_delta_cb() and should be
+ * deleted after it is exported */
+static int
+udmu_space_delta_cb(dmu_object_type_t bonustype, void *data,
+                    uint64_t *userp, uint64_t *groupp)
+{
+	znode_phys_t *znp = data;
+	int error = 0;
+
+	/*
+	 * Is it a valid type of object to track?
+	 */
+	if (bonustype != DMU_OT_ZNODE && bonustype != DMU_OT_SA)
+		return (ENOENT);
+
+	/*
+	 * If we have a NULL data pointer
+	 * then assume the id's aren't changing and
+	 * return EEXIST to the dmu to let it know to
+	 * use the same ids
+	 */
+	if (data == NULL)
+		return (EEXIST);
+
+	if (bonustype == DMU_OT_ZNODE) {
+		*userp = znp->zp_uid;
+		*groupp = znp->zp_gid;
+	} else {
+		int hdrsize;
+
+		ASSERT(bonustype == DMU_OT_SA);
+                hdrsize = SA_HDR_SIZE(((struct sa_hdr_phys *)data));
+
+		if (hdrsize != 0) {
+			*userp = *((uint64_t *)((uintptr_t)data + hdrsize +
+			    SA_UID_OFFSET));
+			*groupp = *((uint64_t *)((uintptr_t)data + hdrsize +
+			    SA_GID_OFFSET));
+		} else {
+			/*
+			 * This should only happen for newly created
+			 * files that haven't had the znode data filled
+			 * in yet.
+			 */
+			*userp = 0;
+			*groupp = 0;
+		}
+	}
+	return (error);
+}
+
+void udmu_objset_register_type(void)
+{
+        dmu_objset_register_type(DMU_OST_ZFS, udmu_space_delta_cb);
 }

@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2008, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -42,11 +42,7 @@
 #include <linux/in.h>
 #include <linux/file.h>
 /* For sys_open & sys_close */
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,5,0)
 #include <linux/syscalls.h>
-#else
-#include <linux/fs.h>
-#endif
 
 int
 libcfs_sock_ioctl(int cmd, unsigned long arg)

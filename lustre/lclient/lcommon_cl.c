@@ -673,7 +673,8 @@ void ccc_lock_state(const struct lu_env *env,
                         if (lock->cll_descr.cld_start == 0 &&
                             lock->cll_descr.cld_end == CL_PAGE_EOF) {
                                 cl_isize_write_nolock(inode, attr->cat_kms);
-                                CDEBUG(D_INODE, DFID" updating i_size "LPU64"\n",
+                                CDEBUG(D_INODE|D_VFSTRACE,
+                                       DFID" updating i_size "LPU64"\n",
                                        PFID(lu_object_fid(&obj->co_lu)),
                                        (__u64)cl_isize_read(inode));
                         }
@@ -681,7 +682,7 @@ void ccc_lock_state(const struct lu_env *env,
                         cl_inode_atime(inode) = attr->cat_atime;
                         cl_inode_ctime(inode) = attr->cat_ctime;
                 } else {
-                        CL_LOCK_DEBUG(D_INFO, env, lock, "attr_get: %i\n", rc);
+                        CL_LOCK_DEBUG(D_INFO, env, lock, "attr_get: %d\n", rc);
                 }
                 cl_object_attr_unlock(obj);
                 cl_isize_unlock(inode, 0);
@@ -713,7 +714,7 @@ int ccc_io_one_lock_index(const struct lu_env *env, struct cl_io *io,
         CLOBINVRNT(env, obj, ccc_object_invariant(obj));
         ENTRY;
 
-        CDEBUG(D_VFSTRACE, "lock: %i [%lu, %lu]\n", mode, start, end);
+        CDEBUG(D_VFSTRACE, "lock: %d [%lu, %lu]\n", mode, start, end);
 
         memset(&cio->cui_link, 0, sizeof cio->cui_link);
 
@@ -922,6 +923,11 @@ int ccc_prep_size(const struct lu_env *env, struct cl_object *obj,
                                         cl_isize_write_nolock(inode, kms);
                                 else
                                         cl_isize_write(inode, kms);
+                                CDEBUG(D_VFSTRACE,
+                                       DFID" updating i_size "LPU64"\n",
+                                       PFID(lu_object_fid(&obj->co_lu)),
+                                       (__u64)cl_isize_read(inode));
+
                         }
                 }
         }
@@ -995,6 +1001,17 @@ void ccc_req_attr_set(const struct lu_env *env,
         }
         obdo_from_inode(oa, inode, &cl_i2info(inode)->lli_fid,
                         valid_flags & flags);
+#ifdef __KERNEL__
+        /* Bug11742 - set the OBD_FL_MMAP flag for memory mapped files */
+        if (cfs_atomic_read(&(cl_inode2ccc(inode)->cob_mmap_cnt)) != 0) {
+                if (!(oa->o_valid & OBD_MD_FLFLAGS)) {
+                        oa->o_valid |= OBD_MD_FLFLAGS;
+                        oa->o_flags = OBD_FL_MMAP;
+                } else {
+                        oa->o_flags |= OBD_FL_MMAP;
+                }
+        }
+#endif
 }
 
 const struct cl_req_operations ccc_req_ops = {

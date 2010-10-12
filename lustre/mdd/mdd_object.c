@@ -596,29 +596,27 @@ int mdd_iattr_get(const struct lu_env *env, struct mdd_object *mdd_obj,
         RETURN(rc);
 }
 
-int mdd_get_default_md(struct mdd_object *mdd_obj, struct lov_mds_md *lmm,
-                       int *size)
+int mdd_get_default_md(struct mdd_object *mdd_obj, struct lov_mds_md *lmm)
 {
         struct lov_desc *ldesc;
         struct mdd_device *mdd = mdo2mdd(&mdd_obj->mod_obj);
+        struct lov_user_md *lum = (struct lov_user_md*)lmm;
         ENTRY;
+
+        if (!lum)
+                RETURN(0);
 
         ldesc = &mdd->mdd_obd_dev->u.mds.mds_lov_desc;
         LASSERT(ldesc != NULL);
 
-        if (!lmm) {
-                *size = 0;
-                RETURN(0);
-        }
+        lum->lmm_magic = LOV_MAGIC_V1;
+        lum->lmm_object_seq = LOV_OBJECT_GROUP_DEFAULT;
+        lum->lmm_pattern = ldesc->ld_pattern;
+        lum->lmm_stripe_size = ldesc->ld_default_stripe_size;
+        lum->lmm_stripe_count = ldesc->ld_default_stripe_count;
+        lum->lmm_stripe_offset = ldesc->ld_default_stripe_offset;
 
-        lmm->lmm_magic = LOV_MAGIC_V1;
-        lmm->lmm_object_seq = LOV_OBJECT_GROUP_DEFAULT;
-        lmm->lmm_pattern = ldesc->ld_pattern;
-        lmm->lmm_stripe_size = ldesc->ld_default_stripe_size;
-        lmm->lmm_stripe_count = ldesc->ld_default_stripe_count;
-        *size = sizeof(struct lov_mds_md);
-
-        RETURN(sizeof(struct lov_mds_md));
+        RETURN(sizeof(*lum));
 }
 
 /* get lov EA only */
@@ -634,9 +632,9 @@ static int __mdd_lmm_get(const struct lu_env *env,
         rc = mdd_get_md(env, mdd_obj, ma->ma_lmm, &ma->ma_lmm_size,
                         XATTR_NAME_LOV);
         if (rc == 0 && (ma->ma_need & MA_LOV_DEF))
-                rc = mdd_get_default_md(mdd_obj, ma->ma_lmm,
-                                        &ma->ma_lmm_size);
+                rc = mdd_get_default_md(mdd_obj, ma->ma_lmm);
         if (rc > 0) {
+                ma->ma_lmm_size = rc;
                 ma->ma_valid |= MA_LOV;
                 rc = 0;
         }
@@ -1223,6 +1221,7 @@ static int mdd_fix_attr(const struct lu_env *env, struct mdd_object *obj,
 static int mdd_changelog_data_store(const struct lu_env     *env,
                                     struct mdd_device       *mdd,
                                     enum changelog_rec_type type,
+                                    int                     flags,
                                     struct mdd_object       *mdd_obj,
                                     struct thandle          *handle)
 {
@@ -1232,13 +1231,16 @@ static int mdd_changelog_data_store(const struct lu_env     *env,
         int reclen;
         int rc;
 
+        /* Not recording */
         if (!(mdd->mdd_cl.mc_flags & CLM_ON))
+                RETURN(0);
+        if ((mdd->mdd_cl.mc_mask & (1 << type)) == 0)
                 RETURN(0);
 
         LASSERT(handle != NULL);
         LASSERT(mdd_obj != NULL);
 
-        if ((type == CL_TIME) &&
+        if ((type >= CL_MTIME) && (type <= CL_ATIME) &&
             cfs_time_before_64(mdd->mdd_cl.mc_starttime, mdd_obj->mod_cltime)) {
                 /* Don't need multiple updates in this log */
                 /* Don't check under lock - no big deal if we get an extra
@@ -1252,7 +1254,7 @@ static int mdd_changelog_data_store(const struct lu_env     *env,
                 RETURN(-ENOMEM);
         rec = (struct llog_changelog_rec *)buf->lb_buf;
 
-        rec->cr.cr_flags = CLF_VERSION;
+        rec->cr.cr_flags = CLF_VERSION | (CLF_FLAGMASK & flags);
         rec->cr.cr_type = (__u32)type;
         rec->cr.cr_tfid = *tfid;
         rec->cr.cr_namelen = 0;
@@ -1391,6 +1393,36 @@ static int mdd_lma_set_locked(const struct lu_env *env,
         return rc;
 }
 
+/* Precedence for choosing record type when multiple
+ * attributes change: setattr > mtime > ctime > atime
+ * (ctime changes when mtime does, plus chmod/chown.
+ * atime and ctime are independent.) */
+static int mdd_attr_set_changelog(const struct lu_env *env,
+                                  struct md_object *obj, struct thandle *handle,
+                                  __u64 valid)
+{
+        struct mdd_device *mdd = mdo2mdd(obj);
+        int bits, type = 0;
+
+        bits = (valid & ~(LA_CTIME|LA_MTIME|LA_ATIME)) ? 1 << CL_SETATTR : 0;
+        bits |= (valid & LA_MTIME) ? 1 << CL_MTIME : 0;
+        bits |= (valid & LA_CTIME) ? 1 << CL_CTIME : 0;
+        bits |= (valid & LA_ATIME) ? 1 << CL_ATIME : 0;
+        bits = bits & mdd->mdd_cl.mc_mask;
+        if (bits == 0)
+                return 0;
+
+        /* The record type is the lowest non-masked set bit */
+        while (bits && ((bits & 1) == 0)) {
+                bits = bits >> 1;
+                type++;
+        }
+
+        /* FYI we only store the first CLF_FLAGMASK bits of la_valid */
+        return mdd_changelog_data_store(env, mdd, type, (int)valid,
+                                        md2mdd_obj(obj), handle);
+}
+
 /* set attr and LOV EA at once, return updated attr */
 static int mdd_attr_set(const struct lu_env *env, struct md_object *obj,
                         const struct md_attr *ma)
@@ -1520,11 +1552,8 @@ static int mdd_attr_set(const struct lu_env *env, struct md_object *obj,
         }
 cleanup:
         if (rc == 0)
-                rc = mdd_changelog_data_store(env, mdd,
-                                              (ma->ma_attr.la_valid &
-                                               ~(LA_MTIME|LA_CTIME|LA_ATIME)) ?
-                                              CL_SETATTR : CL_TIME,
-                                              mdd_obj, handle);
+                rc = mdd_attr_set_changelog(env, obj, handle,
+                                            ma->ma_attr.la_valid);
         mdd_trans_stop(env, mdd, rc, handle);
         if (rc == 0 && (lmm != NULL && lmm_size > 0 )) {
                 /*set obd attr, if needed*/
@@ -1620,9 +1649,8 @@ static int mdd_xattr_set(const struct lu_env *env, struct md_object *obj,
         rc = mdd_xattr_set_txn(env, mdd_obj, buf, name, fl, handle);
 
         /* Only record user xattr changes */
-        if ((rc == 0) && (mdd->mdd_cl.mc_flags & CLM_ON) &&
-            (strncmp("user.", name, 5) == 0))
-                rc = mdd_changelog_data_store(env, mdd, CL_XATTR, mdd_obj,
+        if ((rc == 0) && (strncmp("user.", name, 5) == 0))
+                rc = mdd_changelog_data_store(env, mdd, CL_XATTR, 0, mdd_obj,
                                               handle);
 cleanup:
         mdd_trans_stop(env, mdd, rc, handle);
@@ -1663,9 +1691,8 @@ int mdd_xattr_del(const struct lu_env *env, struct md_object *obj,
         mdd_write_unlock(env, mdd_obj);
 
         /* Only record user xattr changes */
-        if ((rc == 0) && (mdd->mdd_cl.mc_flags & CLM_ON) &&
-            (strncmp("user.", name, 5) != 0))
-                rc = mdd_changelog_data_store(env, mdd, CL_XATTR, mdd_obj,
+        if ((rc == 0) && (strncmp("user.", name, 5) != 0))
+                rc = mdd_changelog_data_store(env, mdd, CL_XATTR, 0, mdd_obj,
                                               handle);
 
 cleanup:

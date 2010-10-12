@@ -136,20 +136,11 @@ struct ldlm_bl_work_item {
         cfs_list_t              blwi_head;
         int                     blwi_count;
         cfs_completion_t        blwi_comp;
-        cfs_atomic_t            blwi_ref_count;
+        int                     blwi_mode;
+        int                     blwi_mem_pressure;
 };
 
 #ifdef __KERNEL__
-static inline void ldlm_bl_work_item_get(struct ldlm_bl_work_item *blwi)
-{
-        cfs_atomic_inc(&blwi->blwi_ref_count);
-}
-
-static inline void ldlm_bl_work_item_put(struct ldlm_bl_work_item *blwi)
-{
-        if (cfs_atomic_dec_and_test(&blwi->blwi_ref_count))
-                OBD_FREE(blwi, sizeof(*blwi));
-}
 
 static inline int have_expired_locks(void)
 {
@@ -266,7 +257,7 @@ static int ldlm_lock_busy(struct ldlm_lock *lock)
         if (lock->l_export == NULL)
                 return 0;
 
-        cfs_spin_lock(&lock->l_export->exp_lock);
+        cfs_spin_lock_bh(&lock->l_export->exp_rpc_lock);
         cfs_list_for_each_entry(req, &lock->l_export->exp_queued_rpc,
                                 rq_exp_list) {
                 if (req->rq_ops->hpreq_lock_match) {
@@ -275,7 +266,7 @@ static int ldlm_lock_busy(struct ldlm_lock *lock)
                                 break;
                 }
         }
-        cfs_spin_unlock(&lock->l_export->exp_lock);
+        cfs_spin_unlock_bh(&lock->l_export->exp_rpc_lock);
         RETURN(match);
 }
 
@@ -707,14 +698,14 @@ static void ldlm_lock_reorder_req(struct ldlm_lock *lock)
                 RETURN_EXIT;
         }
 
-        cfs_spin_lock(&lock->l_export->exp_lock);
+        cfs_spin_lock_bh(&lock->l_export->exp_rpc_lock);
         cfs_list_for_each_entry(req, &lock->l_export->exp_queued_rpc,
                                 rq_exp_list) {
                 if (!req->rq_hp && req->rq_ops->hpreq_lock_match &&
                     req->rq_ops->hpreq_lock_match(req, lock))
                         ptlrpc_hpreq_reorder(req);
         }
-        cfs_spin_unlock(&lock->l_export->exp_lock);
+        cfs_spin_unlock_bh(&lock->l_export->exp_rpc_lock);
         EXIT;
 }
 
@@ -1450,10 +1441,7 @@ int ldlm_handle_cancel(struct ptlrpc_request *req)
         if (!ldlm_request_cancel(req, dlm_req, 0))
                 req->rq_status = ESTALE;
 
-        if (ptlrpc_reply(req) != 0)
-                LBUG();
-
-        RETURN(0);
+        RETURN(ptlrpc_reply(req));
 }
 
 void ldlm_handle_bl_callback(struct ldlm_namespace *ns,
@@ -1575,6 +1563,10 @@ static void ldlm_handle_cp_callback(struct ptlrpc_request *req,
 
         LDLM_DEBUG(lock, "callback handler finished, about to run_ast_work");
 
+        /* Let Enqueue to call osc_lock_upcall() and initialize
+         * l_ast_data */
+        OBD_FAIL_TIMEOUT(OBD_FAIL_OSC_CP_ENQ_RACE, 2);
+
         ldlm_run_ast_work(&ast_list, LDLM_WORK_CP_AST);
 
         LDLM_DEBUG_NOLOCK("client completion callback handler END (lock %p)",
@@ -1652,8 +1644,10 @@ static int __ldlm_bl_to_thread(struct ldlm_bl_work_item *blwi, int mode)
         cfs_spin_unlock(&blp->blp_lock);
 
         cfs_waitq_signal(&blp->blp_waitq);
+
+        /* can not use blwi->blwi_mode as blwi could be already freed in
+           LDLM_ASYNC mode */
         if (mode == LDLM_SYNC)
-                /* keep ref count as object is on this stack for SYNC call */
                 cfs_wait_for_completion(&blwi->blwi_comp);
 
         RETURN(0);
@@ -1663,15 +1657,17 @@ static inline void init_blwi(struct ldlm_bl_work_item *blwi,
                              struct ldlm_namespace *ns,
                              struct ldlm_lock_desc *ld,
                              cfs_list_t *cancels, int count,
-                             struct ldlm_lock *lock)
+                             struct ldlm_lock *lock,
+                             int mode)
 {
         cfs_init_completion(&blwi->blwi_comp);
-        /* set ref count to 1 initially, supposed to be released in
-         * ldlm_bl_thread_main(), if not allocated on the stack */
-        cfs_atomic_set(&blwi->blwi_ref_count, 1);
         CFS_INIT_LIST_HEAD(&blwi->blwi_head);
 
+        if (cfs_memory_pressure_get())
+                blwi->blwi_mem_pressure = 1;
+
         blwi->blwi_ns = ns;
+        blwi->blwi_mode = mode;
         if (ld != NULL)
                 blwi->blwi_ld = *ld;
         if (count) {
@@ -1698,18 +1694,16 @@ static int ldlm_bl_to_thread(struct ldlm_namespace *ns,
                  */
                 struct ldlm_bl_work_item blwi;
                 memset(&blwi, 0, sizeof(blwi));
-                init_blwi(&blwi, ns, ld, cancels, count, lock);
-                /* take extra ref as this obj is on stack */
-                ldlm_bl_work_item_get(&blwi);
-                RETURN(__ldlm_bl_to_thread(&blwi, mode));
+                init_blwi(&blwi, ns, ld, cancels, count, lock, LDLM_SYNC);
+                RETURN(__ldlm_bl_to_thread(&blwi, LDLM_SYNC));
         } else {
                 struct ldlm_bl_work_item *blwi;
                 OBD_ALLOC(blwi, sizeof(*blwi));
                 if (blwi == NULL)
                         RETURN(-ENOMEM);
-                init_blwi(blwi, ns, ld, cancels, count, lock);
+                init_blwi(blwi, ns, ld, cancels, count, lock, LDLM_ASYNC);
 
-                RETURN(__ldlm_bl_to_thread(blwi, mode));
+                RETURN(__ldlm_bl_to_thread(blwi, LDLM_ASYNC));
         }
 }
 
@@ -2021,9 +2015,11 @@ static int ldlm_cancel_handler(struct ptlrpc_request *req)
         if (req->rq_export == NULL) {
                 struct ldlm_request *dlm_req;
 
-                CERROR("operation %d from %s with bad export cookie "LPU64"\n",
-                       lustre_msg_get_opc(req->rq_reqmsg),
-                       libcfs_id2str(req->rq_peer),
+                CERROR("%s from %s arrived at %lu with bad export cookie "
+                       LPU64"\n",
+                       ll_opcode2str(lustre_msg_get_opc(req->rq_reqmsg)),
+                       libcfs_nid2str(req->rq_peer.nid),
+                       req->rq_arrival_time.tv_sec,
                        lustre_msg_get_handle(req->rq_reqmsg)->cookie);
 
                 if (lustre_msg_get_opc(req->rq_reqmsg) == LDLM_CANCEL) {
@@ -2228,6 +2224,8 @@ static int ldlm_bl_thread_main(void *arg)
                                 /* added by ldlm_cleanup() */
                                 break;
                 }
+                if (blwi->blwi_mem_pressure)
+                        cfs_memory_pressure_set();
 
                 if (blwi->blwi_count) {
                         int count;
@@ -2243,8 +2241,13 @@ static int ldlm_bl_thread_main(void *arg)
                         ldlm_handle_bl_callback(blwi->blwi_ns, &blwi->blwi_ld,
                                                 blwi->blwi_lock);
                 }
-                cfs_complete(&blwi->blwi_comp);
-                ldlm_bl_work_item_put(blwi);
+                if (blwi->blwi_mem_pressure)
+                        cfs_memory_pressure_clr();
+
+                if (blwi->blwi_mode == LDLM_ASYNC)
+                        OBD_FREE(blwi, sizeof(*blwi));
+                else
+                        cfs_complete(&blwi->blwi_comp);
         }
 
         cfs_atomic_dec(&blp->blp_busy_threads);

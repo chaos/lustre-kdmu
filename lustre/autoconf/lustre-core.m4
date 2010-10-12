@@ -97,20 +97,13 @@ kernel patches from Lustre version 1.4.3 or above.])
 #
 AC_DEFUN([LC_CONFIG_BACKINGFS],
 [
-BACKINGFS="ldiskfs"
-
-if test x$with_ldiskfs = xno ; then
+if test x$with_ldiskfs = xno && test x$with_zfs = xno ; then
 	if test x$linux25$enable_server = xyesyes ; then
-		AC_MSG_ERROR([ldiskfs is required for 2.6-based servers.])
+		AC_MSG_ERROR([ldiskfs or zfs are required for 2.6-based servers.])
 	fi
 else
-	# ldiskfs is enabled
-	LB_DEFINE_LDISKFS_OPTIONS
-fi #ldiskfs
-
-AC_MSG_CHECKING([which backing filesystem to use])
-AC_MSG_RESULT([$BACKINGFS])
-AC_SUBST(BACKINGFS)
+        LB_DEFINE_LDISKFS_OPTIONS
+fi #ldiskfs && zfs
 ])
 
 #
@@ -633,6 +626,29 @@ LB_LINUX_TRY_COMPILE([
                 [after 2.6.17 dquote use mutex instead if semaphore])
 ],[
         AC_MSG_RESULT(no)
+])
+])
+
+# LC_FLUSH_OWNER_ID
+# starting from 2.6.18 the file_operations .flush
+# method has a new "fl_owner_t id" parameter
+#
+AC_DEFUN([LC_FLUSH_OWNER_ID],
+[AC_MSG_CHECKING([if file_operations .flush has an fl_owner_t id])
+LB_LINUX_TRY_COMPILE([
+        #include <linux/fs.h>
+],[
+        struct file_operations *fops = NULL;
+        fl_owner_t id;
+        int i;
+
+        i = fops->flush(NULL, id);
+],[
+        AC_DEFINE(HAVE_FLUSH_OWNER_ID, 1,
+                [file_operations .flush method has an fl_owner_t id])
+        AC_MSG_RESULT([yes])
+],[
+        AC_MSG_RESULT([no])
 ])
 ])
 
@@ -1921,6 +1937,7 @@ AC_DEFUN([LC_PROG_LINUX],
          LC_UMOUNTBEGIN_HAS_VFSMOUNT
          LC_SEQ_LOCK
          LC_EXPORT_FILEMAP_FDATAWRITE_RANGE
+         LC_FLUSH_OWNER_ID
          if test x$enable_server = xyes ; then
                 LC_EXPORT_INVALIDATE_MAPPING_PAGES
          fi
@@ -2384,7 +2401,7 @@ AC_DEFUN([LC_CONFIGURE],
 [LC_CONFIG_OBD_BUFFER_SIZE
 
 if test $target_cpu == "i686" -o $target_cpu == "x86_64"; then
-        CFLAGS="$CFLAGS"
+        CFLAGS="$CFLAGS -Werror"
 fi
 
 # include/liblustre.h
@@ -2486,7 +2503,6 @@ AM_CONDITIONAL(LIBLUSTRE_TESTS, test x$enable_liblustre_tests = xyes)
 AM_CONDITIONAL(MPITESTS, test x$enable_mpitests = xyes, Build MPI Tests)
 AM_CONDITIONAL(CLIENT, test x$enable_client = xyes)
 AM_CONDITIONAL(SERVER, test x$enable_server = xyes)
-AM_CONDITIONAL(DMU, test x$with_dmu = xyes)
 AM_CONDITIONAL(QUOTA, test x$enable_quota_module = xyes)
 AM_CONDITIONAL(SPLIT, test x$enable_split = xyes)
 AM_CONDITIONAL(BLKID, test x$ac_cv_header_blkid_blkid_h = xyes)
@@ -2507,6 +2523,7 @@ AC_DEFUN([LC_CONFIG_FILES],
 lustre/Makefile
 lustre/autoMakefile
 lustre/autoconf/Makefile
+lustre/conf/Makefile
 lustre/contrib/Makefile
 lustre/doc/Makefile
 lustre/include/Makefile
@@ -2576,7 +2593,6 @@ lustre/tests/Makefile
 lustre/tests/mpi/Makefile
 lustre/utils/Makefile
 lustre/utils/gss/Makefile
-lustre/utils/pthread/Makefile
 lustre/obdclass/darwin/Makefile
 ])
 ])

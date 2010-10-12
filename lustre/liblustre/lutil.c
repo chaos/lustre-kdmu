@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2004, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -128,7 +128,7 @@ void liblustre_init_random()
         if (_rand_dev_fd >= 0) {
                 if (syscall(SYS_read, _rand_dev_fd,
                             &seed, sizeof(seed)) == sizeof(seed)) {
-                        ll_srand(seed[0], seed[1]);
+                        cfs_srand(seed[0], seed[1]);
                         syscall(SYS_close, _rand_dev_fd);
                         return;
                 }
@@ -142,7 +142,7 @@ void liblustre_init_random()
         seed[0] = _my_pnid;
 #endif
         gettimeofday(&tv, NULL);
-        ll_srand(tv.tv_sec ^ __swab32(seed[0]), tv.tv_usec ^__swab32(getpid()));
+        cfs_srand(tv.tv_sec ^ __swab32(seed[0]), tv.tv_usec ^__swab32(getpid()));
 }
 
 static void init_capability(__u32 *res)

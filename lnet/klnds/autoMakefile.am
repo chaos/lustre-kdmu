@@ -25,7 +25,7 @@
 #
 
 #
-# Copyright  2008 Sun Microsystems, Inc. All rights reserved
+# Copyright (c) 2003, 2010, Oracle and/or its affiliates. All rights reserved.
 # Use is subject to license terms.
 #
 
@@ -34,4 +34,4 @@
 # Lustre is a trademark of Sun Microsystems, Inc.
 #
 
-SUBDIRS = socklnd qswlnd gmlnd mxlnd openiblnd iiblnd viblnd ralnd ptllnd ciblnd o2iblnd
+SUBDIRS = socklnd qswlnd mxlnd openiblnd iiblnd viblnd ralnd ptllnd ciblnd o2iblnd

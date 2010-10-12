@@ -217,7 +217,7 @@ int filter_quota_ctl(struct obd_device *unused, struct obd_export *exp,
                 break;
         case Q_INITQUOTA:
                 {
-                unsigned int id[MAXQUOTAS] = { 0, 0 };
+                unsigned int id[CFS_MAXQUOTAS] = { 0, 0 };
 
                 /* Initialize quota limit to MIN_QLIMIT */
                 LASSERT(oqctl->qc_dqblk.dqb_valid == QIF_BLIMITS);
@@ -263,7 +263,7 @@ adjust:
                 if (oqctl->qc_type == USRQUOTA)
                         id[USRQUOTA] = oqctl->qc_id;
                 else
-                        id[GRPQUOTA] = oqctl->qc_id;
+                        id[CFS_GRPQUOTA] = oqctl->qc_id;
 
                 rc = qctxt_adjust_qunit(obd, &obd->u.obt.obt_qctxt,
                                         id, 1, 0, NULL);
@@ -321,23 +321,19 @@ int client_quota_ctl(struct obd_device *unused, struct obd_export *exp,
         req->rq_no_resend = 1;
 
         rc = ptlrpc_queue_wait(req);
-        if (rc) {
+        if (rc)
                 CERROR("ptlrpc_queue_wait failed, rc: %d\n", rc);
-                GOTO(out, rc);
-        }
 
-        oqc = NULL;
-        if (req->rq_repmsg)
-                oqc = req_capsule_server_get(&req->rq_pill, &RMF_OBD_QUOTACTL);
-
-        if (oqc == NULL) {
+        if (req->rq_repmsg &&
+            (oqc = req_capsule_server_get(&req->rq_pill, &RMF_OBD_QUOTACTL))) {
+                *oqctl = *oqc;
+        } else if (!rc) {
                 CERROR ("Can't unpack obd_quotactl\n");
-                GOTO(out, rc = -EPROTO);
+                rc = -EPROTO;
         }
 
-        *oqctl = *oqc;
         EXIT;
-out:
+
         ptlrpc_req_finished(req);
 
         return rc;

@@ -41,16 +41,16 @@
 #define __LIBCFS_LIBCFS_WATCHDOG_H__
 
 struct lc_watchdog {
-        cfs_timer_t           lcw_timer; /* kernel timer */
-        cfs_list_t            lcw_list;
-        cfs_time_t            lcw_last_touched;
-        cfs_task_t           *lcw_task;
-        cfs_atomic_t          lcw_refcount;
+        cfs_spinlock_t  lcw_lock;     /* check or change lcw_list */
+        int             lcw_refcount; /* must hold lcw_pending_timers_lock */
+        cfs_timer_t     lcw_timer;    /* kernel timer */
+        cfs_list_t      lcw_list;     /* chain on pending list */
+        cfs_time_t      lcw_last_touched; /* last touched stamp */
+        cfs_task_t     *lcw_task;     /* owner task */
+        void          (*lcw_callback)(pid_t, void *);
+        void           *lcw_data;
 
-        void                (*lcw_callback)(pid_t, void *);
-        void                 *lcw_data;
-
-        pid_t                 lcw_pid;
+        pid_t           lcw_pid;
 
         enum {
                 LC_WATCHDOG_DISABLED,

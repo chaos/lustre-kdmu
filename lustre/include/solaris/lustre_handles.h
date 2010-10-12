@@ -41,8 +41,4 @@
 #error Do not #include this file directly. #include <lustre_handles.h> instead
 #endif
 
-#ifdef __KERNEL__
-typedef struct cfs_rcu_head { } cfs_rcu_head_t;
-#endif
-
 #endif /* __SOLARIS_LUSTRE_HANDLES_H__ */

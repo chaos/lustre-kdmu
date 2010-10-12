@@ -60,6 +60,7 @@
 #include <lprocfs_status.h>
 #include <lustre_lite.h>
 #include <lustre_fid.h>
+#include <lustre_quota.h>
 #include "lmv_internal.h"
 
 /* object cache. */
@@ -760,7 +761,8 @@ static int lmv_iocontrol(unsigned int cmd, struct obd_export *exp,
                         RETURN(-EFAULT);
 
                 rc = obd_statfs(mdc_obd, &stat_buf,
-                                cfs_time_current_64() - CFS_HZ, 0);
+                                cfs_time_shift_64(-OBD_STATFS_CACHE_SECONDS),
+                                0);
                 if (rc)
                         RETURN(rc);
                 if (cfs_copy_to_user(data->ioc_pbuf1, &stat_buf,
@@ -3095,13 +3097,6 @@ struct md_ops lmv_md_ops = {
         .m_revalidate_lock      = lmv_revalidate_lock
 };
 
-#ifdef HAVE_QUOTA_SUPPORT
-
-static quota_interface_t *quota_interface;
-extern quota_interface_t lmv_quota_interface;
-
-#endif /* HAVE_QUOTA_SUPPORT */
-
 int __init lmv_init(void)
 {
         struct lprocfs_static_vars lvars;
@@ -3117,21 +3112,10 @@ int __init lmv_init(void)
 
         lprocfs_lmv_init_vars(&lvars);
 
-#ifdef HAVE_QUOTA_SUPPORT
-        cfs_request_module("lquota");
-        quota_interface = PORTAL_SYMBOL_GET(lmv_quota_interface);
-        init_obd_quota_ops(quota_interface, &lmv_obd_ops);
-#endif /* HAVE_QUOTA_SUPPORT */
-
         rc = class_register_type(&lmv_obd_ops, &lmv_md_ops,
                                  lvars.module_vars, LUSTRE_LMV_NAME, NULL);
-        if (rc) {
-#ifdef HAVE_QUOTA_SUPPORT
-                if (quota_interface)
-                        PORTAL_SYMBOL_PUT(lmv_quota_interface);
-#endif /* HAVE_QUOTA_SUPPORT */
+        if (rc)
                 cfs_mem_cache_destroy(lmv_object_cache);
-        }
 
         return rc;
 }
@@ -3139,11 +3123,6 @@ int __init lmv_init(void)
 #ifdef __KERNEL__
 static void lmv_exit(void)
 {
-#ifdef HAVE_QUOTA_SUPPORT
-        if (quota_interface)
-                PORTAL_SYMBOL_PUT(lmv_quota_interface);
-#endif /* HAVE_QUOTA_SUPPORT */
-
         class_unregister_type(LUSTRE_LMV_NAME);
 
         LASSERTF(cfs_atomic_read(&lmv_object_count) == 0,

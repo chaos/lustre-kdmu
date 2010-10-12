@@ -75,9 +75,9 @@ extern int vsscanf(const char *, const char *, va_list);
 #define printk_ratelimit()      0
 
 /*
- * ranhdomize
+ * randomize
  */
-#define cfs_get_random_bytes(buf, size) \
+#define cfs_get_random_bytes_prim(buf, size) \
         random_get_pseudo_bytes((uint8_t *)(buf), (size_t)(size))
 
 /*

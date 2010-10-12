@@ -450,6 +450,14 @@ typedef struct cfs_module {
 
 #define LUSTREFS_DRIVER "lustrefs"
 
+#define isxdigit(c)     (('0' <= (c) && (c) <= '9') \
+                         || ('a' <= (c) && (c) <= 'f') \
+                         || ('A' <= (c) && (c) <= 'F'))
+
+#define isalnum(c)      (('0' <= (c) && (c) <= '9') \
+                         || ('a' <= (c) && (c) <= 'z') \
+                         || ('A' <= (c) && (c) <= 'Z'))
+
 #define isspace(ch) (((ch) == ' ') || ((ch) == '\r') || ((ch) == '\n') || \
                      ((ch) == '\t') || ((ch) == '\f'))
 

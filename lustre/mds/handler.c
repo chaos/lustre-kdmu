@@ -46,7 +46,6 @@
 #include <lustre_mds.h>
 #include <linux/module.h>
 #include <linux/init.h>
-#include <linux/random.h>
 #include <linux/fs.h>
 #include <linux/jbd.h>
 #include <linux/smp_lock.h>
@@ -333,7 +332,7 @@ static void mds_init_ctxt(struct obd_device *obd, struct vfsmount *mnt)
         mds->mds_obt.obt_vfsmnt = mnt;
         /* why not mnt->mnt_sb instead of mnt->mnt_root->d_inode->i_sb? */
         obd->u.obt.obt_sb = mnt->mnt_root->d_inode->i_sb;
-
+        obd->u.obt.obt_magic = OBT_MAGIC;
         fsfilt_setup(obd, obd->u.obt.obt_sb);
 
         OBD_SET_CTXT_MAGIC(&obd->obd_lvfs_ctxt);
@@ -375,6 +374,7 @@ static int mds_cmd_setup(struct obd_device *obd, struct lustre_cfg *lcfg)
 
         OBD_SET_CTXT_MAGIC(&obd->obd_lvfs_ctxt);
         obd->obd_lvfs_ctxt.dt = lmi->lmi_dt;
+        obd->u.obt.obt_magic = OBT_MAGIC;
 
         lsi = lmi->lmi_lsi;
         lmi->lmi_dt->dd_ops->dt_conf_get(NULL, lmi->lmi_dt, &dt_param);
@@ -468,9 +468,6 @@ static int mds_cmd_cleanup(struct obd_device *obd)
                 }
 
                 dput(mds->mds_fid_de);
-#ifdef HAVE_QUOTA_SUPPORT
-                LL_DQUOT_OFF(obd->u.obt.obt_sb);
-#endif
                 shrink_dcache_sb(mds->mds_obt.obt_sb);
                 fsfilt_put_ops(obd->obd_fsops);
 
@@ -500,29 +497,11 @@ static struct obd_ops mds_cmd_obd_ops = {
         //   .o_health_check    = mds_cmd_health_check,
 };
 
-#ifdef HAVE_QUOTA_SUPPORT
-
-quota_interface_t *mds_quota_interface_ref;
-extern quota_interface_t mds_quota_interface;
-
-#endif /* HAVE_QUOTA_SUPPORT */
-
 static int __init mds_cmd_init(void)
 {
         struct lprocfs_static_vars lvars;
-#ifdef HAVE_QUOTA_SUPPORT
-        int rc;
 
         cfs_request_module("%s", "lquota");
-        mds_quota_interface_ref = PORTAL_SYMBOL_GET(mds_quota_interface);
-        rc = lquota_init(mds_quota_interface_ref);
-        if (rc) {
-                if (mds_quota_interface_ref)
-                        PORTAL_SYMBOL_PUT(mds_quota_interface);
-                return rc;
-        }
-        init_obd_quota_ops(mds_quota_interface_ref, &mds_cmd_obd_ops);
-#endif /* HAVE_QUOTA_SUPPORT */
 
         lprocfs_mds_init_vars(&lvars);
         class_register_type(&mds_cmd_obd_ops, NULL, lvars.module_vars,
@@ -533,18 +512,9 @@ static int __init mds_cmd_init(void)
 
 static void /*__exit*/ mds_cmd_exit(void)
 {
-#ifdef HAVE_QUOTA_SUPPORT
-        lquota_exit(mds_quota_interface_ref);
-        if (mds_quota_interface_ref)
-                PORTAL_SYMBOL_PUT(mds_quota_interface);
-#endif /* HAVE_QUOTA_SUPPORT */
-
         class_unregister_type(LUSTRE_MDS_NAME);
 }
 
-#ifdef HAVE_QUOTA_SUPPORT
-EXPORT_SYMBOL(mds_quota_interface_ref);
-#endif
 MODULE_AUTHOR("Sun Microsystems, Inc. <http://www.lustre.org/>");
 MODULE_DESCRIPTION("Lustre Metadata Server (MDS)");
 MODULE_LICENSE("GPL");

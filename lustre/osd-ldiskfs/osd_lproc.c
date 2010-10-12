@@ -111,6 +111,8 @@ int osd_procfs_init(struct osd_device *osd, const char *name)
                 GOTO(out, rc);
         }
 
+        osd_quota_procfs_init(osd);
+
         rc = osd_stats_init(osd);
         lprocfs_put_lperef(osd->od_proc_entry);
 
@@ -280,6 +282,9 @@ static int lprocfs_osd_rd_mntdev(char *page, char **start, off_t off, int count,
                                      "%s\n", osd->od_mntdev);
 }
 
+#ifndef DMU_OSD_BUILD
+/* FIXME enabling/disabling read cache is not supported in the
+ * DMU-OSD yet. We should get/set the primarycache property here */
 static int lprocfs_osd_rd_cache(char *page, char **start, off_t off,
                                 int count, int *eof, void *data)
 {
@@ -288,23 +293,13 @@ static int lprocfs_osd_rd_cache(char *page, char **start, off_t off,
         LIBCFS_PARAM_GET_DATA(osd, data, NULL);
         LASSERT(osd != NULL);
 
-#ifdef DMU_OSD_BUILD
-        /* FIXME For the DMU we should get the primarycache property */
-        return libcfs_param_snprintf(page, count, data, LP_U32, "%1\n");
-#else
         return libcfs_param_snprintf(page, count, data, LP_U32,
                                      "%u\n", osd->od_read_cache);
-#endif
 }
 
 static int lprocfs_osd_wr_cache(libcfs_file_t *file, const char *buffer,
                                 unsigned long count, void *data)
 {
-#ifdef DMU_OSD_BUILD
-        /* FIXME enabling/disabling read cache is not supported in the
-         * DMU-OSD yet. We should set the primarycache property here */
-        return -EINVAL;
-#else
         struct osd_device *osd;
         int val, rc, flag;
 
@@ -317,11 +312,9 @@ static int lprocfs_osd_wr_cache(libcfs_file_t *file, const char *buffer,
 
         osd->od_read_cache = !!val;
         return count;
-#endif
 }
 
 
-#ifndef DMU_OSD_BUILD
 static int lprocfs_osd_rd_wcache(char *page, char **start, off_t off,
                                    int count, int *eof, void *data)
 {

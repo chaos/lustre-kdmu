@@ -47,7 +47,9 @@
 extern "C" {
 #endif
 
+#include <sys/zap.h>
 #include <libcfs/libcfs.h>
+#include <lustre/lustre_user.h>
 
 #define DMU_RESERVED_MAX (64ULL << 20)
 
@@ -139,20 +141,6 @@ typedef struct udmu_objset {
         uint64_t objects; /* in-core counter of objects, protected by lock */
         char name[128];
 } udmu_objset_t;
-
-
-/* definitions from dmu.h */
-#ifndef _SYS_DMU_H
-
-typedef struct objset objset_t;
-typedef struct dmu_tx dmu_tx_t;
-typedef struct dmu_buf dmu_buf_t;
-typedef struct zap_cursor zap_cursor_t;
-
-#define DMU_NEW_OBJECT  (-1ULL)
-#define DMU_OBJECT_END  (-1ULL)
-
-#endif
 
 #ifndef _SYS_TXG_H
 #define TXG_WAIT        1ULL
@@ -303,6 +291,9 @@ void udmu_xattr_declare_del(udmu_objset_t *uos, dmu_buf_t *db, const char *name,
 int udmu_xattr_del(udmu_objset_t *uos, dmu_buf_t *db, const char *name, dmu_tx_t *tx);
 
 void udmu_freeze(udmu_objset_t *uos);
+
+/* Used by lquota */
+void udmu_objset_register_type(void);
 #ifdef  __cplusplus
 }
 #endif

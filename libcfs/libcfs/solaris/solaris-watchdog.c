@@ -46,6 +46,6 @@
 void
 lcw_dump(struct lc_watchdog *lcw)
 {
-        panic("Watchdog triggered ...");
+        panic("Watchdog %p triggered ...\n", lcw);
 }
 #endif

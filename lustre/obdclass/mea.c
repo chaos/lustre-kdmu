@@ -39,7 +39,6 @@
 #if defined(__KERNEL__) && defined(__linux__)
 #include <linux/kmod.h>   /* for request_module() */
 #include <linux/module.h>
-#include <linux/random.h>
 #include <linux/slab.h>
 #include <linux/pagemap.h>
 #elif !defined(__KERNEL__)

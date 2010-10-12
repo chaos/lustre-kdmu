@@ -65,9 +65,9 @@ typedef unsigned short cfs_umode_t;
 
 #endif
 
-/* always adopt 2.5 definitions */
+/* always adopt 2.6.9 definitions */
 #define KERNEL_VERSION(a,b,c) ((a)*100+(b)*10+c)
-#define LINUX_VERSION_CODE KERNEL_VERSION(2,6,5)
+#define LINUX_VERSION_CODE KERNEL_VERSION(2,6,9)
 
 #ifndef page_private
 #define page_private(page) ((page)->private)
@@ -136,8 +136,6 @@ extern int echo_client_init(void);
 /* general stuff */
 
 #define EXPORT_SYMBOL(S)
-
-typedef struct cfs_rcu_head { } cfs_rcu_head_t;
 
 typedef __u64 kdev_t;
 
@@ -337,10 +335,6 @@ int cfs_curproc_is_in_groups(gid_t gid);
 #define cfs_might_sleep()
 #define might_sleep_if(c)
 #define smp_mb()
-
-#define libcfs_memory_pressure_get() (0)
-#define libcfs_memory_pressure_put() do {} while (0)
-#define libcfs_memory_pressure_clr() do {} while (0)
 
 /* FIXME sys/capability will finally included linux/fs.h thus
  * cause numerous trouble on x86-64. as temporary solution for

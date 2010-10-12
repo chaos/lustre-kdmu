@@ -448,6 +448,10 @@ void mdt_pack_attr2body(struct mdt_thread_info *info, struct mdt_body *b,
 
         if (info)
                 mdt_body_reverse_idmap(info, b);
+
+        if (b->valid & OBD_MD_FLSIZE)
+                CDEBUG(D_VFSTRACE, DFID": returning size %llu\n",
+                       PFID(fid), (unsigned long long)b->size);
 }
 
 static inline int mdt_body_has_lov(const struct lu_attr *la,
@@ -1232,15 +1236,20 @@ static int mdt_sendpage(struct mdt_thread_info *info,
         if (OBD_FAIL_CHECK(OBD_FAIL_MDS_SENDPAGE))
                 GOTO(abort_bulk, rc = 0);
 
-        timeout = (int) req->rq_deadline - cfs_time_current_sec();
-        if (timeout < 0)
-                CERROR("Req deadline already passed %lu (now: %lu)\n",
-                       req->rq_deadline, cfs_time_current_sec());
-        *lwi = LWI_TIMEOUT_INTERVAL(cfs_time_seconds(max(timeout, 1)),
-                                    cfs_time_seconds(1), NULL, NULL);
-        rc = l_wait_event(desc->bd_waitq, !ptlrpc_server_bulk_active(desc) ||
-                          exp->exp_failed || exp->exp_abort_active_req, lwi);
-        LASSERT (rc == 0 || rc == -ETIMEDOUT);
+        do {
+                timeout = (int) req->rq_deadline - cfs_time_current_sec();
+                if (timeout < 0)
+                        CERROR("Req deadline already passed %lu (now: %lu)\n",
+                               req->rq_deadline, cfs_time_current_sec());
+                *lwi = LWI_TIMEOUT_INTERVAL(cfs_time_seconds(max(timeout, 1)),
+                                            cfs_time_seconds(1), NULL, NULL);
+                rc = l_wait_event(desc->bd_waitq,
+                                  !ptlrpc_server_bulk_active(desc) ||
+                                  exp->exp_failed ||
+                                  exp->exp_abort_active_req, lwi);
+                LASSERT (rc == 0 || rc == -ETIMEDOUT);
+        } while ((rc == -ETIMEDOUT) &&
+                 (req->rq_deadline > cfs_time_current_sec()));
 
         if (rc == 0) {
                 if (desc->bd_success &&
@@ -1771,10 +1780,10 @@ static int mdt_quotactl_handle(struct mdt_thread_info *info)
                         RETURN(-EPERM);
 
 
-                if (oqctl->qc_type == USRQUOTA)
+                if (oqctl->qc_type == CFS_USRQUOTA)
                         id = lustre_idmap_lookup_uid(NULL, idmap, 0,
                                                      oqctl->qc_id);
-                else if (oqctl->qc_type == GRPQUOTA)
+                else if (oqctl->qc_type == CFS_GRPQUOTA)
                         id = lustre_idmap_lookup_gid(NULL, idmap, 0,
                                                      oqctl->qc_id);
                 else
@@ -4334,9 +4343,7 @@ static void mdt_fini(const struct lu_env *env, struct mdt_device *m)
         mdt_obd_llog_cleanup(obd);
         obd_exports_barrier(obd);
         obd_zombie_barrier();
-#ifdef HAVE_QUOTA_SUPPORT
         next->md_ops->mdo_quota.mqo_cleanup(env, next);
-#endif
         lut_fini(env, &m->mdt_lut);
         mdt_fs_cleanup(env, m);
         upcall_cache_cleanup(m->mdt_identity_cache);
@@ -4450,6 +4457,9 @@ static void fsoptions_to_mdt_flags(struct mdt_device *m, char *options)
                         LCONSOLE_INFO("Disabling ACL\n");
                 }
 
+                if (!*p)
+                        break;
+
                 options = ++p;
         }
 }
@@ -4469,9 +4479,7 @@ static int mdt_init0(const struct lu_env *env, struct mdt_device *m,
         struct lu_site            *s;
         struct md_site            *mite;
         const char                *identity_upcall = "NONE";
-#ifdef HAVE_QUOTA_SUPPORT
         struct md_device          *next;
-#endif
         int                        rc;
         int                        node_id;
         ENTRY;
@@ -4652,13 +4660,6 @@ static int mdt_init0(const struct lu_env *env, struct mdt_device *m,
 
         mdt_adapt_sptlrpc_conf(obd, 1);
 
-#ifdef HAVE_QUOTA_SUPPORT
-        next = m->mdt_child;
-        rc = next->md_ops->mdo_quota.mqo_setup(env, next, NULL);
-        if (rc)
-                GOTO(err_llog_cleanup, rc);
-#endif
-
         target_recovery_init(&m->mdt_lut, mdt_recovery_handle);
 
         rc = mdt_start_ptlrpc_service(m);
@@ -4666,6 +4667,11 @@ static int mdt_init0(const struct lu_env *env, struct mdt_device *m,
                 GOTO(err_recovery, rc);
 
         ping_evictor_start();
+
+        next = m->mdt_child;
+        rc = next->md_ops->mdo_quota.mqo_setup(env, next, NULL);
+        if (rc)
+                GOTO(err_stop_service, rc);
 
         rc = lu_site_init_finish(s);
         if (rc)
@@ -4685,13 +4691,11 @@ static int mdt_init0(const struct lu_env *env, struct mdt_device *m,
         RETURN(0);
 
 err_stop_service:
+        next->md_ops->mdo_quota.mqo_cleanup(env, next);
         ping_evictor_stop();
         mdt_stop_ptlrpc_service(m);
 err_recovery:
         target_recovery_fini(obd);
-#ifdef HAVE_QUOTA_SUPPORT
-        next->md_ops->mdo_quota.mqo_cleanup(env, next);
-#endif
 err_llog_cleanup:
         mdt_llog_ctxt_unclone(env, m, LLOG_CHANGELOG_ORIG_CTXT);
         mdt_obd_llog_cleanup(obd);
@@ -5028,7 +5032,7 @@ static int mdt_obd_connect(const struct lu_env *env,
                 memcpy(lcd->lcd_uuid, cluuid, sizeof lcd->lcd_uuid);
                 rc = mdt_client_new(env, mdt);
                 if (rc == 0)
-                        mdt_export_stats_init(obd, lexp, localdata);
+                        mdt_export_stats_init(obd, lexp, 0, localdata);
         }
 
 out:
@@ -5067,7 +5071,7 @@ static int mdt_obd_reconnect(const struct lu_env *env,
 
         rc = mdt_connect_internal(exp, mdt_dev(obd->obd_lu_dev), data);
         if (rc == 0)
-                mdt_export_stats_init(obd, exp, localdata);
+                mdt_export_stats_init(obd, exp, 1, localdata);
 
         RETURN(rc);
 }
@@ -5230,9 +5234,9 @@ static void mdt_allow_cli(struct mdt_device *m, unsigned int flag)
  
                 /* Open for clients */
                 if (obd->obd_no_conn) {
-                        cfs_spin_lock_bh(&obd->obd_processing_task_lock);
+                        cfs_spin_lock(&obd->obd_dev_lock);
                         obd->obd_no_conn = 0;
-                        cfs_spin_unlock_bh(&obd->obd_processing_task_lock);
+                        cfs_spin_unlock(&obd->obd_dev_lock);
                 }
         }
 }
@@ -5255,7 +5259,8 @@ static int mdt_upcall(const struct lu_env *env, struct md_device *md,
                                      m->mdt_max_mdsize, m->mdt_max_cookiesize);
                         mdt_allow_cli(m, CONFIG_SYNC);
                         if (data)
-                                (*(__u64 *)data) = m->mdt_lut.lut_mount_count;
+                                (*(__u64 *)data) =
+                                      m->mdt_lut.lut_obd->u.obt.obt_mount_count;
                         break;
                 case MD_NO_TRANS:
                         mti = lu_context_key_get(&env->le_ctx, &mdt_thread_key);
@@ -5528,8 +5533,8 @@ static int mdt_iocontrol(unsigned int cmd, struct obd_export *exp, int len,
 int mdt_postrecov(const struct lu_env *env, struct mdt_device *mdt)
 {
         struct lu_device *ld = md2lu_dev(mdt->mdt_child);
-        struct obd_device *obd = mdt2obd_dev(mdt);
 #ifdef HAVE_QUOTA_SUPPORT
+        struct obd_device *obd = mdt2obd_dev(mdt);
         struct md_device *next = mdt->mdt_child;
 #endif
         int rc;

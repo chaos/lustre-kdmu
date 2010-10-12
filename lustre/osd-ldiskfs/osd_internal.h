@@ -75,6 +75,7 @@
 #include <lustre_fsfilt.h>
 
 #include <dt_object.h>
+#include <osd_quota.h>
 #include "osd_oi.h"
 #include "osd_iam.h"
 
@@ -478,7 +479,7 @@ static inline int osd_invariant(const struct osd_object *obj)
 #define osd_invariant(obj) (1)
 #endif
 
-static struct super_block *osd_sb(const struct osd_device *dev)
+static inline struct super_block *osd_sb(const struct osd_device *dev)
 {
         return dev->od_mnt->mnt_sb;
 }
@@ -502,4 +503,6 @@ static inline int osd_fid_is_igif(const struct lu_fid *fid)
 }
 
 #endif /* __KERNEL__ */
+
+void osd_quota_procfs_init(struct osd_device *osd);
 #endif /* _OSD_INTERNAL_H */

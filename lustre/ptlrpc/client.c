@@ -194,6 +194,7 @@ void ptlrpc_prep_bulk_page(struct ptlrpc_bulk_desc *desc,
 
         desc->bd_nob += len;
 
+        cfs_page_pin(page);
         ptlrpc_add_bulk_page(desc, page, pageoffset, len);
 }
 
@@ -203,6 +204,7 @@ void ptlrpc_prep_bulk_page(struct ptlrpc_bulk_desc *desc,
  */
 void ptlrpc_free_bulk(struct ptlrpc_bulk_desc *desc)
 {
+        int i;
         ENTRY;
 
         LASSERT(desc != NULL);
@@ -216,6 +218,9 @@ void ptlrpc_free_bulk(struct ptlrpc_bulk_desc *desc)
                 class_export_put(desc->bd_export);
         else
                 class_import_put(desc->bd_import);
+
+        for (i = 0; i < desc->bd_iov_count ; i++)
+                cfs_page_unpin(desc->bd_iov[i].kiov_page);
 
         OBD_FREE(desc, offsetof(struct ptlrpc_bulk_desc,
                                 bd_iov[desc->bd_max_iov]));
@@ -1036,8 +1041,6 @@ static int ptlrpc_import_delay_req(struct obd_import *imp,
         } else if (imp->imp_state == LUSTRE_IMP_CLOSED) {
                 DEBUG_REQ(D_ERROR, req, "IMP_CLOSED ");
                 *status = -EIO;
-        } else if (imp->imp_obd->obd_no_recov) {
-                *status = -ESHUTDOWN;
         } else if (ptlrpc_send_limit_expired(req)) {
                 /* probably doesn't need to be a D_ERROR after initial testing */
                 DEBUG_REQ(D_ERROR, req, "send limit expired ");
@@ -1049,7 +1052,7 @@ static int ptlrpc_import_delay_req(struct obd_import *imp,
                         DEBUG_REQ(D_ERROR, req, "invalidate in flight");
                         *status = -EIO;
                 }
-        } else if (imp->imp_invalid) {
+        } else if (imp->imp_invalid || imp->imp_obd->obd_no_recov) {
                 if (!imp->imp_deactive)
                           DEBUG_REQ(D_ERROR, req, "IMP_INVALID");
                 *status = -ESHUTDOWN; /* bz 12940 */
@@ -1308,6 +1311,10 @@ static int after_reply(struct ptlrpc_request *req)
                                 lustre_msg_get_last_committed(req->rq_repmsg);
                 }
                 ptlrpc_free_committed(imp);
+
+                if (req->rq_transno > imp->imp_peer_committed_transno)
+                        ptlrpc_pinger_commit_expected(imp);
+
                 cfs_spin_unlock(&imp->imp_lock);
         }
 
@@ -1437,6 +1444,12 @@ int ptlrpc_check_set(const struct lu_env *env, struct ptlrpc_request_set *set)
                 if (req->rq_phase == RQ_PHASE_UNREGISTERING) {
                         LASSERT(req->rq_next_phase != req->rq_phase);
                         LASSERT(req->rq_next_phase != RQ_PHASE_UNDEFINED);
+
+                        /* Abort the bulk, if the request itself has been
+                         * aborted, for instance, on a client eviction. */
+                        if (req->rq_err && req->rq_status == -EINTR &&
+                            req->rq_bulk != NULL)
+                                ptlrpc_abort_bulk(req->rq_bulk);
 
                         /*
                          * Skip processing until reply is unlinked. We
@@ -2272,7 +2285,7 @@ void ptlrpc_free_committed(struct obd_import *imp)
 
         if (imp->imp_peer_committed_transno == imp->imp_last_transno_checked &&
             imp->imp_generation == imp->imp_last_generation_checked) {
-                CDEBUG(D_RPCTRACE, "%s: skip recheck: last_committed "LPU64"\n",
+                CDEBUG(D_INFO, "%s: skip recheck: last_committed "LPU64"\n",
                        imp->imp_obd->obd_name, imp->imp_peer_committed_transno);
                 EXIT;
                 return;
@@ -2311,7 +2324,7 @@ void ptlrpc_free_committed(struct obd_import *imp)
                         break;
                 }
 
-                DEBUG_REQ(D_RPCTRACE, req, "commit (last_committed "LPU64")",
+                DEBUG_REQ(D_INFO, req, "commit (last_committed "LPU64")",
                           imp->imp_peer_committed_transno);
 free_req:
                 cfs_spin_lock(&req->rq_lock);
@@ -2578,8 +2591,6 @@ int ptlrpc_replay_req(struct ptlrpc_request *req)
         ENTRY;
 
         LASSERT(req->rq_import->imp_state == LUSTRE_IMP_REPLAY);
-        /* Not handling automatic bulk replay yet (or ever?) */
-        LASSERT(req->rq_bulk == NULL);
 
         LASSERT (sizeof (*aa) <= sizeof (req->rq_async_args));
         aa = ptlrpc_req_async_args(req);
@@ -2716,7 +2727,7 @@ void ptlrpc_init_xid(void)
 
         cfs_spin_lock_init(&ptlrpc_last_xid_lock);
         if (now < YEAR_2004) {
-                ll_get_random_bytes(&ptlrpc_last_xid, sizeof(ptlrpc_last_xid));
+                cfs_get_random_bytes(&ptlrpc_last_xid, sizeof(ptlrpc_last_xid));
                 ptlrpc_last_xid >>= 2;
                 ptlrpc_last_xid |= (1ULL << 61);
         } else {

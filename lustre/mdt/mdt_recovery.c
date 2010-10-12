@@ -46,6 +46,7 @@
 #endif
 #define DEBUG_SUBSYSTEM S_MDS
 
+#include <lustre_quota.h>
 #include "mdt_internal.h"
 
 static int mdt_server_data_update(const struct lu_env *env,
@@ -530,8 +531,8 @@ static int mdt_server_data_init(const struct lu_env *env,
         obd->obd_last_committed = mdt->mdt_lut.lut_last_transno;
         cfs_spin_unlock(&mdt->mdt_lut.lut_translock);
 
-        mdt->mdt_lut.lut_mount_count = mount_count + 1;
-        lsd->lsd_mount_count = mdt->mdt_lut.lut_mount_count;
+        obd->u.obt.obt_mount_count = mount_count + 1;
+        lsd->lsd_mount_count = obd->u.obt.obt_mount_count;
 
         /* save it, so mount count and last_transno is current */
         rc = mdt_server_data_update(env, mdt);
@@ -567,7 +568,8 @@ static int mdt_server_data_update(const struct lu_env *env,
                 GOTO(out, rc);
 
         CDEBUG(D_SUPER, "MDS mount_count is "LPU64", last_transno is "LPU64"\n",
-               mdt->mdt_lut.lut_mount_count, mdt->mdt_lut.lut_last_transno);
+               mdt->mdt_lut.lut_obd->u.obt.obt_mount_count,
+               mdt->mdt_lut.lut_last_transno);
 
         cfs_spin_lock(&mdt->mdt_lut.lut_translock);
         mdt->mdt_lut.lut_lsd.lsd_last_transno = mdt->mdt_lut.lut_last_transno;
@@ -930,7 +932,7 @@ static int mdt_txn_stop_cb(const struct lu_env *env,
         cfs_spin_lock(&mdt->mdt_lut.lut_translock);
         if (txn->th_result != 0) {
                 if (mti->mti_transno != 0) {
-                        CERROR("Replay transno "LPU64" failed: rc %i\n",
+                        CERROR("Replay transno "LPU64" failed: rc %d\n",
                                mti->mti_transno, txn->th_result);
                 }
         } else if (mti->mti_transno == 0) {
@@ -989,7 +991,7 @@ int mdt_fs_setup(const struct lu_env *env, struct mdt_device *mdt,
 {
         struct lu_fid fid;
         struct dt_object *o;
-        int rc = 0;
+        int i, rc = 0;
         ENTRY;
 
         if (OBD_FAIL_CHECK(OBD_FAIL_MDS_FS_SETUP))
@@ -1020,6 +1022,26 @@ int mdt_fs_setup(const struct lu_env *env, struct mdt_device *mdt,
                 CERROR("cannot open %s: rc = %d\n", CAPA_KEYS, rc);
                 GOTO(disconnect_exports, rc);
         }
+
+        for (i = CFS_USRQUOTA; i < CFS_MAXQUOTAS; ++i) {
+                const struct lu_fid *f = (i == USRQUOTA) ?
+                                             &quota_slave_uid_fid :
+                                             &quota_slave_gid_fid;
+                struct dt_object_format dof;
+
+                dof.dof_type = DFT_INDEX;
+                dof.u.dof_idx.di_feat = &dt_quota_slaves_features;
+
+                o = dt_find_or_create(env, mdt->mdt_bottom, f, &dof, NULL);
+                if (IS_ERR(o)) {
+                        rc = PTR_ERR(o);
+                        CERROR("cannot create quota %s file: rc = %d\n",
+                               (i == USRQUOTA) ? "user" : "group", rc);
+                        GOTO(put_ck_object, rc);
+                }
+                lu_object_put(env, &o->do_lu);
+        }
+
         RETURN(0);
 
 put_ck_object:

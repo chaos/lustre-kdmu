@@ -136,8 +136,16 @@ static int dio_complete_routine(struct bio *bio, unsigned int done, int error)
         /* CAVEAT EMPTOR: possibly in IRQ context
          * DO NOT record procfs stats here!!! */
 
-        if (bio->bi_size)                       /* Not complete */
-                return 1;
+#ifdef HAVE_BIO_ENDIO_2ARG
+       /* The "bi_size" check was needed for kernels < 2.6.24 in order to
+        * handle the case where a SCSI request error caused this callback
+        * to be called before all of the biovecs had been processed.
+        * Without this check the server thread will hang.  In newer kernels
+        * the bio_end_io routine is never called for partial completions,
+        * so this check is no longer needed. */
+        if (bio->bi_size)                      /* Not complete */
+                DIO_RETURN(1);
+#endif
 
         if (unlikely(iobuf == NULL)) {
                 CERROR("***** bio->bi_private is NULL!  This should never "
@@ -510,8 +518,11 @@ int filter_direct_io(int rw, struct dentry *dchild, struct filter_iobuf *iobuf,
                                 rc = rc2;
                 }
 
-                rc2 = fsfilt_commit_async(obd,inode,oti->oti_handle,
-                                          wait_handle);
+                if (wait_handle)
+                        rc2 = fsfilt_commit_async(obd,inode,oti->oti_handle,
+                                                  wait_handle);
+                else
+                        rc2 = fsfilt_commit(obd, inode, oti->oti_handle, 0);
                 if (rc == 0)
                         rc = rc2;
                 if (rc != 0)
@@ -572,10 +583,11 @@ int filter_commitrw_write(struct obd_export *exp, struct obdo *oa,
         int i, err, cleanup_phase = 0;
         struct obd_device *obd = exp->exp_obd;
         struct filter_obd *fo = &obd->u.filter;
-        void *wait_handle;
+        void *wait_handle = NULL;
         int total_size = 0;
         unsigned int qcids[MAXQUOTAS] = { oa->o_uid, oa->o_gid };
         int rec_pending[MAXQUOTAS] = { 0, 0 }, quota_pages = 0;
+        int sync_journal_commit = obd->u.filter.fo_syncjournal;
         ENTRY;
 
         LASSERT(oti != NULL);
@@ -643,6 +655,10 @@ int filter_commitrw_write(struct obd_export *exp, struct obdo *oa,
                     (flags & (OBD_BRW_FROM_GRANT | OBD_BRW_SYNC)) ==
                      OBD_BRW_FROM_GRANT)
                         iobuf->dr_ignore_quota = 1;
+
+                if (!(lnb->flags & OBD_BRW_ASYNC)) {
+                        sync_journal_commit = 1;
+                }
         }
 
         /* we try to get enough quota to write here, and let ldiskfs
@@ -657,6 +673,7 @@ int filter_commitrw_write(struct obd_export *exp, struct obdo *oa,
         cleanup_phase = 2;
 
         DQUOT_INIT(inode);
+        fsfilt_check_slow(obd, now, "quota init");
 
         LOCK_INODE_MUTEX(inode);
         fsfilt_check_slow(obd, now, "i_mutex");
@@ -715,7 +732,7 @@ int filter_commitrw_write(struct obd_export *exp, struct obdo *oa,
 
         /* filter_direct_io drops i_mutex */
         rc = filter_direct_io(OBD_BRW_WRITE, res->dentry, iobuf, exp, &iattr,
-                              oti, &wait_handle);
+                              oti, sync_journal_commit ? &wait_handle : NULL);
 
         obdo_from_inode(oa, inode, NULL, rc == 0 ? FILTER_VALID_FLAGS : 0 |
                                                    OBD_MD_FLUID |OBD_MD_FLGID);
@@ -724,13 +741,18 @@ int filter_commitrw_write(struct obd_export *exp, struct obdo *oa,
 
         fsfilt_check_slow(obd, now, "direct_io");
 
-        err = fsfilt_commit_wait(obd, inode, wait_handle);
+        if (wait_handle)
+                err = fsfilt_commit_wait(obd, inode, wait_handle);
+        else
+                err = 0;
+
         if (err) {
                 CERROR("Failure to commit OST transaction (%d)?\n", err);
-                rc = err;
+                if (rc == 0)
+                        rc = err;
         }
 
-        if (obd->obd_replayable && !rc)
+        if (obd->obd_replayable && !rc && wait_handle)
                 LASSERTF(oti->oti_transno <= obd->obd_last_committed,
                          "oti_transno "LPU64" last_committed "LPU64"\n",
                          oti->oti_transno, obd->obd_last_committed);

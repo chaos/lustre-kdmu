@@ -62,6 +62,9 @@
 #include <linux/signal.h>
 #include <linux/sched.h>
 #include <linux/kthread.h>
+#ifdef HAVE_LINUX_RANDOM_H
+#include <linux/random.h>
+#endif
 
 #include <linux/miscdevice.h>
 #include <libcfs/linux/portals_compat25.h>
@@ -140,13 +143,6 @@ LL_PROC_PROTO(name)                                     \
 /*
  * Symbol register
  */
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(2,5,0))
-#define cfs_symbol_register(s, p)       inter_module_register(s, THIS_MODULE, p)
-#define cfs_symbol_unregister(s)        inter_module_unregister(s)
-#define cfs_symbol_get(s)               inter_module_get(s)
-#define cfs_symbol_put(s)               inter_module_put(s)
-#define cfs_module_get()                MOD_INC_USE_COUNT
-#else
 #define cfs_symbol_register(s, p)       do {} while(0)
 #define cfs_symbol_unregister(s)        do {} while(0)
 #define cfs_symbol_get(s)               symbol_get(s)
@@ -156,7 +152,6 @@ LL_PROC_PROTO(name)                                     \
 #define __cfs_module_get(m)             __module_get(m)
 #define cfs_module_put(m)               module_put(m)
 #define cfs_module_refcount(m)          module_refcount(m)
-#endif
 
 typedef struct module cfs_module_t;
 
@@ -278,53 +273,8 @@ do {                                                                 \
         ret = wait_event_timeout(wq, condition, timeout)
 #endif
 
-#ifndef wait_event_interruptible_timeout /* Only for RHEL3 2.4.21 kernel */
-#define __wait_event_interruptible_timeout(wq, condition, timeout, ret)  \
-do {                                                           \
-	int __ret = 0;                                         \
-	if (!(condition)) {                                    \
-		wait_queue_t __wait;                           \
-		unsigned long expire;                          \
-                                                               \
-		init_waitqueue_entry(&__wait, current);        \
-		expire = timeout + jiffies;                    \
-		add_wait_queue(&wq, &__wait);                  \
-		for (;;) {                                     \
-			set_current_state(TASK_INTERRUPTIBLE); \
-			if (condition)                         \
-				break;                         \
-			if (jiffies > expire) {                \
-				ret = jiffies - expire;        \
-				break;                         \
-			}                                      \
-			if (!signal_pending(current)) {        \
-				schedule_timeout(timeout);     \
-				continue;                      \
-			}                                      \
-			ret = -ERESTARTSYS;                    \
-			break;                                 \
-		}                                              \
-		current->state = TASK_RUNNING;                 \
-		remove_wait_queue(&wq, &__wait);               \
-	}                                                      \
-} while (0)
-
-/*
-   retval == 0; condition met; we're good.
-   retval < 0; interrupted by signal.
-   retval > 0; timed out.
-*/
-#define cfs_waitq_wait_event_interruptible_timeout(wq, condition, timeout, ret)\
-do {                                                              \
-	ret = 0;                                                  \
-	if (!(condition))                                         \
-		__wait_event_interruptible_timeout(wq, condition, \
-                                                   timeout, ret); \
-} while (0)
-#else
 #define cfs_waitq_wait_event_interruptible_timeout(wq, c, timeout, ret) \
         ret = wait_event_interruptible_timeout(wq, c, timeout)
-#endif
 
 /*
  * atomic
@@ -380,5 +330,5 @@ typedef struct group_info cfs_group_info_t;
 /*
  * Random bytes
  */
-#define cfs_get_random_bytes(buf, nbytes)  get_random_bytes(buf, nbytes)
+#define cfs_get_random_bytes_prim(buf, nbytes)  get_random_bytes(buf, nbytes)
 #endif

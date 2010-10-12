@@ -60,13 +60,6 @@
 
 #define REQUEST_MINOR 244
 
-#ifdef HAVE_QUOTA_SUPPORT
-
-static quota_interface_t *quota_interface;
-extern quota_interface_t mdc_quota_interface;
-
-#endif /* HAVE_QUOTA_SUPPORT */
-
 static int mdc_cleanup(struct obd_device *obd);
 
 int mdc_unpack_capa(struct obd_export *exp, struct ptlrpc_request *req,
@@ -1286,6 +1279,8 @@ out:
         if (cs->cs_buf)
                 OBD_FREE(cs->cs_buf, CR_MAXSIZE);
         OBD_FREE_PTR(cs);
+        /* detach from parent process so we get cleaned up */
+        cfs_daemonize("cl_send");
         return rc;
 }
 
@@ -1380,20 +1375,6 @@ static int mdc_iocontrol(unsigned int cmd, struct obd_export *exp, int len,
                 GOTO(out, rc);
         }
 #endif
-        case OBD_IOC_POLL_QUOTACHECK:
-
-#ifdef HAVE_QUOTA_SUPPORT
-
-                rc = lquota_poll_check(quota_interface, exp,
-                                       (struct if_quotacheck *)karg);
-                GOTO(out, rc);
-
-#else /* HAVE_QUOTA_SUPPORT */
-
-                GOTO(out, rc = -ENOTSUPP);
-
-#endif /* HAVE_QUOTA_SUPPORT */
-
         case OBD_IOC_PING_TARGET:
                 rc = ptlrpc_obd_ping(obd);
                 GOTO(out, rc);
@@ -1416,7 +1397,8 @@ static int mdc_iocontrol(unsigned int cmd, struct obd_export *exp, int len,
                         GOTO(out, rc = -EFAULT);
 
                 rc = mdc_statfs(obd, &stat_buf,
-                                cfs_time_current_64() - CFS_HZ, 0);
+                                cfs_time_shift_64(-OBD_STATFS_CACHE_SECONDS),
+                                0);
                 if (rc != 0)
                         GOTO(out, rc);
 
@@ -2286,19 +2268,8 @@ int __init mdc_init(void)
         struct lprocfs_static_vars lvars = { 0 };
         lprocfs_mdc_init_vars(&lvars);
 
-#ifdef HAVE_QUOTA_SUPPORT
-        cfs_request_module("lquota");
-        quota_interface = PORTAL_SYMBOL_GET(mdc_quota_interface);
-        init_obd_quota_ops(quota_interface, &mdc_obd_ops);
-#endif /* HAVE_QUOTA_SUPPORT */
-
         rc = class_register_type(&mdc_obd_ops, &mdc_md_ops, lvars.module_vars,
                                  LUSTRE_MDC_NAME, NULL);
-
-#ifdef HAVE_QUOTA_SUPPORT
-        if (rc && quota_interface)
-                PORTAL_SYMBOL_PUT(mdc_quota_interface);
-#endif /* HAVE_QUOTA_SUPPORT */
 
         RETURN(rc);
 }
@@ -2306,11 +2277,6 @@ int __init mdc_init(void)
 #ifdef __KERNEL__
 static void /*__exit*/ mdc_exit(void)
 {
-#ifdef HAVE_QUOTA_SUPPORT
-        if (quota_interface)
-                PORTAL_SYMBOL_PUT(mdc_quota_interface);
-#endif /* HAVE_QUOTA_SUPPORT */
-
         class_unregister_type(LUSTRE_MDC_NAME);
 }
 

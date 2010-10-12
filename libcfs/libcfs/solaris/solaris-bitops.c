@@ -99,8 +99,7 @@ cfs_find_next_bit(unsigned long *addr, unsigned long size, unsigned long offset)
         	unsigned long tmp = (*word) & (~0UL << first_bit);
         	if (tmp != 0) {
         		bit = __cfs_ffs(tmp);
-        		if (bit < BT_NBIPUL)
-        			goto found;
+                        goto found;
         	}
         	word++;
         	base += BT_NBIPUL;

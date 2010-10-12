@@ -60,6 +60,10 @@
 #include <lprocfs_status.h>
 #include "quota_internal.h"
 
+static int hash_lqs_cur_bits = HASH_LQS_CUR_BITS;
+CFS_MODULE_PARM(hash_lqs_cur_bits, "i", int, 0444,
+                "the current bits of lqs hash");
+
 #ifdef HAVE_QUOTA_SUPPORT
 
 static cfs_hash_ops_t lqs_hash_ops;
@@ -1267,7 +1271,7 @@ qctxt_init(struct obd_device *obd, dqacq_handler_t handler)
         cfs_spin_unlock(&qctxt->lqc_lock);
 
         qctxt->lqc_lqs_hash = cfs_hash_create("LQS_HASH",
-                                              HASH_LQS_CUR_BITS,
+                                              hash_lqs_cur_bits,
                                               HASH_LQS_MAX_BITS,
                                               &lqs_hash_ops, CFS_HASH_REHASH);
         if (!qctxt->lqc_lqs_hash) {
@@ -1596,18 +1600,10 @@ lqs_key(cfs_hlist_node_t *hnode)
 static int
 lqs_compare(void *key, cfs_hlist_node_t *hnode)
 {
-        struct lustre_qunit_size *q;
-        int rc;
-        ENTRY;
+        struct lustre_qunit_size *q =
+                cfs_hlist_entry(hnode, struct lustre_qunit_size, lqs_hash);
 
-        LASSERT(key);
-        q = cfs_hlist_entry(hnode, struct lustre_qunit_size, lqs_hash);
-
-        cfs_spin_lock(&q->lqs_lock);
-        rc = (q->lqs_key == *((unsigned long long *)key));
-        cfs_spin_unlock(&q->lqs_lock);
-
-        RETURN(rc);
+        RETURN(q->lqs_key == *((unsigned long long *)key));
 }
 
 static void *

@@ -71,7 +71,7 @@ struct mgs_tgt_srpc_conf {
 
 
 struct fs_db {
-        char              fsdb_name[9];
+        char              fsdb_name[MTI_NAME_MAXLEN];
         cfs_list_t        fsdb_list;           /* list of databases */
         cfs_semaphore_t   fsdb_sem;
         void             *fsdb_ost_index_map;  /* bitmap of used indicies */
@@ -114,8 +114,8 @@ int mgs_pool_cmd(struct obd_device *obd, enum lcfg_command_type cmd,
 void mgs_revoke_lock(struct obd_device *obd, struct fs_db *fsdb);
 
 /* mgs_fs.c */
-int mgs_client_add(struct obd_device *obd, struct obd_export *exp,
-                   void *localdata);
+int mgs_export_stats_init(struct obd_device *obd, struct obd_export *exp,
+                          int reconnect, void *localdata);
 int mgs_client_free(struct obd_export *exp);
 int mgs_fs_setup(struct obd_device *obd, struct vfsmount *mnt);
 int mgs_fs_cleanup(struct obd_device *obddev);

@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2003, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -42,6 +42,90 @@
 
 #include <lnet/lib-lnet.h>
 
+static int
+lnet_me_match_portal(lnet_portal_t *ptl, lnet_process_id_t id,
+                     __u64 match_bits, __u64 ignore_bits)
+{
+        cfs_list_t       *mhash = NULL;
+        int               unique;
+
+        LASSERT (!(lnet_portal_is_unique(ptl) &&
+                   lnet_portal_is_wildcard(ptl)));
+
+        /* prefer to check w/o any lock */
+        unique = lnet_match_is_unique(id, match_bits, ignore_bits);
+        if (likely(lnet_portal_is_unique(ptl) ||
+                   lnet_portal_is_wildcard(ptl)))
+                goto match;
+
+        /* unset, new portal */
+        if (unique) {
+                mhash = lnet_portal_mhash_alloc();
+                if (mhash == NULL)
+                        return -ENOMEM;
+        }
+
+        LNET_LOCK();
+        if (lnet_portal_is_unique(ptl) ||
+            lnet_portal_is_wildcard(ptl)) {
+                /* someone set it before me */
+                if (mhash != NULL)
+                        lnet_portal_mhash_free(mhash);
+                LNET_UNLOCK();
+                goto match;
+        }
+
+        /* still not set */
+        LASSERT (ptl->ptl_mhash == NULL);
+        if (unique) {
+                ptl->ptl_mhash = mhash;
+                lnet_portal_setopt(ptl, LNET_PTL_MATCH_UNIQUE);
+        } else {
+                lnet_portal_setopt(ptl, LNET_PTL_MATCH_WILDCARD);
+        }
+        LNET_UNLOCK();
+        return 0;
+
+ match:
+        if (lnet_portal_is_unique(ptl) && !unique)
+                return -EPERM;
+
+        if (lnet_portal_is_wildcard(ptl) && unique)
+                return -EPERM;
+
+        return 0;
+}
+
+/**
+ * Create and attach a match entry to the match list of \a portal. The new
+ * ME is empty, i.e. not associated with a memory descriptor. LNetMDAttach()
+ * can be used to attach a MD to an empty ME.
+ *
+ * \param portal The portal table index where the ME should be attached.
+ * \param match_id Specifies the match criteria for the process ID of
+ * the requester. The constants LNET_PID_ANY and LNET_NID_ANY can be
+ * used to wildcard either of the identifiers in the lnet_process_id_t
+ * structure.
+ * \param match_bits,ignore_bits Specify the match criteria to apply
+ * to the match bits in the incoming request. The ignore bits are used
+ * to mask out insignificant bits in the incoming match bits. The resulting
+ * bits are then compared to the ME's match bits to determine if the
+ * incoming request meets the match criteria.
+ * \param unlink Indicates whether the ME should be unlinked when the memory
+ * descriptor associated with it is unlinked (Note that the check for
+ * unlinking a ME only occurs when the memory descriptor is unlinked.).
+ * Valid values are LNET_RETAIN and LNET_UNLINK.
+ * \param pos Indicates whether the new ME should be prepended or
+ * appended to the match list. Allowed constants: LNET_INS_BEFORE,
+ * LNET_INS_AFTER.
+ * \param handle On successful returns, a handle to the newly created ME
+ * object is saved here. This handle can be used later in LNetMEInsert(),
+ * LNetMEUnlink(), or LNetMDAttach() functions.
+ *
+ * \retval 0       On success.
+ * \retval -EINVAL If \a portal is invalid.
+ * \retval -ENOMEM If new ME object cannot be allocated.
+ */
 int
 LNetMEAttach(unsigned int portal,
              lnet_process_id_t match_id,
@@ -49,13 +133,21 @@ LNetMEAttach(unsigned int portal,
              lnet_unlink_t unlink, lnet_ins_pos_t pos,
              lnet_handle_me_t *handle)
 {
-        lnet_me_t     *me;
+        lnet_me_t        *me;
+        lnet_portal_t    *ptl;
+        cfs_list_t       *head;
+        int               rc;
 
         LASSERT (the_lnet.ln_init);
         LASSERT (the_lnet.ln_refcount > 0);
 
         if ((int)portal >= the_lnet.ln_nportals)
                 return -EINVAL;
+
+        ptl = &the_lnet.ln_portals[portal];
+        rc = lnet_me_match_portal(ptl, match_id, match_bits, ignore_bits);
+        if (rc != 0)
+                return rc;
 
         me = lnet_me_alloc();
         if (me == NULL)
@@ -71,13 +163,13 @@ LNetMEAttach(unsigned int portal,
         me->me_md = NULL;
 
         lnet_initialise_handle (&me->me_lh, LNET_COOKIE_TYPE_ME);
+        head = lnet_portal_me_head(portal, match_id, match_bits);
+        LASSERT (head != NULL);
 
         if (pos == LNET_INS_AFTER)
-                cfs_list_add_tail(&me->me_list,
-                                  &(the_lnet.ln_portals[portal].ptl_ml));
+                cfs_list_add_tail(&me->me_list, head);
         else
-                cfs_list_add(&me->me_list,
-                             &(the_lnet.ln_portals[portal].ptl_ml));
+                cfs_list_add(&me->me_list, head);
 
         lnet_me2handle(handle, me);
 
@@ -86,6 +178,23 @@ LNetMEAttach(unsigned int portal,
         return 0;
 }
 
+/**
+ * Create and a match entry and insert it before or after the ME pointed to by
+ * \a current_meh. The new ME is empty, i.e. not associated with a memory
+ * descriptor. LNetMDAttach() can be used to attach a MD to an empty ME.
+ *
+ * This function is identical to LNetMEAttach() except for the position
+ * where the new ME is inserted.
+ *
+ * \param current_meh A handle for a ME. The new ME will be inserted
+ * immediately before or immediately after this ME.
+ * \param match_id,match_bits,ignore_bits,unlink,pos,handle See the discussion
+ * for LNetMEAttach().
+ *
+ * \retval 0       On success.
+ * \retval -ENOMEM If new ME object cannot be allocated.
+ * \retval -ENOENT If \a current_meh does not point to a valid match entry.
+ */
 int
 LNetMEInsert(lnet_handle_me_t current_meh,
              lnet_process_id_t match_id,
@@ -95,6 +204,7 @@ LNetMEInsert(lnet_handle_me_t current_meh,
 {
         lnet_me_t     *current_me;
         lnet_me_t     *new_me;
+        lnet_portal_t *ptl;
 
         LASSERT (the_lnet.ln_init);
         LASSERT (the_lnet.ln_refcount > 0);
@@ -111,6 +221,16 @@ LNetMEInsert(lnet_handle_me_t current_meh,
 
                 LNET_UNLOCK();
                 return -ENOENT;
+        }
+
+        LASSERT (current_me->me_portal < the_lnet.ln_nportals);
+
+        ptl = &the_lnet.ln_portals[current_me->me_portal];
+        if (lnet_portal_is_unique(ptl)) {
+                /* nosense to insertion on unique portal */
+                lnet_me_free (new_me);
+                LNET_UNLOCK();
+                return -EPERM;
         }
 
         new_me->me_portal = current_me->me_portal;
@@ -134,6 +254,20 @@ LNetMEInsert(lnet_handle_me_t current_meh,
         return 0;
 }
 
+/**
+ * Unlink a match entry from its match list.
+ *
+ * This operation also releases any resources associated with the ME. If a
+ * memory descriptor is attached to the ME, then it will be unlinked as well
+ * and an unlink event will be generated. It is an error to use the ME handle
+ * after calling LNetMEUnlink().
+ *
+ * \param meh A handle for the ME to be unlinked.
+ *
+ * \retval 0       On success.
+ * \retval -ENOENT If \a meh does not point to a valid ME.
+ * \see LNetMDUnlink() for the discussion on delivering unlink event.
+ */
 int
 LNetMEUnlink(lnet_handle_me_t meh)
 {

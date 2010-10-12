@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright (c) 2010, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -46,15 +46,6 @@
 #ifndef min
 #define min(x,y) ((x)<(y) ? (x) : (y))
 #endif
-
-#ifndef __KERNEL__
-#define cfs_get_random_bytes(val, size)     (*val) = 0
-#endif
-
-#if defined(HAVE_LINUX_RANDOM_H)
-#include <linux/random.h>
-#endif
-
 
 /*
 From: George Marsaglia <geo@stat.fsu.edu>
@@ -80,32 +71,49 @@ Date: Tue, 30 Sep 1997 05:29:35 -0700
 
 static unsigned int seed_x = 521288629;
 static unsigned int seed_y = 362436069;
-unsigned int ll_rand(void)
-{
 
-	seed_x = RANDOM_CONST_A * (seed_x & 65535) + (seed_x >> 16);
-	seed_y = RANDOM_CONST_B * (seed_y & 65535) + (seed_y >> 16);
-
-	return ((seed_x << 16) + (seed_y & 65535));
-}
-EXPORT_SYMBOL(ll_rand);
-
-/* Note that if the input seeds are not completely random, then there is
- * a preferred location for the entropy in the two seeds, in order to avoid
- * the initial values from the PRNG to be the same each time.
+/**
+ * cfs_rand - creates new seeds
  *
- * seed1 (seed_x) should have the most entropy in the low bits of the word
- * seed2 (seed_y) should have the most entropy in the high bits of the word */
-void ll_srand(unsigned int seed1, unsigned int seed2)
+ * First it creates new seeds from the previous seeds. Then it generates a
+ * new psuedo random number for use.
+ *
+ * Returns a pseudo-random 32-bit integer
+ */
+unsigned int cfs_rand(void)
 {
-	if (seed1)
-		seed_x = seed1;	/* use default seeds if parameter is 0 */
-	if (seed2)
-		seed_y = seed2;
-}
-EXPORT_SYMBOL(ll_srand);
+        seed_x = RANDOM_CONST_A * (seed_x & 65535) + (seed_x >> 16);
+        seed_y = RANDOM_CONST_B * (seed_y & 65535) + (seed_y >> 16);
 
-void ll_get_random_bytes(void *buf, int size)
+        return ((seed_x << 16) + (seed_y & 65535));
+}
+CFS_EXPORT_SYMBOL(cfs_rand);
+
+/**
+ * cfs_srand - sets the inital seed
+ * @seed1 : (seed_x) should have the most entropy in the low bits of the word
+ * @seed2 : (seed_y) should have the most entropy in the high bits of the word
+ *
+ * Replaces the original seeds with new values. Used to generate a new pseudo
+ * random numbers.
+ */
+void cfs_srand(unsigned int seed1, unsigned int seed2)
+{
+        if (seed1)
+                seed_x = seed1; /* use default seeds if parameter is 0 */
+        if (seed2)
+                seed_y = seed2;
+}
+CFS_EXPORT_SYMBOL(cfs_srand);
+
+/**
+ * cfs_get_random_bytes - generate a bunch of random numbers
+ * @buf : buffer to fill with random numbers
+ * @size: size of passed in buffer
+ *
+ * Fills a buffer with random bytes
+ */
+void cfs_get_random_bytes(void *buf, int size)
 {
         int *p = buf;
         int rem, tmp;
@@ -114,24 +122,24 @@ void ll_get_random_bytes(void *buf, int size)
 
         rem = min((int)((unsigned long)buf & (sizeof(int) - 1)), size);
         if (rem) {
-                cfs_get_random_bytes(&tmp, sizeof(tmp));
-                tmp ^= ll_rand();
+                cfs_get_random_bytes_prim(&tmp, sizeof(tmp));
+                tmp ^= cfs_rand();
                 memcpy(buf, &tmp, rem);
                 p = buf + rem;
                 size -= rem;
         }
 
         while (size >= sizeof(int)) {
-                cfs_get_random_bytes(&tmp, sizeof(tmp));
-                *p = ll_rand() ^ tmp;
+                cfs_get_random_bytes_prim(&tmp, sizeof(tmp));
+                *p = cfs_rand() ^ tmp;
                 size -= sizeof(int);
                 p++;
         }
         buf = p;
         if (size) {
-                cfs_get_random_bytes(&tmp, sizeof(tmp));
-                tmp ^= ll_rand();
+                cfs_get_random_bytes_prim(&tmp, sizeof(tmp));
+                tmp ^= cfs_rand();
                 memcpy(buf, &tmp, size);
         }
 }
-EXPORT_SYMBOL(ll_get_random_bytes); 
+CFS_EXPORT_SYMBOL(cfs_get_random_bytes);

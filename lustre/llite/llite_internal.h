@@ -312,6 +312,7 @@ enum stats_track_type {
 #define LL_SBI_LRU_RESIZE       0x400 /* lru resize support */
 #define LL_SBI_LAZYSTATFS       0x800 /* lazystatfs mount option */
 #define LL_SBI_SOM_PREVIEW      0x1000 /* SOM preview mount option */
+#define LL_SBI_32BIT_API        0x2000 /* generate 32 bit inodes. */
 
 /* default value for ll_sb_info->contention_time */
 #define SBI_DEFAULT_CONTENTION_SECONDS     60
@@ -501,18 +502,7 @@ struct ll_readahead_state {
         unsigned long   ras_consecutive_stride_requests;
 };
 
-#define LLITE_NAME_LEN 255
-
 struct ll_file_dir {
-        struct lu_fid lfd_fid;          /* fid of next entry. it can not be
-                                         * used as offset clew independently
-                                         * because of hardlink */
-        __u64         lfd_hash;         /* hash (offset) of next entry */
-        __u16         lfd_valid;        /* If user buffer for readdir is full,
-                                         * and hash collision for next entry,
-                                         * then it is 1, otherwise it is 0. */
-        __u16         lfd_namelen;      /* namelen of next entry */
-        char         *lfd_name;         /* name of next entry */
 };
 
 extern cfs_mem_cache_t *ll_file_data_slab;
@@ -521,8 +511,6 @@ struct ll_file_data {
         struct ll_readahead_state fd_ras;
         int fd_omode;
         struct ccc_grouplock fd_grouplock;
-        /* We assign fd_dir only when user buffer for readdir is full, and hash
-         * collision for next entry is found. */
         struct ll_file_dir fd_dir;
         __u32 fd_flags;
         struct file *fd_file;
@@ -549,6 +537,15 @@ struct it_cb_data {
 
 __u32 ll_i2suppgid(struct inode *i);
 void ll_i2gids(__u32 *suppgids, struct inode *i1,struct inode *i2);
+
+static inline int ll_need_32bit_api(struct ll_sb_info *sbi)
+{
+#if BITS_PER_LONG == 32
+        return 1;
+#else
+        return unlikely(cfs_curproc_is_32bit() || (sbi->ll_flags & LL_SBI_32BIT_API));
+#endif
+}
 
 #define LLAP_MAGIC 98764321
 
@@ -648,6 +645,7 @@ extern void ll_rw_stats_tally(struct ll_sb_info *sbi, pid_t pid,
 int ll_getattr_it(struct vfsmount *mnt, struct dentry *de,
                struct lookup_intent *it, struct kstat *stat);
 int ll_getattr(struct vfsmount *mnt, struct dentry *de, struct kstat *stat);
+struct ll_file_data *ll_file_data_get(void);
 #ifndef HAVE_INODE_PERMISION_2ARGS
 int ll_inode_permission(struct inode *inode, int mask, struct nameidata *nd);
 #else

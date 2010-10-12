@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2008, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -240,7 +240,7 @@ static inline void read_random(char *buf, int len)
     }
 }
 
-#define cfs_get_random_bytes(buf, len)  read_random(buf, len)
+#define cfs_get_random_bytes_prim(buf, len)  read_random(buf, len)
 
 /* do NOT use function or expression as parameters ... */
 

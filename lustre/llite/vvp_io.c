@@ -180,6 +180,11 @@ static int vvp_mmap_locks(const struct lu_env *env,
                                                   policy.l_extent.end);
                         descr->cld_enq_flags = flags;
                         result = cl_io_lock_alloc_add(env, io, descr);
+
+                        CDEBUG(D_VFSTRACE, "lock: %d: [%lu, %lu]\n",
+                               descr->cld_mode, descr->cld_start,
+                               descr->cld_end);
+
                         if (result < 0)
                                 RETURN(result);
 
@@ -768,7 +773,7 @@ static int vvp_io_read_page(const struct lu_env *env,
         /* Sanity check whether the page is protected by a lock. */
         rc = cl_page_is_under_lock(env, io, page);
         if (rc != -EBUSY) {
-                CL_PAGE_HEADER(D_WARNING, env, page, "%s: %i\n",
+                CL_PAGE_HEADER(D_WARNING, env, page, "%s: %d\n",
                                rc == -ENODATA ? "without a lock" :
                                "match failed", rc);
                 if (rc != -ENODATA)
@@ -984,8 +989,12 @@ static int vvp_io_commit_write(const struct lu_env *env,
 
         ll_inode_size_lock(inode, 0);
         if (result == 0) {
-                if (size > i_size_read(inode))
+                if (size > i_size_read(inode)) {
                         cl_isize_write_nolock(inode, size);
+                        CDEBUG(D_VFSTRACE, DFID" updating i_size %lu\n",
+                               PFID(lu_object_fid(&obj->co_lu)),
+                               (unsigned long)size);
+                }
                 cl_page_export(env, pg, 1);
         } else {
                 if (size > i_size_read(inode))

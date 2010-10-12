@@ -65,7 +65,7 @@ CFS_MODULE_PARM(libcfs_debug_mb, "i", uint, 0644,
                 "Total debug buffer size.");
 EXPORT_SYMBOL(libcfs_debug_mb);
 
-unsigned int libcfs_printk = (D_CANTMASK | D_NETERROR);
+unsigned int libcfs_printk = D_CANTMASK;
 CFS_MODULE_PARM(libcfs_printk, "i", uint, 0644,
                 "Lustre kernel debug console mask");
 EXPORT_SYMBOL(libcfs_printk);
@@ -316,6 +316,8 @@ libcfs_debug_str2mask(int *mask, const char *str, int is_subsys)
 
         if ((t = sscanf(str, "%i%n", &m, &matched)) >= 1 &&
             matched == n) {
+                CWARN("You are trying to use a numerical value for the mask -"
+                      " this will be deprecated in a future release.\n");
                 *mask = m;
                 return 0;
         }

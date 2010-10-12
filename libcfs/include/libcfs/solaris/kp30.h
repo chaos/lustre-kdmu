@@ -63,6 +63,8 @@
 #define CFS_MODULE_PARM(name, t, type, perm, desc)
 #define CFS_MODULE_PARM_STR(name, string, len, perm, desc)
 
+#define CFS_SYSFS_MODULE_PARM  0
+
 #endif /* End of __KERNEL__ */
 
 #define IOCTL_LIBCFS_TYPE long

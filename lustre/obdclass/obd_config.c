@@ -159,7 +159,7 @@ int class_match_param(char *buf, char *key, char **valp)
         return 0;
 }
 
-static int parse_nid(char *buf, void *value)
+static int parse_nid(char *buf, void *value, int quiet)
 {
         lnet_nid_t *nid = (lnet_nid_t *)value;
 
@@ -167,13 +167,14 @@ static int parse_nid(char *buf, void *value)
         if (*nid != LNET_NID_ANY)
                 return 0;
 
-        LCONSOLE_ERROR_MSG(0x159, "Can't parse NID '%s'\n", buf);
+        if (!quiet)
+                LCONSOLE_ERROR_MSG(0x159, "Can't parse NID '%s'\n", buf);
         return -EINVAL;
 }
 
 static int parse_net(char *buf, void *value)
 {
-        __u32 *net = (__u32 *)net;
+        __u32 *net = (__u32 *)value;
 
         *net = libcfs_str2net(buf);
         CDEBUG(D_INFO, "Net %s\n", libcfs_net2str(*net));
@@ -189,7 +190,8 @@ enum {
    1 not found
    < 0 error
    endh is set to next separator */
-static int class_parse_value(char *buf, int opc, void *value, char **endh)
+static int class_parse_value(char *buf, int opc, void *value, char **endh,
+                             int quiet)
 {
         char *endp;
         char  tmp;
@@ -213,7 +215,7 @@ static int class_parse_value(char *buf, int opc, void *value, char **endh)
         default:
                 LBUG();
         case CLASS_PARSE_NID:
-                rc = parse_nid(buf, value);
+                rc = parse_nid(buf, value, quiet);
                 break;
         case CLASS_PARSE_NET:
                 rc = parse_net(buf, value);
@@ -227,14 +229,15 @@ static int class_parse_value(char *buf, int opc, void *value, char **endh)
         return 0;
 }
 
-int class_parse_nid(char *buf, lnet_nid_t *nid, char **endh)
+int class_parse_nid(char *buf, lnet_nid_t *nid, char **endh, int quiet)
 {
-        return class_parse_value(buf, CLASS_PARSE_NID, (void *)nid, endh);
+        return class_parse_value(buf, CLASS_PARSE_NID, (void *)nid, endh,
+                                 quiet);
 }
 
 int class_parse_net(char *buf, __u32 *net, char **endh)
 {
-        return class_parse_value(buf, CLASS_PARSE_NET, (void *)net, endh);
+        return class_parse_value(buf, CLASS_PARSE_NET, (void *)net, endh, 0);
 }
 
 int class_match_net(char *buf, lnet_nid_t nid)
@@ -330,7 +333,7 @@ int class_attach(struct lustre_cfg *lcfg)
         /* XXX belongs in setup not attach  */
         cfs_init_rwsem(&obd->obd_observer_link_sem);
         /* recovery data */
-        cfs_spin_lock_init(&obd->obd_processing_task_lock);
+        cfs_spin_lock_init(&obd->obd_recovery_task_lock);
         cfs_waitq_init(&obd->obd_next_transno_waitq);
         cfs_waitq_init(&obd->obd_evict_inprogress_waitq);
         CFS_INIT_LIST_HEAD(&obd->obd_req_replay_queue);

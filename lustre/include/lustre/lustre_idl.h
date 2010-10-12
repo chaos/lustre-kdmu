@@ -91,6 +91,8 @@
 #ifndef _LUSTRE_IDL_H_
 #define _LUSTRE_IDL_H_
 
+#include <libcfs/libcfs.h> /* for LASSERT, LPUX64, etc */
+
 /* Defn's shared with user-space. */
 #include <lustre/lustre_user.h>
 
@@ -1183,13 +1185,12 @@ enum obdo_flags {
         OBD_FL_CKSUM_RSVD2  = 0x00008000, /* for future cksum types */
         OBD_FL_CKSUM_RSVD3  = 0x00010000, /* for future cksum types */
         OBD_FL_SHRINK_GRANT = 0x00020000, /* object shrink the grant */
+        OBD_FL_MMAP         = 0x00040000, /* object is mmapped on the client */
 
         OBD_FL_CKSUM_ALL    = OBD_FL_CKSUM_CRC32 | OBD_FL_CKSUM_ADLER,
 
         /* mask for local-only flag, which won't be sent over network */
         OBD_FL_LOCAL_MASK   = 0xF0000000,
-        /* temporary OBDO used by osc_brw_async (see bug 18364) */
-        OBD_FL_TEMPORARY    = 0x10000000,
 };
 
 #define LOV_MAGIC_V1      0x0BD10BD0
@@ -1347,6 +1348,7 @@ extern void lustre_swab_obd_statfs (struct obd_statfs *os);
 #define OBD_BRW_NOCACHE         0x80 /* this page is a part of non-cached IO */
 #define OBD_BRW_NOQUOTA        0x100
 #define OBD_BRW_SRVLOCK        0x200 /* Client holds no lock over this page */
+#define OBD_BRW_ASYNC          0x400 /* Server may delay commit to disk */
 #define OBD_BRW_MEMALLOC       0x800 /* Client runs in the "kswapd" context */
 
 #define OBD_OBJECT_EOF 0xffffffffffffffffULL
@@ -1641,6 +1643,8 @@ extern void lustre_swab_mdt_ioepoch (struct mdt_ioepoch *b);
 
 #define Q_GETOCMD(oqc) \
         ((oqc)->qc_cmd == Q_GETOINFO || (oqc)->qc_cmd == Q_GETOQUOTA)
+
+#define Q_COPY(out, in, member) (out)->member = (in)->member
 
 #define QCTL_COPY(out, in)              \
 do {                                    \
@@ -2476,7 +2480,7 @@ struct llog_size_change_rec {
 /** bits covering all \a changelog_rec_type's */
 #define CHANGELOG_ALLMASK 0XFFFFFFFF
 /** default \a changelog_rec_type mask */
-#define CHANGELOG_DEFMASK CHANGELOG_ALLMASK
+#define CHANGELOG_DEFMASK CHANGELOG_ALLMASK & ~(1 << CL_ATIME)
 
 /* changelog llog name, needed by client replicators */
 #define CHANGELOG_CATALOG "changelog_catalog"

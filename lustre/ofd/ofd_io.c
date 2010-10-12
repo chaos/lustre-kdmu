@@ -99,7 +99,8 @@ static int filter_preprw_write(const struct lu_env *env, struct obd_export *exp,
                                struct lu_attr *la, struct obdo *oa,
                                int objcount, struct obd_ioobj *obj,
                                struct niobuf_remote *nb, int *nr_local,
-                               struct niobuf_local *res)
+                               struct niobuf_local *res,
+                               struct obd_trans_info *oti)
 {
         unsigned long used = 0;
         obd_size left;
@@ -115,11 +116,40 @@ static int filter_preprw_write(const struct lu_env *env, struct obd_export *exp,
                 RETURN(PTR_ERR(fo));
         LASSERT(fo != NULL);
 
-        if (!filter_object_exists(fo))
-                GOTO(out2, rc = -ENOENT);
+        if (!filter_object_exists(fo)) {
+                if (exp->exp_obd->obd_recovering) {
+                        struct obdo *noa = oa;
+
+                        if (oa == NULL) {
+                                OBDO_ALLOC(noa);
+                                if (noa == NULL)
+                                        GOTO(recreate_out, rc = -ENOMEM);
+                                noa->o_id = obj->ioo_id;
+                                noa->o_valid = OBD_MD_FLID;
+                        }
+
+                        if (filter_create(exp, noa, NULL, oti) == 0) {
+                                filter_object_put(env, fo);
+                                fo = filter_object_find(env, ofd, fid);
+                        }
+                        if (oa == NULL)
+                                OBDO_FREE(noa);
+                }
+recreate_out:
+                if (IS_ERR(fo) || !filter_object_exists(fo)) {
+                        CERROR("%s: BRW to missing obj "LPU64"/"LPU64":rc %d\n",
+                               exp->exp_obd->obd_name,
+                               obj->ioo_id, obj->ioo_seq,
+                               IS_ERR(fo) ? (int)PTR_ERR(fo) : -ENOENT);
+                        if (IS_ERR(fo))
+                                RETURN(PTR_ERR(fo));
+                        GOTO(out2, rc = -ENOENT);
+                }
+        }
 
         filter_read_lock(env, fo);
-
+        /* Always sync if syncjournal parameter is set */
+        oti->oti_sync_write = ofd->ofd_syncjournal;
         /* parse remote buffers to local buffers and prepare the latter */
         for (i = 0, j = 0; i < obj->ioo_bufcnt; i++) {
                 rc = dt_bufs_get(env, filter_object_child(fo),
@@ -128,8 +158,11 @@ static int filter_preprw_write(const struct lu_env *env, struct obd_export *exp,
                 LASSERT(rc > 0);
                 LASSERT(rc <= PTLRPC_MAX_BRW_PAGES);
                 /* correct index for local buffers to continue with */
-                for (k = 0; k < rc; k++)
+                for (k = 0; k < rc; k++) {
                         res[j+k].flags = nb[i].flags;
+                        if (!(nb[i].flags & OBD_BRW_ASYNC))
+                                oti->oti_sync_write = 1;
+                }
                 j += rc;
                 LASSERT(j <= PTLRPC_MAX_BRW_PAGES);
                 tot_bytes += nb[i].len;
@@ -206,8 +239,7 @@ int filter_preprw(int cmd, struct obd_export *exp, struct obdo *oa, int objcount
 
                         rc = filter_preprw_write(env, exp, ofd, &info->fti_fid,
                                                  &info->fti_attr, oa, objcount,
-                                                 obj, nb, nr_local,
-                                                 res);
+                                                 obj, nb, nr_local, res, oti);
                 }
         } else if (cmd == OBD_BRW_READ) {
                 rc = filter_auth_capa(ofd, &info->fti_fid, oa->o_seq,
@@ -262,7 +294,8 @@ static int
 filter_commitrw_write(const struct lu_env *env, struct filter_device *ofd,
                       struct lu_fid *fid, struct lu_attr *la,
                       struct filter_fid *ff, int objcount,
-                      int niocount, struct niobuf_local *res, int old_rc)
+                      int niocount, struct niobuf_local *res, 
+                      struct obd_trans_info *oti, int old_rc)
 {
         struct filter_thread_info *info = filter_info(env);
         struct filter_object *fo;
@@ -278,25 +311,26 @@ filter_commitrw_write(const struct lu_env *env, struct filter_device *ofd,
         fo = filter_object_find(env, ofd, fid);
         if (IS_ERR(fo))
                 RETURN(PTR_ERR(fo));
+
         LASSERT(fo != NULL);
         LASSERT(filter_object_exists(fo));
+
+        o = filter_object_child(fo);
+        LASSERT(o != NULL);
+
         if (old_rc)
                 GOTO(out, rc = old_rc);
-        o = filter_object_child(fo);
-
-        /* XXX: need 1 here until support on client for async writes */
-#if 0
-        info->fti_txn_param.tp_sync = 0;
-#endif
 
         rc = dt_attr_get(env, o, ln, BYPASS_CAPA);
         if (rc)
-                GOTO(out, rc = PTR_ERR(th));
+                GOTO(out, rc);
         LASSERT(ln->la_valid & LA_MODE);
 
         th = filter_trans_create(env, ofd);
         if (IS_ERR(th))
                 GOTO(out, rc = PTR_ERR(th));
+
+        th->th_sync = oti->oti_sync_write;
 
         buf.lb_buf = NULL;
 
@@ -336,7 +370,8 @@ filter_commitrw_write(const struct lu_env *env, struct filter_device *ofd,
         if (rc)
                 GOTO(out_stop, rc);
 
-        if (buf.lb_buf)
+        /* XXX - bug 23345 - disabling with the DMU-OSD because it asserts */
+        if (buf.lb_buf && ofd->ofd_dt_conf.ddp_mount_type != LDD_MT_ZFS)
                 rc = dt_xattr_set(env, o, &buf, XATTR_NAME_FID, 0, th, BYPASS_CAPA);
         if (rc)
                 GOTO(out_stop, rc);
@@ -385,7 +420,7 @@ int filter_commitrw(int cmd, struct obd_export *exp,
         __u64                       valid;
         int                         rc = 0;
 
-        info = filter_info_init(env, exp);
+        info = filter_info(env);
         filter_oti2info(info, oti);
 
         LASSERT(npages > 0);
@@ -411,7 +446,7 @@ int filter_commitrw(int cmd, struct obd_export *exp,
 
                 rc = filter_commitrw_write(env, ofd, &info->fti_fid,
                                            &info->fti_attr, &info->fti_mds_fid,
-                                           objcount, npages, res, old_rc);
+                                           objcount, npages, res, oti, old_rc);
                 if (rc == 0)
                         obdo_from_la(oa, &info->fti_attr,
                                      FILTER_VALID_FLAGS | LA_GID | LA_UID);
@@ -449,10 +484,13 @@ int filter_commitrw(int cmd, struct obd_export *exp,
                 }
                 rc = filter_commitrw_read(env, ofd, &info->fti_fid, objcount,
                                           npages, res);
+                if (old_rc)
+                        rc = old_rc;
         } else {
                 LBUG();
                 rc = -EPROTO;
         }
 
+        filter_info2oti(info, oti);
         RETURN(rc);
 }

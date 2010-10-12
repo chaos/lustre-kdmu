@@ -213,14 +213,15 @@ static int osc_page_cache_add(const struct lu_env *env,
         struct osc_page   *opg = cl2osc_page(slice);
         struct osc_object *obj = cl2osc(opg->ops_cl.cpl_obj);
         int result;
-        int brw_flags;
+        /* All cacheable IO is async-capable */
+        int brw_flags = OBD_BRW_ASYNC;
         int noquota = 0;
 
         LINVRNT(osc_page_protected(env, opg, CLM_WRITE, 0));
         ENTRY;
 
         /* Set the OBD_BRW_SRVLOCK before the page is queued. */
-        brw_flags = opg->ops_srvlock ? OBD_BRW_SRVLOCK : 0;
+        brw_flags |= opg->ops_srvlock ? OBD_BRW_SRVLOCK : 0;
         if (!client_is_remote(osc_export(obj)) &&
             cfs_capable(CFS_CAP_SYS_RESOURCE)) {
                 brw_flags |= OBD_BRW_NOQUOTA;
@@ -607,7 +608,7 @@ void osc_io_submit_page(const struct lu_env *env,
         oap->oap_page_off   = opg->ops_from;
         oap->oap_count      = opg->ops_to - opg->ops_from;
         /* Give a hint to OST that requests are coming from kswapd - bug19529 */
-        if (libcfs_memory_pressure_get())
+        if (cfs_memory_pressure_get())
                 oap->oap_brw_flags |= OBD_BRW_MEMALLOC;
         oap->oap_brw_flags |= OBD_BRW_SYNC;
         if (osc_io_srvlock(oio))

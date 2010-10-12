@@ -1308,7 +1308,7 @@ static int echo_create_object(struct echo_device *ed, int on_target,
                 if (lsm->lsm_stripe_size == 0)
                         lsm->lsm_stripe_size = CFS_PAGE_SIZE;
 
-                idx = ll_rand();
+                idx = cfs_rand();
 
                 /* setup stripes: indices + default ids if required */
                 for (i = 0; i < lsm->lsm_stripe_count; i++) {
@@ -1515,6 +1515,7 @@ static int echo_client_kbrw(struct echo_device *ed, int rw, struct obdo *oa,
         int                     rc;
         int                     verify;
         int                     gfp_mask;
+        int                     brw_flags = 0;
         ENTRY;
 
         verify = ((oa->o_id) != ECHO_PERSISTENT_OBJID &&
@@ -1533,6 +1534,9 @@ static int echo_client_kbrw(struct echo_device *ed, int rw, struct obdo *oa,
 
         /* XXX think again with misaligned I/O */
         npages = count >> CFS_PAGE_SHIFT;
+
+        if (rw == OBD_BRW_WRITE)
+                brw_flags = OBD_BRW_ASYNC;
 
         OBD_ALLOC(pga, npages * sizeof(*pga));
         if (pga == NULL)
@@ -1558,7 +1562,7 @@ static int echo_client_kbrw(struct echo_device *ed, int rw, struct obdo *oa,
                 pages[i] = pgp->pg;
                 pgp->count = CFS_PAGE_SIZE;
                 pgp->off = off;
-                pgp->flag = 0;
+                pgp->flag = brw_flags;
 
                 if (verify)
                         echo_client_page_debug_setup(lsm, pgp->pg, rw,
@@ -1693,7 +1697,7 @@ static int echo_client_brw_ioctl(int rw, struct obd_export *exp,
         struct obd_device *obd = class_exp2obd(exp);
         struct echo_device *ed = obd2echo_dev(obd);
         struct echo_client_obd *ec = ed->ed_ec;
-        struct obd_trans_info dummy_oti = { .oti_thread = NULL };
+        struct obd_trans_info dummy_oti = { 0 };
         struct obdo *oa = &data->ioc_obdo1;
         struct echo_object *eco;
         int rc;
@@ -1790,6 +1794,7 @@ echo_client_iocontrol(unsigned int cmd, struct obd_export *exp,
         struct obd_trans_info   dummy_oti;
         struct oti_req_ack_lock *ack_lock;
         struct obdo            *oa;
+        struct lu_fid           fid;
         int                     rw = OBD_BRW_READ;
         int                     rc = 0;
         int                     i;
@@ -1804,8 +1809,11 @@ echo_client_iocontrol(unsigned int cmd, struct obd_export *exp,
                 oa->o_valid |= OBD_MD_FLGROUP;
                 oa->o_seq = FID_SEQ_ECHO;
         }
-        /* assume we can touch filter native objects with echo device. */
-        /* LASSERT(oa->o_seq == FID_SEQ_ECHO); */
+
+        /* This FID is unpacked just for validation at this point */
+        rc = fid_ostid_unpack(&fid, &oa->o_oi, 0);
+        if (rc < 0)
+                RETURN(rc);
 
         switch (cmd) {
         case OBD_IOC_CREATE:                    /* may create echo object */

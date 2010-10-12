@@ -468,7 +468,7 @@ struct nid_stat;
 extern int lprocfs_add_clear_entry(struct obd_device *obd,
                                    libcfs_param_entry_t *entry);
 extern int lprocfs_exp_setup(struct obd_export *exp,
-                             lnet_nid_t *peer_nid, int *newnid);
+                             lnet_nid_t *peer_nid, int reconnect, int *newnid);
 extern int lprocfs_exp_cleanup(struct obd_export *exp);
 extern libcfs_param_entry_t *
 lprocfs_add_simple(libcfs_param_entry_t *root, char *name,
@@ -690,6 +690,10 @@ int lprocfs_obd_rd_recovery_time_hard(char *page, char **start, off_t off,
                                       int count, int *eof, void *data);
 int lprocfs_obd_wr_recovery_time_hard(libcfs_file_t *file, const char *buffer,
                                       unsigned long count, void *data);
+#if !defined(__sun__)
+int lprocfs_obd_rd_mntdev(char *page, char **start, off_t off,
+                          int count, int *eof, void *data);
+#endif /* __sun__ */
 
 /* all quota proc functions */
 extern int lprocfs_quota_rd_bunit(char *page, char **start, off_t off, int count,
@@ -802,8 +806,8 @@ static inline void lprocfs_free_md_stats(struct obd_device *obddev)
 struct obd_export;
 static inline int lprocfs_add_clear_entry(struct obd_export *exp)
 { return 0; }
-static inline int lprocfs_exp_setup(struct obd_export *exp,
-                                    lnet_nid_t *peer_nid, int *newnid)
+static inline int lprocfs_exp_setup(struct obd_export *exp,lnet_nid_t *peer_nid,
+                                    int reconnect, int *newnid)
 { return 0; }
 static inline int lprocfs_exp_cleanup(struct obd_export *exp)
 { return 0; }

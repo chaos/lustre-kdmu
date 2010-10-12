@@ -26,7 +26,7 @@
  * GPL HEADER END
  */
 /*
- * Copyright  2008 Sun Microsystems, Inc. All rights reserved
+ * Copyright (c) 2008, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  */
 /*
@@ -766,12 +766,12 @@ lustre_acl_xattr_merge2ext(posix_acl_xattr_header *posix_header, int size,
                                 if (posix_header->a_entries[i].e_perm !=
                                                                 ee->e_perm)
                                         /* entry modified. */
-                                        ee->e_perm =
+                                        ee->e_stat =
                                         new->a_entries[j++].e_stat =
                                                         cpu_to_le32(ES_MOD);
                                 else
                                         /* entry unchanged. */
-                                        ee->e_perm =
+                                        ee->e_stat =
                                         new->a_entries[j++].e_stat =
                                                         cpu_to_le32(ES_UNC);
                         } else {
@@ -796,12 +796,12 @@ lustre_acl_xattr_merge2ext(posix_acl_xattr_header *posix_header, int size,
                                 if (posix_header->a_entries[i].e_perm !=
                                                                 ee->e_perm)
                                         /* entry modified. */
-                                        ee->e_perm =
+                                        ee->e_stat =
                                         new->a_entries[j++].e_stat =
                                                         cpu_to_le32(ES_MOD);
                                 else
                                         /* entry unchanged. */
-                                        ee->e_perm =
+                                        ee->e_stat =
                                         new->a_entries[j++].e_stat =
                                                         cpu_to_le32(ES_UNC);
                         } else {
