@@ -24,6 +24,7 @@ LUSTRE_CPPFLAGS += -DCONFIG_FS_POSIX_ACL=1 -DCONFIG_X86_64=1
 LUSTRE_CPPFLAGS += -DENABLE_PINGER=1 -DHAVE_LRU_RESIZE_SUPPORT=1
 LUSTRE_CPPFLAGS += -DENABLE_CHECKSUM=1 -DDMU_OSD=1 -DLIBCFS_DEBUG=1
 LUSTRE_CPPFLAGS += -DUSE_LU_REF=1 -DCDEBUG_ENTRY_EXIT=1
+LUSTRE_CPPFLAGS += -DHAVE_OFED_IB_COMP_VECTOR=1
 
 # To use adler32 we need to fix solaris common/zmod/mapfile
 # file to treat z_adler32 as one of the global functions.
@@ -94,6 +95,7 @@ SOLARIS_LIBCFS_PATH=libcfs/libcfs/solaris
 
 LNET_PATH=lnet/lnet
 KSOCKLND_PATH=lnet/klnds/socklnd
+KO2IBLND_PATH=lnet/klnds/o2iblnd
 SELFTEST_PATH=lnet/selftest
 
 PTLRPC_PATH=lustre/ptlrpc
@@ -170,6 +172,11 @@ KSOCKLND_SRCS       = $(KSOCKLND_PATH)/socklnd.c \
                       $(KSOCKLND_PATH)/socklnd_proto.c \
                       $(KSOCKLND_PATH)/socklnd_lib-solaris.c \
                       $(KSOCKLND_PATH)/socklnd_lib-params.c
+
+KO2IBLND_SRCS       = $(KO2IBLND_PATH)/o2iblnd.c \
+                      $(KO2IBLND_PATH)/o2iblnd_cb.c \
+                      $(KO2IBLND_PATH)/o2iblnd_modparams.c \
+                      $(KO2IBLND_PATH)/o2iblnd_lib-solaris.c
 
 SELFTEST_SRCS      = $(SELFTEST_PATH)/brw_test.c \
                      $(SELFTEST_PATH)/conctl.c \
@@ -274,6 +281,7 @@ LIBCFS_SRCS   = $(GENERIC_LIBCFS_SRCS) $(SOLARIS_LIBCFS_SRCS)
 LIBCFS_OBJS   = $(LIBCFS_SRCS:%.c=kernel/%.o)
 LNET_OBJS     = $(LNET_SRCS:%.c=kernel/%.o)
 KSOCKLND_OBJS = $(KSOCKLND_SRCS:%.c=kernel/%.o)
+KO2IBLND_OBJS = $(KO2IBLND_SRCS:%.c=kernel/%.o)
 SELFTEST_OBJS = $(SELFTEST_SRCS:%.c=kernel/%.o)
 
 PTLRPC_OBJS   = $(PTLRPC_SRCS:%.c=kernel/%.o)
@@ -283,9 +291,9 @@ MISC_OBJS     = $(MISC_SRCS:%.c=kernel/%.o)
 OST_OBJS      = $(OST_SRCS:%.c=kernel/%.o)
 ECHO_OBJS     = $(ECHO_SRCS:%.c=kernel/%.o)
 
-LUSTREFS_OBJS = $(LIBCFS_OBJS) $(LNET_OBJS) $(KSOCKLND_OBJS) $(SELFTEST_OBJS)
-LUSTREFS_OBJS += $(PTLRPC_OBJS) $(LDLM_OBJS) $(OBDCLASS_OBJS) $(MISC_OBJS)
-LUSTREFS_OBJS += $(OST_OBJS) $(ECHO_OBJS)
+LUSTREFS_OBJS = $(LIBCFS_OBJS) $(LNET_OBJS) $(KSOCKLND_OBJS) $(KO2IBLND_OBJS)
+LUSTREFS_OBJS += $(SELFTEST_OBJS) $(PTLRPC_OBJS) $(LDLM_OBJS) $(OBDCLASS_OBJS)
+LUSTREFS_OBJS += $(MISC_OBJS) $(OST_OBJS) $(ECHO_OBJS)
 
 LOADGEN = $(LUSTRE_UTILS_PATH)/loadgen
 LIBLUSTREAPI_A = $(LUSTRE_UTILS_PATH)/liblustreapi.a
@@ -296,8 +304,10 @@ CFSD = $(LUSTRE_SOLARIS_UTILS_PATH)/cfsd
 
 all: lustrefs $(LOADGEN) $(CFSD)
 
+LUSTREFS_LD_NEEDED = -N misc/ksocket -N misc/sol_ofs -N misc/ibtl
+
 lustrefs: $(LUSTREFS_OBJS)
-	$(LD) -dy -r -o $@ $(LUSTREFS_OBJS) -N misc/ksocket
+	$(LD) -dy -r -o $@ $(LUSTREFS_OBJS) $(LUSTREFS_LD_NEEDED)
 	$(CTFMERGE) $(CTFLBL_FLAGS) -o $@ $(LUSTREFS_OBJS)
 
 LOADGEN_DEPS = $(LOADGEN_OBJS) $(LIBLUSTREAPI_A) $(LIBPTLCTL_A)
@@ -347,6 +357,7 @@ clean:
 .INIT:
 	@mkdir -p kernel/libcfs/libcfs/solaris
 	@mkdir -p kernel/lnet/klnds/socklnd
+	@mkdir -p kernel/lnet/klnds/o2iblnd
 	@mkdir -p kernel/lnet/lnet
 	@mkdir -p kernel/lnet/selftest
 	@mkdir -p kernel/lustre/ptlrpc

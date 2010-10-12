@@ -96,7 +96,8 @@ static void libcfs_param_ksocknal_ctl_table_init(void)
                 .name     = "nconnds",
                 .data     = ksocknal_tunables.ksnd_nconnds,
                 .mode     = 0444,
-                .read     = libcfs_param_intvec_read
+                .read     = libcfs_param_intvec_read,
+                .write    = libcfs_param_intvec_write,
         };
         i++;
 
@@ -331,35 +332,18 @@ static void libcfs_param_ksocknal_ctl_table_init(void)
         i++;
 }
 
-int
-ksocknal_lib_params_init ()
+void
+ksocknal_modparams_init()
 {
-        if (!*ksocknal_tunables.ksnd_typed_conns) {
-                int rc = -EINVAL;
-#if SOCKNAL_VERSION_DEBUG
-                if (*ksocknal_tunables.ksnd_protocol < 3)
-                        rc = 0;
-#endif
-                if (rc != 0) {
-                        CERROR("Protocol V3.x MUST have typed connections\n");
-                        return rc;
-                }
-        }
-
-        if (*ksocknal_tunables.ksnd_zc_recv_min_nfrags < 2)
-                *ksocknal_tunables.ksnd_zc_recv_min_nfrags = 2;
-        if (*ksocknal_tunables.ksnd_zc_recv_min_nfrags > LNET_MAX_IOV)
-                *ksocknal_tunables.ksnd_zc_recv_min_nfrags = LNET_MAX_IOV;
+        ksocknal_tunables_structure_init();
 
         libcfs_param_ksocknal_ctl_table_init();
         libcfs_param_sysctl_init("socknal", lp_ksocknal_ctl_table,
                                  libcfs_param_lnet_root);
-
-        return 0;
 }
 
 void
-ksocknal_lib_params_fini ()
+ksocknal_modparams_fini()
 {
         libcfs_param_sysctl_fini("socknal", libcfs_param_lnet_root);
 }

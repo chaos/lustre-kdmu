@@ -48,8 +48,8 @@ static int cksum = 0;
 CFS_MODULE_PARM(cksum, "i", int, 0644,
                 "set non-zero to enable message (not RDMA) checksums");
 
-static int timeout = 50;
-CFS_MODULE_PARM(timeout, "i", int, 0644,
+static int nettimeout = 50;
+CFS_MODULE_PARM(nettimeout, "i", int, 0644,
                 "timeout (seconds)");
 
 static int ntx = 256;
@@ -104,26 +104,10 @@ static int map_on_demand = 0;
 CFS_MODULE_PARM(map_on_demand, "i", int, 0444,
                 "map on demand");
 
-static int fmr_pool_size = 512;
-CFS_MODULE_PARM(fmr_pool_size, "i", int, 0444,
-                "size of the fmr pool (>= ntx / 4)");
-
-static int fmr_flush_trigger = 384;
-CFS_MODULE_PARM(fmr_flush_trigger, "i", int, 0444,
-                "# dirty FMRs that triggers pool flush");
-
-static int fmr_cache = 1;
-CFS_MODULE_PARM(fmr_cache, "i", int, 0444,
-                "non-zero to enable FMR caching");
-
-static int pmr_pool_size = 512;
-CFS_MODULE_PARM(pmr_pool_size, "i", int, 0444,
-                "size of the MR cache pmr pool");
-
 kib_tunables_t kiblnd_tunables = {
         .kib_service                = &service,
         .kib_cksum                  = &cksum,
-        .kib_timeout                = &timeout,
+        .kib_timeout                = &nettimeout,
         .kib_keepalive              = &keepalive,
         .kib_ntx                    = &ntx,
         .kib_credits                = &credits,
@@ -137,64 +121,12 @@ kib_tunables_t kiblnd_tunables = {
         .kib_concurrent_sends       = &concurrent_sends,
         .kib_ib_mtu                 = &ib_mtu,
         .kib_map_on_demand          = &map_on_demand,
-        .kib_fmr_pool_size          = &fmr_pool_size,
-        .kib_fmr_flush_trigger      = &fmr_flush_trigger,
-        .kib_fmr_cache              = &fmr_cache,
-        .kib_pmr_pool_size          = &pmr_pool_size,
+        /* .kib_plat_tunes to be inited in kiblnd_plat_modparams_init() */
 };
 
 static char ipif_basename_space[32];
 
 #if defined(CONFIG_SYSCTL) && !CFS_SYSFS_MODULE_PARM
-
-#ifndef HAVE_SYSCTL_UNNUMBERED
-
-enum {
-        O2IBLND_SERVICE  = 1,
-        O2IBLND_CKSUM,
-        O2IBLND_TIMEOUT,
-        O2IBLND_NTX,
-        O2IBLND_CREDITS,
-        O2IBLND_PEER_TXCREDITS,
-        O2IBLND_PEER_CREDITS_HIW,
-        O2IBLND_PEER_RTRCREDITS,
-        O2IBLND_PEER_TIMEOUT,
-        O2IBLND_IPIF_BASENAME,
-        O2IBLND_RETRY_COUNT,
-        O2IBLND_RNR_RETRY_COUNT,
-        O2IBLND_KEEPALIVE,
-        O2IBLND_CONCURRENT_SENDS,
-        O2IBLND_IB_MTU,
-        O2IBLND_MAP_ON_DEMAND,
-        O2IBLND_FMR_POOL_SIZE,
-        O2IBLND_FMR_FLUSH_TRIGGER,
-        O2IBLND_FMR_CACHE,
-        O2IBLND_PMR_POOL_SIZE
-};
-#else
-
-#define O2IBLND_SERVICE          CTL_UNNUMBERED
-#define O2IBLND_CKSUM            CTL_UNNUMBERED
-#define O2IBLND_TIMEOUT          CTL_UNNUMBERED
-#define O2IBLND_NTX              CTL_UNNUMBERED
-#define O2IBLND_CREDITS          CTL_UNNUMBERED
-#define O2IBLND_PEER_TXCREDITS   CTL_UNNUMBERED
-#define O2IBLND_PEER_CREDITS_HIW CTL_UNNUMBERED
-#define O2IBLND_PEER_RTRCREDITS  CTL_UNNUMBERED
-#define O2IBLND_PEER_TIMEOUT     CTL_UNNUMBERED
-#define O2IBLND_IPIF_BASENAME    CTL_UNNUMBERED
-#define O2IBLND_RETRY_COUNT      CTL_UNNUMBERED
-#define O2IBLND_RNR_RETRY_COUNT  CTL_UNNUMBERED
-#define O2IBLND_KEEPALIVE        CTL_UNNUMBERED
-#define O2IBLND_CONCURRENT_SENDS CTL_UNNUMBERED
-#define O2IBLND_IB_MTU           CTL_UNNUMBERED
-#define O2IBLND_MAP_ON_DEMAND    CTL_UNNUMBERED
-#define O2IBLND_FMR_POOL_SIZE    CTL_UNNUMBERED
-#define O2IBLND_FMR_FLUSH_TRIGGER CTL_UNNUMBERED
-#define O2IBLND_FMR_CACHE        CTL_UNNUMBERED
-#define O2IBLND_PMR_POOL_SIZE    CTL_UNNUMBERED
-
-#endif
 
 static cfs_sysctl_table_t kiblnd_ctl_table[] = {
         {
@@ -216,7 +148,7 @@ static cfs_sysctl_table_t kiblnd_ctl_table[] = {
         {
                 .ctl_name = O2IBLND_TIMEOUT,
                 .procname = "timeout",
-                .data     = &timeout,
+                .data     = &nettimeout,
                 .maxlen   = sizeof(int),
                 .mode     = 0644,
                 .proc_handler = &proc_dointvec
@@ -325,39 +257,6 @@ static cfs_sysctl_table_t kiblnd_ctl_table[] = {
                 .mode     = 0444,
                 .proc_handler = &proc_dointvec
         },
-
-        {
-                .ctl_name = O2IBLND_FMR_POOL_SIZE,
-                .procname = "fmr_pool_size",
-                .data     = &fmr_pool_size,
-                .maxlen   = sizeof(int),
-                .mode     = 0444,
-                .proc_handler = &proc_dointvec
-        },
-        {
-                .ctl_name = O2IBLND_FMR_FLUSH_TRIGGER,
-                .procname = "fmr_flush_trigger",
-                .data     = &fmr_flush_trigger,
-                .maxlen   = sizeof(int),
-                .mode     = 0444,
-                .proc_handler = &proc_dointvec
-        },
-        {
-                .ctl_name = O2IBLND_FMR_CACHE,
-                .procname = "fmr_cache",
-                .data     = &fmr_cache,
-                .maxlen   = sizeof(int),
-                .mode     = 0444,
-                .proc_handler = &proc_dointvec
-        },
-        {
-                .ctl_name = O2IBLND_PMR_POOL_SIZE,
-                .procname = "pmr_pool_size",
-                .data     = &pmr_pool_size,
-                .maxlen   = sizeof(int),
-                .mode     = 0444,
-                .proc_handler = &proc_dointvec
-        },
         {0}
 };
 
@@ -372,7 +271,8 @@ static cfs_sysctl_table_t kiblnd_top_ctl_table[] = {
         },
         {0}
 };
-#endif
+
+#endif /* defined(CONFIG_SYSCTL) && !CFS_SYSFS_MODULE_PARM */
 
 static struct libcfs_param_ctl_table libcfs_param_kiblnd_ctl_table[] = {
         {
@@ -390,7 +290,7 @@ static struct libcfs_param_ctl_table libcfs_param_kiblnd_ctl_table[] = {
         },
         {
                 .name     = "timeout",
-                .data     = &timeout,
+                .data     = &nettimeout,
                 .mode     = 0644,
                 .read     = libcfs_param_intvec_read,
                 .write    = libcfs_param_intvec_write
@@ -474,31 +374,8 @@ static struct libcfs_param_ctl_table libcfs_param_kiblnd_ctl_table[] = {
                 .name     = "map_on_demand",
                 .data     = &map_on_demand,
                 .mode     = 0444,
-                .read     = libcfs_param_intvec_read
-        },
-        {
-                .name     = "fmr_pool_size",
-                .data     = &fmr_pool_size,
-                .mode     = 0444,
-                .read     = libcfs_param_intvec_read
-        },
-        {
-                .name     = "fmr_flush_trigger",
-                .data     = &fmr_flush_trigger,
-                .mode     = 0444,
-                .read     = libcfs_param_intvec_read
-        },
-        {
-                .name     = "fmr_cache",
-                .data     = &fmr_cache,
-                .mode     = 0444,
-                .read     = libcfs_param_intvec_read
-        },
-        {
-                .name     = "pmr_pool_size",
-                .data     = &pmr_pool_size,
-                .mode     = 0444,
-                .read     = libcfs_param_intvec_read
+                .read     = libcfs_param_intvec_read,
+                .write    = libcfs_param_intvec_write,
         },
         {0}
 };
@@ -511,7 +388,7 @@ kiblnd_initstrtunable(char *space, char *str, int size)
 }
 
 void
-kiblnd_sysctl_init (void)
+kiblnd_modparams_init(void)
 {
         kiblnd_initstrtunable(ipif_basename_space, ipif_name,
                               sizeof(ipif_basename_space));
@@ -526,12 +403,17 @@ kiblnd_sysctl_init (void)
         if (kiblnd_tunables.kib_sysctl == NULL)
                 CWARN("Can't setup /proc tunables\n");
 #endif
+
+        kiblnd_plat_modparams_init();
 }
 
 void
-kiblnd_sysctl_fini (void)
+kiblnd_modparams_fini(void)
 {
+        kiblnd_plat_modparams_fini();
+
         libcfs_param_sysctl_fini("o2iblnd", libcfs_param_lnet_root);
+
 #if defined(CONFIG_SYSCTL) && !CFS_SYSFS_MODULE_PARM
         if (kiblnd_tunables.kib_sysctl != NULL)
                 cfs_unregister_sysctl_table(kiblnd_tunables.kib_sysctl);
@@ -541,6 +423,10 @@ kiblnd_sysctl_fini (void)
 int
 kiblnd_tunables_init (void)
 {
+#if !defined(__sun__)
+        kiblnd_modparams_init();
+#endif
+
         if (kiblnd_translate_mtu(*kiblnd_tunables.kib_ib_mtu) < 0) {
                 CERROR("Invalid ib_mtu %d, expected 256/512/1024/2048/4096\n",
                        *kiblnd_tunables.kib_ib_mtu);
@@ -589,12 +475,13 @@ kiblnd_tunables_init (void)
                       *kiblnd_tunables.kib_concurrent_sends, *kiblnd_tunables.kib_peertxcredits);
         }
 
-        kiblnd_sysctl_init();
         return 0;
 }
 
 void
 kiblnd_tunables_fini (void)
 {
-        kiblnd_sysctl_fini();
+#if !defined(__sun__)
+        kiblnd_modparams_fini();
+#endif
 }

@@ -48,4 +48,16 @@
 
 #define LNET_ROUTER
 
+#ifdef __KERNEL__
+# include <libcfs/libcfs.h>
+
+static inline __u64
+lnet_page2phys (cfs_page_t *cfs_pg)
+{
+        pfn_t pfn = page_pptonum(cfs_page_2_ospage(cfs_pg));
+        return (ptob(pfn));
+}
+
+#endif /* __KERNEL__ */
+
 #endif

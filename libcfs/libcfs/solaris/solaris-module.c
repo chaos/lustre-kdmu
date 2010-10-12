@@ -42,7 +42,6 @@
 #include <sys/ddi.h>
 
 #define DEBUG_SUBSYSTEM S_LNET
-#define LNET_NAME "lnet"
 
 #include <libcfs/libcfs.h>
 
@@ -326,6 +325,7 @@ cfs_psdev_deregister(cfs_psdev_t *dev)
 extern cfs_lumodule_desc_t libcfs_module_desc;
 extern cfs_lumodule_desc_t lnet_module_desc;
 extern cfs_lumodule_desc_t ksocknal_module_desc;
+extern cfs_lumodule_desc_t ko2iblnd_module_desc;
 extern cfs_lumodule_desc_t lnet_selftest_module_desc;
 extern cfs_lumodule_desc_t ptlrpc_module_desc;
 extern cfs_lumodule_desc_t obdclass_module_desc;
@@ -333,16 +333,9 @@ extern cfs_lumodule_desc_t ost_module_desc;
 extern cfs_lumodule_desc_t obdecho_module_desc;
 
 static int
-libcfs_all_modules_init(void)
+lustrefs_startup(void)
 {
         int rc;
-
-        rc = libcfs_module_desc.mdesc_init();
-
-        if (rc != 0) {
-                CDEBUG(D_ERROR, "libcfs module init failed\n");
-                goto libcfs_fail;
-        }
 
         rc = lnet_module_desc.mdesc_init();
 
@@ -356,6 +349,13 @@ libcfs_all_modules_init(void)
         if (rc != 0) {
                 CDEBUG(D_ERROR, "ksocknal module init failed\n");
                 goto ksocknal_fail;
+        }
+
+        rc = ko2iblnd_module_desc.mdesc_init();
+
+        if (rc != 0) {
+                CDEBUG(D_ERROR, "ko2iblnd module init failed\n");
+                goto ko2iblnd_fail;
         }
 
         rc = lnet_selftest_module_desc.mdesc_init();
@@ -404,10 +404,153 @@ ptlrpc_fail:
 obdclass_fail:
         lnet_selftest_module_desc.mdesc_fini();
 lnetselftest_fail:
+        ko2iblnd_module_desc.mdesc_fini();
+ko2iblnd_fail:
         ksocknal_module_desc.mdesc_fini();
 ksocknal_fail:
         lnet_module_desc.mdesc_fini();
 lnet_fail:
+        return (rc);
+}
+
+static void
+lustrefs_shutdown(void)
+{
+        obdecho_module_desc.mdesc_fini();
+        ost_module_desc.mdesc_fini();
+        ptlrpc_module_desc.mdesc_fini();
+        obdclass_module_desc.mdesc_fini();
+        lnet_selftest_module_desc.mdesc_fini();
+        ko2iblnd_module_desc.mdesc_fini();
+        ksocknal_module_desc.mdesc_fini();
+        lnet_module_desc.mdesc_fini();
+}
+
+/*
+ * param-tree-props property in lustrefs.conf can be used to setup lustre
+ * module parameters exposed via libcfs params tree. This property's value is
+ * parsed as a string array of name=value pairs.
+ *
+ * The example of using params-tree-props in lustrefs.conf is:
+ *
+ * param-tree-props="lnet.lnet.networks=tcp0(e1000g1)",
+ *                  "lnet.socknal.nconnds=8";
+ *
+ */
+static int
+lustrefs_lookup_props(dev_info_t *dip, void *arg)
+{
+        int   *rc_p   = (int *)arg;
+        char  *prefix = "params_root/";
+        char **prop_val;        
+        uint_t prop_len;
+        int    i, rc;
+
+        LASSERT (rc_p != NULL);
+
+        rc = ddi_prop_lookup_string_array(DDI_DEV_T_ANY, dip,
+                                          DDI_PROP_DONTPASS,
+                                          "param-tree-props",
+                                          &prop_val,
+                                          &prop_len);
+        if(rc != DDI_SUCCESS) {
+                if (rc == DDI_PROP_NOT_FOUND)
+                        *rc_p = 0;
+                else
+                        *rc_p = -rc;
+                
+                return DDI_WALK_TERMINATE;
+        }
+
+        for (i = 0; i < prop_len; i++) {
+                char *val   =  prop_val[i];
+                char *delim = strchr(val, '=');
+                char *path;
+                char *p;
+                int   pathsiz;
+
+                /* expect val in form of "param_path=param_value" */
+                if (delim == NULL || delim == val) {
+                        CERROR("Malformed param-tree-props: %s\n", val);
+                        rc = -EINVAL;
+                        break;
+                }
+                delim++; /* points to "param_value" now */
+
+                pathsiz = strlen(prefix) + delim - val;
+                /* NB: pathsiz - strlen(prefix) == strlen("param_path=") now */
+
+                LIBCFS_ALLOC(path, pathsiz);
+                if (path == NULL) {
+                        CERROR("Failed to alloc %d bytes", pathsiz);
+                        rc = -ENOMEM;
+                        break;
+                }
+
+                strncpy(path, prefix, strlen(prefix));
+                strncat(path, val, pathsiz - strlen(prefix) - 1);
+
+                /* sed 's/\./\//g' path > path */
+                for (p = strchr(path, '.'); p != NULL; p = strchr(p, '.'))
+                        *p = '/';
+                
+                rc = libcfs_param_write(path, delim, strlen(delim) + 1);
+                if (rc != 0) {
+                        CERROR("Can't write val=%s to param=%s (rc=%d)\n",
+                               delim, path, rc);
+                        LIBCFS_FREE(path, pathsiz);
+                        break;
+                }
+
+                LIBCFS_FREE(path, pathsiz);
+        }
+
+        ddi_prop_free(prop_val);
+        LASSERT (rc <= 0);
+        *rc_p = rc;
+        return DDI_WALK_TERMINATE;
+}
+
+void lnet_modparams_init(void);
+void lnet_modparams_fini(void);
+void kiblnd_modparams_init(void);
+void kiblnd_modparams_fini(void);
+void ksocknal_modparams_init(void);
+void ksocknal_modparams_fini(void);
+
+static int
+libcfs_all_modules_init(void)
+{
+        int rc;
+
+        rc = libcfs_module_desc.mdesc_init();
+
+        if (rc != 0) {
+                CDEBUG(D_ERROR, "libcfs module init failed\n");
+                goto libcfs_fail;
+        }
+
+        lnet_modparams_init();
+        ksocknal_modparams_init();
+        kiblnd_modparams_init();
+
+        rc = 1; /* lustrefs_lookup_props() *must* change it */
+        e_ddi_walk_driver(LUSTREFS_DRIVER, lustrefs_lookup_props, &rc);
+        if (rc == 1)
+                CERROR("libcfs module init failed: driver name mismatch\n");
+        if (rc != 0)
+                goto startup_fail;
+
+        rc = lustrefs_startup();
+        if (rc != 0)
+                goto startup_fail;
+
+        return (0);
+
+startup_fail:
+        kiblnd_modparams_fini();
+        ksocknal_modparams_fini();
+        lnet_modparams_fini();
         libcfs_module_desc.mdesc_fini();
 libcfs_fail:
         return (rc);
@@ -416,13 +559,10 @@ libcfs_fail:
 static void
 libcfs_all_modules_fini(void)
 {
-        obdecho_module_desc.mdesc_fini();
-        ost_module_desc.mdesc_fini();
-        ptlrpc_module_desc.mdesc_fini();
-        obdclass_module_desc.mdesc_fini();
-        lnet_selftest_module_desc.mdesc_fini();
-        ksocknal_module_desc.mdesc_fini();
-        lnet_module_desc.mdesc_fini();
+        lustrefs_shutdown();
+        kiblnd_modparams_fini();
+        ksocknal_modparams_fini();
+        lnet_modparams_fini();
         libcfs_module_desc.mdesc_fini();        
 }
 
@@ -464,8 +604,6 @@ lustrefs_attach(dev_info_t *devi, ddi_attach_cmd_t cmd)
         default:
                 return DDI_FAILURE;
         }
-
-        /* we could update tunables calling ddi_prop_get_int here */
 
         rc = ddi_soft_state_init(&lustrefs_softstate, sizeof(void *), 0);
         if (rc != DDI_SUCCESS) {
@@ -573,7 +711,7 @@ int _init(void)
                 cmn_err(CE_CONT, "lustrefs only supports kpm_enabled mode");
                 return ENOTSUPP;
         }
-        
+
         rc = libcfs_all_modules_init();
         if (rc != 0) {
                 if (rc > 0)

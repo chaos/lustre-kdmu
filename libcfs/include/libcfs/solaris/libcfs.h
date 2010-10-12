@@ -51,6 +51,7 @@
 #include <sys/stat.h>
 #include <sys/cpuvar.h>
 #include <sys/sunddi.h>
+#include <sys/esunddi.h>
 #include <sys/errno.h>
 #include <sys/ioctl.h>
 #include <sys/types.h>

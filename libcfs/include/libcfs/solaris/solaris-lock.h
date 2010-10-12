@@ -129,9 +129,9 @@ extern void cfs_complete_and_exit(cfs_completion_t *cmpl, int ecode);
                                                     RW_WRITER)
 #define cfs_write_unlock_irq(l)                 rw_exit(&(l)->cfsrw_lock)
 
-#define cfs_read_lock_irqsave(l)                rw_enter(&(l)->cfsrw_lock, \
+#define cfs_read_lock_irqsave(l, f)             rw_enter(&(l)->cfsrw_lock, \
                                                     RW_READER)
-#define cfs_read_unlock_irqrestore(l)           rw_exit(&(l)->cfsrw_lock)
+#define cfs_read_unlock_irqrestore(l, f)        rw_exit(&(l)->cfsrw_lock)
 
 #define cfs_write_lock_irqsave(l, f)            rw_enter(&(l)->cfsrw_lock, \
                                                     RW_WRITER)
