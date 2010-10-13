@@ -2934,7 +2934,7 @@ static int osd_obd_connect(const struct lu_env *env, struct obd_export **exp,
 {
         struct osd_device    *osd = osd_dev(obd->obd_lu_dev);
         struct lustre_handle  conn;
-        int                   i, rc;
+        int		      rc;
         ENTRY;
 
         CDEBUG(D_CONFIG, "connect #%d\n", osd->od_connects);

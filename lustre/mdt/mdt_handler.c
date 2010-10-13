@@ -4521,7 +4521,7 @@ static int mdt_init0(const struct lu_env *env, struct mdt_device *m,
         struct lu_site            *s;
         struct md_site            *mite;
         const char                *identity_upcall = "NONE";
-        struct md_device          *next;
+        struct md_device          *next = NULL;
         int                        rc;
         int                        node_id;
         ENTRY;

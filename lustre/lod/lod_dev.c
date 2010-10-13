@@ -284,7 +284,7 @@ static int lod_sync(const struct lu_env *env, struct dt_device *dev)
 {
         struct lod_device *d = dt2lod_dev(dev);
         struct dt_device  *next;
-        int                rc, i;
+        int                rc = 0, i;
         ENTRY;
 
         for (i = 0; i < LOD_MAX_OSTNR; i++) {

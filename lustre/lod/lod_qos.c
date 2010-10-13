@@ -70,7 +70,7 @@
 int qos_add_tgt(struct obd_device *obd, int index)
 {
         struct lov_obd *lov = &obd->u.lov;
-        struct lov_qos_oss *oss, *temposs;
+        struct lov_qos_oss *oss = NULL, *temposs;
         /*struct obd_export *exp = lov->lov_tgts[index]->ltd_exp;*/
         int rc = 0, found = 0;
         ENTRY;
@@ -1140,8 +1140,8 @@ static int lod_qos_parse_config(const struct lu_env *env, struct lod_object *lo,
 {
         struct lod_device     *d = lu2lod_dev(lod2lu_obj(lo)->lo_dev);
         struct lov_obd        *lov = &d->lod_obd->u.lov;
-        struct lov_user_md_v1 *v1;
-        struct lov_user_md_v3 *v3;
+        struct lov_user_md_v1 *v1 = NULL;
+        struct lov_user_md_v3 *v3 = NULL;
         struct pool_desc      *pool;
         int                    rc;
         ENTRY;

@@ -519,8 +519,8 @@ static int lod_cache_parent_striping(const struct lu_env *env,
                                       struct lod_object *lp)
 {
         struct dt_object      *next = dt_object_child(&lp->mbo_obj);
-        struct lov_user_md_v1 *v1;
-        struct lov_user_md_v3 *v3;
+        struct lov_user_md_v1 *v1 = NULL;
+        struct lov_user_md_v3 *v3 = NULL;
         int                    rc;
         ENTRY;
 
