@@ -655,13 +655,6 @@ static int osd_trans_stop(const struct lu_env *env, struct thandle *th)
                 if (result != 0)
                         CERROR("Failure to stop transaction: %d\n", result);
         } else {
-                struct lu_device *lud;
-
-                LASSERT(th->th_dev);
-                lud = &th->th_dev->dd_lu_dev;
-                lu_ref_del_at(&lud->ld_reference, oh->ot_dev_link, "osd-tx", th);
-                lu_device_put(lud);
-
                 OBD_FREE_PTR(oh);
         }
 
@@ -833,16 +826,15 @@ static int osd_commit_async(const struct lu_env *env,
 /*
  * Concurrency: shouldn't matter.
  */
-lvfs_sbdev_type fsfilt_ldiskfs_journal_sbdev(struct super_block *);
 
 static void osd_ro(const struct lu_env *env, struct dt_device *d)
 {
+        struct super_block *sb = osd_sb(osd_dt_dev(d));
         ENTRY;
 
         CERROR("*** setting device %s read-only ***\n", LUSTRE_OSD_NAME);
 
-        __lvfs_set_rdonly(lvfs_sbdev(osd_sb(osd_dt_dev(d))),
-                          fsfilt_ldiskfs_journal_sbdev(osd_sb(osd_dt_dev(d))));
+        __lvfs_set_rdonly(sb->s_bdev, LDISKFS_SB(sb)->journal_bdev);
         EXIT;
 }
 
@@ -3994,10 +3986,6 @@ static int osd_shutdown(const struct lu_env *env, struct osd_device *o)
 {
         struct osd_thread_info *info = osd_oti_get(env);
         ENTRY;
-        if (o->od_fsops) {
-                fsfilt_put_ops(o->od_fsops);
-                o->od_fsops = NULL;
-        }
 
         if (o->od_obj_area != NULL) {
                 lu_object_put(env, &o->od_obj_area->do_lu);
@@ -4079,6 +4067,11 @@ static struct lu_device *osd_device_fini(const struct lu_env *env,
         if (osd_dev(d)->od_mnt) {
                 shrink_dcache_sb(osd_sb(osd_dev(d)));
                 osd_sync(env, lu2dt_dev(d));
+        }
+
+        if (osd_dev(d)->od_fsops) {
+                fsfilt_put_ops(osd_dev(d)->od_fsops);
+                osd_dev(d)->od_fsops = NULL;
         }
 
         rc = osd_procfs_fini(osd_dev(d));
