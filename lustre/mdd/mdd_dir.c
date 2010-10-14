@@ -705,6 +705,7 @@ mdd_declare_and_start_link(const struct lu_env *env, struct md_object *tgt_obj,
         struct mdd_object *mdd_sobj = md2mdd_obj(src_obj);
         struct mdd_device *mdd = mdo2mdd(src_obj);
         struct thandle *handle;
+        struct lu_buf buf;
         int rc;
 
         handle = mdd_trans_create(env, mdd);
@@ -723,7 +724,9 @@ mdd_declare_and_start_link(const struct lu_env *env, struct md_object *tgt_obj,
         rc = mdo_declare_attr_set(env, mdd_sobj, NULL, handle);
         if (rc)
                 GOTO(out, rc);
-        rc = mdo_declare_xattr_set(env, mdd_sobj, 0, XATTR_NAME_LINK, 0, handle);
+        buf.lb_buf = NULL;
+        buf.lb_len = 4096;
+        rc = mdo_declare_xattr_set(env, mdd_sobj, &buf, XATTR_NAME_LINK, 0, handle);
         if (rc)
                 GOTO(out, rc);
         rc = mdd_trans_start(env, mdd, handle);
@@ -899,6 +902,7 @@ mdd_declare_and_start_unlink(const struct lu_env *env, struct md_object *pobj,
         struct mdd_object *mdd_cobj = md2mdd_obj(cobj);
         struct mdd_device *mdd = mdo2mdd(pobj);
         struct thandle *handle;
+        struct lu_buf buf;
         int rc;
 
         handle = mdd_trans_create(env, mdd);
@@ -927,7 +931,9 @@ mdd_declare_and_start_unlink(const struct lu_env *env, struct md_object *pobj,
         rc = mdo_declare_attr_set(env, mdd_cobj, NULL, handle);
         if (rc)
                 GOTO(out, rc);
-        rc = mdo_declare_xattr_set(env, mdd_cobj, 0, XATTR_NAME_LINK, 0, handle);
+        buf.lb_len = 4096;
+        buf.lb_buf = NULL;
+        rc = mdo_declare_xattr_set(env, mdd_cobj, &buf, XATTR_NAME_LINK, 0, handle);
         if (rc)
                 GOTO(out, rc);
         rc = mdd_trans_start(env, mdd, handle);
@@ -1849,7 +1855,9 @@ mdd_start_and_declare_create(const struct lu_env *env,
         }
         if (rc)
                 GOTO(cleanup, rc);
-        rc = mdo_declare_xattr_set(env, son, 0, XATTR_NAME_LINK, 0, handle);
+        buf.lb_buf = NULL;
+        buf.lb_len = 4096;
+        rc = mdo_declare_xattr_set(env, son, &buf, XATTR_NAME_LINK, 0, handle);
         if (rc)
                 GOTO(cleanup, rc);
         if (S_ISLNK(attr->la_mode)) {
@@ -2251,6 +2259,7 @@ mdd_declare_and_start_rename(const struct lu_env *env, struct md_object *src_pob
         struct mdd_device *mdd = mdo2mdd(src_pobj);
         struct mdd_object *mdd_tobj;
         struct thandle *handle;
+        struct lu_buf buf;
         int rc;
 
         handle = mdd_trans_create(env, mdd);
@@ -2304,7 +2313,9 @@ mdd_declare_and_start_rename(const struct lu_env *env, struct md_object *src_pob
                 if (rc)
                         GOTO(out, rc);
         }
-        rc = mdo_declare_xattr_set(env, mdd_sobj, 0, XATTR_NAME_LINK, 0, handle);
+        buf.lb_len = 4096;
+        buf.lb_buf = NULL;
+        rc = mdo_declare_xattr_set(env, mdd_sobj, &buf, XATTR_NAME_LINK, 0, handle);
         if (rc)
                 GOTO(out, rc);
         rc = mdd_trans_start(env, mdd, handle);
