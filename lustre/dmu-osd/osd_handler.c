@@ -121,9 +121,6 @@ static void  osd_key_fini      (const struct lu_context *ctx,
 static void  osd_key_exit      (const struct lu_context *ctx,
                                 struct lu_context_key *key, void *data);
 static void  osd_object_init0  (struct osd_object *obj);
-static int   osd_device_init   (const struct lu_env *env,
-                                struct lu_device *d, const char *,
-                                struct lu_device *);
 static int   osd_fid_lookup    (const struct lu_env *env,
                                 struct osd_object *obj,
                                 const struct lu_fid *fid);
@@ -621,6 +618,7 @@ static struct thandle *osd_trans_create(const struct lu_env *env,
         oh->ot_tx = tx;
         th = &oh->ot_super;
         th->th_result = 0;
+        th->th_dev = dt;
         RETURN(th);
 }
 
@@ -1941,6 +1939,7 @@ int osd_declare_xattr_set(const struct lu_env *env, struct dt_object *dt,
         ENTRY;
 
         LASSERT(handle != NULL);
+        LASSERT(buf);
         oh = container_of0(handle, struct osd_thandle, ot_super);
 
         cfs_mutex_down(&obj->oo_guard);
@@ -2660,25 +2659,14 @@ static void osd_key_exit(const struct lu_context *ctx,
         memset(info, 0, sizeof(*info));
 }
 
-static int osd_device_init(const struct lu_env *env, struct lu_device *d,
-                           const char *name, struct lu_device *next)
-{
-        return lu_context_init(&osd_dev(d)->od_env_for_commit.le_ctx,
-                               LCT_DT_THREAD|LCT_MD_THREAD);
-}
-
 static int osd_shutdown(const struct lu_env *env, struct osd_device *o)
 {
         ENTRY;
-        if (o->od_dt_dev.dd_lu_dev.ld_site)
-                lu_site_purge(env, o->od_dt_dev.dd_lu_dev.ld_site, ~0);
 
         if (o->od_objdir_db)
                 udmu_object_put_dmu_buf(o->od_objdir_db, objdir_tag);
         if (o->od_root_db)
                 udmu_object_put_dmu_buf(o->od_root_db, root_tag);
-        if (o->od_objset.os)
-                udmu_objset_close(&o->od_objset);
 
         RETURN(0);
 }
@@ -2758,11 +2746,6 @@ static int osd_mount(const struct lu_env *env,
         }
         o->od_root_db = rootdb;
 
-        rc = osd_oi_init(env, o);
-        LASSERT(rc == 0);
-
-        rc = osd_procfs_init(o, osd_label_get(NULL, &o->od_dt_dev));
-
         RETURN(rc);
 }
 
@@ -2776,9 +2759,41 @@ static struct lu_device *osd_device_fini(const struct lu_env *env,
 
         if (o->od_objset.os)
                 osd_sync(env, lu2dt_dev(d));
+        if (o->od_objset.os)
+                udmu_objset_close(&o->od_objset);
 
         lu_context_fini(&o->od_env_for_commit.le_ctx);
+
+
         RETURN(NULL);
+}
+
+static int osd_device_init2(const struct lu_env *env,
+                            struct osd_device *o)
+{
+        int rc;
+        ENTRY;
+
+        osd2lu_dev(o)->ld_ops = &osd_lu_ops;
+        o->od_dt_dev.dd_ops = &osd_dt_ops;
+        cfs_spin_lock_init(&o->od_osfs_lock);
+        o->od_osfs_age = cfs_time_shift_64(-1000);
+        o->od_reserved_fraction = DMU_RESERVED_FRACTION;
+
+        rc = lu_context_init(&o->od_env_for_commit.le_ctx,
+                             LCT_DT_THREAD|LCT_MD_THREAD);
+        if (rc)
+                GOTO(out, rc);
+
+        lu_site_init(&o->od_site, osd2lu_dev(o));
+        o->od_site.ls_bottom_dev = osd2lu_dev(o);
+        rc = osd_oi_init(env, o);
+        LASSERT(rc == 0);
+        rc = osd_procfs_init(o, osd_label_get(NULL, &o->od_dt_dev));
+        LASSERT(rc == 0);
+
+out:
+        RETURN(rc);
 }
 
 static struct lu_device *osd_device_alloc(const struct lu_env *env,
@@ -2796,31 +2811,32 @@ static struct lu_device *osd_device_alloc(const struct lu_env *env,
                 result = dt_device_init(&o->od_dt_dev, t);
                 if (result == 0) {
                         l = osd2lu_dev(o);
-                        l->ld_ops = &osd_lu_ops;
-                        o->od_dt_dev.dd_ops = &osd_dt_ops;
-                        cfs_spin_lock_init(&o->od_osfs_lock);
-                        o->od_osfs_age = cfs_time_shift_64(-1000);
-                        o->od_reserved_fraction = DMU_RESERVED_FRACTION;
-                        /* XXX: mount here */
-                        /* XXX: relocate osd_device_init() here */
-                        osd_device_init(env, l, NULL, NULL);
-                        lu_site_init(&o->od_site, l);
-                        o->od_site.ls_bottom_dev = l;
                         rc = osd_mount(env, o, cfg);
-                        if (rc) {
+                        if (rc == 0) {
+                                rc = osd_device_init2(env, o);
+                                if (rc)
+                                        l = ERR_PTR(rc);
+                        } else {
+                                lu_context_fini(&o->od_env_for_commit.le_ctx);
                                 dt_device_fini(&o->od_dt_dev);
                                 l = ERR_PTR(rc);
                         }
                 } else
                         l = ERR_PTR(result);
+                if (IS_ERR(l))
+                        OBD_FREE_PTR(o);
         } else
                 l = ERR_PTR(-ENOMEM);
         return l;
 }
 
-static struct lu_device * osd_device_free(const struct lu_env *env, struct lu_device *d)
+static struct lu_device * osd_device_free(const struct lu_env *env,
+                                          struct lu_device *d)
 {
         struct osd_device *o = osd_dev(d);
+
+        d->ld_site->ls_top_dev = d;
+        lu_site_fini(&o->od_site);
 
         dt_device_fini(&o->od_dt_dev);
         OBD_FREE_PTR(o);
@@ -2934,7 +2950,7 @@ static int osd_obd_connect(const struct lu_env *env, struct obd_export **exp,
 {
         struct osd_device    *osd = osd_dev(obd->obd_lu_dev);
         struct lustre_handle  conn;
-        int                   i, rc;
+        int                   rc;
         ENTRY;
 
         CDEBUG(D_CONFIG, "connect #%d\n", osd->od_connects);
@@ -3062,7 +3078,7 @@ static struct lu_device_type_operations osd_device_type_ops = {
         .ldto_device_alloc = osd_device_alloc,
         .ldto_device_free  = osd_device_free,
 
-        .ldto_device_init    = osd_device_init,
+        /*.ldto_device_init    = osd_device_init,*/
         .ldto_device_fini    = osd_device_fini
 };
 
