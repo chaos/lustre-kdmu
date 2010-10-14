@@ -177,6 +177,7 @@ int llog_cat_id2handle(struct llog_handle *cathandle, struct llog_handle **res,
                 CERROR("error opening log id "LPX64":%x: rc %d\n",
                        logid->lgl_oid, logid->lgl_ogen, rc);
         } else {
+                LASSERT(llog_exist_2(loghandle));
                 rc = llog_init_handle(loghandle, LLOG_F_IS_PLAIN, NULL);
                 if (!rc) {
                         cfs_list_add(&loghandle->u.phd.phd_entry,

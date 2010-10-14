@@ -1090,8 +1090,9 @@ static int llog_osd_open_2(struct llog_ctxt *ctxt, struct llog_handle **res,
                         GOTO(out, rc = PTR_ERR(o));
 
                 if (!dt_object_exists(o)) {
+                        llog_free_handle(handle);
                         lu_object_put(&env, &o->do_lu);
-                        GOTO(out, -ENOENT);
+                        GOTO(out, rc = -ENOENT);
                 }
                 handle->lgh_id = *logid;
 
@@ -1133,15 +1134,16 @@ static int llog_osd_open_2(struct llog_ctxt *ctxt, struct llog_handle **res,
                 handle->lgh_ctxt = ctxt;
                 cfs_atomic_inc(&lsb->lsb_refcount);
                 handle->private_data = lsb;
+                LASSERT(handle->lgh_ctxt);
         } else {
                 if (handle)
                         llog_free_handle(handle);
         }
 
+out:
         if (lsb)
                 llog_osd_put_sb(&env, lsb);
        
-out:
         lu_env_fini(&env);
 
         RETURN(rc);
@@ -1316,13 +1318,13 @@ static int llog_osd_destroy(struct llog_handle *loghandle)
         if (IS_ERR(th))
                 GOTO(out, rc = PTR_ERR(th));
 
-        dt_declare_ref_del(&env, o, th);
+        dt_declare_destroy(&env, o, th);
 
         rc = dt_trans_start(&env, d, th);
         if (rc == 0) {
                 dt_write_lock(&env, o, 0);
                 if (dt_object_exists(o))
-                        dt_ref_del(&env, o, th);
+                        dt_destroy(&env, o, th);
                 dt_write_unlock(&env, o);
         }
 
