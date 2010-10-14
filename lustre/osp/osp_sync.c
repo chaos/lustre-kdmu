@@ -918,8 +918,10 @@ int osp_sync_init(struct osp_device *d)
          * initialize llog storing changes
          */
         rc = osp_sync_llog_init(d);
-        if (rc)
+        if (rc) {
+                CERROR("can't initialized llog: %d\n", rc);
                 RETURN(rc);
+        }
 
         /*
          * Register commit callbacks on the local storage
