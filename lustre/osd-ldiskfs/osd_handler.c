@@ -4037,6 +4037,7 @@ static int osd_mount(const struct lu_env *env,
         /* XXX: error handling */
         if (IS_ERR(o->od_mnt)) {
                 rc = PTR_ERR(o->od_mnt);
+                CERROR("can't mount %s: %d\n", dev, rc);
                 o->od_mnt = NULL;
                 GOTO(out, rc);
         }
@@ -4127,23 +4128,26 @@ static struct lu_device *osd_device_alloc(const struct lu_env *env,
                         o->od_read_cache = 1;
                         o->od_writethrough_cache = 1;
                         o->od_readcache_max_filesize = OSD_MAX_CACHE_SIZE;
-                        lu_site_init(&o->od_site, l);
-                        o->od_site.ls_bottom_dev = l;
                         rc = osd_mount(env, o, cfg);
-                        if (rc) {
+                        if (rc == 0) {
+                                lu_site_init(&o->od_site, l);
+                                o->od_site.ls_bottom_dev = l;
+                        } else {
+                                lu_context_fini(&o->od_env_for_commit.le_ctx);
                                 dt_device_fini(&o->od_dt_dev);
                                 l = ERR_PTR(rc);
                         }
                 } else
                         l = ERR_PTR(result);
 
-                if (IS_ERR(l))
+                if (IS_ERR(l)) {
+                        if (o->od_capa_hash)
+                                cleanup_capa_hash(o->od_capa_hash);
                         OBD_FREE_PTR(o);
+                }
         } else
                 l = ERR_PTR(-ENOMEM);
         return l;
-
-        return ERR_PTR(rc);
 }
 
 static struct lu_device *osd_device_free(const struct lu_env *env,
