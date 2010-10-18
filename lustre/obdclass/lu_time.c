@@ -101,7 +101,6 @@ int lu_time_named_init(struct lprocfs_stats **stats, const char *name,
 {
         int result;
         int i;
-
         ENTRY;
 
         *stats = NULL;
@@ -118,8 +117,9 @@ int lu_time_named_init(struct lprocfs_stats **stats, const char *name,
                                                      names[i], "usec");
                         }
                 }
-        } else
+        } else {
                 result = -ENOMEM;
+        }
 
         if (result != 0)
                 lu_time_fini(stats);
@@ -137,10 +137,8 @@ EXPORT_SYMBOL(lu_time_init);
 
 void lu_time_fini(struct lprocfs_stats **stats)
 {
-        if (*stats != NULL) {
+        if (*stats != NULL)
                 lprocfs_free_stats(stats);
-                *stats = NULL;
-        }
 }
 EXPORT_SYMBOL(lu_time_fini);
 

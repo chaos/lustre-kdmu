@@ -85,7 +85,7 @@ int mdt_procfs_init(struct mdt_device *mdt, const char *name)
         rc = lprocfs_obd_setup(obd, lvars.obd_vars);
         if (rc) {
                 CERROR("Can't init lprocfs, rc %d\n", rc);
-                return rc;
+                RETURN(rc);
         }
         ptlrpc_lprocfs_register_obd(obd);
 
@@ -94,13 +94,13 @@ int mdt_procfs_init(struct mdt_device *mdt, const char *name)
 
         rc = lu_time_init(&mdt->mdt_stats, mdt->mdt_proc_entry,
                           mdt_proc_names, ARRAY_SIZE(mdt_proc_names));
-        if (rc == 0)
+        if (0)
                 rc = lu_time_named_init(&ld->ld_site->ls_time_stats,
                                         "site_time", mdt->mdt_proc_entry,
                                          lu_time_names,
                                          ARRAY_SIZE(lu_time_names));
         if (rc)
-                return rc;
+                RETURN(rc);
 
         obd->obd_proc_exports_entry = proc_mkdir("exports",
                                                  obd->obd_proc_entry);
@@ -119,14 +119,14 @@ int mdt_procfs_fini(struct mdt_device *mdt)
         struct obd_device *obd = ld->ld_obd;
 
         if (mdt->mdt_proc_entry) {
-                lu_time_fini(&ld->ld_site->ls_time_stats);
+                        //lu_time_fini(&ld->ld_site->ls_time_stats);
                 lu_time_fini(&mdt->mdt_stats);
+                /* real obd_proc_entry is cleaned in ptlrpc_lprocfs_unreg...*/
                 mdt->mdt_proc_entry = NULL;
         }
-        if (obd->obd_proc_exports_entry) {
+        if (obd->obd_proc_exports_entry)
                 lprocfs_remove_proc_entry("clear", obd->obd_proc_exports_entry);
-                obd->obd_proc_exports_entry = NULL;
-        }
+
         ptlrpc_lprocfs_unregister_obd(obd);
         lprocfs_free_md_stats(obd);
         lprocfs_obd_cleanup(obd);
