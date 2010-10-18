@@ -424,6 +424,11 @@ int lod_parse_striping(const struct lu_env *env, struct lod_object *mo,
                 idx = le64_to_cpu(objs[i].l_ost_idx);
                 fid_ostid_unpack(&fid, &ostid, idx);
 
+                if (unlikely(md->lod_ost[idx] == NULL)) {
+                        CERROR("stripe pointing to non-existing OST #%u\n", idx);
+                        rc = -EINVAL;
+                        break;
+                }
                 LASSERTF(md->lod_ost[idx], "idx %d\n", idx);
                 nd = &md->lod_ost[idx]->dd_lu_dev;
 
