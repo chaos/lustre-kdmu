@@ -536,7 +536,7 @@ static int ll_rd_track_id(char *page, int count, void *data,
 
         LIBCFS_PARAM_GET_DATA(sb, data, NULL);
         if (ll_s2sbi(sb)->ll_stats_track_type == type)
-                return libcfs_param_snprintf(page, count, data, LP_D32, "%d\n",
+                return libcfs_param_snprintf(page, count, data, LP_S32, "%d\n",
                                              ll_s2sbi(sb)->ll_stats_track_id);
         if (ll_s2sbi(sb)->ll_stats_track_type == STATS_TRACK_ALL)
                 return libcfs_param_snprintf(page, count, data, LP_STR,
@@ -661,7 +661,7 @@ static int ll_rd_lazystatfs(char *page, char **start, off_t off,
         sbi = ll_s2sbi(sb);
         temp = (sbi->ll_flags & LL_SBI_LAZYSTATFS) ? 1 : 0;
 
-        return libcfs_param_snprintf(page, count, data, LP_D32, "%d\n", temp);
+        return libcfs_param_snprintf(page, count, data, LP_S32, "%d\n", temp);
 }
 
 static int ll_wr_lazystatfs(libcfs_file_t *file, const char *buffer,

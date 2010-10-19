@@ -699,10 +699,6 @@ static int getparam_display(struct params_opts *popt, char *pattern)
                                 printf("%s\n", valuename);
                         goto next;
                 }
-                if (!(mode & S_IRUSR)) {
-                        fprintf(stderr, "No read permission.\n");
-                        goto next;
-                }
                 if (!(valuename = display_name(filename, mode, 0)))
                         goto next;
                 if (S_ISDIR(mode) || S_ISLNK(mode)) {
@@ -770,10 +766,6 @@ static int setparam_display(struct params_opts *popt, char *pattern,
                 if (S_ISDIR(mode)) {
                         fprintf(stderr, "error: set_param: "
                                 "parameter '%s' is a directory.\n", valuename);
-                        goto next;
-                }
-                if (!(mode & S_IWUSR)) {
-                        fprintf(stderr, "No write permission.\n");
                         goto next;
                 }
                 offset = 0;

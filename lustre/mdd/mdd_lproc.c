@@ -198,8 +198,8 @@ static int lprocfs_wr_changelog_mask(libcfs_file_t *file, const char *buffer,
                 GOTO(out, rc = -EFAULT);
         kernbuf[count] = 0;
 
-        rc = libcfs_str2mask(kernbuf, changelog_type2str, &mdd->mdd_cl.mc_mask,
-                             CHANGELOG_MINMASK, CHANGELOG_ALLMASK);
+        rc = cfs_str2mask(kernbuf, changelog_type2str, &mdd->mdd_cl.mc_mask,
+                          CHANGELOG_MINMASK, CHANGELOG_ALLMASK);
         if (rc == 0)
                 rc = count;
 out:
@@ -303,7 +303,7 @@ static int lprocfs_rd_sync_perm(char *page, char **start, off_t off,
 
         LIBCFS_PARAM_GET_DATA(mdd, data, NULL);
         LASSERT(mdd != NULL);
-        return libcfs_param_snprintf(page, count, data, LP_D32,
+        return libcfs_param_snprintf(page, count, data, LP_S32,
                                      "%d\n", mdd->mdd_sync_permission);
 }
 

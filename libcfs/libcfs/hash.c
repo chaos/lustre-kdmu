@@ -459,7 +459,7 @@ void *
 cfs_hash_lookup(cfs_hash_t *hs, void *key)
 {
         void                 *obj = NULL;
-        cfs_hlist_node_t     *hnode = NULL;
+        cfs_hlist_node_t     *hnode;
         cfs_hash_bucket_t    *hsb;
         unsigned              i;
         ENTRY;

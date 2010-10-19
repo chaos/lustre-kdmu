@@ -55,7 +55,7 @@ static int lprocfs_filter_rd_groups(char *page, char **start, off_t off,
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         ofd = filter_dev(obd->obd_lu_dev);
 
-        return libcfs_param_snprintf(page, count, data, LP_D32, "%u\n",
+        return libcfs_param_snprintf(page, count, data, LP_S32, "%u\n",
                                      ofd->ofd_max_group);
 }
 
@@ -168,7 +168,7 @@ int lprocfs_filter_rd_fmd_max_num(char *page, char **start, off_t off,
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         ofd = filter_dev(obd->obd_lu_dev);
 
-        return libcfs_param_snprintf(page, count, data, LP_D32, "%u\n",
+        return libcfs_param_snprintf(page, count, data, LP_S32, "%u\n",
                                      ofd->ofd_fmd_max_num);
 }
 
@@ -205,7 +205,7 @@ int lprocfs_filter_rd_fmd_max_age(char *page, char **start, off_t off,
         ofd = filter_dev(obd->obd_lu_dev);
         temp = ofd->ofd_fmd_max_age / CFS_HZ;
 
-        return libcfs_param_snprintf(page, count, data, LP_D32, "%u\n", temp);
+        return libcfs_param_snprintf(page, count, data, LP_S32, "%u\n", temp);
 }
 
 int lprocfs_filter_wr_fmd_max_age(libcfs_file_t * file, const char *buffer,

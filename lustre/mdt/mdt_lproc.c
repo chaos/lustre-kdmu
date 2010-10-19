@@ -530,7 +530,7 @@ static int lprocfs_rd_sec_level(char *page, char **start, off_t off,
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         mdt = mdt_dev(obd->obd_lu_dev);
 
-        return libcfs_param_snprintf(page, count, data, LP_D32, "%d\n",
+        return libcfs_param_snprintf(page, count, data, LP_S32, "%d\n",
                                      mdt->mdt_sec_level);
 }
 
@@ -572,7 +572,7 @@ static int lprocfs_rd_cos(char *page, char **start, off_t off,
         mdt = mdt_dev(obd->obd_lu_dev);
         temp = mdt_cos_is_enabled(mdt);
 
-        return libcfs_param_snprintf(page, count, data, LP_D32, "%u\n", temp);
+        return libcfs_param_snprintf(page, count, data, LP_S32, "%u\n", temp);
 }
 
 static int lprocfs_wr_cos(libcfs_file_t *file, const char *buffer,

@@ -68,10 +68,9 @@ lnet_router_proc_stats_read (char *page, char **start, off_t off,
         *ctrs = the_lnet.ln_counters;
         LNET_UNLOCK();
 
-        rc = libcfs_snprintf(page, count,
+        rc = cfs_snprintf(page, count,
                       "%u %u %u %u %u %u %u "LPU64" "LPU64" "LPU64" "LPU64"\n",
-                      ctrs->msgs_alloc, ctrs->msgs_max,
-                      ctrs->errors,
+                      ctrs->msgs_alloc, ctrs->msgs_max, ctrs->errors,
                       ctrs->send_count, ctrs->recv_count,
                       ctrs->route_count, ctrs->drop_count,
                       ctrs->send_length, ctrs->recv_length,

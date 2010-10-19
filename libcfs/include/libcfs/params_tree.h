@@ -109,14 +109,14 @@ int LPROCFS_ENTRY_AND_CHECK(struct proc_dir_entry *dp)
         }
         return 0;
 }
-#else
+#else   /* !HAVE_PROCFS_DELETED */
 static inline
 int LPROCFS_ENTRY_AND_CHECK(struct proc_dir_entry *dp)
 {
         LPROCFS_ENTRY();
         return 0;
 }
-#endif
+#endif /* HAVE_PROCFS_DELETED */
 
 #define LPROCFS_WRITE_ENTRY()     do {  \
         cfs_down_write(&_lprocfs_lock);     \
@@ -124,7 +124,9 @@ int LPROCFS_ENTRY_AND_CHECK(struct proc_dir_entry *dp)
 #define LPROCFS_WRITE_EXIT()      do {  \
         cfs_up_write(&_lprocfs_lock);       \
 } while(0)
-#else
+
+#else   /* !LPROCFS */
+
 struct dummy {;};
 
 struct libcfs_seq_operations;
@@ -240,7 +242,7 @@ do{                                                        \
         rc = 0;                                            \
 }while(0)
 
-#endif
+#endif  /* LPROCFS */
 
 #define LPE_HASH_CUR_BITS       8
 #define LPE_HASH_MAX_BITS       24
@@ -376,19 +378,20 @@ typedef struct libcfs_param_info {
 }libcfs_param_info_t;
 
 enum libcfs_param_value_type {
-        LP_D16          = 0,
-        LP_D32          = 1,
-        LP_D64          = 2,
-        LP_U8           = 3,
-        LP_U16          = 4,
-        LP_U32          = 5,
-        LP_U64          = 6,
-        LP_STR          = 7,
-        LP_DB           = 8,    /* double:
+        LP_S8           = 0,
+        LP_S16          = 1,
+        LP_S32          = 2,
+        LP_S64          = 3,
+        LP_U8           = 4,
+        LP_U16          = 5,
+        LP_U32          = 6,
+        LP_U64          = 7,
+        LP_STR          = 8,
+        LP_DB           = 9,    /* double:
                                    timeval and lprocfs_read_frac_helper */
 };
 typedef struct libcfs_param_data {
-        enum libcfs_param_value_type    param_type;
+        enum libcfs_param_value_type    param_type;     /* LP_S8, LP_S16, ... */
         char                           *param_name;
         __u32                           param_name_len;
         char                           *param_value;
@@ -397,6 +400,7 @@ typedef struct libcfs_param_data {
         __u32                           param_unit_len;
         char                            param_bulk[0];
 }libcfs_param_data_t;
+
 extern int
 libcfs_param_snprintf_common(char *page, int count, void *cb_data,
                              enum libcfs_param_value_type type,

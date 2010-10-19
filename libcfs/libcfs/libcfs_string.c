@@ -66,8 +66,8 @@ static int libcfs_strncasecmp(const char *s1, const char *s2, size_t n)
 }
 
 /* Convert a text string to a bitmask */
-int libcfs_str2mask(const char *str, const char *(*bit2str)(int bit),
-                    int *oldmask, int minmask, int allmask)
+int cfs_str2mask(const char *str, const char *(*bit2str)(int bit),
+                 int *oldmask, int minmask, int allmask)
 {
         char op = 0;
         int newmask = minmask, i, len, found = 0;
@@ -128,9 +128,10 @@ int libcfs_str2mask(const char *str, const char *(*bit2str)(int bit),
         *oldmask = newmask;
         return 0;
 }
+EXPORT_SYMBOL(cfs_str2mask);
 
 /* Duplicate a string in a platform-independent way */
-char *libcfs_strdup(const char *str, u_int32_t flags)
+char *cfs_strdup(const char *str, u_int32_t flags)
 {
         size_t lenz; /* length of str + zero byte */
         char *dup_str;
@@ -145,9 +146,10 @@ char *libcfs_strdup(const char *str, u_int32_t flags)
 
         return dup_str;
 }
+EXPORT_SYMBOL(cfs_strdup);
 
 /* safe vsnprintf */
-int libcfs_vsnprintf(char *buf, size_t size, const char *fmt, va_list args)
+int cfs_vsnprintf(char *buf, size_t size, const char *fmt, va_list args)
 {
         int i;
 
@@ -156,20 +158,18 @@ int libcfs_vsnprintf(char *buf, size_t size, const char *fmt, va_list args)
 
         return  i = (i >= size) ? size - 1 : i;
 }
+EXPORT_SYMBOL(cfs_vsnprintf);
 
 /* safe snprintf */
-int libcfs_snprintf(char *buf, size_t size, const char *fmt, ...)
+int cfs_snprintf(char *buf, size_t size, const char *fmt, ...)
 {
         va_list args;
         int i;
 
         va_start(args, fmt);
-        i=libcfs_vsnprintf(buf,size,fmt,args);
+        i=cfs_vsnprintf(buf,size,fmt,args);
         va_end(args);
 
         return  i;
 }
-EXPORT_SYMBOL(libcfs_str2mask);
-EXPORT_SYMBOL(libcfs_strdup);
-EXPORT_SYMBOL(libcfs_vsnprintf);
-EXPORT_SYMBOL(libcfs_snprintf);
+EXPORT_SYMBOL(cfs_snprintf);

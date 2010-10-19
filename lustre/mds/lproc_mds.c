@@ -52,7 +52,7 @@ static int lprocfs_mds_rd_evictostnids(char *page, char **start, off_t off,
         LASSERT(obd != NULL);
         temp = obd->u.mds.mds_evict_ost_nids;
 
-        return libcfs_param_snprintf(page, count, data, LP_D32, "%d\n", temp);
+        return libcfs_param_snprintf(page, count, data, LP_S32, "%d\n", temp);
 }
 
 static int lprocfs_mds_wr_evictostnids(libcfs_file_t *file,

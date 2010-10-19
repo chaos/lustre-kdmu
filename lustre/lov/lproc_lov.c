@@ -157,7 +157,7 @@ static int lov_rd_stripecount(char *page, char **start, off_t off, int count,
         desc = &dev->u.lov.desc;
         temp = (__s16)(desc->ld_default_stripe_count + 1) - 1;
 
-        return libcfs_param_snprintf(page, count, data, LP_D32, "%d\n", temp);
+        return libcfs_param_snprintf(page, count, data, LP_S32, "%d\n", temp);
 }
 
 static int lov_wr_stripecount(libcfs_file_t *file, const char *buffer,

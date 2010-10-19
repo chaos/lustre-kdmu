@@ -53,7 +53,7 @@ static int osc_rd_active(char *page, char **start, off_t off,
         LIBCFS_PARAM_GET_DATA(dev, data, NULL);
         LPROCFS_CLIMP_CHECK(dev);
         temp = !dev->u.cli.cl_import->imp_deactive;
-        rc = libcfs_param_snprintf(page, count, data, LP_D32, "%d\n", temp);
+        rc = libcfs_param_snprintf(page, count, data, LP_S32, "%d\n", temp);
         LPROCFS_CLIMP_EXIT(dev);
         return rc;
 }
@@ -92,7 +92,7 @@ static int osc_rd_max_pages_per_rpc(char *page, char **start, off_t off,
         LIBCFS_PARAM_GET_DATA(dev, data, NULL);
         cli = &dev->u.cli;
         client_obd_list_lock(&cli->cl_loi_list_lock);
-        rc = libcfs_param_snprintf(page, count, data, LP_D32, "%d\n",
+        rc = libcfs_param_snprintf(page, count, data, LP_S32, "%d\n",
                                    cli->cl_max_pages_per_rpc);
         client_obd_list_unlock(&cli->cl_loi_list_lock);
 
@@ -138,7 +138,7 @@ static int osc_rd_max_rpcs_in_flight(char *page, char **start, off_t off,
         LIBCFS_PARAM_GET_DATA(dev, data, NULL);
         cli = &dev->u.cli;
         client_obd_list_lock(&cli->cl_loi_list_lock);
-        rc = libcfs_param_snprintf(page, count, data, LP_D32, "%u\n",
+        rc = libcfs_param_snprintf(page, count, data, LP_S32, "%u\n",
                                    cli->cl_max_rpcs_in_flight);
         client_obd_list_unlock(&cli->cl_loi_list_lock);
 
@@ -303,7 +303,7 @@ static int osc_rd_grant_shrink_interval(char *page, char **start, off_t off,
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         if (obd == NULL)
                 return 0;
-        return libcfs_param_snprintf(page, count, data, LP_D32, "%d\n",
+        return libcfs_param_snprintf(page, count, data, LP_S32, "%d\n",
                             obd->u.cli.cl_grant_shrink_interval);
 }
 
@@ -338,7 +338,7 @@ static int osc_rd_create_count(char *page, char **start, off_t off, int count,
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         if (obd == NULL)
                 return 0;
-        return libcfs_param_snprintf(page, count, data, LP_D32, "%d\n",
+        return libcfs_param_snprintf(page, count, data, LP_S32, "%d\n",
                             obd->u.cli.cl_oscc.oscc_grow_count);
 }
 
@@ -410,7 +410,7 @@ static int osc_rd_max_create_count(char *page, char **start, off_t off,
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         if (obd == NULL)
                 return 0;
-        return libcfs_param_snprintf(page, count, data, LP_D32, "%d\n",
+        return libcfs_param_snprintf(page, count, data, LP_S32, "%d\n",
                             obd->u.cli.cl_oscc.oscc_max_grow_count);
 }
 
@@ -486,7 +486,7 @@ static int osc_rd_checksum(char *page, char **start, off_t off, int count,
                 return 0;
         temp = obd->u.cli.cl_checksum ? 1 : 0;
 
-        return libcfs_param_snprintf(page, count, data, LP_D32, "%d\n", temp);
+        return libcfs_param_snprintf(page, count, data, LP_S32, "%d\n", temp);
 }
 
 static int osc_wr_checksum(libcfs_file_t *file, const char *buffer,
@@ -577,7 +577,7 @@ static int osc_rd_resend_count(char *page, char **start, off_t off, int count,
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         temp = cfs_atomic_read(&obd->u.cli.cl_resends);
 
-        return libcfs_param_snprintf(page, count, data, LP_D32, "%u\n", temp);
+        return libcfs_param_snprintf(page, count, data, LP_S32, "%u\n", temp);
 }
 
 static int osc_wr_resend_count(libcfs_file_t *file, const char *buffer,

@@ -46,20 +46,19 @@
 #include <libcfs/params_tree.h>
 
 #ifdef __KERNEL__
-/* for bug 10866, global variable */
+/* for bug 10866, global variable, moved from obdclass/lprocfs_status.c */
 CFS_DECLARE_RWSEM(_lprocfs_lock);
 EXPORT_SYMBOL(_lprocfs_lock);
 
 static cfs_rw_semaphore_t libcfs_param_sem;
 libcfs_param_entry_t *libcfs_param_lnet_root;
+EXPORT_SYMBOL(libcfs_param_lnet_root);
 
 static void free_param(libcfs_param_entry_t *lpe)
 {
-        if (S_ISLNK(lpe->lpe_mode)) {
+        if (S_ISLNK(lpe->lpe_mode))
                 LIBCFS_FREE(lpe->lpe_data, strlen(lpe->lpe_data) + 1);
-                lpe->lpe_data = NULL;
-        }
-        if (lpe->lpe_data != NULL && lpe->lpe_cb_sfops == NULL)
+        else if (lpe->lpe_data != NULL && lpe->lpe_cb_sfops == NULL)
                 /* seq params use orig data can't be freed */
                 LIBCFS_FREE_PARAMDATA(lpe->lpe_data);
         if (lpe->lpe_hash_t != NULL)
@@ -76,6 +75,7 @@ libcfs_param_entry_t *libcfs_param_get(libcfs_param_entry_t *lpe)
 
         return lpe;
 }
+EXPORT_SYMBOL(libcfs_param_get);
 
 /**
  * derefer the entry and free it automatically if (refcount == 0)
@@ -89,6 +89,7 @@ void libcfs_param_put(libcfs_param_entry_t *lpe)
         if (cfs_atomic_dec_and_test(&lpe->lpe_refcount))
                 free_param(lpe);
 }
+EXPORT_SYMBOL(libcfs_param_put);
 
 static void *lpe_hash_get(cfs_hlist_node_t *hnode)
 {
@@ -157,6 +158,7 @@ libcfs_param_entry_t *libcfs_param_get_root(void)
 {
         return (&libcfs_param_root);
 }
+EXPORT_SYMBOL(libcfs_param_get_root);
 
 void libcfs_param_root_init(void)
 {
@@ -198,6 +200,7 @@ struct libcfs_param_cb_data *libcfs_param_cb_data_alloc(void *data, int flag)
 
         return cb_data;
 }
+EXPORT_SYMBOL(libcfs_param_cb_data_alloc);
 
 void libcfs_param_cb_data_free(struct libcfs_param_cb_data *cb_data, int flag)
 {
@@ -209,6 +212,7 @@ void libcfs_param_cb_data_free(struct libcfs_param_cb_data *cb_data, int flag)
                 LIBCFS_FREE(cb_data, sizeof(*cb_data));
         }
 }
+EXPORT_SYMBOL(libcfs_param_cb_data_free);
 
 /**
  * Basic lookup function
@@ -353,6 +357,7 @@ libcfs_param_lookup(const char *name, libcfs_param_entry_t *parent)
 
         return lpe;
 }
+EXPORT_SYMBOL(libcfs_param_lookup);
 
 /**
  * Add an entry to params tree by it parent and its name.
@@ -455,12 +460,14 @@ libcfs_param_create(const char *name, mode_t mode,
 
         return add_param(name, mode, parent);
 }
+EXPORT_SYMBOL(libcfs_param_create);
 
 libcfs_param_entry_t *
 libcfs_param_mkdir(const char *name, libcfs_param_entry_t *parent)
 {
         return add_param(name, S_IFDIR | S_IRUGO | S_IXUGO, parent);
 }
+EXPORT_SYMBOL(libcfs_param_mkdir);
 
 static void _remove_param(libcfs_param_entry_t *lpe);
 libcfs_param_entry_t *
@@ -485,6 +492,7 @@ libcfs_param_symlink(const char *name, libcfs_param_entry_t *parent,
 
         return lpe;
 }
+EXPORT_SYMBOL(libcfs_param_symlink);
 
 /**
  * Remove an entry and all of its children from params_tree
@@ -503,7 +511,7 @@ static void _remove_param(libcfs_param_entry_t *lpe)
         while (1) {
                 while (rm_lpe->lpe_hash_t != NULL) {
                         temp = rm_lpe;
-                        /* find the first hnode */
+                        /* get the first hnode */
                         rm_lpe = cfs_hash_lookup(temp->lpe_hash_t, NULL);
                         if (rm_lpe == NULL) {
                                 rm_lpe = temp;
@@ -513,7 +521,8 @@ static void _remove_param(libcfs_param_entry_t *lpe)
                 }
                 temp = rm_lpe->lpe_parent;
                 cfs_down_write(&temp->lpe_rw_sem);
-                CDEBUG(D_INFO, "remove %s from %s\n", rm_lpe->lpe_name, temp->lpe_name);
+                CDEBUG(D_INFO,
+                       "remove %s from %s\n", rm_lpe->lpe_name, temp->lpe_name);
                 rm_lpe = cfs_hash_del_key(temp->lpe_hash_t,
                                           (void *)rm_lpe->lpe_name);
                 libcfs_param_put(rm_lpe);
@@ -552,6 +561,7 @@ void libcfs_param_remove(const char *name, libcfs_param_entry_t *lpe)
 
         return ((name == NULL) ? _remove_param(lpe) : remove_param(name, lpe));
 }
+EXPORT_SYMBOL(libcfs_param_remove);
 
 /**
  * List all the subdirs of an entry by ioctl.
@@ -679,9 +689,9 @@ int libcfs_param_seq_print_common(libcfs_seq_file_t *seq,
         /* Got this code from seq_printf*/
         if (seq->count < seq->size) {
                 va_start(args, fmt);
-                len = libcfs_vsnprintf(seq->buf + seq->count,
-                                       seq->size - seq->count,
-                                       fmt, args);
+                len = cfs_vsnprintf(seq->buf + seq->count,
+                                    seq->size - seq->count,
+                                    fmt, args);
                 va_end(args);
                 if (seq->count + len < seq->size) {
                         seq->count += len;
@@ -692,6 +702,7 @@ int libcfs_param_seq_print_common(libcfs_seq_file_t *seq,
 
         return -1;
 }
+EXPORT_SYMBOL(libcfs_param_seq_print_common);
 
 void libcfs_seq_release(libcfs_inode_t *inode, libcfs_file_t *file)
 {
@@ -715,6 +726,7 @@ int libcfs_param_seq_release_common(libcfs_inode_t *inode, libcfs_file_t *file)
         LPROCFS_EXIT();
         return 0;
 }
+EXPORT_SYMBOL(libcfs_param_seq_release_common);
 
 int libcfs_param_seq_puts_common(libcfs_seq_file_t *seq,
                            const char *s)
@@ -728,6 +740,7 @@ int libcfs_param_seq_puts_common(libcfs_seq_file_t *seq,
         seq->count = seq->size;
         return -1;
 }
+EXPORT_SYMBOL(libcfs_param_seq_puts_common);
 
 int libcfs_param_seq_putc_common(libcfs_seq_file_t *seq,
                                 const char c)
@@ -738,6 +751,7 @@ int libcfs_param_seq_putc_common(libcfs_seq_file_t *seq,
         }
         return -1;
 }
+EXPORT_SYMBOL(libcfs_param_seq_putc_common);
 
 static void
 libcfs_param_seq_finiargs(struct libcfs_param_seq_args *args)
@@ -1041,7 +1055,7 @@ static int libcfs_param_normal_read(char *buf, loff_t *ppos,
 int libcfs_param_read(const char *path, char *buf, int nbytes, loff_t *ppos,
                       int *eof)
 {
-        libcfs_param_entry_t *entry;
+        libcfs_param_entry_t      *entry;
         int                        rc = 0;
         int                        count;
 
@@ -1051,19 +1065,21 @@ int libcfs_param_read(const char *path, char *buf, int nbytes, loff_t *ppos,
         }
         /* lookup the entry according to its pathname */
         entry = lookup_param_by_path(path, NULL);
-        if (entry == NULL) {
-                CERROR("The params entry %s doesn't exist.\n", path);
+        if (entry == NULL)
                 return -ENOENT;
-        }
 
         *eof = 0;
         count = (CFS_PAGE_SIZE > nbytes) ? nbytes : CFS_PAGE_SIZE;
 
         cfs_down_read(&entry->lpe_rw_sem);
-        if (IS_SEQ_LPE(entry))
-                rc = libcfs_param_seq_read(buf, ppos, count, eof, entry);
-        else if (entry->lpe_cb_read != NULL)
-                rc = libcfs_param_normal_read(buf, ppos, count, eof, entry);
+        if (entry->lpe_mode & S_IRUSR) {
+                if (IS_SEQ_LPE(entry))
+                        rc = libcfs_param_seq_read(buf, ppos, count,
+                                                   eof, entry);
+                else if (entry->lpe_cb_read != NULL)
+                        rc = libcfs_param_normal_read(buf, ppos, count,
+                                                      eof, entry);
+        }
         cfs_up_read(&entry->lpe_rw_sem);
 
         libcfs_param_put(entry);
@@ -1078,11 +1094,8 @@ static int libcfs_seq_file_write(char *buf, int count,
         int rc;
 
         rc = libcfs_param_seq_initargs(&args);
-        if (rc) {
-                CERROR("Init seq failed for %s rc %d\n",
-                        lpe->lpe_name, rc);
+        if (rc)
                 RETURN(rc);
-        }
 
         rc = libcfs_param_seq_open(lpe, &args, buf, count);
         if (rc) {
@@ -1103,27 +1116,26 @@ free:
 int libcfs_param_write(const char *path, char *buf, int count)
 {
         libcfs_param_entry_t *entry;
-        int                        rc = 0;
+        int                   rc = 0;
 
         if (path == NULL) {
                 CERROR("path is null.\n");
                 return -EINVAL;
         }
         entry = lookup_param_by_path(path, NULL);
-        if (entry == NULL) {
-                CERROR("The params entry %s doesn't exist.\n", path);
+        if (entry == NULL)
                 return -EINVAL;
-        }
 
         cfs_down_write(&entry->lpe_rw_sem);
-        if (IS_SEQ_LPE(entry))
-                rc = libcfs_seq_file_write(buf, count, entry);
-        else if (entry->lpe_cb_write != NULL)
-                rc = entry->lpe_cb_write(NULL, buf, count, entry->lpe_data);
-        else
-                GOTO(out, rc = -EIO);
-out:
+        if (entry->lpe_mode & S_IWUSR) {
+                if (IS_SEQ_LPE(entry))
+                        rc = libcfs_seq_file_write(buf, count, entry);
+                else if (entry->lpe_cb_write != NULL)
+                        rc = entry->lpe_cb_write(NULL, buf, count,
+                                                 entry->lpe_data);
+        }
         cfs_up_write(&entry->lpe_rw_sem);
+
         libcfs_param_put(entry);
         return rc;
 }
@@ -1133,12 +1145,10 @@ int libcfs_param_intvec_write(libcfs_file_t *filp, const char *buffer,
 {
         unsigned long temp;
         const char   *pbuf = buffer;
-        int           mult = 1;
 
         if (*pbuf == '-') {
-                mult = -mult;
                 pbuf ++;
-                temp= simple_strtoul(pbuf, NULL, 10) * mult;
+                temp = -simple_strtoul(pbuf, NULL, 10);
         } else if (pbuf[0] == '0' && toupper(pbuf[1]) == 'X') {
                 temp = simple_strtoul(pbuf, NULL, 16);
         } else {
@@ -1148,14 +1158,16 @@ int libcfs_param_intvec_write(libcfs_file_t *filp, const char *buffer,
 
         return 0;
 }
+EXPORT_SYMBOL(libcfs_param_intvec_write);
 
 int libcfs_param_intvec_read(char *page, char **start, off_t off, int count,
                              int *eof, void *data)
 {
         unsigned long *temp = ((lparcb_t *)data)->cb_data;
 
-        return libcfs_param_snprintf(page, count, data, LP_D32, NULL, *temp);
+        return libcfs_param_snprintf(page, count, data, LP_S32, NULL, *temp);
 }
+EXPORT_SYMBOL(libcfs_param_intvec_read);
 
 int libcfs_param_string_write(libcfs_file_t *filp, const char *buffer,
                               unsigned long count, void *data)
@@ -1163,13 +1175,15 @@ int libcfs_param_string_write(libcfs_file_t *filp, const char *buffer,
         memcpy(((lparcb_t *)data)->cb_data, buffer, count);
         return 0;
 }
+EXPORT_SYMBOL(libcfs_param_string_write);
 
 int libcfs_param_string_read(char *page, char **start, off_t off, int count,
                              int *eof, void *data)
 {
         return libcfs_param_snprintf(page, count, data, LP_STR, "%s",
-                                   (char *)(((lparcb_t *)data)->cb_data));
+                                     ((lparcb_t *)data)->cb_data);
 }
+EXPORT_SYMBOL(libcfs_param_string_read);
 
 void libcfs_param_sysctl_init(char *mod_name,
                               struct libcfs_param_ctl_table *table,
@@ -1188,11 +1202,13 @@ void libcfs_param_sysctl_init(char *mod_name,
                        parent->lpe_name, mod_name);
         }
 }
+EXPORT_SYMBOL(libcfs_param_sysctl_init);
 
 void libcfs_param_sysctl_fini(char *mod_name, libcfs_param_entry_t *parent)
 {
         libcfs_param_remove(mod_name, parent);
 }
+EXPORT_SYMBOL(libcfs_param_sysctl_fini);
 
 /**
  * add params in sysctl table to params_tree
@@ -1205,7 +1221,7 @@ void libcfs_param_sysctl_register(struct libcfs_param_ctl_table *table,
         if (parent == NULL)
                 return;
         /* create sys subdir */
-        for (; table->name; table ++) {
+        for (; table->name != NULL; table ++) {
                 lpe = libcfs_param_create(table->name, table->mode, parent);
                 if (lpe == NULL)
                         continue;
@@ -1222,6 +1238,7 @@ void libcfs_param_sysctl_register(struct libcfs_param_ctl_table *table,
                 libcfs_param_put(lpe);
         }
 }
+EXPORT_SYMBOL(libcfs_param_sysctl_register);
 
 /**
  * For some parameters in lnet, although they're declared as read-only by
@@ -1234,7 +1251,7 @@ static void libcfs_param_change_mode(struct libcfs_param_ctl_table *table,
         struct libcfs_param_entry *lpe = NULL;
 
         LASSERT(parent != NULL);
-        for (; table->name; table ++) {
+        for (; table->name != NULL; table ++) {
                 lpe = libcfs_param_lookup(table->name, parent);
                 if (lpe == NULL)
                         continue;
@@ -1268,6 +1285,7 @@ void libcfs_param_sysctl_change(char *mod_name,
         }
 
 }
+EXPORT_SYMBOL(libcfs_param_sysctl_change);
 
 /*
 void libcfs_param_change_mode(libcfs_param_entry_t *lpe, mode_t mode)
@@ -1287,20 +1305,22 @@ int libcfs_param_change_mode(const char *name, libcfs_param_entry_t *lpe,
                              int flag)
 {
         libcfs_param_entry_t *entry;
-        char                 *path = NULL;
 
         LASSERT(lpe != NULL || name != NULL);
 
         if (lpe == NULL && name != NULL) {
+                char *path = NULL;
+
                 LIBCFS_ALLOC(path, strlen(PTREE_ROOT) + strlen(name) + 1);
+                if (path == NULL)
+                        return -ENOMEM;
                 entry = lookup_param_by_path(path);
+                LIBCFS_FREE(path, strlen(path) + 1);
         } else if (lpe != NULL && name != NULL) {
                 entry = _lookup_param(name, strlen(name), lpe);
         } else {
                 entry = libcfs_param_get(lpe);
         }
-        if (path != NULL)
-                LIBCFS_FREE(path, strlen(path) + 1);
 
         if (entry == NULL)
                 return -EINVAL;
@@ -1330,15 +1350,18 @@ int libcfs_param_copy(int flag, char *dest, const char *src, int count)
                 return -EFAULT;
         return 0;
 }
+EXPORT_SYMBOL(libcfs_param_copy);
 
 static int get_value_len(enum libcfs_param_value_type type, char *buf)
 {
         switch (type) {
-                case LP_D16:
+                case LP_S8:
+                        return 1;
+                case LP_S16:
                         return 2;
-                case LP_D32:
+                case LP_S32:
                         return 4;
-                case LP_D64:
+                case LP_S64:
                         return 8;
                 case LP_U8:
                         return 1;
@@ -1374,11 +1397,11 @@ static void
 print_num(char *page, va_list args, enum libcfs_param_value_type type)
 {
         switch (type) {
-                case LP_D16:
-                case LP_D32:
+                case LP_S16:
+                case LP_S32:
                         memcpy_num(page, args, int);
                         break;
-                case LP_D64:
+                case LP_S64:
                         memcpy_num(page, args, long long);
                         break;
                 case LP_U8:
@@ -1414,8 +1437,7 @@ int libcfs_param_snprintf_common(char *page, int count, void *cb_data,
                                 /* sometimes value has been printed to page */
                                 done = 1;
                         else
-                                rc = libcfs_vsnprintf(page, count,
-                                                      format, args);
+                                rc = cfs_vsnprintf(page, count, format, args);
                         if (done || rc > 0)
                                 rc = libcfs_param_data_pack(page, count,
                                                     LP_STR, name, unit);
@@ -1430,12 +1452,12 @@ int libcfs_param_snprintf_common(char *page, int count, void *cb_data,
         } else {
                 if (format != NULL) {
                         if (name != NULL)
-                                rc = libcfs_snprintf(page, count, "%s", name);
-                        rc += libcfs_vsnprintf(page + rc, count - rc,
-                                               format, args);
+                                rc = cfs_snprintf(page, count, "%s", name);
+                        rc += cfs_vsnprintf(page + rc, count - rc,
+                                            format, args);
                         if (unit != NULL)
-                                rc += libcfs_snprintf(page + rc, count - rc,
-                                                      "%s\n", unit);
+                                rc += cfs_snprintf(page + rc, count - rc,
+                                                   "%s\n", unit);
                 } else {
                         rc = get_value_len(type, page);
                 }
@@ -1444,6 +1466,7 @@ int libcfs_param_snprintf_common(char *page, int count, void *cb_data,
 
         return rc;
 }
+EXPORT_SYMBOL(libcfs_param_snprintf_common);
 
 /**
  * Validate libcfs_param_data
@@ -1572,29 +1595,4 @@ out:
         return rc < 0 ? rc : data_len;
 }
 
-EXPORT_SYMBOL(libcfs_param_get_root);
-EXPORT_SYMBOL(libcfs_param_lnet_root);
-EXPORT_SYMBOL(libcfs_param_get);
-EXPORT_SYMBOL(libcfs_param_put);
-EXPORT_SYMBOL(libcfs_param_lookup);
-EXPORT_SYMBOL(libcfs_param_create);
-EXPORT_SYMBOL(libcfs_param_mkdir);
-EXPORT_SYMBOL(libcfs_param_symlink);
-EXPORT_SYMBOL(libcfs_param_remove);
-EXPORT_SYMBOL(libcfs_param_intvec_read);
-EXPORT_SYMBOL(libcfs_param_intvec_write);
-EXPORT_SYMBOL(libcfs_param_string_read);
-EXPORT_SYMBOL(libcfs_param_string_write);
-EXPORT_SYMBOL(libcfs_param_sysctl_init);
-EXPORT_SYMBOL(libcfs_param_sysctl_fini);
-EXPORT_SYMBOL(libcfs_param_sysctl_register);
-EXPORT_SYMBOL(libcfs_param_sysctl_change);
-EXPORT_SYMBOL(libcfs_param_snprintf_common);
-EXPORT_SYMBOL(libcfs_param_copy);
-EXPORT_SYMBOL(libcfs_param_cb_data_alloc);
-EXPORT_SYMBOL(libcfs_param_cb_data_free);
-EXPORT_SYMBOL(libcfs_param_seq_release_common);
-EXPORT_SYMBOL(libcfs_param_seq_print_common);
-EXPORT_SYMBOL(libcfs_param_seq_puts_common);
-EXPORT_SYMBOL(libcfs_param_seq_putc_common);
 #endif /* __KERNEL__ */

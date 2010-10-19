@@ -62,8 +62,8 @@ typedef struct kstatfs cfs_kstatfs_t;
 #define cfs_filp_size(f)               (i_size_read((f)->f_dentry->d_inode))
 #define cfs_filp_poff(f)                (&(f)->f_pos)
 
-/* 
- * XXX Do we need to parse flags and mode in cfs_filp_open? 
+/*
+ * XXX Do we need to parse flags and mode in cfs_filp_open?
  */
 cfs_file_t *cfs_filp_open (const char *name, int flags, int mode, int *err);
 #define cfs_filp_close(f)                   filp_close(f, NULL)
@@ -87,7 +87,6 @@ typedef struct file_lock cfs_flock_t;
 #define cfs_flock_set_end(fl, end)          do { (fl)->fl_end = (end); } while(0)
 
 ssize_t cfs_user_write (cfs_file_t *filp, const char *buf, size_t count, loff_t *offset);
-ssize_t cfs_write_fd (int fd, const char *buf, size_t count, loff_t *offset);
 
 #define CFS_IFSHIFT 12
 

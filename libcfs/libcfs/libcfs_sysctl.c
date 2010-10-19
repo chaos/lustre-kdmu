@@ -128,7 +128,7 @@ static int libcfs_param_debug_mb_read(char *page, char **start, off_t off,
 
         temp = cfs_trace_get_debug_mb();
 
-        return libcfs_param_snprintf(page, count, data, LP_D32, NULL, temp);
+        return libcfs_param_snprintf(page, count, data, LP_S32, NULL, temp);
 }
 
 static int libcfs_param_debug_mb_write(libcfs_file_t *filp,
@@ -148,7 +148,7 @@ libcfs_param_console_max_delay_cs_read(char *page, char **start, off_t off,
 
         max_delay_cs = cfs_duration_sec(libcfs_console_max_delay * 100);
 
-        return libcfs_param_snprintf(page, count, data, LP_D32,
+        return libcfs_param_snprintf(page, count, data, LP_S32,
                                      NULL, max_delay_cs);
 }
 
@@ -181,7 +181,7 @@ libcfs_param_console_min_delay_cs_read(char *page, char **start, off_t off,
 
         min_delay_cs = cfs_duration_sec(libcfs_console_min_delay * 100);
 
-        return libcfs_param_snprintf(page, count, data, LP_D32,
+        return libcfs_param_snprintf(page, count, data, LP_S32,
                                      NULL, min_delay_cs);
 }
 
@@ -252,7 +252,7 @@ static int libcfs_param_memused_read(char *page, char **start, off_t off,
 
         temp = cfs_atomic_read(memused);
 
-        return libcfs_param_snprintf(page, count, data, LP_D32, NULL, temp);
+        return libcfs_param_snprintf(page, count, data, LP_S32, NULL, temp);
 }
 
 static int libcfs_param_force_lbug_write(libcfs_file_t *filp,

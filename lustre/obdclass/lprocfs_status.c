@@ -529,7 +529,7 @@ int lprocfs_rd_atomic(char *page, char **start, off_t off,
         LIBCFS_PARAM_GET_DATA(atom, data, NULL);
         LASSERT(atom != NULL);
 
-        return libcfs_param_snprintf(page, count, data, LP_D32, "%d\n",
+        return libcfs_param_snprintf(page, count, data, LP_S32, "%d\n",
                                      cfs_atomic_read(atom));
 }
 
@@ -1151,7 +1151,7 @@ int lprocfs_rd_num_exports(char *page, char **start, off_t off, int count,
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         LASSERT(obd != NULL);
 
-        return libcfs_param_snprintf(page, count, data, LP_D32,
+        return libcfs_param_snprintf(page, count, data, LP_S32,
                                      "%u\n", obd->obd_num_exports);
 }
 
@@ -1163,7 +1163,7 @@ int lprocfs_rd_numrefs(char *page, char **start, off_t off, int count,
         LIBCFS_PARAM_GET_DATA(class, data, NULL);
         LASSERT(class != NULL);
 
-        return libcfs_param_snprintf(page, count, data, LP_D32,
+        return libcfs_param_snprintf(page, count, data, LP_S32,
                                      "%d\n", class->typ_refcnt);
 }
 
@@ -2417,7 +2417,7 @@ int lprocfs_obd_rd_recovery_time_soft(char *page, char **start, off_t off,
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         LASSERT(obd != NULL);
 
-        return libcfs_param_snprintf(page, count, data, LP_D32, "%d\n",
+        return libcfs_param_snprintf(page, count, data, LP_S32, "%d\n",
                                      obd->obd_recovery_timeout);
 }
 EXPORT_SYMBOL(lprocfs_obd_rd_recovery_time_soft);

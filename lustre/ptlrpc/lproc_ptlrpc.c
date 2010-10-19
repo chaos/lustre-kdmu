@@ -258,7 +258,7 @@ ptlrpc_lprocfs_read_req_history_len(char *page, char **start, off_t off,
 
         LIBCFS_PARAM_GET_DATA(svc, data, NULL);
 
-        return libcfs_param_snprintf(page, count, data, LP_D32, "%d\n",
+        return libcfs_param_snprintf(page, count, data, LP_S32, "%d\n",
                                      svc->srv_n_history_rqbds);
 }
 
@@ -270,7 +270,7 @@ ptlrpc_lprocfs_read_req_history_max(char *page, char **start, off_t off,
 
         LIBCFS_PARAM_GET_DATA(svc, data, NULL);
 
-        return libcfs_param_snprintf(page, count, data, LP_D32, "%d\n",
+        return libcfs_param_snprintf(page, count, data, LP_S32, "%d\n",
                                      svc->srv_max_history_rqbds);
 }
 
@@ -314,7 +314,7 @@ ptlrpc_lprocfs_rd_threads_min(char *page, char **start, off_t off,
 
         LIBCFS_PARAM_GET_DATA(svc, data, NULL);
 
-        return libcfs_param_snprintf(page, count, data, LP_D32, "%d\n",
+        return libcfs_param_snprintf(page, count, data, LP_S32, "%d\n",
                                      svc->srv_threads_min);
 }
 
@@ -354,7 +354,7 @@ ptlrpc_lprocfs_rd_threads_started(char *page, char **start, off_t off,
 
         LIBCFS_PARAM_GET_DATA(svc, data, NULL);
 
-        return libcfs_param_snprintf(page, count, data, LP_D32, "%d\n",
+        return libcfs_param_snprintf(page, count, data, LP_S32, "%d\n",
                                      svc->srv_threads_started);
 }
 
@@ -366,7 +366,7 @@ ptlrpc_lprocfs_rd_threads_max(char *page, char **start, off_t off,
 
         LIBCFS_PARAM_GET_DATA(svc, data, NULL);
 
-        return libcfs_param_snprintf(page, count, data, LP_D32, "%d\n",
+        return libcfs_param_snprintf(page, count, data, LP_S32, "%d\n",
                                      svc->srv_threads_max);
 }
 
@@ -656,7 +656,7 @@ static int ptlrpc_lprocfs_rd_hp_ratio(char *page, char **start, off_t off,
 
         LIBCFS_PARAM_GET_DATA(svc, data, NULL);
 
-        return libcfs_param_snprintf(page, count, data, LP_D32, "%d",
+        return libcfs_param_snprintf(page, count, data, LP_S32, "%d",
                                      svc->srv_hpreq_ratio);
 }
 

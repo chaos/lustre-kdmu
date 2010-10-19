@@ -463,16 +463,20 @@ static int init_libcfs_module(void)
         return rc;
 }
 
-static void exit_libcfs_module(void)
+static void params_fini(void)
 {
-        int rc;
-
 #ifdef LPROCFS
         remove_proc();
 #endif
         remove_params();
         libcfs_param_root_fini();
+}
 
+static void exit_libcfs_module(void)
+{
+        int rc;
+
+        params_fini();
         CDEBUG(D_MALLOC, "before Portals cleanup: kmem %d\n",
                cfs_atomic_read(&libcfs_kmemory));
 

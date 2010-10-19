@@ -645,17 +645,17 @@ static int params_data_unpack(struct libcfs_param_data **data_ptr, char *buf)
 int params_value_output(libcfs_param_data_t *data, char *outbuf)
 {
         switch (data->param_type) {
-                case LP_D16: {
+                case LP_S16: {
                         short temp;
                         memcpy(&temp, data->param_value, data->param_value_len);
                         sprintf(outbuf, "%d", temp);
                         break; }
-                case LP_D32: {
+                case LP_S32: {
                         int temp;
                         memcpy(&temp, data->param_value, data->param_value_len);
                         sprintf(outbuf, "%d", temp);
                         break; }
-                case LP_D64: {
+                case LP_S64: {
                         long long temp;
                         memcpy(&temp, data->param_value, data->param_value_len);
                         sprintf(outbuf, "%lld", temp);
