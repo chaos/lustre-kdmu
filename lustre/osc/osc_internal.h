@@ -49,6 +49,7 @@ enum async_flags {
                                      to give the caller a chance to update
                                      or cancel the size of the io */
         ASYNC_HP = 0x10,
+        ASYNC_SYNCFS = 0x20,
 };
 
 struct obd_async_page_ops {
@@ -227,5 +228,6 @@ static inline struct osc_device *obd2osc_dev(const struct obd_device *d)
         return container_of0(d->obd_lu_dev, struct osc_device, od_cl.cd_lu_dev);
 }
 
+int osc_dlm_lock_pageref(struct ldlm_lock *dlm);
 
 #endif /* OSC_INTERNAL_H */

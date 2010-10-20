@@ -95,7 +95,7 @@ static int filter_lvbo_init(struct ldlm_resource *res)
         res->lr_lvb_env = env;
         res->lr_lvb_obj = NULL;
 
-        ofd = res->lr_namespace->ns_lvbp;
+        ofd = ldlm_res_to_ns(res)->ns_lvbp;
         LASSERT(ofd != NULL);
 
         ofd_fid_from_resid(&info->fti_fid, &res->lr_name);
@@ -197,7 +197,7 @@ static int filter_lvbo_update(struct ldlm_resource *res,
 
  disk_update:
         /* Update the LVB from the disk inode */
-        ofd = res->lr_namespace->ns_lvbp;
+        ofd = ldlm_res_to_ns(res)->ns_lvbp;
         LASSERT(ofd != NULL);
 
         if (unlikely(res->lr_lvb_obj == NULL)) {

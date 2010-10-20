@@ -508,7 +508,12 @@ int main(int argc, char *const argv[])
         char default_options[] = "";
         char *usource = NULL; /* setting to NULL to avoid gcc warning */
         char *source = NULL; /* idem */
+        char *ptr;
         char target[PATH_MAX] = {'\0'};
+        char real_path[PATH_MAX] = {'\0'};
+        char path[256], name[256];
+        FILE *f;
+        size_t sz;
         char *options, *optcopy, *orig_options = default_options;
         int i, nargs = 3, opt, rc, flags, optlen;
         static struct option long_opt[] = {
@@ -580,6 +585,35 @@ int main(int argc, char *const argv[])
                 }
         } else {
                 source = strdup(usource);
+        }
+        /**
+         * Try to get the real path to the device, in case it is a
+         * symbolic link for instance
+         */
+        if (realpath(usource, real_path) != NULL) {
+                usource = real_path;
+
+                ptr = strrchr(real_path, '/');
+                if (ptr && strncmp(ptr, "/dm-", 4) == 0 &&
+                    isdigit(*(ptr + 4))) {
+                        snprintf(path, sizeof(path),
+                                 "/sys/block/%s/dm/name", ptr+1);
+                        if ((f = fopen(path, "r"))) {
+                                /* read "<name>\n" from sysfs */
+                                if (fgets(name, sizeof(name), f) &&
+                                    (sz = strlen(name)) > 1) {
+                                        name[sz - 1] = '\0';
+                                        snprintf(real_path, sizeof(real_path),
+                                                 "/dev/mapper/%s", name);
+                                }
+                                fclose(f);
+                        }
+                }
+        }
+
+        source = convert_hostnames(usource);
+        if (!source) {
+                usage(stderr);
         }
 
         if (realpath(argv[optind + 1], target) == NULL) {

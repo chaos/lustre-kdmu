@@ -84,6 +84,9 @@ struct inode;
 #define OSD_OII_NOGEN (0)
 #define OSD_COUNTERS (0)
 
+/** Enable thandle usage statistics */
+#define OSD_THANDLE_STATS
+
 #ifdef HAVE_QUOTA_SUPPORT
 struct osd_ctxt {
         __u32 oc_uid;
@@ -126,6 +129,14 @@ struct osd_thandle {
         int                     ot_declare_write;
         int                     ot_declare_insert;
         int                     ot_declare_delete;
+#endif
+
+#ifdef OSD_THANDLE_STATS
+        /** time when this handle was allocated */
+        cfs_time_t oth_alloced;
+
+        /** time when this thanle was started */
+        cfs_time_t oth_started;
 #endif
 };
 
@@ -345,6 +356,10 @@ struct osd_thread_info {
         struct lustre_capa_key oti_capa_key;
         struct lustre_capa     oti_capa;
 
+        /** osd_device reference, initialized in osd_trans_start() and
+            used in osd_trans_stop() */
+        struct osd_device     *oti_dev;
+
         /**
          * following ipd and it structures are used for osd_index_iam_lookup()
          * these are defined separately as we might do index operation
@@ -408,6 +423,12 @@ enum {
         LPROC_OSD_CACHE_ACCESS = 4,
         LPROC_OSD_CACHE_HIT = 5,
         LPROC_OSD_CACHE_MISS = 6,
+
+#ifdef OSD_THANDLE_STATS
+        LPROC_OSD_THANDLE_STARTING,
+        LPROC_OSD_THANDLE_OPEN,
+        LPROC_OSD_THANDLE_CLOSING,
+#endif
         LPROC_OSD_LAST,
 };
 

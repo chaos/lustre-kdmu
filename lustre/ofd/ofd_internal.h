@@ -189,6 +189,11 @@ static inline struct filter_device *filter_exp(struct obd_export *exp)
         return filter_dev(obd->obd_lu_dev);
 }
 
+static inline char *filter_name(struct filter_device *ofd)
+{
+        return ofd->ofd_dt_dev.dd_lu_dev.ld_obd->obd_name;
+}
+
 struct filter_object {
         struct lu_object_header ofo_header;
         struct dt_object        ofo_obj;

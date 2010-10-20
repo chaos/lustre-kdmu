@@ -54,7 +54,6 @@
 #include "osd_internal.h"
 
 #ifdef LPROCFS
-
 static int osd_stats_init(struct osd_device *osd)
 {
         int result;
@@ -82,6 +81,17 @@ static int osd_stats_init(struct osd_device *osd)
                 lprocfs_counter_init(osd->od_stats, LPROC_OSD_CACHE_MISS,
                                      LPROCFS_CNTR_AVGMINMAX,
                                      "cache_miss", "pages");
+#ifdef OSD_THANDLE_STATS
+                lprocfs_counter_init(osd->od_stats, LPROC_OSD_THANDLE_STARTING,
+                                     LPROCFS_CNTR_AVGMINMAX,
+                                     "thandle starting", "usec");
+                lprocfs_counter_init(osd->od_stats, LPROC_OSD_THANDLE_OPEN,
+                                     LPROCFS_CNTR_AVGMINMAX,
+                                     "thandle open", "usec");
+                lprocfs_counter_init(osd->od_stats, LPROC_OSD_THANDLE_CLOSING,
+                                     LPROCFS_CNTR_AVGMINMAX,
+                                     "thandle closing", "usec");
+#endif
         } else
                 result = -ENOMEM;
 
@@ -113,9 +123,7 @@ int osd_procfs_init(struct osd_device *osd, const char *name)
                 GOTO(out, rc);
         }
 
-#ifdef LPROCFS
         osd_quota_procfs_init(osd);
-#endif
 
         rc = osd_stats_init(osd);
 
