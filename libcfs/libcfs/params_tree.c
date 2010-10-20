@@ -632,12 +632,11 @@ int libcfs_param_list(const char *parent_path, char *user_buf, int *buflen)
                 CERROR("The buffer is null.\n");
                 GOTO(out, rc = -ENOMEM);
         }
-        if (parent_path == NULL) {
-                CERROR("The full path is null.\n");
-                GOTO(out, rc = -EINVAL);
-        }
-
-        parent = lookup_param_by_path(parent_path, NULL);
+        if (parent_path == NULL)
+                /* list the entries under params_root */
+                parent = libcfs_param_get(&libcfs_param_root);
+        else
+                parent = lookup_param_by_path(parent_path, NULL);
         if (parent == NULL) {
                 CERROR("The parent entry %s doesn't exist.\n",
                        parent_path);

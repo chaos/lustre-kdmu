@@ -46,9 +46,6 @@
 
 #include <libcfs/params_tree.h>
 
-#define PTREE_PREFIX      "params_root/"
-#define PTREE_PRELEN       strlen(PTREE_PREFIX)
-
 /* parameter entry list */
 struct params_entry_list {
         int pel_name_len;

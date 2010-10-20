@@ -225,7 +225,8 @@ static int send_req_to_kernel(char *path, char *list_buf, int *buflen)
         int rc;
 
         /* pack the parameters to ioc_data */
-        data.ioc_inllen1 = strlen(path) + 1;
+        (path == NULL) ? (data.ioc_inllen1 = 0) : /* list from the root */
+                         (data.ioc_inllen1 = strlen(path) + 1);
         data.ioc_inlbuf1 = path;
         data.ioc_plen1 = *buflen;
         data.ioc_pbuf1 = list_buf;
@@ -355,7 +356,11 @@ static int params_match(char *parent_path, struct params_preg_list *pregl,
                         continue;
                 }
                 /* matched: copy full path */
-                pel_name_len = strlen(parent_path) + 1 + curdir->pel_name_len;
+                if (parent_path == NULL)
+                        pel_name_len = curdir->pel_name_len;
+                else
+                        pel_name_len = strlen(parent_path) + 1 +
+                                       curdir->pel_name_len;
                 pel_name = malloc(pel_name_len + 1);
                 if (!pel_name) {
                         fprintf(stderr, "error: %s: No memory for pel_name.\n",
@@ -364,10 +369,14 @@ static int params_match(char *parent_path, struct params_preg_list *pregl,
                         goto out;
                 }
                 memset(pel_name, 0, pel_name_len + 1);
-                strncpy(pel_name, parent_path, strlen(parent_path));
-                pel_name[strlen(parent_path)] = '/';
-                strncpy(pel_name + strlen(parent_path) + 1,
-                        curdir->pel_name, curdir->pel_name_len);
+                if (parent_path == NULL) {
+                        strncpy(pel_name, curdir->pel_name, curdir->pel_name_len);
+                } else {
+                        strncpy(pel_name, parent_path, strlen(parent_path));
+                        pel_name[strlen(parent_path)] = '/';
+                        strncpy(pel_name + strlen(parent_path) + 1,
+                                curdir->pel_name, curdir->pel_name_len);
+                }
                 /* if reach the end of preg list, copy the matched results;
                  * otherwise, if the current entry is a dir or symlink,
                  * read through its children. */
@@ -431,7 +440,8 @@ int params_list(const char *pattern, struct params_entry_list **pel_ptr)
 
         preg_head = preg_list_create(pattern);
         if (preg_head) {
-                rc = params_match("params_root", preg_head, &pel);
+                /* match from the root */
+                rc = params_match(NULL, preg_head, &pel);
                 params_free_preglist(preg_head);
                 if ((*pel_ptr)->pel_next == NULL)
                         rc = -ESRCH;

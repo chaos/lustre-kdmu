@@ -274,7 +274,7 @@ static int find_target_obdpath(char *fsname, char *path)
                 return rc;
         if (pel->pel_next == NULL)
                 return -ENOENT;
-        strcpy(path, pel->pel_next->pel_name + PTREE_PRELEN);
+        strcpy(path, pel->pel_next->pel_name);
         if(pel != NULL)
                 params_free_entrylist(pel);
 
@@ -296,7 +296,7 @@ static int find_poolpath(char *fsname, char *poolname, char *poolpath)
                 return -ENODEV;
         if (rc < 0)
                 return -EINVAL;
-        strcpy(poolpath, pel->pel_next->pel_name + PTREE_PRELEN);
+        strcpy(poolpath, pel->pel_next->pel_name);
         if (pel != NULL)
                 params_free_entrylist(pel);
 
@@ -641,7 +641,7 @@ static int first_match(char *pattern, char *buffer)
                return rc;
         if (pel->pel_next == NULL)
                 return -ENOENT;
-        strcpy(buffer, pel->pel_next->pel_name + PTREE_PRELEN);
+        strcpy(buffer, pel->pel_next->pel_name);
         if (pel != NULL)
                 params_free_entrylist(pel);
 
@@ -838,7 +838,7 @@ int llapi_get_poollist(const char *name, char **poollist, int list_size,
                 /* check output bounds */
                 if (nb_entries >= list_size)
                         return -EOVERFLOW;
-                pool = pel->pel_name + PTREE_PRELEN + strlen(pathname) - 1;
+                pool = pel->pel_name + strlen(pathname) - 1;
                 /* +2 for '.' and final '\0' */
                 if (used + strlen(pool) + strlen(fsname) + 2 > buffer_size)
                         return -EOVERFLOW;

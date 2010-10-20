@@ -580,7 +580,6 @@ static char *strrpl(char *str, char src, char dst)
                 tmp = (char *)malloc(2 * strlen(str) + 1);
                 if (tmp == NULL)
                         return NULL;
-                memset(tmp, 0, 2 * strlen(str) + 1);
                 head = tmp;
                 while (*str != '\0') {
                         *tmp = *str;
@@ -592,6 +591,7 @@ static char *strrpl(char *str, char src, char dst)
                         str++;
                         tmp++;
                 }
+                *tmp = '\0';
         } else {
                 head = str;
                 while (*str != '\0') {
@@ -632,8 +632,6 @@ static void append_filetype(char *filename, mode_t mode)
  * For eg. obdfilter.lustre-OST0000.stats */
 static char *display_name(char *filename, mode_t mode, int show_type)
 {
-        if (strncmp(filename, PTREE_PREFIX, PTREE_PRELEN) == 0)
-                filename += PTREE_PRELEN;
         if (strncmp(filename, "lustre/", strlen("lustre/")) == 0)
                 filename += strlen("lustre/");
         else if (strncmp(filename, "lnet/", strlen("lnet/")) == 0)
@@ -740,8 +738,7 @@ static int getparam_display(struct params_opts *popt, char *pattern)
                         printf("%s=", valuename);
                 while (!eof) {
                         params_count =
-                                params_read(pel->pel_name + PTREE_PRELEN,
-                                            pel->pel_name_len - PTREE_PRELEN,
+                                params_read(pel->pel_name, pel->pel_name_len,
                                             buf, CFS_PAGE_SIZE, &offset, &eof);
                         if (params_count > 0) {
                                 params_show(popt->show_path, buf);
@@ -795,8 +792,7 @@ static int setparam_display(struct params_opts *popt, char *pattern,
                         goto next;
                 }
                 offset = 0;
-                rc = params_write(pel->pel_name + PTREE_PRELEN,
-                                  pel->pel_name_len - PTREE_PRELEN,
+                rc = params_write(pel->pel_name, pel->pel_name_len,
                                   value, strlen(value), offset);
                 if (rc >= 0 && popt->show_path)
                         printf("%s=%s\n", valuename, value);
