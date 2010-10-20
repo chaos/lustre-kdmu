@@ -834,7 +834,7 @@ int llapi_get_poollist(const char *name, char **poollist, int list_size,
 
         pel_head = pel;
         pel = pel->pel_next;
-        while(pel != NULL) {
+        while (pel != NULL) {
                 /* check output bounds */
                 if (nb_entries >= list_size)
                         return -EOVERFLOW;
@@ -2215,12 +2215,10 @@ int llapi_target_iterate(int type_num, char **obd_type,void *args,llapi_cb_t cb)
                 offset = rc;
                 memset(buf, 0, sizeof(buf));
                 while ((rc = params_unpack(inbuf + pos, buf, sizeof(buf)))) {
-                        char *obd_type_name = NULL;
-                        char *obd_name = NULL;
-                        char *obd_uuid = NULL;
+                        char *obd_type_name;
+                        char *obd_name;
+                        char *obd_uuid;
                         char *bufp = buf;
-                        struct obd_ioctl_data datal = { 0, };
-                        struct obd_statfs osfs_buffer;
 
                         while(bufp[0] == ' ')
                                 ++bufp;
@@ -2230,11 +2228,6 @@ int llapi_target_iterate(int type_num, char **obd_type,void *args,llapi_cb_t cb)
                         }
                         obd_name = strsep(&bufp, " ");
                         obd_uuid = strsep(&bufp, " ");
-
-                        memset(&osfs_buffer, 0, sizeof (osfs_buffer));
-
-                        datal.ioc_pbuf1 = (char *)&osfs_buffer;
-                        datal.ioc_plen1 = sizeof(osfs_buffer);
 
                         for (i = 0; i < type_num; i++) {
                                 if (strcmp(obd_type_name, obd_type[i]) != 0)
@@ -2247,26 +2240,6 @@ int llapi_target_iterate(int type_num, char **obd_type,void *args,llapi_cb_t cb)
         }
 
         return rc;
-}
-
-static void do_target_check(char *obd_type_name, char *obd_name,
-                            char *obd_uuid, void *args)
-{
-        int rc;
-
-        rc = llapi_ping(obd_type_name, obd_name);
-        if (rc == ENOTCONN) {
-                llapi_printf(LLAPI_MSG_NORMAL, "%s inactive.\n", obd_name);
-        } else if (rc) {
-                llapi_err(LLAPI_MSG_ERROR, "error: check '%s'", obd_name);
-        } else {
-                llapi_printf(LLAPI_MSG_NORMAL, "%s active.\n", obd_name);
-        }
-}
-
-int llapi_target_check(int type_num, char **obd_type, char *dir)
-{
-        return llapi_target_iterate(type_num, obd_type, NULL, do_target_check);
 }
 
 #undef MAX_STRING_SIZE

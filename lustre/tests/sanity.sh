@@ -4732,7 +4732,7 @@ test_102c() {
 	[ "$OSTCOUNT" -lt "2" ] && skip_env "skipping 2-stripe test" && return
 	mkdir -p $DIR/$tdir
 	chown $RUNAS_ID $DIR/$tdir
-    # we access params_tree by ioctl, so have to change permission on /dev/*
+        # we access params_tree by ioctl, so have to change permission on /dev/*
 	chown $RUNAS_ID /dev/lnet
 	local testfile=$DIR/$tdir/$tfile
 	$RUNAS $SETSTRIPE -s 65536 -i 1 -c 2 $testfile||error "setstripe failed"
@@ -7738,10 +7738,7 @@ test_217() { # bug 22430
 run_test 217 "check lctl ping for hostnames with hiphen ('-')"
 
 test_218() { # bug 15384
-    #cleanup/setup to check params_tree build/remove correctly
-    cleanup
-    setup
-    #compare parameters
+    #compare parameters between /proc and params_tree
     difflog=$TMP/diff_$tfile
     for node in $(nodes_list); do
         echo "node=$node"

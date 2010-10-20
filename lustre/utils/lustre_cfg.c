@@ -550,6 +550,13 @@ int jt_lcfg_mgsparam(int argc, char **argv)
         return rc;
 }
 
+/* {list/set/get}_param -RFNn param_patterns
+ * In param_patterns, '.' is a speciall character. It can be
+ * -a component separator to split the path. For this, we translate it into '/',
+ *  e.g. from "obdfilter.lustre-OST000?.read*" to "obdfilter/lustre-OST000?/read*"
+ * -part of param name in IP address. In this case, we add escape character '\\'
+ *  e.g. from "ldlm.*.MGC10.10.121.1@tcp" to "ldlm.*.MGC10\.10\.121\.1@tcp"
+ */
 struct params_opts{
         int show_path:1;
         int only_path:1;
@@ -557,15 +564,52 @@ struct params_opts{
         int recursive:1;
 };
 
-static void strrpl(char *str, char src, char dst)
+static char *strrpl(char *str, char src, char dst)
 {
+        char *head;
+
         if (str == NULL)
-                return;
-        while (*str != '\0') {
-                if (*str == src)
-                        *str = dst;
-                str ++;
+                return NULL;
+        if (!strchr(str, src))
+                return str;
+
+        if (dst == '\\') {
+                char *tmp = NULL;
+
+                /* that means we should add escape char '\' */
+                tmp = (char *)malloc(2 * strlen(str) + 1);
+                if (tmp == NULL)
+                        return NULL;
+                memset(tmp, 0, 2 * strlen(str) + 1);
+                head = tmp;
+                while (*str != '\0') {
+                        *tmp = *str;
+                        if (*str == src) {
+                                *tmp = '\\';
+                                tmp++;
+                                *tmp = src;
+                        }
+                        str++;
+                        tmp++;
+                }
+        } else {
+                head = str;
+                while (*str != '\0') {
+                        if ((*str == src) &&
+                            (head != str) && (*(str - 1) != '\\')) {
+                                *str = dst;
+                        }
+                        str++;
+                }
         }
+
+        return head;
+}
+
+static void get_pattern(char *path, char *pattern)
+{
+        path = strrpl(path, '.', '/');
+        strcpy(pattern, path);
 }
 
 static void append_filetype(char *filename, mode_t mode)
@@ -576,11 +620,11 @@ static void append_filetype(char *filename, mode_t mode)
          * =: writable file
          */
         if (S_ISDIR(mode))
-                filename[strlen(filename)] = '/';
+                strcat(filename, "/");
         else if (S_ISLNK(mode))
-                filename[strlen(filename)] = '@';
+                strcat(filename, "@");
         else if (mode & S_IWUSR)
-                filename[strlen(filename)] = '=';
+                strcat(filename, "=");
 }
 
 
@@ -588,19 +632,17 @@ static void append_filetype(char *filename, mode_t mode)
  * For eg. obdfilter.lustre-OST0000.stats */
 static char *display_name(char *filename, mode_t mode, int show_type)
 {
-        char *tmp;
-
-        if (strncmp(filename, PTREE_PREFIX, PTREE_PRELEN) == 0) {
+        if (strncmp(filename, PTREE_PREFIX, PTREE_PRELEN) == 0)
                 filename += PTREE_PRELEN;
-        }
         if (strncmp(filename, "lustre/", strlen("lustre/")) == 0)
                 filename += strlen("lustre/");
         else if (strncmp(filename, "lnet/", strlen("lnet/")) == 0)
                 filename += strlen("lnet/");
 
+        /* add escape '\' before '.' to avoid treating that as a separator */
+        filename = strrpl(filename, '.', '\\');
         /* replace '/' with '.' to match conf_param and sysctl */
-        tmp = filename;
-        strrpl(tmp, '/', '.');
+        filename = strrpl(filename, '/', '.');
 
         if (show_type)
                 append_filetype(filename, mode);
@@ -613,7 +655,6 @@ static void params_show(int show_path, char *buf)
         char outbuf[CFS_PAGE_SIZE];
         int rc = 0, pos = 0;
 
-        memset(outbuf, 0, CFS_PAGE_SIZE);
         while ((rc = params_unpack(buf + pos, outbuf, sizeof(outbuf)))) {
                 /* start from a new line if there are multi-lines */
                 if (show_path &&
@@ -639,23 +680,11 @@ static int listparam_display(struct params_opts *popt, char *pattern)
         while (pel) {
                 char *valuename = NULL;
 
-                memset(filename, 0, PATH_MAX + 1);
                 strcpy(filename, pel->pel_name);
                 if ((valuename = display_name(filename, pel->pel_mode,
                                               popt->show_type))) {
                         printf("%s\n", valuename);
                         if (popt->recursive && S_ISDIR(pel->pel_mode)) {
-                                /* Here, we have to convert '.' to '/' again,
-                                 * same as what we did in get_patter().
-                                 * Because, to list param recursively,
-                                 * the matched params will be added "/ *",
-                                 * and then passed again.
-                                 * For example,
-                                 * $lctl list_param -R ost.*
-                                 * Round1. get ost.num_refs and ost.OSS;
-                                 * Round2. try to list ost.OSS/ *, but this '.'
-                                 * will be treated as a wildcard, not a separator.
-                                 */
                                 strrpl(valuename, '.', '/');
                                 strcat(valuename, "/*");
                                 listparam_display(popt, valuename);
@@ -690,7 +719,6 @@ static int getparam_display(struct params_opts *popt, char *pattern)
                 char *valuename = NULL;
                 mode_t mode = pel->pel_mode;
 
-                memset(filename, 0, PATH_MAX + 1);
                 strcpy(filename, pel->pel_name);
                 if (popt->only_path) {
                         valuename = display_name(filename, mode,
@@ -711,7 +739,6 @@ static int getparam_display(struct params_opts *popt, char *pattern)
                 if (popt->show_path)
                         printf("%s=", valuename);
                 while (!eof) {
-                        memset(buf, 0, CFS_PAGE_SIZE);
                         params_count =
                                 params_read(pel->pel_name + PTREE_PRELEN,
                                             pel->pel_name_len - PTREE_PRELEN,
@@ -758,7 +785,6 @@ static int setparam_display(struct params_opts *popt, char *pattern,
                 char *valuename = NULL;
                 mode_t mode = pel->pel_mode;
 
-                memset(filename, 0, PATH_MAX + 1);
                 strcpy(filename, pel->pel_name);
                 valuename = display_name(filename, mode, 0);
                 if (valuename == NULL)
@@ -816,27 +842,6 @@ static int params_cmdline(int argc, char **argv, char *options,
         return optind;
 }
 
-static void get_pattern(char *path, char *pattern)
-{
-        char *tmp;
-
-        /* If the input is in form Eg. obdfilter.*.stats */
-        /* We use '.' as the directory separator.
-         * But sometimes '.' is part of the parameter name, e.g.
-         * "ldlm.*.MGC10.10.121.1@tcp", which will cause error.
-         * XXX: can we use other separator, or avoid '.' as part of the name?
-         */
-        if (strchr(path, '.')) {
-                tmp = path;
-                strrpl(tmp, '.', '/');
-        }
-        if (strchr(path, '#')) {
-                tmp = path;
-                strrpl(tmp, '#', '.');
-        }
-        strcpy(pattern, path);
-}
-
 int jt_lcfg_listparam(int argc, char **argv)
 {
         int rc = 0, i;
@@ -848,7 +853,7 @@ int jt_lcfg_listparam(int argc, char **argv)
                 /* if '-R' is given without a path, list all params.
                  * Let's overwrite  the last param with '*' and
                  * use that for a path. */
-                rc --;  /* we know at least "-R" is a parameter */
+                rc--;  /* we know at least "-R" is a parameter */
                 argv[rc] = "*";
         } else if (rc < 0 || rc >= argc) {
                 return CMD_HELP;

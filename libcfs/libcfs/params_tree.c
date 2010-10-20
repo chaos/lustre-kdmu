@@ -304,8 +304,8 @@ lookup_param_by_path(const char *pathname, libcfs_param_entry_t *entry)
 {
         libcfs_param_entry_t *lpe;
         libcfs_param_entry_t *parent;
-        char                      *path = (char *)pathname;
-        char                      *temp;
+        char                 *path = (char *)pathname;
+        char                 *temp;
 
         if (entry == NULL) {
                 /* absolute full path */
