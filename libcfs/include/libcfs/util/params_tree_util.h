@@ -56,8 +56,7 @@ struct params_entry_list {
 int params_list(const char *pattern, struct params_entry_list **pel_ptr);
 int params_read(char *path, int path_len, char *read_buf, int buf_len,
                 long long *offset, int *eof);
-int params_write(char *path, int path_len, char *write_buf, int buf_len,
-                 int offset);
+int params_write(char *path, int path_len, char *write_buf, int buf_len);
 int params_unpack(char *inbuf, char *outbuf, int outbuf_len);
 int params_value_output(struct libcfs_param_data *data, char *outbuf);
 void params_free_entrylist(struct params_entry_list *entry_list);

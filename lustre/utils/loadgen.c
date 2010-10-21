@@ -251,8 +251,7 @@ static int write_proc(char *proc_path, char *value)
 {
         int rc;
 
-        rc = params_write(proc_path, strlen(proc_path),
-                          value, strlen(value), 0);
+        rc = params_write(proc_path, strlen(proc_path), value, strlen(value));
         if (rc < 0) {
                 fprintf(stderr, "write('%s') failed: %s (%d)\n",
                         proc_path, strerror(errno), errno);

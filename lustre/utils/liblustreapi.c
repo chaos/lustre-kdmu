@@ -275,8 +275,7 @@ static int find_target_obdpath(char *fsname, char *path)
         if (pel->pel_next == NULL)
                 return -ENOENT;
         strcpy(path, pel->pel_next->pel_name);
-        if(pel != NULL)
-                params_free_entrylist(pel);
+        params_free_entrylist(pel);
 
         return 0;
 }
@@ -297,8 +296,7 @@ static int find_poolpath(char *fsname, char *poolname, char *poolpath)
         if (rc < 0)
                 return -EINVAL;
         strcpy(poolpath, pel->pel_next->pel_name);
-        if (pel != NULL)
-                params_free_entrylist(pel);
+        params_free_entrylist(pel);
 
         return 0;
 }
@@ -642,8 +640,7 @@ static int first_match(char *pattern, char *buffer)
         if (pel->pel_next == NULL)
                 return -ENOENT;
         strcpy(buffer, pel->pel_next->pel_name);
-        if (pel != NULL)
-                params_free_entrylist(pel);
+        params_free_entrylist(pel);
 
         return 0;
 }
@@ -827,6 +824,7 @@ int llapi_get_poollist(const char *name, char **poollist, int list_size,
                           name);
                 return rc;
         }
+        params_free_entrylist(pel);
         /* check the pools in pool list */
         strcat(pathname, "/*");
         if ((rc = params_list(pathname + strlen("lustre/"), &pel)) < 0)
@@ -849,8 +847,7 @@ int llapi_get_poollist(const char *name, char **poollist, int list_size,
                 nb_entries++;
                 pel = pel->pel_next;
         }
-        if (pel_head != NULL)
-                params_free_entrylist(pel_head);
+        params_free_entrylist(pel_head);
 
         return nb_entries;
 }
@@ -2191,7 +2188,7 @@ int llapi_ping(char *obd_type, char *obd_name)
 
         snprintf(path, MAX_STRING_SIZE, "lustre/%s/%s/ping",
                  obd_type, obd_name);
-        rc = params_write(path, strlen(path), buf, 1, 0);
+        rc = params_write(path, strlen(path), buf, 1);
 
         if (rc == 1)
                 return 0;

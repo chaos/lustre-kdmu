@@ -142,18 +142,17 @@ static struct params_preg_list *preg_list_create(const char *pattern)
         /* compile GNU regexp filter list */
         path_pt = strdup(pattern);
         temp_path = path_pt;
-        preg_head = malloc(sizeof(*preg_head));
+        preg_head = calloc(1, sizeof(*preg_head));
         if (!preg_head) {
                 fprintf(stderr, "error: %s: no memory for regexp_list!\n",
-                        __FUNCTION__);
+                        __func__);
                 rc = -ENOMEM;
                 goto out;
         }
-        memset(preg_head, 0, sizeof(*preg_head));
         /* add '*' because we need to match {lustre,lnet} first by default */
         pattern2regexp("*", regexp);
         if (regcomp(&(preg_head->preg), regexp, 0)) {
-                fprintf(stderr, "error: %s: regcomp failed!\n", __FUNCTION__);
+                fprintf(stderr, "error: %s: regcomp failed!\n", __func__);
                 rc = -EINVAL;
                 goto out;
         }
@@ -165,17 +164,17 @@ static struct params_preg_list *preg_list_create(const char *pattern)
                 preg_temp = malloc(sizeof(*preg_temp));
                 if (!preg_temp) {
                         fprintf(stderr, "error: %s: no memory for preg_list!\n",
-                                __FUNCTION__);
+                                __func__);
                         rc = -ENOMEM;
                         goto out;
                 }
-                memset(preg_temp, 0, sizeof(*preg_temp));
                 if (regcomp(&(preg_temp->preg), regexp, 0)) {
                         fprintf(stderr, "error: %s: regcomp failed!\n",
-                                __FUNCTION__);
+                                __func__);
                         rc = -EINVAL;
                         goto out;
                 }
+                preg_temp->next = NULL;
                 preg_list->next = preg_temp;
                 preg_list = preg_list->next;
         }
@@ -199,7 +198,7 @@ static int params_fill_list(void *buf, struct params_entry_list **pel)
 
         temp = malloc(sizeof(*temp) + lpi->lpi_name_len + 1);
         if (temp == NULL) {
-                fprintf(stderr, "error: %s: No memory for pel.\n",__FUNCTION__);
+                fprintf(stderr, "error: %s: No memory for pel.\n", __func__);
                 return -ENOMEM;
         }
         temp->pel_next = NULL;
@@ -239,7 +238,7 @@ static int send_req_to_kernel(char *path, char *list_buf, int *buflen)
         ioc_data_buf = malloc(ioc_data_buflen);
         if (ioc_data_buf == NULL) {
                 fprintf(stderr,
-                        "error: %s: No memory for ioc_data.\n", __FUNCTION__);
+                        "error: %s: No memory for ioc_data.\n", __func__);
                 *buflen = 0;
                 return -ENOMEM;
         }
@@ -250,7 +249,7 @@ static int send_req_to_kernel(char *path, char *list_buf, int *buflen)
         if (rc) {
                 fprintf(stderr,
                         "error: %s: Failed to pack libcfs_ioctl data (%d).\n",
-                        __FUNCTION__, rc);
+                        __func__, rc);
                 GOTO(out, rc < 0 ? rc : -rc);
         }
         /* XXX: lreplicate can't recognize LNET_DEV_ID */
@@ -259,7 +258,7 @@ static int send_req_to_kernel(char *path, char *list_buf, int *buflen)
         rc = l_ioctl(LNET_DEV_ID, IOC_LIBCFS_LIST_PARAM, buf);
         if (rc) {
                 fprintf(stderr, "error: %s: IOC_LIBCFS_LIST_PARAM failed.\n",
-                        __FUNCTION__);
+                        __func__);
                 *buflen = 0;
                 GOTO(out, rc);
         }
@@ -292,10 +291,9 @@ static int params_readdir(char *parent_path, struct params_entry_list **pel)
                 list_buf = malloc(buflen);
                 if (list_buf == NULL) {
                         fprintf(stderr, "error: %s: No memory for list_buf.",
-                                __FUNCTION__);
+                                __func__);
                         return -ENOMEM;
                 }
-                memset(list_buf, 0, buflen);
                 rc = send_req_to_kernel(parent_path, list_buf, &buflen);
                 if (rc < 0) {
                         free(list_buf);
@@ -327,7 +325,7 @@ static int params_readdir(char *parent_path, struct params_entry_list **pel)
 
 /* match the entry list with the regular expression list */
 static int params_match(char *parent_path, struct params_preg_list *pregl,
-                        struct params_entry_list **pel)
+                        struct params_entry_list **pel_ptr)
 {
         int pel_name_len = 0;
         int rc = 0;
@@ -336,20 +334,19 @@ static int params_match(char *parent_path, struct params_preg_list *pregl,
         struct params_entry_list *curdir_list = NULL;
         struct params_entry_list *new_pel;
 
-        curdir = malloc(sizeof(*curdir));
+        curdir = calloc(1, sizeof(*curdir));
         if (!curdir) {
                 fprintf(stderr,
-                        "error: %s: No memory for curdir.\n", __FUNCTION__);
+                        "error: %s: No memory for curdir.\n", __func__);
                 rc = -ENOMEM;
                 goto out;
         }
-        memset(curdir, 0, sizeof(*curdir));
         curdir_list = curdir;
         rc = params_readdir(parent_path, &curdir);
         if (rc < 0)
                 goto out;
         curdir = curdir_list->pel_next;
-        while (curdir) {
+        while (curdir != NULL) {
                 /* unmatched */
                 if (regexec(&(pregl->preg), curdir->pel_name, 0, 0, 0)) {
                         curdir = curdir->pel_next;
@@ -362,13 +359,12 @@ static int params_match(char *parent_path, struct params_preg_list *pregl,
                         pel_name_len = strlen(parent_path) + 1 +
                                        curdir->pel_name_len;
                 pel_name = malloc(pel_name_len + 1);
-                if (!pel_name) {
+                if (pel_name == NULL) {
                         fprintf(stderr, "error: %s: No memory for pel_name.\n",
-                                __FUNCTION__);
+                                __func__);
                         rc = -ENOMEM;
                         goto out;
                 }
-                memset(pel_name, 0, pel_name_len + 1);
                 if (parent_path == NULL) {
                         strncpy(pel_name, curdir->pel_name, curdir->pel_name_len);
                 } else {
@@ -377,6 +373,7 @@ static int params_match(char *parent_path, struct params_preg_list *pregl,
                         strncpy(pel_name + strlen(parent_path) + 1,
                                 curdir->pel_name, curdir->pel_name_len);
                 }
+                pel_name[pel_name_len] = '\0';
                 /* if reach the end of preg list, copy the matched results;
                  * otherwise, if the current entry is a dir or symlink,
                  * read through its children. */
@@ -384,23 +381,22 @@ static int params_match(char *parent_path, struct params_preg_list *pregl,
                         new_pel = malloc(sizeof(*new_pel));
                         if (!new_pel) {
                                 fprintf(stderr, "error: %s: No memory for pel.\n",
-                                        __FUNCTION__);
+                                        __func__);
                                 rc = -ENOMEM;
                                 goto out;
                         }
-                        memset(new_pel, 0, sizeof(*new_pel));
                         new_pel->pel_name_len = pel_name_len;
                         new_pel->pel_name = pel_name;
                         new_pel->pel_mode = curdir->pel_mode;
                         new_pel->pel_next = NULL;
-                        if (*pel != NULL) {
-                                (*pel)->pel_next = new_pel;
-                                *pel = new_pel;
+                        if (*pel_ptr != NULL) {
+                                (*pel_ptr)->pel_next = new_pel;
+                                *pel_ptr = new_pel;
                         } else {
-                                *pel = new_pel;
+                                *pel_ptr = new_pel;
                         }
                 } else if (S_ISDIR(curdir->pel_mode) || S_ISLNK(curdir->pel_mode)){
-                        params_match(pel_name, pregl->next, pel);
+                        params_match(pel_name, pregl->next, pel_ptr);
                         free(pel_name);
                         pel_name = NULL;
                 }
@@ -413,46 +409,53 @@ out:
         return rc;
 }
 
-/* list the matched entries */
+/* list the matched entries
+ * 1. create regular expression list according to the pattern
+ * 2. read the params entry back
+ * 3. match the entries with regexp and return
+ */
 int params_list(const char *pattern, struct params_entry_list **pel_ptr)
 {
-        /* 1. create regular expression list according to the pattern
-         * 2. read the params entry back
-         * 3. match the entries with regexp and return
-         */
         int rc = 0;
         struct params_preg_list *preg_head = NULL;
-        struct params_entry_list *pel = NULL;
+        struct params_entry_list *pel_head = NULL;
 
         if (pattern == NULL) {
-                fprintf(stderr, "error: %s: Null path pattern.\n", __FUNCTION__);
-                return -EINVAL;
+                fprintf(stderr, "error: %s: Null path pattern.\n", __func__);
+                GOTO(out, rc = -EINVAL);
         }
 
-        *pel_ptr = malloc(sizeof(struct params_entry_list));
+        *pel_ptr = calloc(1, sizeof(struct params_entry_list));
         if (*pel_ptr == NULL) {
                 fprintf(stderr,
-                        "error: %s: No memory for pel_list.\n", __FUNCTION__);
-                return -ENOMEM;
+                        "error: %s: No memory for pel_list.\n", __func__);
+                GOTO(out, rc = -ENOMEM);
         }
-        memset(*pel_ptr, 0, sizeof(struct params_entry_list));
-        pel = *pel_ptr;
+        pel_head = *pel_ptr;
 
         preg_head = preg_list_create(pattern);
         if (preg_head) {
                 /* match from the root */
-                rc = params_match(NULL, preg_head, &pel);
+                rc = params_match(NULL, preg_head, &pel_head);
                 params_free_preglist(preg_head);
                 if ((*pel_ptr)->pel_next == NULL)
-                        rc = -ESRCH;
+                        GOTO(out, rc = -ESRCH);
         }
 
         return rc;
+out:
+        if (*pel_ptr != NULL)
+                params_free_entrylist(*pel_ptr);
+        return rc;
 }
 
-/* get parameters value */
+/**
+ * Get parameters value from params_tree according to @path by ioctl,
+ * and copy the value out to @read_buf. If @buf_len is not enough,
+ * @offset is used to remember the position, read until @eof is set.
+ */
 int params_read(char *path, int path_len, char *read_buf,
-                      int buf_len, long long *offset, int *eof)
+                int buf_len, long long *offset, int *eof)
 {
         struct libcfs_ioctl_data data = { 0 };
         int rc = 0;
@@ -462,7 +465,7 @@ int params_read(char *path, int path_len, char *read_buf,
         char *buf;
 
         if (!path || path_len <= 0) {
-                fprintf(stderr, "error: %s: Path is null.\n", __FUNCTION__);
+                fprintf(stderr, "error: %s: Path is null.\n", __func__);
                 rc = -EINVAL;
                 goto out;
         }
@@ -472,14 +475,12 @@ int params_read(char *path, int path_len, char *read_buf,
         pathname = malloc(path_len + 1);
         if (!pathname) {
                 fprintf(stderr,
-                        "error: %s: No memory for path name.\n", __FUNCTION__);
+                        "error: %s: No memory for path name.\n", __func__);
                 rc = -ENOMEM;
                 goto out;
         }
-        /* can't remove this memset because it will cause
-         * libcfs_ioctl_is_invalid() failure:inlbuf1 not 0 terminated*/
-        memset(pathname, 0, path_len + 1);
         strncpy(pathname, path, path_len);
+        pathname[path_len] = '\0';
         data.ioc_inlbuf1 = pathname;
         data.ioc_u64[0] = *offset;
         data.ioc_plen1 = buf_len;
@@ -491,7 +492,7 @@ int params_read(char *path, int path_len, char *read_buf,
         ioc_data_buf = malloc(ioc_data_buflen);
         if (ioc_data_buf == NULL) {
                 fprintf(stderr,
-                        "error: %s: No memory for ioc_data.\n", __FUNCTION__);
+                        "error: %s: No memory for ioc_data.\n", __func__);
                 rc = -ENOMEM;
                 goto out;
         }
@@ -502,7 +503,7 @@ int params_read(char *path, int path_len, char *read_buf,
         if (rc) {
                 fprintf(stderr,
                         "error: %s: Failed to pack libcfs_ioctl data (%d).\n",
-                        __FUNCTION__, rc);
+                        __func__, rc);
                 rc = -rc;
                 goto out;
         }
@@ -511,7 +512,7 @@ int params_read(char *path, int path_len, char *read_buf,
         rc = l_ioctl(LNET_DEV_ID, IOC_LIBCFS_GET_PARAM, buf);
         if (rc) {
                 fprintf(stderr, "error: %s: IOC_LIBCFS_GET_PARAM failed.\n",
-                        __FUNCTION__);
+                        __func__);
                 goto out;
         }
         *offset = ((struct libcfs_ioctl_data*)buf)->ioc_u64[0];
@@ -526,9 +527,11 @@ out:
         return rc;
 }
 
-/* set parameters value */
-int params_write(char *path, int path_len, char *write_buf, int buf_len,
-                       int offset)
+/**
+ * Set value in @write_buf to params_tree parameters.
+ * Lookup the corresponding parameters according to @path by ioctl.
+ */
+int params_write(char *path, int path_len, char *write_buf, int buf_len)
 {
         struct libcfs_ioctl_data data = { 0 };
         int rc = 0;
@@ -538,7 +541,7 @@ int params_write(char *path, int path_len, char *write_buf, int buf_len,
         char *buf;
 
         if (!path || path_len <= 0) {
-                fprintf(stderr, "error: %s: Path is null.\n", __FUNCTION__);
+                fprintf(stderr, "error: %s: Path is null.\n", __func__);
                 rc = -EINVAL;
                 goto out;
         }
@@ -548,14 +551,12 @@ int params_write(char *path, int path_len, char *write_buf, int buf_len,
         pathname = malloc(path_len + 1);
         if (!pathname) {
                 fprintf(stderr,
-                        "error: %s: No memory for path name.\n", __FUNCTION__);
+                        "error: %s: No memory for path name.\n", __func__);
                 rc = -ENOMEM;
                 goto out;
         }
-        /* can't remove this memset because it will cause
-         * libcfs_ioctl_is_invalid() failure:inlbuf1 not 0 terminated*/
-        memset(pathname, 0, path_len + 1);
         strncpy(pathname, path, path_len);
+        pathname[path_len] = '\0';
         data.ioc_inlbuf1 = pathname;
         data.ioc_inlbuf2 = write_buf;
         data.ioc_inllen2 = buf_len + 1;
@@ -566,7 +567,7 @@ int params_write(char *path, int path_len, char *write_buf, int buf_len,
         ioc_data_buf = malloc(ioc_data_buflen);
         if (ioc_data_buf == NULL) {
                 fprintf(stderr,
-                        "error: %s: No memory for ioc_data.\n", __FUNCTION__);
+                        "error: %s: No memory for ioc_data.\n", __func__);
                 rc = -ENOMEM;
                 goto out;
         }
@@ -577,7 +578,7 @@ int params_write(char *path, int path_len, char *write_buf, int buf_len,
         if (rc) {
                 fprintf(stderr,
                         "error: %s: Failed to pack libcfs_ioctl data (%d).\n",
-                        __FUNCTION__, rc);
+                        __func__, rc);
                 rc = -rc;
                 goto out;
         }
@@ -587,7 +588,7 @@ int params_write(char *path, int path_len, char *write_buf, int buf_len,
         rc = l_ioctl(LNET_DEV_ID, IOC_LIBCFS_SET_PARAM, buf);
         if (rc) {
                 fprintf(stderr, "error: %s: IOC_LIBCFS_SET_PARAM failed.\n",
-                        __FUNCTION__);
+                        __func__);
                 goto out;
         }
         rc = ((struct libcfs_ioctl_data*)buf)->ioc_u32[0];
@@ -699,7 +700,7 @@ int params_value_output(libcfs_param_data_t *data, char *outbuf)
                 default:
                         fprintf(stderr,
                                 "warning: %s: unknown libcfs_param_data_type"
-                                " (%d).\n", __FUNCTION__, data->param_type);
+                                " (%d).\n", __func__, data->param_type);
                         return 0;
         }
 

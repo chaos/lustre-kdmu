@@ -672,7 +672,7 @@ static int listparam_display(struct params_opts *popt, char *pattern)
         struct params_entry_list *pel_head = NULL;
 
         if ((rc = params_list(pattern, &pel)) < 0)
-                goto out;
+                return rc;
         pel_head = pel;
         pel = pel_head->pel_next;
         while (pel) {
@@ -690,9 +690,7 @@ static int listparam_display(struct params_opts *popt, char *pattern)
                 }
                 pel = pel->pel_next;
         }
-out:
-        if (pel_head)
-                params_free_entrylist(pel_head);
+        params_free_entrylist(pel_head);
 
         return rc;
 }
@@ -709,7 +707,7 @@ static int getparam_display(struct params_opts *popt, char *pattern)
         struct params_entry_list *pel_head = NULL;
 
         if ((rc = params_list(pattern, &pel)) < 0)
-                goto out;
+                return rc;
         pel_head = pel;
         pel = pel_head->pel_next;
         buf = malloc(CFS_PAGE_SIZE);
@@ -757,11 +755,9 @@ static int getparam_display(struct params_opts *popt, char *pattern)
 next:
                 pel = pel->pel_next;
         }
-out:
         if (buf)
                 free(buf);
-        if (pel_head)
-                params_free_entrylist(pel_head);
+        params_free_entrylist(pel_head);
         return rc;
 }
 
@@ -770,12 +766,11 @@ static int setparam_display(struct params_opts *popt, char *pattern,
 {
         int rc = 0;
         char filename[PATH_MAX + 1];    /* extra 1 byte for file type */
-        int offset = 0;
         struct params_entry_list *pel = NULL;
         struct params_entry_list *pel_head = NULL;
 
         if ((rc = params_list(pattern, &pel)) < 0)
-                goto out;
+                return rc;
         pel_head = pel;
         pel = pel_head->pel_next;
         while (pel) {
@@ -791,18 +786,15 @@ static int setparam_display(struct params_opts *popt, char *pattern,
                                 "parameter '%s' is a directory.\n", valuename);
                         goto next;
                 }
-                offset = 0;
                 rc = params_write(pel->pel_name, pel->pel_name_len,
-                                  value, strlen(value), offset);
+                                  value, strlen(value));
                 if (rc >= 0 && popt->show_path)
                         printf("%s=%s\n", valuename, value);
 next:
                 pel = pel->pel_next;
         }
-out:
         rc = rc > 0 ? 0 : rc;
-        if (pel_head)
-                params_free_entrylist(pel_head);
+        params_free_entrylist(pel_head);
 
         return rc;
 }

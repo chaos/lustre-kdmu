@@ -352,7 +352,7 @@ parse_dump(char * dump_file, ioc_handler_t ioc_func)
         return 0;
 }
 
-int 
+int
 jt_ioc_dump(int argc, char **argv)
 {
         if (argc > 2) {
@@ -360,7 +360,7 @@ jt_ioc_dump(int argc, char **argv)
                 return 0;
         }
         printf("setting dumpfile to: %s\n", argv[1]);
-        
+
         set_ioctl_dump(argv[1]);
         return 0;
 }

@@ -442,7 +442,7 @@ downcall:
         snprintf(pathname, sizeof(pathname),
                  "lustre/mdt/%s/identity_info", argv[1]);
         rc = params_write(pathname, strlen(pathname),
-                          (void *)data, sizeof(*data) - 1, 0);
+                          (void *)data, sizeof(*data) - 1);
         if (rc != sizeof(*data)) {
                 errlog("partial write ret %d: %s\n", rc, strerror(errno));
                 return 1;
