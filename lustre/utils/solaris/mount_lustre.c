@@ -67,7 +67,7 @@ static void usage(FILE *out)
                 "\t<mountpoint>: filesystem mountpoint (e.g. /mnt/ost1)\n"
                 "\t-m: do not update /etc/mnttab after mount\n"
                 "\t<mntopt>: one or more comma separated of:\n"
-                "\t\tmgs=<mgsnid>\n"
+                "\t\tmgsnode=<mgsnid>\n"
                 "\t\t(no)flock,(no)user_xattr,(no)acl\n"
                 "\t\tabort_recov: abort server recovery handling\n"
                 "\t\tnosvc: only start MGC/MGS obds\n"
@@ -174,7 +174,7 @@ int main(int argc, char *const argv[])
         }
 
         if (orig_options == NULL) {
-                fprintf(stderr, "%s: -o mgs=<mgsnid> is missing\n", progname);
+                fprintf(stderr, "%s: -o mgsnode=<mgsnid> is missing\n", progname);
                 usage(stderr);
         }
 
