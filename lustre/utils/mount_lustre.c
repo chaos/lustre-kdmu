@@ -576,16 +576,6 @@ int main(int argc, char *const argv[])
                 usage(stderr);
         }
 
-        /* Only convert hostnames if usource contains a '@', otherwise it's
-           probably a ZFS dataset name */
-        if (strchr(usource, '@') != NULL) {
-                source = convert_hostnames(usource);
-                if (!source) {
-                        usage(stderr);
-                }
-        } else {
-                source = strdup(usource);
-        }
         /**
          * Try to get the real path to the device, in case it is a
          * symbolic link for instance
@@ -611,9 +601,15 @@ int main(int argc, char *const argv[])
                 }
         }
 
-        source = convert_hostnames(usource);
-        if (!source) {
-                usage(stderr);
+        /* Only convert hostnames if usource contains a '@', otherwise it's
+           probably a ZFS dataset name */
+        if (strchr(usource, '@') != NULL) {
+                source = convert_hostnames(usource);
+                if (!source) {
+                        usage(stderr);
+                }
+        } else {
+                source = strdup(usource);
         }
 
         if (realpath(argv[optind + 1], target) == NULL) {
