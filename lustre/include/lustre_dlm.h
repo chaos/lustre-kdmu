@@ -779,8 +779,6 @@ struct ldlm_resource {
         cfs_semaphore_t        lr_lvb_sem;
         __u32                  lr_lvb_len;
         void                  *lr_lvb_data;
-        struct lu_object      *lr_lvb_obj;
-        struct lu_env         *lr_lvb_env;
 
         /* when the resource was considered as contended */
         cfs_time_t             lr_contention_time;
