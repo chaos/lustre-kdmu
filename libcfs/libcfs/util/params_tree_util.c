@@ -212,14 +212,58 @@ static int params_fill_list(void *buf, struct params_entry_list **pel)
         return rc;
 }
 
+static int params_ioctl(struct libcfs_ioctl_data *data, char **buf_ptr,
+                        unsigned int opc)
+{
+        char *buf = NULL;
+        int buflen = 0;
+        int rc = 0;
+
+        /* if PARAMS_BUFLEN_DEFAULT is not large enough,
+         * we should avoid buflen < packlen */
+        buflen = libcfs_ioctl_packlen(data);
+        if (buflen <= PARAMS_BUFLEN_DEFAULT)
+                buflen = PARAMS_BUFLEN_DEFAULT;
+        buf = malloc(buflen);
+        if (buf == NULL) {
+                fprintf(stderr,
+                        "error: %s: No memory for ioc_data.\n", __func__);
+                GOTO(out, rc = -ENOMEM);
+        }
+        memset(buf, 0, buflen);
+        /* list params through libcfs_ioctl */
+        rc = libcfs_ioctl_pack(data, &buf, buflen);
+        if (rc) {
+                fprintf(stderr,
+                        "error: %s: Failed to pack libcfs_ioctl data (%d).\n",
+                        __func__, rc);
+                GOTO(out, rc < 0 ? rc : -rc);
+        }
+        /* XXX: in case some tools can't recognize LNET_DEV_ID */
+        register_ioc_dev(LNET_DEV_ID, LNET_DEV_PATH,
+                         LNET_DEV_MAJOR, LNET_DEV_MINOR);
+        rc = l_ioctl(LNET_DEV_ID, opc, buf);
+        if (rc) {
+                fprintf(stderr, "error: %s: IOC_LIBCFS_LIST_PARAM failed.\n",
+                        __func__);
+                GOTO(out, rc);
+        }
+out:
+        if (rc < 0 && buf != NULL) {
+                free(buf);
+                buf = NULL;
+        }
+        *buf_ptr = buf;
+        return rc;
+}
+
 /* client sends req{path, buf, buflen} to kernel by ioctl,
  * if buflen is not big enough, kernel will send a likely size back;
  * otherwise, send data back directly */
-static int send_req_to_kernel(char *path, char *list_buf, int *buflen)
+static int send_req_to_kernel(char *path, char *list_buf, int *list_buflen)
 {
         struct libcfs_ioctl_data data = { 0 };
-        int ioc_data_buflen = 0;
-        char *ioc_data_buf = NULL;
+        struct libcfs_ioctl_data *data_ptr;
         char *buf;
         int rc;
 
@@ -227,50 +271,20 @@ static int send_req_to_kernel(char *path, char *list_buf, int *buflen)
         (path == NULL) ? (data.ioc_inllen1 = 0) : /* list from the root */
                          (data.ioc_inllen1 = strlen(path) + 1);
         data.ioc_inlbuf1 = path;
-        data.ioc_plen1 = *buflen;
         data.ioc_pbuf1 = list_buf;
+        data.ioc_plen1 = *list_buflen;
+        rc = params_ioctl(&data, &buf, IOC_LIBCFS_LIST_PARAM);
+        if (buf == NULL) {
+                *list_buflen = 0;
+        } else {
+                data_ptr = (struct libcfs_ioctl_data *)buf;
+                rc = data_ptr->ioc_u32[0];
+                if (rc < 0)
+                        /* if not big enough, tell what kernel needs */
+                        *list_buflen = data_ptr->ioc_plen1;
+                free(buf);
+        }
 
-        /* if PARAMS_BUFLEN_DEFAULT is not large enough,
-         * we should avoid buflen < packlen */
-        ioc_data_buflen = libcfs_ioctl_packlen(&data);
-        if (ioc_data_buflen <= PARAMS_BUFLEN_DEFAULT)
-                ioc_data_buflen = PARAMS_BUFLEN_DEFAULT;
-        ioc_data_buf = malloc(ioc_data_buflen);
-        if (ioc_data_buf == NULL) {
-                fprintf(stderr,
-                        "error: %s: No memory for ioc_data.\n", __func__);
-                *buflen = 0;
-                return -ENOMEM;
-        }
-        memset(ioc_data_buf, 0, ioc_data_buflen);
-        /* list params through libcfs_ioctl */
-        buf = ioc_data_buf;
-        rc = libcfs_ioctl_pack(&data, &buf, ioc_data_buflen);
-        if (rc) {
-                fprintf(stderr,
-                        "error: %s: Failed to pack libcfs_ioctl data (%d).\n",
-                        __func__, rc);
-                GOTO(out, rc < 0 ? rc : -rc);
-        }
-        /* XXX: lreplicate can't recognize LNET_DEV_ID */
-        register_ioc_dev(LNET_DEV_ID, LNET_DEV_PATH,
-                         LNET_DEV_MAJOR, LNET_DEV_MINOR);
-        rc = l_ioctl(LNET_DEV_ID, IOC_LIBCFS_LIST_PARAM, buf);
-        if (rc) {
-                fprintf(stderr, "error: %s: IOC_LIBCFS_LIST_PARAM failed.\n",
-                        __func__);
-                *buflen = 0;
-                GOTO(out, rc);
-        }
-        rc = ((struct libcfs_ioctl_data *)buf)->ioc_u32[0];
-        if (rc < 0) {
-                /* if not big enough, tell what kernel needs */
-                *buflen = ((struct libcfs_ioctl_data *)buf)->ioc_plen1;
-                goto out;
-        }
-out:
-        if (ioc_data_buf)
-                free(ioc_data_buf);
         return rc;
 }
 
@@ -458,11 +472,10 @@ int params_read(char *path, int path_len, char *read_buf,
                 int buf_len, long long *offset, int *eof)
 {
         struct libcfs_ioctl_data data = { 0 };
-        int rc = 0;
-        int ioc_data_buflen = 0;
-        char *ioc_data_buf = NULL;
+        struct libcfs_ioctl_data *data_ptr;
         char *pathname = NULL;
         char *buf;
+        int rc = 0;
 
         if (!path || path_len <= 0) {
                 fprintf(stderr, "error: %s: Path is null.\n", __func__);
@@ -485,44 +498,17 @@ int params_read(char *path, int path_len, char *read_buf,
         data.ioc_u64[0] = *offset;
         data.ioc_plen1 = buf_len;
         data.ioc_pbuf1 = read_buf;
-        /* avoid buflen < packlen */
-        ioc_data_buflen = libcfs_ioctl_packlen(&data);
-        if (ioc_data_buflen <= PARAMS_BUFLEN_DEFAULT)
-                ioc_data_buflen = PARAMS_BUFLEN_DEFAULT;
-        ioc_data_buf = malloc(ioc_data_buflen);
-        if (ioc_data_buf == NULL) {
-                fprintf(stderr,
-                        "error: %s: No memory for ioc_data.\n", __func__);
-                rc = -ENOMEM;
-                goto out;
+        rc = params_ioctl(&data, &buf, IOC_LIBCFS_GET_PARAM);
+        if (buf != NULL) {
+                data_ptr = (struct libcfs_ioctl_data *)buf;
+                *offset = data_ptr->ioc_u64[0];
+                *eof = data_ptr->ioc_u32[1];
+                rc = data_ptr->ioc_u32[0];
+                free(buf);
         }
-        memset(ioc_data_buf, 0, ioc_data_buflen);
-        /* read params values through libcfs_ioctl */
-        buf = ioc_data_buf;
-        rc = libcfs_ioctl_pack(&data, &buf, ioc_data_buflen);
-        if (rc) {
-                fprintf(stderr,
-                        "error: %s: Failed to pack libcfs_ioctl data (%d).\n",
-                        __func__, rc);
-                rc = -rc;
-                goto out;
-        }
-        register_ioc_dev(LNET_DEV_ID, LNET_DEV_PATH,
-                         LNET_DEV_MAJOR, LNET_DEV_MINOR);
-        rc = l_ioctl(LNET_DEV_ID, IOC_LIBCFS_GET_PARAM, buf);
-        if (rc) {
-                fprintf(stderr, "error: %s: IOC_LIBCFS_GET_PARAM failed.\n",
-                        __func__);
-                goto out;
-        }
-        *offset = ((struct libcfs_ioctl_data*)buf)->ioc_u64[0];
-        *eof = ((struct libcfs_ioctl_data*)buf)->ioc_u32[1];
-        rc = ((struct libcfs_ioctl_data*)buf)->ioc_u32[0];
 out:
         if (pathname)
                 free(pathname);
-        if (ioc_data_buf)
-                free(ioc_data_buf);
 
         return rc;
 }
@@ -534,11 +520,10 @@ out:
 int params_write(char *path, int path_len, char *write_buf, int buf_len)
 {
         struct libcfs_ioctl_data data = { 0 };
-        int rc = 0;
-        int ioc_data_buflen = 0;
-        char *ioc_data_buf = NULL;
+        struct libcfs_ioctl_data *data_ptr;
         char *pathname = NULL;
         char *buf;
+        int rc = 0;
 
         if (!path || path_len <= 0) {
                 fprintf(stderr, "error: %s: Path is null.\n", __func__);
@@ -560,43 +545,15 @@ int params_write(char *path, int path_len, char *write_buf, int buf_len)
         data.ioc_inlbuf1 = pathname;
         data.ioc_inlbuf2 = write_buf;
         data.ioc_inllen2 = buf_len + 1;
-        /* avoid buflen < packlen */
-        ioc_data_buflen = libcfs_ioctl_packlen(&data);
-        if (ioc_data_buflen <= PARAMS_BUFLEN_DEFAULT)
-                ioc_data_buflen = PARAMS_BUFLEN_DEFAULT;
-        ioc_data_buf = malloc(ioc_data_buflen);
-        if (ioc_data_buf == NULL) {
-                fprintf(stderr,
-                        "error: %s: No memory for ioc_data.\n", __func__);
-                rc = -ENOMEM;
-                goto out;
+        rc = params_ioctl(&data, &buf, IOC_LIBCFS_SET_PARAM);
+        if (buf != NULL) {
+                data_ptr = (struct libcfs_ioctl_data *)buf;
+                rc = data_ptr->ioc_u32[0];
+                free(buf);
         }
-        memset(ioc_data_buf, 0, ioc_data_buflen);
-        /* write params values through libcfs_ioctl */
-        buf = ioc_data_buf;
-        rc = libcfs_ioctl_pack(&data, &buf, ioc_data_buflen);
-        if (rc) {
-                fprintf(stderr,
-                        "error: %s: Failed to pack libcfs_ioctl data (%d).\n",
-                        __func__, rc);
-                rc = -rc;
-                goto out;
-        }
-        /* XXX: l_getidentity can't recognize LNET_DEV_ID */
-        register_ioc_dev(LNET_DEV_ID, LNET_DEV_PATH,
-                         LNET_DEV_MAJOR, LNET_DEV_MINOR);
-        rc = l_ioctl(LNET_DEV_ID, IOC_LIBCFS_SET_PARAM, buf);
-        if (rc) {
-                fprintf(stderr, "error: %s: IOC_LIBCFS_SET_PARAM failed.\n",
-                        __func__);
-                goto out;
-        }
-        rc = ((struct libcfs_ioctl_data*)buf)->ioc_u32[0];
 out:
         if (pathname)
                 free(pathname);
-        if (ioc_data_buf)
-                free(ioc_data_buf);
 
         return rc;
 }
