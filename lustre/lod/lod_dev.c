@@ -134,9 +134,6 @@ static int lod_process_config(const struct lu_env *env,
                 }
 
                 case LCFG_CLEANUP:
-                        rc = next->ld_ops->ldo_process_config(env, next, lcfg);
-                        if (rc)
-                                CERROR("can't process %u: %d\n", lcfg->lcfg_command, rc);
                         for (i = 0; i < LOD_MAX_OSTNR; i++) {
                                 if (lod->lod_ost[i] == NULL)
                                         continue;
@@ -146,6 +143,14 @@ static int lod_process_config(const struct lu_env *env,
                                         CERROR("can't process %u: %d\n",
                                                lcfg->lcfg_command, rc);
                         }
+                        /*
+                         * do cleanup on underlying storage only when
+                         * all OSPs are cleaned up, as they use that OSD as well
+                         */
+                        next = &lod->lod_child->dd_lu_dev;
+                        rc = next->ld_ops->ldo_process_config(env, next, lcfg);
+                        if (rc)
+                                CERROR("can't process %u: %d\n", lcfg->lcfg_command, rc);
                         break;
 
                 default:
