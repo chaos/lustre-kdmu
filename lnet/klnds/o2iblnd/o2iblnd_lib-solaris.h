@@ -42,6 +42,70 @@
 #include <sys/ib/clients/of/rdma/ib_addr.h>
 #include <sys/ib/clients/of/rdma/rdma_cm.h>
 
+#define KIB_IB_ENTRY_DECLARE(entry) typeof(entry) *entry
+
+typedef union {
+        /* NB: struct below MUST NOT have any fields but pointers! */
+        struct {
+                KIB_IB_ENTRY_DECLARE(rdma_create_id);
+                KIB_IB_ENTRY_DECLARE(rdma_destroy_id);
+                KIB_IB_ENTRY_DECLARE(rdma_create_qp);
+                KIB_IB_ENTRY_DECLARE(rdma_destroy_qp);
+                KIB_IB_ENTRY_DECLARE(rdma_resolve_addr);
+                KIB_IB_ENTRY_DECLARE(rdma_resolve_route);
+                KIB_IB_ENTRY_DECLARE(rdma_connect);
+                KIB_IB_ENTRY_DECLARE(rdma_reject);
+                KIB_IB_ENTRY_DECLARE(rdma_bind_addr);
+                KIB_IB_ENTRY_DECLARE(rdma_listen);
+                KIB_IB_ENTRY_DECLARE(rdma_accept);
+                KIB_IB_ENTRY_DECLARE(rdma_disconnect);
+                KIB_IB_ENTRY_DECLARE(ib_alloc_pd);
+                KIB_IB_ENTRY_DECLARE(ib_dealloc_pd);
+                KIB_IB_ENTRY_DECLARE(ib_create_cq);
+                KIB_IB_ENTRY_DECLARE(ib_destroy_cq);
+                KIB_IB_ENTRY_DECLARE(ib_req_notify_cq);
+                KIB_IB_ENTRY_DECLARE(ib_poll_cq);
+                KIB_IB_ENTRY_DECLARE(ib_modify_qp);
+                KIB_IB_ENTRY_DECLARE(ibt_post_recv);
+                KIB_IB_ENTRY_DECLARE(ibt_post_send);
+                KIB_IB_ENTRY_DECLARE(ibt_register_dma_mr);
+                KIB_IB_ENTRY_DECLARE(ibt_register_buf);
+                KIB_IB_ENTRY_DECLARE(ibt_deregister_mr);
+                KIB_IB_ENTRY_DECLARE(ibt_map_mem_iov);
+                KIB_IB_ENTRY_DECLARE(ibt_unmap_mem_iov);
+        } named;
+        void *raw[0];
+} kiblnd_native_ops_t;
+
+extern kiblnd_native_ops_t kiblnd_native_ops;
+
+#define kiblnd_rdma_create_id      kiblnd_native_ops.named.rdma_create_id
+#define kiblnd_rdma_destroy_id     kiblnd_native_ops.named.rdma_destroy_id
+#define kiblnd_rdma_create_qp      kiblnd_native_ops.named.rdma_create_qp
+#define kiblnd_rdma_destroy_qp     kiblnd_native_ops.named.rdma_destroy_qp
+#define kiblnd_rdma_resolve_addr   kiblnd_native_ops.named.rdma_resolve_addr
+#define kiblnd_rdma_resolve_route  kiblnd_native_ops.named.rdma_resolve_route
+#define kiblnd_rdma_connect        kiblnd_native_ops.named.rdma_connect
+#define kiblnd_rdma_reject         kiblnd_native_ops.named.rdma_reject
+#define kiblnd_rdma_bind_addr      kiblnd_native_ops.named.rdma_bind_addr
+#define kiblnd_rdma_listen         kiblnd_native_ops.named.rdma_listen
+#define kiblnd_rdma_accept         kiblnd_native_ops.named.rdma_accept
+#define kiblnd_rdma_disconnect     kiblnd_native_ops.named.rdma_disconnect
+#define kiblnd_ib_alloc_pd         kiblnd_native_ops.named.ib_alloc_pd
+#define kiblnd_ib_dealloc_pd       kiblnd_native_ops.named.ib_dealloc_pd
+#define kiblnd_ib_create_cq        kiblnd_native_ops.named.ib_create_cq
+#define kiblnd_ib_destroy_cq       kiblnd_native_ops.named.ib_destroy_cq
+#define kiblnd_ib_req_notify_cq    kiblnd_native_ops.named.ib_req_notify_cq
+#define kiblnd_ib_poll_cq          kiblnd_native_ops.named.ib_poll_cq
+#define kiblnd_ib_modify_qp        kiblnd_native_ops.named.ib_modify_qp
+#define kiblnd_ibt_post_recv       kiblnd_native_ops.named.ibt_post_recv
+#define kiblnd_ibt_post_send       kiblnd_native_ops.named.ibt_post_send
+#define kiblnd_ibt_register_dma_mr kiblnd_native_ops.named.ibt_register_dma_mr
+#define kiblnd_ibt_register_buf    kiblnd_native_ops.named.ibt_register_buf
+#define kiblnd_ibt_deregister_mr   kiblnd_native_ops.named.ibt_deregister_mr
+#define kiblnd_ibt_map_mem_iov     kiblnd_native_ops.named.ibt_map_mem_iov
+#define kiblnd_ibt_unmap_mem_iov   kiblnd_native_ops.named.ibt_unmap_mem_iov
+
 #define IB_CM_REJ_STALE_CONN         IBT_CM_CONN_STALE
 #define IB_CM_REJ_INVALID_SERVICE_ID IBT_CM_INVALID_SID
 #define IB_CM_REJ_CONSUMER_DEFINED   IBT_CM_CONSUMER
@@ -163,7 +227,7 @@ static inline int kiblnd_post_recv(struct ib_qp	  *qp,
                                    kib_recv_wr_t **bad_wrq,
                                    unsigned int    size)
 {
-        return ibt_post_recv(qp->ibt_qp, wrq, size, NULL);
+        return kiblnd_ibt_post_recv(qp->ibt_qp, wrq, size, NULL);
 }
 
 static inline int kiblnd_post_send(struct ib_qp	  *qp,
@@ -171,5 +235,9 @@ static inline int kiblnd_post_send(struct ib_qp	  *qp,
                                    kib_send_wr_t **bad_wrq,
                                    unsigned int    size)
 {
-        return ibt_post_send(qp->ibt_qp, wrq, size, NULL);
+        return kiblnd_ibt_post_send(qp->ibt_qp, wrq, size, NULL);
 }
+
+int kiblnd_symbols_init(void);
+void kiblnd_symbols_fini(void);
+int kiblnd_symbols_check(void);

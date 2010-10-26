@@ -390,6 +390,12 @@ kiblnd_initstrtunable(char *space, char *str, int size)
 void
 kiblnd_modparams_init(void)
 {
+        int rc;
+
+        rc = kiblnd_symbols_init();
+        if (rc != 0)
+                return;
+
         kiblnd_initstrtunable(ipif_basename_space, ipif_name,
                               sizeof(ipif_basename_space));
 
@@ -410,6 +416,10 @@ kiblnd_modparams_init(void)
 void
 kiblnd_modparams_fini(void)
 {
+        /* do nothing if syms were not loaded */
+        if (kiblnd_symbols_check() != 0)
+                return;
+
         kiblnd_plat_modparams_fini();
 
         libcfs_param_sysctl_fini("o2iblnd", libcfs_param_lnet_root);
@@ -418,6 +428,8 @@ kiblnd_modparams_fini(void)
         if (kiblnd_tunables.kib_sysctl != NULL)
                 cfs_unregister_sysctl_table(kiblnd_tunables.kib_sysctl);
 #endif
+
+        kiblnd_symbols_fini();
 }
 
 int

@@ -762,13 +762,13 @@ kiblnd_create_conn(kib_peer_t *peer, struct rdma_cm_id *cmid,
         kiblnd_map_rx_descs(conn);
 
 #ifdef HAVE_OFED_IB_COMP_VECTOR
-        cq = ib_create_cq(cmid->device,
-                          kiblnd_cq_completion, kiblnd_cq_event, conn,
-                          IBLND_CQ_ENTRIES(version), 0);
+        cq = kiblnd_ib_create_cq(cmid->device,
+                                 kiblnd_cq_completion, kiblnd_cq_event, conn,
+                                 IBLND_CQ_ENTRIES(version), 0);
 #else
-        cq = ib_create_cq(cmid->device,
-                          kiblnd_cq_completion, kiblnd_cq_event, conn,
-                          IBLND_CQ_ENTRIES(version));
+        cq = kiblnd_ib_create_cq(cmid->device,
+                                 kiblnd_cq_completion, kiblnd_cq_event, conn,
+                                 IBLND_CQ_ENTRIES(version));
 #endif
         if (IS_ERR(cq)) {
                 CERROR("Can't create CQ: %ld, cqe: %d\n",
@@ -778,7 +778,7 @@ kiblnd_create_conn(kib_peer_t *peer, struct rdma_cm_id *cmid,
 
         conn->ibc_cq = cq;
 
-        rc = ib_req_notify_cq(cq, IB_CQ_NEXT_COMP);
+        rc = kiblnd_ib_req_notify_cq(cq, IB_CQ_NEXT_COMP);
         if (rc != 0) {
                 CERROR("Can't request completion notificiation: %d\n", rc);
                 goto failed_2;
@@ -798,7 +798,7 @@ kiblnd_create_conn(kib_peer_t *peer, struct rdma_cm_id *cmid,
         init_qp_attr->send_cq = cq;
         init_qp_attr->recv_cq = cq;
 
-        rc = rdma_create_qp(cmid, net->ibn_dev->ibd_pd, init_qp_attr);
+        rc = kiblnd_rdma_create_qp(cmid, net->ibn_dev->ibd_pd, init_qp_attr);
         if (rc != 0) {
                 CERROR("Can't create QP: %d, send_wr: %d, recv_wr: %d\n",
                        rc, init_qp_attr->cap.max_send_wr,
@@ -833,7 +833,7 @@ kiblnd_create_conn(kib_peer_t *peer, struct rdma_cm_id *cmid,
                         /* cmid will be destroyed by CM(ofed) after cm_callback
                          * returned, so we can't refer it anymore
                          * (by kiblnd_connd()->kiblnd_destroy_conn) */
-                        rdma_destroy_qp(conn->ibc_cmid);
+                        kiblnd_rdma_destroy_qp(conn->ibc_cmid);
                         conn->ibc_cmid = NULL;
 
                         /* Drop my own and unused rxbuffer refcounts */
@@ -894,10 +894,10 @@ kiblnd_destroy_conn (kib_conn_t *conn)
 
         /* conn->ibc_cmid might be destroyed by CM already */
         if (cmid != NULL && cmid->qp != NULL)
-                rdma_destroy_qp(cmid);
+                kiblnd_rdma_destroy_qp(cmid);
 
         if (conn->ibc_cq != NULL) {
-                rc = ib_destroy_cq(conn->ibc_cq);
+                rc = kiblnd_ib_destroy_cq(conn->ibc_cq);
                 if (rc != 0)
                         CWARN("Error destroying CQ: %d\n", rc);
         }
@@ -921,7 +921,7 @@ kiblnd_destroy_conn (kib_conn_t *conn)
                 kib_net_t *net = peer->ibp_ni->ni_data;
 
                 kiblnd_peer_decref(peer);
-                rdma_destroy_id(cmid);
+                kiblnd_rdma_destroy_id(cmid);
                 cfs_atomic_dec(&net->ibn_nconns);
         }
 
@@ -1789,10 +1789,10 @@ kiblnd_destroy_dev (kib_dev_t *dev)
         kiblnd_dev_cleanup(dev);
 
         if (dev->ibd_pd != NULL)
-                ib_dealloc_pd(dev->ibd_pd);
+                kiblnd_ib_dealloc_pd(dev->ibd_pd);
 
         if (dev->ibd_cmid != NULL)
-                rdma_destroy_id(dev->ibd_cmid);
+                kiblnd_rdma_destroy_id(dev->ibd_cmid);
 
         LIBCFS_FREE(dev, sizeof(*dev));
 }
@@ -2080,7 +2080,8 @@ kiblnd_startup (lnet_ni_t *ni)
                 ibdev->ibd_ifip = ip;
                 strcpy(&ibdev->ibd_ifname[0], ifname);
 
-                id = rdma_create_id(kiblnd_cm_callback, ibdev, RDMA_PS_TCP);
+                id = kiblnd_rdma_create_id(kiblnd_cm_callback, ibdev,
+                                           RDMA_PS_TCP);
                 if (IS_ERR(id)) {
                         CERROR("Can't create listen ID: %ld\n", PTR_ERR(id));
                         goto failed;
@@ -2093,7 +2094,7 @@ kiblnd_startup (lnet_ni_t *ni)
                 addr.sin_port        = htons(*kiblnd_tunables.kib_service);
                 addr.sin_addr.s_addr = htonl(ip);
 
-                rc = rdma_bind_addr(id, (struct sockaddr *)&addr);
+                rc = kiblnd_rdma_bind_addr(id, (struct sockaddr *)&addr);
                 if (rc != 0) {
                         CERROR("Can't bind to %s: %d\n", ifname, rc);
                         goto failed;
@@ -2105,7 +2106,7 @@ kiblnd_startup (lnet_ni_t *ni)
                        ifname, HIPQUAD(ip), *kiblnd_tunables.kib_service,
                        id->device->name);
 
-                pd = ib_alloc_pd(id->device);
+                pd = kiblnd_ib_alloc_pd(id->device);
                 if (IS_ERR(pd)) {
                         CERROR("Can't allocate PD: %ld\n", PTR_ERR(pd));
                         goto failed;
@@ -2113,7 +2114,7 @@ kiblnd_startup (lnet_ni_t *ni)
 
                 ibdev->ibd_pd = pd;
 
-                rc = rdma_listen(id, 256);
+                rc = kiblnd_rdma_listen(id, 256);
                 if (rc != 0) {
                         CERROR("Can't start listener: %d\n", rc);
                         goto failed;
@@ -2152,6 +2153,10 @@ failed:
 void __exit
 kiblnd_module_fini (void)
 {
+        /* do nothing if syms were not loaded */
+        if (kiblnd_symbols_check() != 0)
+                return;
+
         lnet_unregister_lnd(&the_o2iblnd);
         kiblnd_tunables_fini();
 }
@@ -2160,6 +2165,10 @@ int __init
 kiblnd_module_init (void)
 {
         int    rc;
+
+        /* do nothing if syms were not loaded */
+        if (kiblnd_symbols_check() != 0)
+                return 0;
 
         CLASSERT (sizeof(kib_msg_t) <= IBLND_MSG_SIZE);
         CLASSERT (offsetof(kib_msg_t, ibm_u.get.ibgm_rd.rd_frags[IBLND_MAX_RDMA_FRAGS])

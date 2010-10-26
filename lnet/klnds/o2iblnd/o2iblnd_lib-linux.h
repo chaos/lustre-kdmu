@@ -76,6 +76,31 @@ typedef int gfp_t;
 #include <rdma/ib_verbs.h>
 #include <rdma/ib_fmr_pool.h>
 
+#define kiblnd_symbols_init()     0
+#define kiblnd_symbols_check()    0
+#define kiblnd_symbols_fini()     do {} while (0)
+
+#define kiblnd_rdma_create_id     rdma_create_id
+#define kiblnd_rdma_destroy_id    rdma_destroy_id
+#define kiblnd_rdma_create_qp     rdma_create_qp
+#define kiblnd_rdma_destroy_qp    rdma_destroy_qp
+#define kiblnd_rdma_resolve_addr  rdma_resolve_addr
+#define kiblnd_rdma_resolve_route rdma_resolve_route
+#define kiblnd_rdma_connect       rdma_connect
+#define kiblnd_rdma_reject        rdma_reject
+#define kiblnd_rdma_bind_addr     rdma_bind_addr
+#define kiblnd_rdma_listen        rdma_listen
+#define kiblnd_rdma_accept        rdma_accept
+#define kiblnd_rdma_disconnect    rdma_disconnect
+
+#define kiblnd_ib_alloc_pd        ib_alloc_pd
+#define kiblnd_ib_dealloc_pd      ib_dealloc_pd
+#define kiblnd_ib_create_cq       ib_create_cq
+#define kiblnd_ib_destroy_cq      ib_destroy_cq
+#define kiblnd_ib_req_notify_cq   ib_req_notify_cq
+#define kiblnd_ib_poll_cq         ib_poll_cq
+#define kiblnd_ib_modify_qp       ib_modify_qp
+
 #if defined(CONFIG_SYSCTL) && !CFS_SYSFS_MODULE_PARM
 
 #ifndef HAVE_SYSCTL_UNNUMBERED

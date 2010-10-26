@@ -612,8 +612,8 @@ kiblnd_send_noop(kib_conn_t *conn)
 static inline void
 kiblnd_abort_receives(kib_conn_t *conn)
 {
-        ib_modify_qp(conn->ibc_cmid->qp,
-                     &kiblnd_data.kib_error_qpa, IB_QP_STATE);
+        kiblnd_ib_modify_qp(conn->ibc_cmid->qp,
+                            &kiblnd_data.kib_error_qpa, IB_QP_STATE);
 }
 
 static inline const char *

@@ -39,6 +39,126 @@
 
 #include "o2iblnd.h"
 
+kiblnd_native_ops_t kiblnd_native_ops;
+
+static ddi_modhandle_t kiblnd_ibtl_h;
+static ddi_modhandle_t kiblnd_sol_ofs_h;
+
+static int kiblnd_symbols_loaded = 0;
+
+/**
+ * Return 0 if OK (i.e. syms were loaded)
+ */
+int
+kiblnd_symbols_check(void)
+{
+        return !kiblnd_symbols_loaded;
+}
+
+void
+kiblnd_symbols_fini(void)
+{
+        kiblnd_symbols_loaded = 0;
+
+        if (kiblnd_sol_ofs_h != NULL) {
+                ddi_modclose(kiblnd_sol_ofs_h);
+                kiblnd_sol_ofs_h = NULL;
+        }
+
+        if (kiblnd_ibtl_h != NULL) {
+                ddi_modclose(kiblnd_ibtl_h);
+                kiblnd_ibtl_h = NULL;
+        }
+}
+
+/**
+ * Return 0 if OK (i.e. sanity test passed)
+ */
+static int
+kiblnd_symbols_sanity(void)
+{
+        int n = sizeof(kiblnd_native_ops)/sizeof(kiblnd_native_ops.raw[0]);
+        int i;
+
+        for (i = 0; i < n; i++) {
+                if (kiblnd_native_ops.raw[i] == NULL) {
+                        CERROR("kiblnd_native_ops.raw[%d] is not set!\n", i);
+                        return -1;
+                }
+        }
+
+        return 0;
+}
+
+#define KIB_SYM_CWARN(reason) CWARN("o2iblnd disabled because %s\n", reason)
+
+#define KIB_MOD_OPEN(mod)                                                  \
+do {                                                                       \
+        kiblnd_##mod##_h = ddi_modopen("misc/"#mod, KRTLD_MODE_FIRST, &rc);\
+        if (kiblnd_##mod##_h == NULL) {                                    \
+                KIB_SYM_CWARN(#mod" is not available");                    \
+                goto symbols_error;                                        \
+        }                                                                  \
+} while (0)
+
+#define KIB_SYM_LOAD(mod, sym)                                             \
+do {                                                                       \
+        kiblnd_##sym = ddi_modsym(kiblnd_##mod##_h, #sym, &rc);            \
+        if (kiblnd_##sym == NULL) {                                        \
+                KIB_SYM_CWARN(#sym"() is not visible");                    \
+                goto symbols_error;                                        \
+        }                                                                  \
+} while (0)
+
+int
+kiblnd_symbols_init(void)
+{
+        int rc;
+
+        KIB_MOD_OPEN(ibtl);
+        KIB_MOD_OPEN(sol_ofs);
+
+        KIB_SYM_LOAD(sol_ofs, rdma_create_id);
+        KIB_SYM_LOAD(sol_ofs, rdma_destroy_id);
+        KIB_SYM_LOAD(sol_ofs, rdma_create_qp);
+        KIB_SYM_LOAD(sol_ofs, rdma_destroy_qp);
+        KIB_SYM_LOAD(sol_ofs, rdma_resolve_addr);
+        KIB_SYM_LOAD(sol_ofs, rdma_resolve_route);
+        KIB_SYM_LOAD(sol_ofs, rdma_connect);
+        KIB_SYM_LOAD(sol_ofs, rdma_reject);
+        KIB_SYM_LOAD(sol_ofs, rdma_bind_addr);
+        KIB_SYM_LOAD(sol_ofs, rdma_listen);
+        KIB_SYM_LOAD(sol_ofs, rdma_accept);
+        KIB_SYM_LOAD(sol_ofs, rdma_disconnect);
+
+        KIB_SYM_LOAD(sol_ofs, ib_alloc_pd);
+        KIB_SYM_LOAD(sol_ofs, ib_dealloc_pd);
+        KIB_SYM_LOAD(sol_ofs, ib_create_cq);
+        KIB_SYM_LOAD(sol_ofs, ib_destroy_cq);
+        KIB_SYM_LOAD(sol_ofs, ib_req_notify_cq);
+        KIB_SYM_LOAD(sol_ofs, ib_poll_cq);
+        KIB_SYM_LOAD(sol_ofs, ib_modify_qp);
+
+        KIB_SYM_LOAD(ibtl, ibt_post_recv);
+        KIB_SYM_LOAD(ibtl, ibt_post_send);
+        KIB_SYM_LOAD(ibtl, ibt_register_dma_mr);
+        KIB_SYM_LOAD(ibtl, ibt_register_buf);
+        KIB_SYM_LOAD(ibtl, ibt_deregister_mr);
+        KIB_SYM_LOAD(ibtl, ibt_map_mem_iov);
+        KIB_SYM_LOAD(ibtl, ibt_unmap_mem_iov);
+        
+        /* someone added new entry to kiblnd_native_ops_t but missed to
+           update the code above */
+        LASSERT (kiblnd_symbols_sanity() == 0);
+        
+        kiblnd_symbols_loaded = 1;
+        return 0;
+
+symbols_error:
+        kiblnd_symbols_fini();
+        return -1;
+}
+
 void
 kiblnd_plat_modparams_init(void)
 {
@@ -87,11 +207,11 @@ kiblnd_unmap_tx(lnet_ni_t *ni, kib_tx_t *tx)
                         LBUG();
 
                 case IBLND_MR_NO_GLOBAL:
-                        ibt_deregister_mr(hca, tx->tx_mr_u.mr_hdl);
+                        kiblnd_ibt_deregister_mr(hca, tx->tx_mr_u.mr_hdl);
                         tx->tx_mr_u.mr_hdl = NULL;
                         break;
                 case IBLND_MR_GLOBAL:
-                        ibt_unmap_mem_iov(hca, tx->tx_mr_u.mi_hdl);
+                        kiblnd_ibt_unmap_mem_iov(hca, tx->tx_mr_u.mi_hdl);
                         tx->tx_mr_u.mi_hdl = NULL;
                         break;
                 }
@@ -117,10 +237,10 @@ kiblnd_no_global_mr_map_tx(lnet_ni_t *ni, kib_tx_t *tx,
 
         mem_bpattr.mr_flags = IBT_MR_ENABLE_REMOTE_WRITE | IBT_MR_ENABLE_LOCAL_WRITE;
 
-        rc = ibt_register_buf(net->ibn_dev->ibd_cmid->device->hca_hdl,
-                              net->ibn_dev->ibd_pd->ibt_pd,
-                              &mem_bpattr, tx->tx_frags, &mr_hdl,
-                              &mem_desc);
+        rc = kiblnd_ibt_register_buf(net->ibn_dev->ibd_cmid->device->hca_hdl,
+                                     net->ibn_dev->ibd_pd->ibt_pd,
+                                     &mem_bpattr, tx->tx_frags, &mr_hdl,
+                                     &mem_desc);
 
         if (rc != 0) {
                 CERROR("ibt_register_buf() failed: rc = %d", rc);
@@ -168,7 +288,8 @@ kiblnd_global_mr_map_tx(lnet_ni_t *ni, kib_tx_t *tx,
 
         swr.wr_sgl = tx->tx_sge;
 
-        ret = ibt_map_mem_iov(hca, &iov_attr, (ibt_all_wr_t *)&swr, &mi_hdl);
+        ret = kiblnd_ibt_map_mem_iov(hca, &iov_attr, (ibt_all_wr_t *)&swr,
+                                     &mi_hdl);
 
         if (ret != 0) {
                 CERROR("ibt_map_mem_iov() failed: rc = %d", ret);
@@ -427,9 +548,9 @@ kiblnd_get_dma_mr(kib_dev_t *ibdev, int mr_access_flags)
         mr_attr.dmr_flags = access_flags;
 
         memset(&mr_desc, 0, sizeof(mr_desc)); /* for debug only */
-        rc = ibt_register_dma_mr(ibdev->ibd_cmid->device->hca_hdl,
-                                 ibdev->ibd_pd->ibt_pd,
-                                 &mr_attr, &mr_hdl, &mr_desc);
+        rc = kiblnd_ibt_register_dma_mr(ibdev->ibd_cmid->device->hca_hdl,
+                                        ibdev->ibd_pd->ibt_pd,
+                                        &mr_attr, &mr_hdl, &mr_desc);
 
         if (rc != IBT_SUCCESS) {
                 LIBCFS_FREE(mr, sizeof(*mr));
@@ -450,8 +571,8 @@ kiblnd_dereg_mr(kib_dev_t *ibdev, struct ib_mr *mr)
 
         CDEBUG(D_NET, "Deregestring global dma MR (hdl=%p) ...", mr->hdl);
 
-        ibt_deregister_mr(ibdev->ibd_cmid->device->hca_hdl,
-                          mr->hdl);
+        kiblnd_ibt_deregister_mr(ibdev->ibd_cmid->device->hca_hdl,
+                                 mr->hdl);
         LIBCFS_FREE(mr, sizeof(*mr));
 }
 
@@ -467,8 +588,8 @@ kiblnd_unmap_pages(kib_pages_t *p)
         if (p->ibp_map->pm_mi_hdl == NULL)
                 return;
 
-        ibt_unmap_mem_iov(p->ibp_device->hca_hdl,
-                          p->ibp_map->pm_mi_hdl);
+        kiblnd_ibt_unmap_mem_iov(p->ibp_device->hca_hdl,
+                                 p->ibp_map->pm_mi_hdl);
 
         p->ibp_map->pm_mi_hdl = NULL;
 }
@@ -509,8 +630,8 @@ kiblnd_map_pages(kib_net_t *net, kib_pages_t *p)
 
         swr.wr_sgl = p->ibp_map->pm_sgl;
 
-        rc = ibt_map_mem_iov(p->ibp_device->hca_hdl,
-                             &iov_attr, (ibt_all_wr_t *)&swr, &mi_hdl);
+        rc = kiblnd_ibt_map_mem_iov(p->ibp_device->hca_hdl,
+                                    &iov_attr, (ibt_all_wr_t *)&swr, &mi_hdl);
 
         LIBCFS_FREE(plist, sizeof(*plist) * npages);
 

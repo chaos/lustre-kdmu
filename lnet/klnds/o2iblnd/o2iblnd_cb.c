@@ -990,7 +990,7 @@ kiblnd_connect_peer (kib_peer_t *peer)
         LASSERT (net != NULL);
         LASSERT (peer->ibp_connecting > 0);
 
-        cmid = rdma_create_id(kiblnd_cm_callback, peer, RDMA_PS_TCP);
+        cmid = kiblnd_rdma_create_id(kiblnd_cm_callback, peer, RDMA_PS_TCP);
         if (IS_ERR(cmid)) {
                 CERROR("Can't create CMID for %s: %ld\n",
                        libcfs_nid2str(peer->ibp_nid), PTR_ERR(cmid));
@@ -1010,10 +1010,10 @@ kiblnd_connect_peer (kib_peer_t *peer)
 
         kiblnd_peer_addref(peer);               /* cmid's ref */
 
-        rc = rdma_resolve_addr(cmid,
-                               (struct sockaddr *)&srcaddr,
-                               (struct sockaddr *)&dstaddr,
-                               *kiblnd_tunables.kib_timeout * 1000);
+        rc = kiblnd_rdma_resolve_addr(cmid,
+                                      (struct sockaddr *)&srcaddr,
+                                      (struct sockaddr *)&dstaddr,
+                                      *kiblnd_tunables.kib_timeout * 1000);
         if (rc == 0) {
                 CDEBUG(D_NET, "%s: connection bound to %s:%u.%u.%u.%u:%s\n",
                        libcfs_nid2str(peer->ibp_nid), dev->ibd_ifname,
@@ -1027,7 +1027,7 @@ kiblnd_connect_peer (kib_peer_t *peer)
                libcfs_nid2str(peer->ibp_nid), rc);
 
         kiblnd_peer_decref(peer);               /* cmid's ref */
-        rdma_destroy_id(cmid);
+        kiblnd_rdma_destroy_id(cmid);
  failed:
         kiblnd_peer_connect_failed(peer, 1, rc);
 }
@@ -1880,7 +1880,7 @@ kiblnd_reject(struct rdma_cm_id *cmid, kib_rej_t *rej)
 {
         int          rc;
 
-        rc = rdma_reject(cmid, rej, sizeof(*rej));
+        rc = kiblnd_rdma_reject(cmid, rej, sizeof(*rej));
 
         if (rc != 0)
                 CWARN("Error %d sending reject\n", rc);
@@ -2125,7 +2125,7 @@ kiblnd_passive_connect (struct rdma_cm_id *cmid, void *priv, int priv_nob)
 
         CDEBUG(D_NET, "Accept %s\n", libcfs_nid2str(nid));
 
-        rc = rdma_accept(cmid, &cp);
+        rc = kiblnd_rdma_accept(cmid, &cp);
         if (rc != 0) {
                 CERROR("Can't accept %s: %d\n", libcfs_nid2str(nid), rc);
                 rej.ibr_version = version;
@@ -2502,7 +2502,7 @@ kiblnd_active_connect (struct rdma_cm_id *cmid)
         LASSERT(cmid->context == (void *)conn);
         LASSERT(conn->ibc_cmid == cmid);
 
-        rc = rdma_connect(cmid, &cp);
+        rc = kiblnd_rdma_connect(cmid, &cp);
         if (rc != 0) {
                 CERROR("Can't connect to %s: %d\n",
                        libcfs_nid2str(peer->ibp_nid), rc);
@@ -2555,7 +2555,7 @@ kiblnd_cm_callback(struct rdma_cm_id *cmid, struct rdma_cm_event *event)
                                libcfs_nid2str(peer->ibp_nid), event->status);
                         rc = event->status;
                 } else {
-                        rc = rdma_resolve_route(
+                        rc = kiblnd_rdma_resolve_route(
                                 cmid, *kiblnd_tunables.kib_timeout * 1000);
                         if (rc == 0)
                                 return 0;
@@ -2809,7 +2809,7 @@ kiblnd_disconnect_conn (kib_conn_t *conn)
         LASSERT (cfs_current() == kiblnd_data.kib_connd);
         LASSERT (conn->ibc_state == IBLND_CONN_CLOSING);
 
-        rdma_disconnect(conn->ibc_cmid);
+        kiblnd_rdma_disconnect(conn->ibc_cmid);
         kiblnd_finalise_conn(conn);
 
         kiblnd_peer_notify(conn->ibc_peer);
@@ -3059,10 +3059,10 @@ kiblnd_scheduler(void *arg)
                         cfs_spin_unlock_irqrestore(&kiblnd_data.kib_sched_lock,
                                                    flags);
 
-                        rc = ib_poll_cq(conn->ibc_cq, 1, &wc);
+                        rc = kiblnd_ib_poll_cq(conn->ibc_cq, 1, &wc);
                         if (rc == 0) {
-                                rc = ib_req_notify_cq(conn->ibc_cq,
-                                                      IB_CQ_NEXT_COMP);
+                                rc = kiblnd_ib_req_notify_cq(conn->ibc_cq,
+                                                             IB_CQ_NEXT_COMP);
                                 if (rc < 0) {
                                         CWARN("%s: ib_req_notify_cq failed: %d, "
                                               "closing connection\n",
@@ -3075,7 +3075,7 @@ kiblnd_scheduler(void *arg)
                                         continue;
                                 }
 
-                                rc = ib_poll_cq(conn->ibc_cq, 1, &wc);
+                                rc = kiblnd_ib_poll_cq(conn->ibc_cq, 1, &wc);
                         }
 
                         if (rc < 0) {
