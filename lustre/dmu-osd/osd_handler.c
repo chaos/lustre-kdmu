@@ -99,57 +99,22 @@ struct osd_thandle {
                                 ot_assigned:1;
 };
 
-static int   osd_root_get      (const struct lu_env *env,
-                                struct dt_device *dev, struct lu_fid *f);
-
-static int   lu_device_is_osd  (const struct lu_device *d);
 static int   osd_type_init     (struct lu_device_type *t);
 static void  osd_type_fini     (struct lu_device_type *t);
-static int   osd_object_init   (const struct lu_env *env,
-                                struct lu_object *l,
-                                const struct lu_object_conf *conf);
-static void  osd_object_release(const struct lu_env *env,
-                                struct lu_object *l);
-static int   osd_object_print  (const struct lu_env *env, void *cookie,
-                                lu_printer_t p, const struct lu_object *o);
-static struct lu_device *  osd_device_free   (const struct lu_env *env,
-                                struct lu_device *m);
 static void *osd_key_init      (const struct lu_context *ctx,
                                 struct lu_context_key *key);
 static void  osd_key_fini      (const struct lu_context *ctx,
                                 struct lu_context_key *key, void *data);
 static void  osd_key_exit      (const struct lu_context *ctx,
                                 struct lu_context_key *key, void *data);
-static void  osd_object_init0  (struct osd_object *obj);
 static int   osd_fid_lookup    (const struct lu_env *env,
                                 struct osd_object *obj,
                                 const struct lu_fid *fid);
-static int   osd_index_try     (const struct lu_env *env,
-                                struct dt_object *dt,
-                                const struct dt_index_features *feat);
-static void  osd_conf_get      (const struct lu_env *env,
-                                const struct dt_device *dev,
-                                struct dt_device_param *param);
-static int   osd_trans_stop    (const struct lu_env *env,
-                                struct thandle *th);
 static int   osd_object_is_root(const struct osd_object *obj);
-
-static struct thandle *osd_trans_create(const struct lu_env *env,
-                                       struct dt_device *dt);
-static int osd_trans_start(const struct lu_env *env, struct dt_device *d,
-                           struct thandle *th);
 
 static struct osd_object  *osd_obj          (const struct lu_object *o);
 static struct osd_device  *osd_dt_dev       (const struct dt_device *d);
 static struct lu_device   *osd2lu_dev       (struct osd_device *osd);
-static struct lu_device   *osd_device_fini  (const struct lu_env *env,
-                                             struct lu_device *d);
-static struct lu_device   *osd_device_alloc (const struct lu_env *env,
-                                             struct lu_device_type *t,
-                                             struct lustre_cfg *cfg);
-static struct lu_object   *osd_object_alloc (const struct lu_env *env,
-                                             const struct lu_object_header *hdr,
-                                             struct lu_device *d);
 
 static struct lu_device_type_operations osd_device_type_ops;
 static struct lu_device_type            osd_device_type;
@@ -644,6 +609,7 @@ static int osd_trans_start(const struct lu_env *env, struct dt_device *d,
         if (unlikely(rc != 0)) {
                 /* dmu will call commit callback with error code during abort */
                 CERROR("can't assign tx: %d\n", rc);
+                dump_stack();
         } else {
                 /* add commit callback */
                 udmu_tx_cb_register(oh->ot_tx, osd_trans_commit_cb, (void *)oh);
