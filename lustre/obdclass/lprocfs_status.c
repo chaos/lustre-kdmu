@@ -357,6 +357,7 @@ int lprocfs_add_vars(struct proc_dir_entry *root, struct lprocfs_vars *list,
         return 0;
 }
 
+/* Recursively remove a proc subdir */
 void lprocfs_remove(struct proc_dir_entry **rooth)
 {
         struct proc_dir_entry *root = *rooth;
@@ -421,6 +422,11 @@ struct proc_dir_entry *lprocfs_register(const char *name,
                         lprocfs_remove(&newchild);
                         return ERR_PTR(rc);
                 }
+        }
+        if (newchild == NULL) {
+                CERROR("Can't proc register %s (parent %p)\n", name, parent);
+                /* no idea what the real problem is */
+                return ERR_PTR(-EINVAL);
         }
         return newchild;
 }
