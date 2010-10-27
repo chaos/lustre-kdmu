@@ -574,7 +574,7 @@ static int llog_osd_declare_write_rec_2(struct llog_handle *loghandle,
                 pos = 0;
 
         /* XXX: implement declared window or multi-chunks approach */
-        rc = dt_declare_record_write(&env, o, 1024 * 1024, pos, th);
+        rc = dt_declare_record_write(&env, o, 32 * 1024, pos, th);
         if (rc)
                 GOTO(out, rc);
 
@@ -1318,13 +1318,17 @@ static int llog_osd_destroy(struct llog_handle *loghandle)
         if (IS_ERR(th))
                 GOTO(out, rc = PTR_ERR(th));
 
+        dt_declare_ref_del(&env, o, th);
+
         dt_declare_destroy(&env, o, th);
 
         rc = dt_trans_start(&env, d, th);
         if (rc == 0) {
                 dt_write_lock(&env, o, 0);
-                if (dt_object_exists(o))
+                if (dt_object_exists(o)) {
+                        dt_ref_del(&env, o, th);
                         dt_destroy(&env, o, th);
+                }
                 dt_write_unlock(&env, o);
         }
 
