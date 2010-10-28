@@ -173,8 +173,6 @@ struct md_attr {
         int                     ma_lmv_size;
         void                   *ma_acl;
         int                     ma_acl_size;
-        struct llog_cookie     *ma_cookie;
-        int                     ma_cookie_size;
         struct lustre_capa     *ma_capa;
         struct md_hsm           ma_hsm;
         struct md_som_data     *ma_som;
@@ -340,9 +338,6 @@ struct md_device_operations {
         int (*mdo_root_get)(const struct lu_env *env, struct md_device *m,
                             struct lu_fid *f);
 
-        int (*mdo_maxsize_get)(const struct lu_env *env, struct md_device *m,
-                               int *md_size, int *cookie_size);
-
         int (*mdo_statfs)(const struct lu_env *env, struct md_device *m,
                           struct obd_statfs *sfs);
 
@@ -373,69 +368,10 @@ struct md_device_operations {
         } mdo_quota;
 };
 
-enum md_upcall_event {
-        /** Sync the md layer*/
-        MD_LOV_SYNC = (1 << 0),
-        /** Just for split, no need trans, for replay */
-        MD_NO_TRANS = (1 << 1),
-        MD_LOV_CONFIG = (1 << 2),
-        /** Trigger quota recovery */
-        MD_LOV_QUOTA = (1 << 3)
-};
-
-struct md_upcall {
-        /** this lock protects upcall using against its removal
-         * read lock is for usage the upcall, write - for init/fini */
-        cfs_rw_semaphore_t      mu_upcall_sem;
-        /** device to call, upper layer normally */
-        struct md_device       *mu_upcall_dev;
-        /** upcall function */
-        int (*mu_upcall)(const struct lu_env *env, struct md_device *md,
-                         enum md_upcall_event ev, void *data);
-};
-
 struct md_device {
         struct lu_device                   md_lu_dev;
         const struct md_device_operations *md_ops;
-        struct md_upcall                   md_upcall;
 };
-
-static inline void md_upcall_init(struct md_device *m, void *upcl)
-{
-        cfs_init_rwsem(&m->md_upcall.mu_upcall_sem);
-        m->md_upcall.mu_upcall_dev = NULL;
-        m->md_upcall.mu_upcall = upcl;
-}
-
-static inline void md_upcall_dev_set(struct md_device *m, struct md_device *up)
-{
-        cfs_down_write(&m->md_upcall.mu_upcall_sem);
-        m->md_upcall.mu_upcall_dev = up;
-        cfs_up_write(&m->md_upcall.mu_upcall_sem);
-}
-
-static inline void md_upcall_fini(struct md_device *m)
-{
-        cfs_down_write(&m->md_upcall.mu_upcall_sem);
-        m->md_upcall.mu_upcall_dev = NULL;
-        m->md_upcall.mu_upcall = NULL;
-        cfs_up_write(&m->md_upcall.mu_upcall_sem);
-}
-
-static inline int md_do_upcall(const struct lu_env *env, struct md_device *m,
-                               enum md_upcall_event ev, void *data)
-{
-        int rc = 0;
-        cfs_down_read(&m->md_upcall.mu_upcall_sem);
-        if (m->md_upcall.mu_upcall_dev != NULL &&
-            m->md_upcall.mu_upcall_dev->md_upcall.mu_upcall != NULL) {
-                rc = m->md_upcall.mu_upcall_dev->md_upcall.mu_upcall(env,
-                                              m->md_upcall.mu_upcall_dev,
-                                              ev, data);
-        }
-        cfs_up_read(&m->md_upcall.mu_upcall_sem);
-        return rc;
-}
 
 struct md_object {
         struct lu_object                   mo_lu;

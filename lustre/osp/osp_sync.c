@@ -546,8 +546,9 @@ static int osp_sync_process_record(struct osp_device *d,
                 }
 
                 /* cancel any generation record */
-                rc = llog_cat_cancel_records(llh->u.phd.phd_cat_handle, 1, &cookie);
-                
+                rc = llog_cat_cancel_records(llh->u.phd.phd_cat_handle, 1,
+                                             &cookie);
+
                 return rc;
         }
 
@@ -555,7 +556,7 @@ static int osp_sync_process_record(struct osp_device *d,
          * now we prepare and fill requests to OST, put them on the queue
          * and fire after next commit callback
          */
-       
+
         /* notice we increment counters before sending RPC, to be consistent
          * in RPC interpret callback which may happen very quickly */
         cfs_spin_lock(&d->opd_syn_lock);

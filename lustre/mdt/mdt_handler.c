@@ -566,7 +566,7 @@ static int mdt_getattr_internal(struct mdt_thread_info *info,
         }
 
         if (reqbody->valid & OBD_MD_FLMODEASIZE) {
-                repbody->max_cookiesize = info->mti_mdt->mdt_max_cookiesize;
+                repbody->max_cookiesize = 0;
                 repbody->max_mdsize = info->mti_mdt->mdt_max_mdsize;
                 repbody->valid |= OBD_MD_FLMODEASIZE;
                 CDEBUG(D_INODE, "I am going to change the MAX_MD_SIZE & "
@@ -1532,8 +1532,7 @@ static int mdt_reint_internal(struct mdt_thread_info *info,
                 req_capsule_set_size(pill, &RMF_MDT_MD, RCL_SERVER,
                                      mdt->mdt_max_mdsize);
         if (req_capsule_has_field(pill, &RMF_LOGCOOKIES, RCL_SERVER))
-                req_capsule_set_size(pill, &RMF_LOGCOOKIES, RCL_SERVER,
-                                     mdt->mdt_max_cookiesize);
+                req_capsule_set_size(pill, &RMF_LOGCOOKIES, RCL_SERVER, 0);
 
         rc = req_capsule_server_pack(pill);
         if (rc != 0) {
@@ -2495,8 +2494,8 @@ static int mdt_unpack_req_pack_rep(struct mdt_thread_info *info, __u32 flags)
                         req_capsule_set_size(pill, &RMF_MDT_MD, RCL_SERVER,
                                              mdt->mdt_max_mdsize);
                 if (req_capsule_has_field(pill, &RMF_LOGCOOKIES, RCL_SERVER))
-                        req_capsule_set_size(pill, &RMF_LOGCOOKIES, RCL_SERVER,
-                                             mdt->mdt_max_cookiesize);
+                        req_capsule_set_size(pill, &RMF_LOGCOOKIES,
+                                             RCL_SERVER, 0);
 
                 rc = req_capsule_server_pack(pill);
         }
@@ -4551,10 +4550,10 @@ static int mdt_init0(const struct lu_env *env, struct mdt_device *m,
 
         s = m->mdt_md_dev.md_lu_dev.ld_site;
 
-        m->mdt_max_mdsize = MAX_MD_SIZE;
-        m->mdt_max_cookiesize = sizeof(struct llog_cookie);
-        m->mdt_som_conf = 0;
+        /* XXX: temporary in b_lod_osp, use MIN_MD_SIZE here */
+        m->mdt_max_mdsize = 4096;
 
+        m->mdt_som_conf = 0;
         m->mdt_opts.mo_user_xattr = 0;
         m->mdt_opts.mo_acl = 0;
         m->mdt_opts.mo_cos = MDT_COS_DEFAULT;
@@ -5163,39 +5162,18 @@ static int mdt_export_cleanup(struct obd_export *exp)
 
         if (!cfs_list_empty(&closing_list)) {
                 struct md_attr *ma = &info->mti_attr;
-                int lmm_size;
-                int cookie_size;
-
-                lmm_size = mdt->mdt_max_mdsize;
-                OBD_ALLOC(ma->ma_lmm, lmm_size);
-                if (ma->ma_lmm == NULL)
-                        GOTO(out_lmm, rc = -ENOMEM);
-
-                cookie_size = mdt->mdt_max_cookiesize;
-                OBD_ALLOC(ma->ma_cookie, cookie_size);
-                if (ma->ma_cookie == NULL)
-                        GOTO(out_cookie, rc = -ENOMEM);
 
                 /* Close any open files (which may also cause orphan unlinking). */
                 cfs_list_for_each_entry_safe(mfd, n, &closing_list, mfd_list) {
                         cfs_list_del_init(&mfd->mfd_list);
-                        memset(&ma->ma_attr, 0, sizeof(ma->ma_attr));
-                        ma->ma_lmm_size = lmm_size;
-                        ma->ma_cookie_size = cookie_size;
-                        ma->ma_need = 0;
+                        //memset(&ma->ma_attr, 0, sizeof(ma->ma_attr));
+                        ma->ma_need = ma->ma_valid = 0;
                         /* It is not for setattr, just tell MDD to send
                          * DESTROY RPC to OSS if needed */
-                        ma->ma_attr_flags = MDS_CLOSE_CLEANUP;
-                        ma->ma_valid = MA_FLAGS;
                         mdt_mfd_close(info, mfd);
                 }
-                OBD_FREE(ma->ma_cookie, cookie_size);
-                ma->ma_cookie = NULL;
-out_cookie:
-                OBD_FREE(ma->ma_lmm, lmm_size);
-                ma->ma_lmm = NULL;
         }
-out_lmm:
+        LASSERT(cfs_list_empty(&med->med_open_head));
         info->mti_mdt = NULL;
         /* cleanup client slot early */
         /* Do not erase record for recoverable client. */
@@ -5288,51 +5266,6 @@ static void mdt_allow_cli(struct mdt_device *m, unsigned int flag)
                         cfs_spin_unlock(&obd->obd_dev_lock);
                 }
         }
-}
-
-static int mdt_upcall(const struct lu_env *env, struct md_device *md,
-                      enum md_upcall_event ev, void *data)
-{
-        struct mdt_device *m = mdt_dev(&md->md_lu_dev);
-        struct md_device  *next  = m->mdt_child;
-        struct mdt_thread_info *mti;
-        int rc = 0;
-        ENTRY;
-
-        switch (ev) {
-                case MD_LOV_SYNC:
-                        rc = next->md_ops->mdo_maxsize_get(env, next,
-                                        &m->mdt_max_mdsize,
-                                        &m->mdt_max_cookiesize);
-                        CDEBUG(D_INFO, "get max mdsize %d max cookiesize %d\n",
-                                     m->mdt_max_mdsize, m->mdt_max_cookiesize);
-                        mdt_allow_cli(m, CONFIG_SYNC);
-                        if (data)
-                                (*(__u64 *)data) =
-                                      m->mdt_lut.lut_obd->u.obt.obt_mount_count;
-                        break;
-                case MD_NO_TRANS:
-                        mti = lu_context_key_get(&env->le_ctx, &mdt_thread_key);
-                        mti->mti_no_need_trans = 1;
-                        CDEBUG(D_INFO, "disable mdt trans for this thread\n");
-                        break;
-                case MD_LOV_CONFIG:
-                        /* Check that MDT is not yet configured */
-                        LASSERT(!cfs_test_bit(MDT_FL_CFGLOG, &m->mdt_state));
-                        break;
-#ifdef HAVE_QUOTA_SUPPORT
-                case MD_LOV_QUOTA:
-                        if (md->md_lu_dev.ld_obd->obd_recovering == 0 &&
-                            likely(md->md_lu_dev.ld_obd->obd_stopping == 0))
-                                next->md_ops->mdo_quota.mqo_recovery(env, next);
-                        break;
-#endif
-                default:
-                        CERROR("invalid event\n");
-                        rc = -EINVAL;
-                        break;
-        }
-        RETURN(rc);
 }
 
 static int mdt_obd_notify(struct obd_device *host,
@@ -5719,7 +5652,6 @@ static struct lu_device *mdt_device_alloc(const struct lu_env *env,
                         l = ERR_PTR(rc);
                         return l;
                 }
-                md_upcall_init(&m->mdt_md_dev, mdt_upcall);
         } else
                 l = ERR_PTR(-ENOMEM);
         return l;

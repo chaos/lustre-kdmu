@@ -458,7 +458,6 @@ struct client_obd {
         struct mdc_rpc_lock     *cl_rpc_lock;
         struct mdc_rpc_lock     *cl_setattr_lock;
         struct mdc_rpc_lock     *cl_close_lock;
-        struct osc_creator       cl_oscc;
 
         /* mgc datastruct */
         cfs_semaphore_t          cl_mgc_sem;
@@ -506,75 +505,6 @@ struct mgs_obd {
 
 struct dt_object;
 struct dt_device;
-
-struct mds_obd {
-        /* NB this field MUST be first */
-        struct obd_device_target         mds_obt;
-        struct ptlrpc_service           *mds_service;
-        struct ptlrpc_service           *mds_setattr_service;
-        struct ptlrpc_service           *mds_readpage_service;
-        cfs_dentry_t                    *mds_fid_de;
-        int                              mds_max_mdsize;
-        int                              mds_max_cookiesize;
-        __u64                            mds_io_epoch;
-        unsigned long                    mds_atime_diff;
-        cfs_semaphore_t                  mds_epoch_sem;
-        struct ll_fid                    mds_rootfid;
-        cfs_dentry_t                    *mds_pending_dir;
-        cfs_dentry_t                    *mds_logs_dir;
-        cfs_dentry_t                    *mds_objects_dir;
-        struct llog_handle              *mds_cfg_llh;
-        struct obd_device               *mds_lov_obd;
-        struct obd_uuid                  mds_lov_uuid;
-        char                            *mds_profile;
-        struct obd_export               *mds_lov_exp;
-        struct lov_desc                  mds_lov_desc;
-        __u32                            mds_id;
-
-        /* mark pages dirty for write. */
-        cfs_bitmap_t                    *mds_lov_page_dirty;
-        /* array for store pages with obd_id */
-        void                           **mds_lov_page_array;
-        /* file for store objid */
-#if defined(__linux__)
-        struct file                     *mds_lov_objid_filp;
-#endif /* __linux__ */
-        __u32                            mds_lov_objid_count;
-        __u32                            mds_lov_objid_max_index;
-        __u32                            mds_lov_objid_lastpage;
-        __u32                            mds_lov_objid_lastidx;
-
-        cfs_semaphore_t                  mds_health_sem;
-        unsigned long                    mds_fl_user_xattr:1,
-                                         mds_fl_acl:1,
-                                         mds_evict_ost_nids:1,
-                                         mds_fl_cfglog:1,
-                                         mds_fl_synced:1,
-                                         mds_quota:1,
-                                         mds_fl_target:1; /* mds have one or
-                                                           * more targets */
-
-        struct upcall_cache             *mds_identity_cache;
-
-        /* for capability keys update */
-        struct lustre_capa_key          *mds_capa_keys;
-        cfs_rw_semaphore_t               mds_notify_lock;
-
-        struct dt_object                *mds_lov_objid_dt;
-        struct dt_device                *mds_next_dev;
-};
-
-/* lov objid */
-extern __u32 mds_max_ost_index;
-
-#define MDS_LOV_ALLOC_SIZE (CFS_PAGE_SIZE)
-
-#define OBJID_PER_PAGE() (MDS_LOV_ALLOC_SIZE / sizeof(obd_id))
-
-#define MDS_LOV_OBJID_PAGES_COUNT (mds_max_ost_index/OBJID_PER_PAGE())
-
-extern int mds_lov_init_objids(struct obd_device *obd);
-extern void mds_lov_destroy_objids(struct obd_device *obd);
 
 struct obd_id_info {
         __u32   idx;
@@ -1093,7 +1023,6 @@ struct obd_device {
         union {
                 struct obd_device_target obt;
                 struct filter_obd filter;
-                struct mds_obd mds;
                 struct client_obd cli;
                 struct ost_obd ost;
                 struct echo_client_obd echo_client;

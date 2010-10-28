@@ -18,6 +18,7 @@
 #include <lustre_fsfilt.h>
 #include <lustre_fid.h>
 #include <obd_ost.h>
+#include <lustre_log.h>
 
 #define FILTER_GROUPS_FILE "groups"
 

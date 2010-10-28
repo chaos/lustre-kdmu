@@ -652,6 +652,7 @@ static int mdd_changelog_ns_store(const struct lu_env  *env,
                                   const struct lu_name *tname,
                                   struct thandle *handle)
 {
+#ifdef XXX_MDD_CHANGELOG
         const struct lu_fid *tfid;
         const struct lu_fid *tpfid = mdo2fid(parent);
         struct llog_changelog_rec *rec;
@@ -693,7 +694,7 @@ static int mdd_changelog_ns_store(const struct lu_env  *env,
                        rc, type, tname->ln_name, PFID(tfid), PFID(tpfid));
                 return -EFAULT;
         }
-
+#endif
         return 0;
 }
 

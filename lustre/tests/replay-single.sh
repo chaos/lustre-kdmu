@@ -20,14 +20,15 @@ GRANT_CHECK_LIST=${GRANT_CHECK_LIST:-""}
 require_dsh_mds || exit 0
 
 # Skip these tests
-# bug number:  22449 23366 23364    19960 23365 17466 18857
-ALWAYS_EXCEPT="14    20b   22 23 25 65a   66a   61d   33a 33b 89 $REPLAY_SINGLE_EXCEPT"
+# bug number:  19960 17466 18857
+ALWAYS_EXCEPT="65a   61d   33a 33b $REPLAY_SINGLE_EXCEPT"
 
 # lodosp
+# 19  -- lod_parse_stripping() ASSERTION(buf->lb_buf)
 # 20b -- FAIL: after 74332 > before 34288 
 # 34  -- lod_parse_striping()) ASSERTION(md->lod_ost[idx]) failed: idx 0
 # 65b -- HEAD doesn't pass it either
-ALWAYS_EXCEPT="$ALWAYS_EXCEPT 20b 34 65b"
+ALWAYS_EXCEPT="$ALWAYS_EXCEPT 19 20b 34 65b"
 
 #                                                  63 min  7 min  AT AT AT AT"
 [ "$SLOW" = "no" ] && EXCEPT_SLOW="1 2 3 4 6 12 16 44a      44b    65 66 67 68"
@@ -2161,8 +2162,8 @@ test_88() { #bug 17485
     # exhaust precreations on ost1
     local OST=$(lfs osts | grep ^0": " | awk '{print $2}' | sed -e 's/_UUID$//')
     local mdtosc=$(get_mdtosc_proc_path $OST)
-    local last_id=$(do_facet mds1 lctl get_param -n osc.$mdtosc.prealloc_last_id)
-    local next_id=$(do_facet mds1 lctl get_param -n osc.$mdtosc.prealloc_next_id)
+    local last_id=$(do_facet mds1 lctl get_param -n os[cp].$mdtosc.prealloc_last_id)
+    local next_id=$(do_facet mds1 lctl get_param -n os[cp].$mdtosc.prealloc_next_id)
     echo "before test: last_id = $last_id, next_id = $next_id" 
 
     echo "Creating to objid $last_id on ost $OST..."
@@ -2172,8 +2173,8 @@ test_88() { #bug 17485
     last_id=$(($last_id + 1))
     createmany -o $DIR/$tdir/f-%d $last_id 8
 
-    last_id2=$(do_facet mds1 lctl get_param -n osc.$mdtosc.prealloc_last_id)
-    next_id2=$(do_facet mds1 lctl get_param -n osc.$mdtosc.prealloc_next_id)
+    last_id2=$(do_facet mds1 lctl get_param -n os[cp].$mdtosc.prealloc_last_id)
+    next_id2=$(do_facet mds1 lctl get_param -n os[cp].$mdtosc.prealloc_next_id)
     echo "before recovery: last_id = $last_id2, next_id = $next_id2" 
 
     shutdown_facet mds1
@@ -2191,8 +2192,8 @@ test_88() { #bug 17485
 
     clients_up
 
-    last_id2=$(do_facet mds1 lctl get_param -n osc.$mdtosc.prealloc_last_id)
-    next_id2=$(do_facet mds1 lctl get_param -n osc.$mdtosc.prealloc_next_id)
+    last_id2=$(do_facet mds1 lctl get_param -n os[cp].$mdtosc.prealloc_last_id)
+    next_id2=$(do_facet mds1 lctl get_param -n os[cp].$mdtosc.prealloc_next_id)
     echo "after recovery: last_id = $last_id2, next_id = $next_id2" 
 
     # create new files, which should use new objids, and ensure the orphan 

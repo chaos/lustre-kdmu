@@ -77,7 +77,7 @@ struct lu_object *osp_object_alloc(const struct lu_env *env,
         if (o != NULL) {
                 l = &o->opo_obj.do_lu;
                 h = &o->opo_header;
-                
+
                 lu_object_header_init(h);
                 dt_object_init(&o->opo_obj, h, d);
                 lu_object_add_top(h, l);
