@@ -364,6 +364,22 @@ static int osp_rd_pre_status(char *page, char **start, off_t off,
         return rc;
 }
 
+static int osp_rd_destroys_in_flight(char *page, char **start, off_t off,
+                                     int count, int *eof, void *data)
+{
+        struct obd_device *dev = data;
+        struct osp_device *osp = lu2osp_dev(dev->obd_lu_dev);
+
+        /*
+         * This counter used to determine if OST has space returned.
+         * Now we need to wait for the following:
+         * - sync changes are zero - no llog records
+         * - sync in progress are zero - no RPCs in flight
+         */
+        return snprintf(page, count, "%lu\n",
+                        osp->opd_syn_rpc_in_progress + osp->opd_syn_changes);
+}
+
 static struct lprocfs_vars lprocfs_osp_obd_vars[] = {
         { "uuid",                 lprocfs_rd_uuid,          0, 0 },
         { "ping",                 0, lprocfs_wr_ping,       0, 0, 0222 },
@@ -397,6 +413,9 @@ static struct lprocfs_vars lprocfs_osp_obd_vars[] = {
         { "sync_changes",         osp_rd_syn_changes,       0, 0 },
         { "sync_in_flight",       osp_rd_syn_in_flight,    0, 0 },
         { "sync_in_progress",     osp_rd_syn_in_prog,      0, 0 },
+
+        /* for compatibility reasons */
+        { "destroys_in_flight",   osp_rd_destroys_in_flight, 0, 0 },
         { 0 }
 };
 

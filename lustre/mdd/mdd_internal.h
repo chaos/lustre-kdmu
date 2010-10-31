@@ -43,7 +43,6 @@
 
 #include <lustre_acl.h>
 #include <lustre_eacl.h>
-#include <obd.h>
 #include <md_object.h>
 #include <dt_object.h>
 #include <linux/sched.h>
@@ -52,7 +51,9 @@
 #ifdef HAVE_QUOTA_SUPPORT
 # include <lustre_quota.h>
 #endif
-#include <lustre_fsfilt.h>
+#include <lustre_capa.h>
+#include <lprocfs_status.h>
+//#include <lustre_fsfilt.h>
 
 #ifdef HAVE_QUOTA_SUPPORT
 /* quota stuff */
@@ -99,6 +100,7 @@ struct mdd_txn_op_descr {
 /** some changelog records purged */
 #define CLM_PURGE 0x40000
 
+#ifdef XXX_MDD_CHANGELOG
 struct mdd_changelog {
         cfs_spinlock_t                   mc_lock;    /* for index */
         cfs_waitq_t                      mc_waitq;
@@ -109,7 +111,7 @@ struct mdd_changelog {
         cfs_spinlock_t                   mc_user_lock;
         int                              mc_lastuser;
 };
-
+#endif
 /** Objects in .lustre dir */
 struct mdd_dot_lustre_objs {
         struct mdd_object *mdd_obf;
@@ -119,7 +121,6 @@ struct mdd_device {
         struct md_device                 mdd_md_dev;
         struct obd_export               *mdd_child_exp;
         struct dt_device                *mdd_child;
-        struct obd_device               *mdd_obd_dev;
         struct lu_fid                    mdd_root_fid;
         struct dt_device_param           mdd_dt_conf;
         struct dt_object                *mdd_orphans;
@@ -127,7 +128,9 @@ struct mdd_device {
         cfs_proc_dir_entry_t            *mdd_proc_entry;
         struct lprocfs_stats            *mdd_stats;
         struct mdd_txn_op_descr          mdd_tod[MDD_TXN_LAST_OP];
+#ifdef XXX_MDD_CHANGELOG
         struct mdd_changelog             mdd_cl;
+#endif
         unsigned long                    mdd_atime_diff;
         struct mdd_object               *mdd_dot_lustre;
         struct mdd_dot_lustre_objs       mdd_dot_lustre_objs;
@@ -173,19 +176,12 @@ struct mdd_thread_info {
         struct lu_attr            mti_la;
         struct lu_attr            mti_la_for_fix;
         struct md_attr            mti_ma;
-        struct obd_info           mti_oi;
         char                      mti_orph_key[NAME_MAX + 1];
-        struct obd_trans_info     mti_oti;
         struct lu_buf             mti_buf;
         struct lu_buf             mti_big_buf; /* biggish persistent buf */
         struct lu_name            mti_name;
-        struct obdo               mti_oa;
         char                      mti_xattr_buf[LUSTRE_POSIX_ACL_MAX_SIZE];
         struct dt_allocation_hint mti_hint;
-        struct lov_mds_md        *mti_max_lmm;
-        int                       mti_max_lmm_size;
-        struct llog_cookie       *mti_max_cookie;
-        int                       mti_max_cookie_size;
         struct dt_object_format   mti_dof;
         struct obd_quotactl       mti_oqctl;
 };
@@ -194,36 +190,12 @@ extern const char orph_index_name[];
 
 extern const struct dt_index_features orph_index_features;
 
-struct lov_mds_md *mdd_max_lmm_get(const struct lu_env *env,
-                                   struct mdd_device *mdd);
-
-struct llog_cookie *mdd_max_cookie_get(const struct lu_env *env,
-                                       struct mdd_device *mdd);
-
-int mdd_init_obd(const struct lu_env *env, struct mdd_device *mdd,
-                 struct lustre_cfg *cfg);
-int mdd_fini_obd(const struct lu_env *env, struct mdd_device *mdd,
-                 struct lustre_cfg *lcfg);
 int __mdd_xattr_set(const struct lu_env *env, struct mdd_object *obj,
                     const struct lu_buf *buf, const char *name,
                     int fl, struct thandle *handle);
 int mdd_xattr_set_txn(const struct lu_env *env, struct mdd_object *obj,
                       const struct lu_buf *buf, const char *name, int fl,
                       struct thandle *txn);
-int mdd_lsm_sanity_check(const struct lu_env *env, struct mdd_object *obj);
-int mdd_lov_set_md(const struct lu_env *env, struct mdd_object *pobj,
-                   struct mdd_object *child, struct lov_mds_md *lmm,
-                   int lmm_size, struct thandle *handle, int set_stripe);
-int mdd_lov_create(const struct lu_env *env, struct mdd_device *mdd,
-                   struct mdd_object *parent, struct mdd_object *child,
-                   struct lov_mds_md **lmm, int *lmm_size,
-                   const struct md_op_spec *spec, struct lu_attr *la);
-int mdd_lov_objid_prepare(struct mdd_device *mdd, struct lov_mds_md *lmm);
-void mdd_lov_objid_update(struct mdd_device *mdd, struct lov_mds_md *lmm,
-                          struct thandle *th);
-void mdd_lov_create_finish(const struct lu_env *env, struct mdd_device *mdd,
-                           struct lov_mds_md *lmm, int lmm_size,
-                           const struct md_op_spec *spec);
 int mdd_get_md(const struct lu_env *env, struct mdd_object *obj,
                void *md, int *md_size, const char *name);
 int mdd_get_md_locked(const struct lu_env *env, struct mdd_object *obj,
@@ -320,25 +292,10 @@ void mdd_lee_unpack(const struct link_ea_entry *lee, int *reclen,
                     struct lu_name *lname, struct lu_fid *pfid);
 
 /* mdd_lov.c */
-int mdd_unlink_log(const struct lu_env *env, struct mdd_device *mdd,
-                   struct mdd_object *mdd_cobj, struct md_attr *ma,
-                   struct thandle *th);
-
-int mdd_declare_setattr_log(const struct lu_env *env, struct mdd_object *obj,
-                            const struct md_attr *ma,struct lov_mds_md *lmm,
-                            int lmm_size, struct thandle *th);
-int mdd_setattr_log(const struct lu_env *env, struct mdd_device *mdd,
-                    const struct md_attr *ma,
-                    struct lov_mds_md *lmm, int lmm_size,
-                    struct llog_cookie *logcookies, int cookies_size,
-                    struct thandle *th);
-
-int mdd_get_cookie_size(const struct lu_env *env, struct mdd_device *mdd,
-                        struct lov_mds_md *lmm);
-
-int mdd_lov_setattr_async(const struct lu_env *env, struct mdd_object *obj,
-                          struct lov_mds_md *lmm, int lmm_size,
-                          struct llog_cookie *logcookies);
+int mdd_lsm_sanity_check(const struct lu_env *env,  struct mdd_object *obj);
+int mdd_lov_set_md(const struct lu_env *env, struct mdd_object *pobj,
+                   struct mdd_object *child, struct lov_mds_md *lmmp,
+                   int lmm_size, struct thandle *handle, int set_stripe);
 
 struct mdd_thread_info *mdd_env_info(const struct lu_env *env);
 
@@ -463,6 +420,7 @@ int mdd_txn_commit_cb(const struct lu_env *env, struct thandle *txn,
 struct lu_object *mdd_object_alloc(const struct lu_env *env,
                                    const struct lu_object_header *hdr,
                                    struct lu_device *d);
+#ifdef XXX_MDD_CHANGELOG
 struct llog_changelog_rec;
 int mdd_changelog_llog_write(struct mdd_device         *mdd,
                              struct llog_changelog_rec *rec,
@@ -470,7 +428,7 @@ int mdd_changelog_llog_write(struct mdd_device         *mdd,
 int mdd_changelog_llog_cancel(struct mdd_device *mdd, long long endrec);
 int mdd_changelog_write_header(struct mdd_device *mdd, int markerflags);
 int mdd_changelog_on(struct mdd_device *mdd, int on);
-
+#endif
 /* mdd_permission.c */
 #define mdd_cap_t(x) (x)
 
@@ -549,11 +507,6 @@ static inline struct dt_object* mdd_object_child(struct mdd_object *o)
                              struct dt_object, do_lu);
 }
 
-static inline struct obd_device *mdd2obd_dev(struct mdd_device *mdd)
-{
-        return mdd->mdd_obd_dev;
-}
-
 static inline struct mdd_device *mdd_obj2mdd_dev(struct mdd_object *obj)
 {
         return mdo2mdd(&obj->mod_obj);
@@ -567,20 +520,6 @@ static inline const struct lu_fid *mdo2fid(const struct mdd_object *obj)
 static inline cfs_umode_t mdd_object_type(const struct mdd_object *obj)
 {
         return lu_object_attr(&obj->mod_obj.mo_lu);
-}
-
-static inline int mdd_lov_mdsize(const struct lu_env *env,
-                                 struct mdd_device *mdd)
-{
-        struct obd_device *obd = mdd2obd_dev(mdd);
-        return obd->u.mds.mds_max_mdsize;
-}
-
-static inline int mdd_lov_cookiesize(const struct lu_env *env,
-                                     struct mdd_device *mdd)
-{
-        struct obd_device *obd = mdd2obd_dev(mdd);
-        return obd->u.mds.mds_max_cookiesize;
 }
 
 static inline int mdd_is_immutable(struct mdd_object *obj)

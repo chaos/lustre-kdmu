@@ -235,9 +235,9 @@ init_test_env() {
     export RLUSTRE=${RLUSTRE:-$LUSTRE}
     export RPWD=${RPWD:-$PWD}
     export I_MOUNTED=${I_MOUNTED:-"no"}
-    if [ ! -f /lib/modules/$(uname -r)/kernel/fs/lustre/mds.ko -a \
-        ! -f /lib/modules/$(uname -r)/updates/kernel/fs/lustre/mds.ko -a \
-        ! -f `dirname $0`/../mds/mds.ko ]; then
+    if [ ! -f /lib/modules/$(uname -r)/kernel/fs/lustre/mdd.ko -a \
+        ! -f /lib/modules/$(uname -r)/updates/kernel/fs/lustre/mdd.ko -a \
+        ! -f `dirname $0`/../mdd/mdd.ko ]; then
         export CLIENTMODSONLY=yes
     fi
 
@@ -361,7 +361,6 @@ load_modules_local() {
         [ "$OSTFSTYPE" = "zfs" ] && load_module "dmu-osd/osd_zfs"
         [ "$MDSFSTYPE" = "zfs" ] && load_module "dmu-osd/osd_zfs"
         load_module mgs/mgs
-        load_module mds/mds
         load_module mdd/mdd
         load_module mdt/mdt
         load_module lvfs/fsfilt_$FSTYPE
@@ -1349,7 +1348,7 @@ wait_destroy_complete () {
     local MAX=5
     local WAIT=0
     while [ $WAIT -lt $MAX ]; do
-        local -a RPCs=($($LCTL get_param -n osc.*.destroys_in_flight))
+        local -a RPCs=($($LCTL get_param -n os[cp].*.destroys_in_flight))
         local con=1
         for ((i=0; i<${#RPCs[@]}; i++)); do
             [ ${RPCs[$i]} -eq 0 ] && continue
@@ -2352,7 +2351,7 @@ osc_ensure_active () {
     local period=0
 
     while [ $period -lt $timeout ]; do
-        count=$(do_facet $facet "lctl dl | grep ' IN osc ' 2>/dev/null | wc -l")
+        count=$(do_facet $facet "lctl dl | grep ' IN os[cp] ' 2>/dev/null | wc -l")
         if [ $count -eq 0 ]; then
             break
         fi
@@ -3336,7 +3335,7 @@ check_grant() {
         done
         # sync all the data and make sure no pending data on server
         sync_clients
-        
+
         #get client grant and server grant
         client_grant=0
     for d in `lctl get_param -n osc.*.cur_grant_bytes`; do
@@ -3888,7 +3887,7 @@ mds_on_old_device() {
     local minor=$(get_mds_version_minor $mds)
 
     if [ $major -ge 2 ] || [ $major -eq 1 -a $minor -gt 8 ]; then
-        do_facet $mds "lctl list_param osc.$FSNAME-OST*-osc \
+        do_facet $mds "lctl list_param os[cp].$FSNAME-OST*-os[cp] \
             > /dev/null 2>&1" && return 0
     fi
     return 1
@@ -4391,8 +4390,7 @@ flvr_cnt_mdt2ost()
     for num in `seq $MDSCOUNT`; do
         mdtosc=$(get_mdtosc_proc_path mds$num)
         mdtosc=${mdtosc/-MDT*/-MDT\*}
-        output=$(do_facet mds$num lctl get_param -n \
-            osc.$mdtosc.$PROC_CLI 2>/dev/null)
+        output=$(do_facet mds$num lctl get_param -n os[cp].$mdtosc.$PROC_CLI 2>/dev/null)
         tmpcnt=`count_flvr "$output" $flavor`
         cnt=$((cnt + tmpcnt))
     done

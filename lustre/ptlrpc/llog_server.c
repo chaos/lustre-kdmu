@@ -457,6 +457,7 @@ pop_ctxt:
 }
 EXPORT_SYMBOL(llog_origin_handle_cancel);
 
+#if 0
 static int llog_catinfo_config(struct obd_device *obd, char *buf, int buf_len,
                                char *client)
 {
@@ -657,6 +658,19 @@ release_ctxt:
         llog_ctxt_put(ctxt);
         return rc;
 }
+#else
+static int llog_catinfo_config(struct obd_device *obd, char *buf, int buf_len,
+                               char *client)
+{
+        return 0;
+}
+
+static int llog_catinfo_deletions(struct obd_device *obd, char *buf,
+                                  int buf_len)
+{
+        return 0;
+}
+#endif
 
 int llog_catinfo(struct ptlrpc_request *req)
 {

@@ -309,7 +309,7 @@ int lod_generate_and_set_lovea(const struct lu_env *env,
                 objs[i].l_ost_gen    = cpu_to_le32(1); /* XXX */
                 objs[i].l_ost_idx    = cpu_to_le32(fid_idif_ost_idx(fid));
         }
-        
+
         rc = dt_xattr_set(env, next, &buf, XATTR_NAME_LOV, 0, th, BYPASS_CAPA);
 
         OBD_FREE(lmm, buf.lb_len);
@@ -413,8 +413,9 @@ int lod_parse_striping(const struct lu_env *env, struct lod_object *mo,
                 struct lov_mds_md_v3 *v3 = (struct lov_mds_md_v3 *) lmm;
                 objs = &v3->lmm_objects[0];
                 lod_object_set_pool(mo, v3->lmm_pool_name);
-        } else
+        } else {
                 objs = &lmm->lmm_objects[0];
+        }
 
         for (i = 0; i < mo->mbo_stripenr; i++) {
 
@@ -451,7 +452,8 @@ out:
 }
 
 /*
- * Load and parse striping information, create in-core representation for the stripes
+ * Load and parse striping information, create in-core representation for the
+ * stripes
  */
 int lod_load_striping(const struct lu_env *env, struct lod_object *mo)
 {
@@ -469,7 +471,7 @@ int lod_load_striping(const struct lu_env *env, struct lod_object *mo)
                 RETURN(0);
 
         /* only regular files can be striped */
-        if (!((lod2lu_obj(mo)->lo_header->loh_attr & S_IFMT) & S_IFREG))
+        if (!(lu_object_attr(lod2lu_obj(mo)) & S_IFREG))
                 GOTO(out, rc = 0);
 
         LASSERT(mo->mbo_stripenr == 0);

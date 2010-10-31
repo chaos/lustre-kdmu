@@ -140,12 +140,10 @@ struct mdt_device {
         /* transaction callbacks */
         struct dt_txn_callback     mdt_txn_cb;
 
-        /* these values should be updated from lov if necessary.
-         * or should be placed somewhere else. */
+        /* This is cached value of maximum seen mdsize */
         int                        mdt_max_mdsize;
-        int                        mdt_max_cookiesize;
 
-        struct upcall_cache        *mdt_identity_cache;
+        struct upcall_cache       *mdt_identity_cache;
 
         /* sptlrpc rules */
         cfs_rwlock_t               mdt_sptlrpc_lock;
@@ -190,7 +188,7 @@ struct mdt_object {
         int                     mot_ioepoch_count;
         int                     mot_writecount;
         /* Lock to protect object's IO epoch. */
-        cfs_semaphore_t        mot_ioepoch_sem;
+        cfs_semaphore_t         mot_ioepoch_sem;
 };
 
 enum mdt_object_flags {
@@ -276,7 +274,7 @@ struct mdt_thread_info {
 
         /* although we have export in req, there are cases when it is not
          * available, e.g. closing files upon export destroy */
-        struct obd_export          *mti_exp;
+        struct obd_export         *mti_exp;
         /*
          * A couple of lock handles.
          */

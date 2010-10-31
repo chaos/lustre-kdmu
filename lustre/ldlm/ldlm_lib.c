@@ -356,8 +356,10 @@ int client_obd_setup(struct obd_device *obddev, struct lustre_cfg *lcfg)
         }
 
         cli->cl_import = imp;
-        /* cli->cl_max_mds_{easize,cookiesize} updated by mdc_init_ea_size() */
-        cli->cl_max_mds_easize = sizeof(struct lov_mds_md_v3);
+        /* cli->cl_max_mds_{easize,cookiesize} updated by mdc_init_ea_size()
+         * use single striped v3 LOV EA to start with */
+        cli->cl_max_mds_easize = sizeof(struct lov_mds_md_v3) +
+                                 sizeof(struct lov_ost_data);
         cli->cl_max_mds_cookiesize = sizeof(struct llog_cookie);
 
         if (LUSTRE_CFG_BUFLEN(lcfg, 3) > 0) {

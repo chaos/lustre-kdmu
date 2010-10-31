@@ -172,6 +172,7 @@ static int lod_recovery_complete(const struct lu_env *env,
         ENTRY;
 
         LASSERT(lod->lod_recovery_completed == 0);
+        dump_stack();
         lod->lod_recovery_completed = 1;
 
         rc = next->ld_ops->ldo_recovery_complete(env, next);
@@ -289,7 +290,7 @@ static int lod_sync(const struct lu_env *env, struct dt_device *dev)
 {
         struct lod_device *d = dt2lod_dev(dev);
         struct dt_device  *next;
-        int                rc, i;
+        int                rc = 0, i;
         ENTRY;
 
         for (i = 0; i < LOD_MAX_OSTNR; i++) {
