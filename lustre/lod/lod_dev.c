@@ -172,7 +172,6 @@ static int lod_recovery_complete(const struct lu_env *env,
         ENTRY;
 
         LASSERT(lod->lod_recovery_completed == 0);
-        dump_stack();
         lod->lod_recovery_completed = 1;
 
         rc = next->ld_ops->ldo_recovery_complete(env, next);
