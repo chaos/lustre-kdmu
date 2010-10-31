@@ -334,19 +334,20 @@ static int lod_xattr_get(const struct lu_env *env, struct dt_object *dt,
         dir = S_ISDIR(dt->do_lu.lo_header->loh_attr & S_IFMT);
 
         if (rc == -ENODATA && dir && !strcmp(XATTR_NAME_LOV, name)) {
-                struct lov_mds_md *lmm = buf->lb_buf;
-                struct lod_device *d;
-                struct lov_desc   *desc;
+                struct lov_user_md *lum = buf->lb_buf;
+                struct lod_device  *d;
+                struct lov_desc    *desc;
 
                 d = lu2lod_dev(dt->do_lu.lo_dev);
                 desc = &d->lod_obd->u.lov.desc; 
-                rc = sizeof(struct lov_mds_md);
-                if (buf->lb_len >= sizeof(struct lov_mds_md)) {
-                        lmm->lmm_magic = LOV_MAGIC_V1;
-                        lmm->lmm_object_seq = LOV_OBJECT_GROUP_DEFAULT;
-                        lmm->lmm_pattern = desc->ld_pattern;
-                        lmm->lmm_stripe_size = desc->ld_default_stripe_size;
-                        lmm->lmm_stripe_count = desc->ld_default_stripe_count;
+                rc = sizeof(struct lov_user_md_v1);
+                if (buf->lb_len >= sizeof(struct lov_user_md_v1)) {
+                        lum->lmm_magic = LOV_USER_MAGIC_V1;
+                        lum->lmm_object_seq = LOV_OBJECT_GROUP_DEFAULT;
+                        lum->lmm_pattern = desc->ld_pattern;
+                        lum->lmm_stripe_size = desc->ld_default_stripe_size;
+                        lum->lmm_stripe_count = desc->ld_default_stripe_count;
+                        lum->lmm_stripe_offset = desc->ld_default_stripe_offset;
                 }
         }
 
@@ -407,15 +408,56 @@ out:
         RETURN(rc);
 }
 
+static int lod_xattr_set_lov_on_dir(const struct lu_env *env,
+                                    struct dt_object *dt, const struct lu_buf *buf,
+                                    const char *name, int fl, struct thandle *th,
+                                    struct lustre_capa *capa)
+{
+        struct dt_object      *next = dt_object_child(dt);
+        struct lod_object     *l = lod_dt_obj(dt);
+        struct lov_user_md_v1 *lum;
+        //struct lov_mds_md_v1  *lmm;
+        int                    rc;
+        ENTRY;
+
+        /*
+         * some xattr is changing. that might be lovea storing
+         * default striping for files in this directory
+         */
+        LASSERT(l->mbo_stripe == NULL);
+        l->mbo_striping_cached = 0;
+        l->mbo_def_stripe_size = 0;
+        l->mbo_def_stripenr = 0;
+
+        LASSERT(buf);
+        LASSERT(buf->lb_buf);
+        lum = buf->lb_buf;
+
+        /*
+         * if { size, offset, count } = { 0, -1, 0 } and no pool (i.e. all
+         * default values specified) then delete default striping from dir.
+         */
+        if (LOVEA_DELETE_VALUES((lum->lmm_stripe_size), (lum->lmm_stripe_count),
+                                (lum->lmm_stripe_offset))
+                        && lum->lmm_magic == LOV_USER_MAGIC_V1) {
+                rc = next->do_ops->do_xattr_del(env, next, name, th, capa);
+                if (rc == -ENODATA)
+                        rc = 0;
+        } else {
+                rc = next->do_ops->do_xattr_set(env, next, buf, name, fl, th, capa);
+        }
+
+        RETURN(rc);
+}
+
 static int lod_xattr_set(const struct lu_env *env,
                          struct dt_object *dt, const struct lu_buf *buf,
                          const char *name, int fl, struct thandle *th,
                          struct lustre_capa *capa)
 {
-        struct dt_object   *next = dt_object_child(dt);
-        struct lod_object  *l = lod_dt_obj(dt);
-        __u32               attr;
-        int                 rc;
+        struct dt_object *next = dt_object_child(dt);
+        __u32             attr;
+        int               rc;
         ENTRY;
 
         attr = dt->do_lu.lo_header->loh_attr & S_IFMT;
@@ -423,14 +465,12 @@ static int lod_xattr_set(const struct lu_env *env,
                 /*
                  * XXX: if default per-directory striping is setting,
                  * shouldn't we make sure it's sane?
-                 *
-                 * some xattr is changing. that might be lovea storing
-                 * default striping for files in this directory
                  */
-                LASSERT(l->mbo_stripe == NULL);
-                l->mbo_striping_cached = 0;
-                l->mbo_def_stripe_size = 0;
-                l->mbo_def_stripenr = 0;
+
+                if (!strncmp(name, XATTR_NAME_LOV, strlen(XATTR_NAME_LOV)))
+                        rc = lod_xattr_set_lov_on_dir(env, dt, buf, name, fl, th, capa);
+                else
+                        rc = next->do_ops->do_xattr_set(env, next, buf, name, fl, th, capa);
 
         } else if (S_ISREG(attr) && !strcmp(name, XATTR_NAME_LOV)) {
                 /*
@@ -440,12 +480,12 @@ static int lod_xattr_set(const struct lu_env *env,
                  */
                 rc = lod_striping_create(env, dt, NULL, NULL, th);
                 RETURN(rc);
+        } else {
+                /*
+                 * behave transparantly for all other EAs
+                 */
+                rc = next->do_ops->do_xattr_set(env, next, buf, name, fl, th, capa);
         }
-
-        /*
-         * behave transparantly for all other EAs
-         */
-        rc = next->do_ops->do_xattr_set(env, next, buf, name, fl, th, capa);
 
         RETURN(rc);
 }
