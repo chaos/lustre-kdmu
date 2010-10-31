@@ -1358,7 +1358,7 @@ check_seq_oid()
         echo -e "\tseq ${fid[1]}, oid ${fid[2]} ver ${fid[3]}\n\tstripe count: ${lmm[8]}"
 
         [ "$FSTYPE" != "ldiskfs" ] && skip "can not check trusted.fid FSTYPE=$FSTYPE" && return 0
-        [ "$MDSFSTYPE" != "ldiskfs" ] && skip "can not check trusted.fid MDSFSTYPE=$MDSFSTYPE" && return 0
+        [ "$OSTFSTYPE" != "ldiskfs" ] && skip "can not check trusted.fid MDSFSTYPE=$MDSFSTYPE" && return 0
 
         # check the trusted.fid attribute of the OST objects of the file
         for (( i=0, j=19; i < ${lmm[8]}; i++, j+=4 )); do

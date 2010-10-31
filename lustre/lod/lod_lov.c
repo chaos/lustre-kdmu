@@ -281,8 +281,8 @@ int lod_generate_and_set_lovea(const struct lu_env *env,
 
         lmm->lmm_magic = cpu_to_le32(magic);
         lmm->lmm_pattern = cpu_to_le32(LOV_PATTERN_RAID0);
-        lmm->lmm_object_id = cpu_to_le64(fid_flatten(fid)); /* XXX: what? */
-        lmm->lmm_object_seq = LOV_OBJECT_GROUP_DEFAULT; /* XXX: what? */
+        lmm->lmm_object_id = cpu_to_le64(fid_ver_oid(fid));
+        lmm->lmm_object_seq = cpu_to_le64(fid_seq(fid));
         lmm->lmm_stripe_size = cpu_to_le32(mo->mbo_stripe_size);
         lmm->lmm_stripe_count = cpu_to_le32(mo->mbo_stripenr);
         if (magic == LOV_MAGIC_V1) {
