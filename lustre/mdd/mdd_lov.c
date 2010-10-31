@@ -97,63 +97,6 @@ int mdd_get_md_locked(const struct lu_env *env, struct mdd_object *obj,
         return rc;
 }
 
-static int mdd_lov_set_stripe_md(const struct lu_env *env,
-                                 struct mdd_object *obj, struct lu_buf *buf,
-                                 struct thandle *handle)
-{
-        int rc;
-        ENTRY;
-
-#if 0
-        if (obd && ((lov_exp = obd->u.mds.mds_osc_exp) != NULL)) {
-                /* XXX: who'll be doing swabbing in the new model? *? */
-                LASSERT(S_ISDIR(mdd_object_type(obj)) || S_ISREG(mdd_object_type(obj)));
-                rc = obd_iocontrol(OBD_IOC_LOV_SETSTRIPE, lov_exp, 0,
-                                &lsm, buf->lb_buf);
-                if (rc)
-                        RETURN(rc);
-                obd_free_memmd(lov_exp, &lsm);
-        }
-#endif
-
-        rc = mdd_xattr_set_txn(env, obj, buf, XATTR_NAME_LOV, 0, handle);
-
-        CDEBUG(D_INFO, "set lov ea of "DFID" rc %d \n", PFID(mdo2fid(obj)), rc);
-        RETURN(rc);
-}
-
-/*
- * Permission check is done before call it,
- * no need check again.
- */
-static int mdd_lov_set_dir_md(const struct lu_env *env,
-                              struct mdd_object *obj, struct lu_buf *buf,
-                              struct thandle *handle)
-{
-        struct lov_user_md *lum = NULL;
-        int rc = 0;
-        ENTRY;
-
-        LASSERT(S_ISDIR(mdd_object_type(obj)));
-        lum = (struct lov_user_md*)buf->lb_buf;
-
-        /* if { size, offset, count } = { 0, -1, 0 } and no pool (i.e. all default
-         * values specified) then delete default striping from dir. */
-        if (LOVEA_DELETE_VALUES(lum->lmm_stripe_size, lum->lmm_stripe_count,
-                                lum->lmm_stripe_offset) &&
-            lum->lmm_magic != LOV_USER_MAGIC_V3) {
-                rc = mdd_xattr_set_txn(env, obj, &LU_BUF_NULL,
-                                       XATTR_NAME_LOV, 0, handle);
-                if (rc == -ENODATA)
-                        rc = 0;
-                CDEBUG(D_INFO, "delete lov ea of "DFID" rc %d \n",
-                                PFID(mdo2fid(obj)), rc);
-        } else {
-                rc = mdd_lov_set_stripe_md(env, obj, buf, handle);
-        }
-        RETURN(rc);
-}
-
 int mdd_lsm_sanity_check(const struct lu_env *env,  struct mdd_object *obj)
 {
         struct lu_attr   *tmp_la = &mdd_env_info(env)->mti_la;
@@ -173,29 +116,3 @@ int mdd_lsm_sanity_check(const struct lu_env *env,  struct mdd_object *obj)
         RETURN(rc);
 }
 
-int mdd_lov_set_md(const struct lu_env *env, struct mdd_object *pobj,
-                   struct mdd_object *child, struct lov_mds_md *lmmp,
-                   int lmm_size, struct thandle *handle, int set_stripe)
-{
-        struct lu_buf *buf;
-        cfs_umode_t mode;
-        int rc = 0;
-        ENTRY;
-
-        buf = mdd_buf_get(env, lmmp, lmm_size);
-        mode = mdd_object_type(child);
-        if (S_ISREG(mode) && lmm_size > 0) {
-                if (set_stripe) {
-                        rc = mdd_lov_set_stripe_md(env, child, buf, handle);
-                } else {
-                        rc = mdd_xattr_set_txn(env, child, buf,
-                                               XATTR_NAME_LOV, 0, handle);
-                }
-        } else if (S_ISDIR(mode)) {
-                LASSERT(lmmp != NULL && lmm_size > 0);
-                rc = mdd_lov_set_dir_md(env, child, buf, handle);
-        }
-        CDEBUG(D_INFO, "Set lov md %p size %d for fid "DFID" rc %d\n",
-               lmmp, lmm_size, PFID(mdo2fid(child)), rc);
-        RETURN(rc);
-}
