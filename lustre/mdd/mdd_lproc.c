@@ -70,9 +70,6 @@ int mdd_procfs_init(struct mdd_device *mdd, const char *name)
         int                  rc;
         ENTRY;
 
-        /* XXX: we need a way to learn obd_type easily */
-        RETURN(0);
-
         type = ld->ld_obd->obd_type;
 
         LASSERT(name != NULL);

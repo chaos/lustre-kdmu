@@ -124,24 +124,11 @@ out:
 static int mdd_init0(const struct lu_env *env, struct mdd_device *mdd,
                      struct lu_device_type *t, struct lustre_cfg *lcfg)
 {
-        const char                *name = lustre_cfg_string(lcfg, 0);
         struct obd_type           *obdtype = NULL;
-        //struct obd_device         *obd;
         int rc;
         ENTRY;
 
         md_device_init(&mdd->mdd_md_dev, t);
-
-#if 0
-        /* XXX: need different way to register ldt_obd_type
-                for usage of this look at mdd_procfs_init() */
-        obdtype = class_get_type(LUSTRE_MDD_NAME);
-        if (!obdtype) {
-                CERROR("Unknown type: '%s'\n", LUSTRE_MDD_NAME);
-                GOTO(out, rc = -ENODEV);
-        }
-        t->ldt_obd_type = obdtype;
-#endif
 
         rc = mdd_connect_to_next(env, mdd, lustre_cfg_string(lcfg, 3));
         if (rc)
@@ -158,14 +145,11 @@ static int mdd_init0(const struct lu_env *env, struct mdd_device *mdd,
         /* sync permission changes */
         mdd->mdd_sync_permission = 1;
 
-        rc = mdd_procfs_init(mdd, name);
-
         mdd->mdd_child->dd_ops->dt_conf_get(env, mdd->mdd_child, &mdd->mdd_dt_conf);
 #ifdef XXX_MDD_CHANGELOG
         if (rc == 0)
                 mdd_changelog_init(env, mdd);
 #endif
-//out:
         if (rc && obdtype)
                 class_put_type(obdtype);
 
@@ -1138,6 +1122,10 @@ static int mdd_prepare(const struct lu_env *env,
                 CERROR("Error(%d) initializing .lustre objects\n", rc);
                 GOTO(out, rc);
         }
+
+        LASSERT(cdev->ld_obd);
+        rc = mdd_procfs_init(mdd, cdev->ld_obd->obd_name);
+        LASSERT(rc == 0);
 
 out:
         RETURN(rc);
