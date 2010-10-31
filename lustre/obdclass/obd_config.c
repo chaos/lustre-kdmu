@@ -87,9 +87,9 @@ int class_find_param(char *buf, char *key, char **valp)
  * On return \a params is set to next parameter or to NULL if last
  * parameter is returned.
  *
- * \retval 0 if parameter is returned in \a copy
- * \retval 1 otherwise
- * \retval -EINVAL if unbalanced quota is found
+ * @retval 0 if parameter is returned in \a copy
+ * @retval 1 otherwise
+ * @retval -EINVAL if unbalanced quota is found
  */
 int class_get_next_param(char **params, char *copy)
 {
@@ -129,7 +129,7 @@ int class_get_next_param(char **params, char *copy)
                 str = q1 + 1;
                 q2 = strchr(str, *q1);
                 if (q2 == NULL) {
-                        CERROR("Unbalanced quota in parameters: \"%s\"\n",
+                        CERROR("Unbalanced quote in parameters: \"%s\"\n",
                                *params);
                         return -EINVAL;
                 }
@@ -227,10 +227,14 @@ static int class_parse_value(char *buf, int opc, void *value, char **endh,
         return 0;
 }
 
-int class_parse_nid(char *buf, lnet_nid_t *nid, char **endh, int quiet)
+int class_parse_nid(char *buf, lnet_nid_t *nid, char **endh)
 {
-        return class_parse_value(buf, CLASS_PARSE_NID, (void *)nid, endh,
-                                 quiet);
+        return class_parse_value(buf, CLASS_PARSE_NID, (void *)nid, endh, 0);
+}
+
+int class_parse_nid_quiet(char *buf, lnet_nid_t *nid, char **endh)
+{
+        return class_parse_value(buf, CLASS_PARSE_NID, (void *)nid, endh, 1);
 }
 
 int class_parse_net(char *buf, __u32 *net, char **endh)
@@ -257,6 +261,7 @@ EXPORT_SYMBOL(class_find_param);
 EXPORT_SYMBOL(class_get_next_param);
 EXPORT_SYMBOL(class_match_param);
 EXPORT_SYMBOL(class_parse_nid);
+EXPORT_SYMBOL(class_parse_nid_quiet);
 EXPORT_SYMBOL(class_parse_net);
 EXPORT_SYMBOL(class_match_net);
 

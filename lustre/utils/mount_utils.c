@@ -46,6 +46,7 @@
 #include <lustre_ver.h>
 #include <sys/stat.h>
 #include <sys/utsname.h>
+#include "mount_utils.h"
 
 extern char *progname;
 extern int verbose;
@@ -71,14 +72,13 @@ int run_command_err(char *cmd, int cmdsz, char *error_msg)
                 return ENOMEM;
         }
 
-        if (verbose > 1) {
+        if (verbose > 1)
                 printf("cmd: %s\n", cmd);
-        } else {
-                if ((fd = mkstemp(log)) >= 0) {
-                        close(fd);
-                        strcat(cmd, " >");
-                        strcat(cmd, log);
-                }
+
+        if ((fd = mkstemp(log)) >= 0) {
+                close(fd);
+                strcat(cmd, " >");
+                strcat(cmd, log);
         }
         strcat(cmd, " 2>&1");
 
@@ -106,9 +106,12 @@ int run_command_err(char *cmd, int cmdsz, char *error_msg)
                 FILE *fp;
                 fp = fopen(log, "r");
                 if (fp) {
-                        while (fgets(buf, sizeof(buf), fp) != NULL) {
+                        if (verbose <= 1)
+                                printf("cmd: %s\n", cmd);
+
+                        while (fgets(buf, sizeof(buf), fp) != NULL)
                                 printf("   %s", buf);
-                        }
+
                         fclose(fp);
                 }
         }
@@ -123,6 +126,45 @@ int run_command(char *cmd, int cmdsz)
         return run_command_err(cmd, cmdsz, NULL);
 }
 
+static int readcmd(char *cmd, char *buf, int len)
+{
+        FILE *fp;
+        int red;
+
+        fp = popen(cmd, "r");
+        if (!fp)
+                return errno;
+
+        red = fread(buf, 1, len, fp);
+        pclose(fp);
+
+        /* strip trailing newline */
+        if (buf[red - 1] == '\n')
+                buf[red - 1] = '\0';
+
+        return (red == 0) ? -ENOENT : 0;
+}
+
+static int get_mountdata_zfs(char *dev, struct lustre_disk_data *ldd)
+{
+        char cmd[256];
+        int rc;
+
+        /* Get the label */
+        snprintf(cmd, sizeof(cmd), "zfs get -H -o value -s local "
+                 "com.sun.lustre:label %s", dev);
+
+        rc = readcmd(cmd, ldd->ldd_svname, sizeof(ldd->ldd_svname) - 1);
+        if (rc)
+                return rc;
+
+        ldd->ldd_mount_type = LDD_MT_ZFS;
+
+        vprint("zfs dev %s label '%s'\n", dev, ldd->ldd_svname);
+
+        return 0;
+}
+
 int get_mountdata(char *dev, struct lustre_disk_data *mo_ldd)
 {
 
@@ -133,6 +175,10 @@ int get_mountdata(char *dev, struct lustre_disk_data *mo_ldd)
         int ret = 0;
         int ret2 = 0;
         int cmdsz = sizeof(cmd);
+
+        /* Try ZFS */
+        if ((dev[0] != '/') && get_mountdata_zfs(dev, mo_ldd) == 0)
+                return 0;
 
         /* Make a temporary directory to hold Lustre data files. */
         if (!mkdtemp(tmpdir)) {
@@ -146,8 +192,8 @@ int get_mountdata(char *dev, struct lustre_disk_data *mo_ldd)
 
         ret = run_command(cmd, cmdsz);
         if (ret) {
-                verrprint("%s: Unable to dump %s dir (%d)\n",
-                          progname, MOUNT_CONFIGS_DIR, ret);
+                verrprint("%s: Unable to dump %s from %s (%d)\n",
+                          progname, MOUNT_DATA_FILE, dev, ret);
                 goto out_rmdir;
         }
 
@@ -163,8 +209,8 @@ int get_mountdata(char *dev, struct lustre_disk_data *mo_ldd)
                         goto out_close;
                 }
         } else {
-                verrprint("%s: Unable to read %d.%d config %s.\n",
-                          progname, LUSTRE_MAJOR, LUSTRE_MINOR, filepnm);
+                verrprint("%s: Unable to open temp data file %s\n",
+                          progname, filepnm);
                 ret = 1;
                 goto out_rmdir;
         }
@@ -175,15 +221,60 @@ out_close:
 out_rmdir:
         snprintf(cmd, cmdsz, "rm -rf %s", tmpdir);
         ret2 = run_command(cmd, cmdsz);
-        if (ret2) {
+        if (ret2)
                 verrprint("Failed to remove temp dir %s (%d)\n", tmpdir, ret2);
-                /* failure return from run_command() is more important
-                 * than the failure to remove a dir */
-                if (!ret)
-                        ret = ret2;
-        }
+
+        /* As long as we at least have the label, we're good to go */
+        snprintf(cmd, sizeof(cmd), E2LABEL" %s", dev);
+        ret = readcmd(cmd, mo_ldd->ldd_svname, sizeof(mo_ldd->ldd_svname) - 1);
 
         return ret;
+}
+
+/* Convert symbolic hostnames to ipaddrs, since we can't do this lookup in the
+ * kernel. */
+#define MAXNIDSTR 1024
+char *convert_hostnames(char *s1)
+{
+        char *converted, *s2 = 0, *c, *end, sep;
+        int left = MAXNIDSTR;
+        lnet_nid_t nid;
+
+        converted = malloc(left);
+        if (converted == NULL) {
+                return NULL;
+        }
+
+        end = s1 + strlen(s1);
+        c = converted;
+        while ((left > 0) && (s1 < end)) {
+                s2 = strpbrk(s1, ",:");
+                if (!s2)
+                        s2 = end;
+                sep = *s2;
+                *s2 = '\0';
+                nid = libcfs_str2nid(s1);
+
+                if (nid == LNET_NID_ANY) {
+                        fprintf(stderr, "%s: Can't parse NID '%s'\n", progname, s1);
+                        free(converted);
+                        return NULL;
+                }
+                if (strncmp(libcfs_nid2str(nid), "127.0.0.1",
+                            strlen("127.0.0.1")) == 0) {
+                        fprintf(stderr, "%s: The NID '%s' resolves to the "
+                                "loopback address '%s'.  Lustre requires a "
+                                "non-loopback address.\n",
+                                progname, s1, libcfs_nid2str(nid));
+                        free(converted);
+                        return NULL;
+                }
+
+                c += snprintf(c, left, "%s%c", libcfs_nid2str(nid), sep);
+                left = converted + MAXNIDSTR - c;
+                s1 = s2 + 1;
+        }
+        return converted;
 }
 
 #define PARENT_URN "urn:uuid:2bb5bdbf-6c4b-11dc-9b8e-080020a9ed93"

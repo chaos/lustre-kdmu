@@ -48,12 +48,12 @@
 int (*client_fill_super)(struct super_block *sb) = NULL;
 static void (*kill_super_cb)(struct super_block *sb) = NULL;
 
-void lustre_osvfs_update(void *osvfs, void *data)
+void lustre_osvfs_update(void *osvfs, struct lustre_sb_info *lsi)
 {
         struct super_block *sb = (struct super_block *)osvfs;
 
         LASSERT(sb != NULL);
-        sb->s_fs_info = data;
+        sb->s_fs_info = lsi;
 }
 
 static void server_put_super(struct super_block *sb)
@@ -120,9 +120,9 @@ static struct super_operations server_ops =
 #define log2(n) cfs_ffz(~(n))
 #define LUSTRE_SUPER_MAGIC 0x0BD00BD1
 
-int lustre_osvfs_mount(void *data)
+int lustre_osvfs_mount(void *osvfs)
 {
-        struct super_block *sb = (struct super_block *)data;
+        struct super_block *sb = (struct super_block *)osvfs;
         struct inode *root = 0;
         ENTRY;
 
@@ -195,7 +195,7 @@ static void lustre_kill_super(struct super_block *sb)
 {
         struct lustre_sb_info *lsi = s2lsi(sb);
 
-        if (kill_super_cb && lsi && !(lsi->lsi_flags & LSI_SERVER))
+        if (kill_super_cb && lsi && !IS_SERVER(lsi))
                 (*kill_super_cb)(sb);
 
         kill_anon_super(sb);

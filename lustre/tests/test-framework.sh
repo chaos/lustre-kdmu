@@ -8,7 +8,7 @@ set -e
 
 export REFORMAT=${REFORMAT:-""}
 export WRITECONF=${WRITECONF:-""}
-export VERBOSE=false
+export VERBOSE=${VERBOSE:-"false"}
 export CATASTROPHE=${CATASTROPHE:-/proc/sys/lnet/catastrophe}
 export GSS=false
 export GSS_KRB5=false
@@ -248,7 +248,7 @@ init_test_env() {
             f) CONFIG=$OPTARG;;
             r) REFORMAT=--reformat;;
             v) VERBOSE=true;;
-            w) WRITECONF=writeconf;;
+            w) WRITECONF="-o writeconf";;
             \?) usage;;
         esac
     done
@@ -632,7 +632,7 @@ start() {
     fi
 
     do_facet ${facet} mkdir -p ${MOUNT%/*}/${facet}
-    mount_facet ${facet}
+    mount_facet ${facet} $WRITECONF
     RC=$?
     return $RC
 }
@@ -2141,10 +2141,11 @@ formatall() {
 
     for num in `seq $MDSCOUNT`; do
         echo "Format mds$num: $(mdsdevname $num)"
+        index=$((num-1))
         if $VERBOSE; then
-            add mds$num $(mkfs_opts mds) $MDSFSTYPE_OPT --reformat $(mdsdevname $num) || exit 10
+            add mds$num $(mkfs_opts mds) $MDSFSTYPE_OPT --index $index --reformat $(mdsdevname $num) || exit 10
         else
-            add mds$num $(mkfs_opts mds) $MDSFSTYPE_OPT --reformat $(mdsdevname $num) > /dev/null || exit 10
+            add mds$num $(mkfs_opts mds) $MDSFSTYPE_OPT --index $index --reformat $(mdsdevname $num) > /dev/null || exit 10
         fi
     done
 
@@ -2152,12 +2153,17 @@ formatall() {
     # because of different failnode-s
     for num in `seq $OSTCOUNT`; do
         echo "Format ost$num: $(ostdevname $num)"
+        index=$((num-1))
         if $VERBOSE; then
-            add ost$num $(mkfs_opts ost${num}) $OSTFSTYPE_OPT --reformat `ostdevname $num` || exit 10
+            add ost$num $(mkfs_opts ost${num}) $OSTFSTYPE_OPT --index $index --reformat `ostdevname $num` || exit 10
         else
-            add ost$num $(mkfs_opts ost${num}) $OSTFSTYPE_OPT --reformat `ostdevname $num` > /dev/null || exit 10
+            add ost$num $(mkfs_opts ost${num}) $OSTFSTYPE_OPT --index $index --reformat `ostdevname $num` > /dev/null || exit 10
         fi
     done
+
+    # We always need to writeconf the first time we start up after format.
+    # This is used in setupall
+    WRITECONF="-o writeconf"
 }
 
 mount_client() {
@@ -2182,7 +2188,7 @@ switch_identity() {
         return 2
     fi
 
-    local old="`do_facet mds$num "lctl get_param -n mdt.$MDT.identity_upcall"`"
+    local old="$(do_facet mds$num "lctl get_param -n mdt.$MDT.identity_upcall")"
 
     if $switch; then
         do_facet mds$num "lctl set_param -n mdt.$MDT.identity_upcall \"$L_GETIDENTITY\""
@@ -2205,25 +2211,6 @@ remount_client()
         zconf_mount `hostname` $1 || error "mount failed"
 }
 
-writeconf_facet () {
-    local facet=$1
-    local dev=$2
-
-    do_facet $facet "$TUNEFS --writeconf $dev"
-}
-
-writeconf_all () {
-    for num in `seq $MDSCOUNT`; do
-        DEVNAME=$(mdsdevname $num)
-        writeconf_facet mds$num $DEVNAME
-    done
-
-    for num in `seq $OSTCOUNT`; do
-        DEVNAME=$(ostdevname $num)
-        writeconf_facet ost$num $DEVNAME
-    done
-}
-
 setupall() {
     nfs_client_mode && return
 
@@ -2234,8 +2221,6 @@ setupall() {
 
     if [ -z "$CLIENTONLY" ]; then
         echo Setup mgs, mdt, osts
-        echo $WRITECONF | grep -q "writeconf" && \
-            writeconf_all
         if ! combined_mgs_mds ; then
             start mgs $MGSDEV $MGS_MOUNT_OPTS
         fi
@@ -2262,13 +2247,17 @@ setupall() {
 
             # We started ost$num, now we should set ost${num}failover variable properly.
             # Set ost${num}failover_HOST if it is not set (the default failnode).
-            varname=ost${num}failover_HOST
+            local varname=ost${num}failover_HOST
             if [ -z "${!varname}" ]; then
                 eval ost${num}failover_HOST=$(facet_host ost${num})
             fi
-
         done
     fi
+
+    do_facet mgs "$LCTL conf_param $FSNAME.sys.timeout=$TIMEOUT"
+
+    # don't writeconf next time we start
+    WRITECONF=""
 
     init_gss
 
@@ -3987,8 +3976,8 @@ wait_osc_import_state() {
             [ "${CONN_STATE}" == "CONNECTING" ] && return 0
         fi
         # disconnect rpc should be wait not more obd_timeout
-        [ $i -ge $(($TIMEOUT * 3 / 2)) ] && \
-            error "can't put import for ${ost}(${ost_facet}) into ${expected} state" && return 1
+        [ $i -ge $(($TIMEOUT * 3)) ] && \
+            error "can't put import for ${ost} (${ost_facet}) into ${expected} state (is ${CONN_STATE})" && return 1
         sleep 1
         CONN_STATE=$(do_facet $facet lctl get_param -n $CONN_PROC 2>/dev/null | cut -f2)
         i=$(($i + 1))

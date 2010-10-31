@@ -357,7 +357,6 @@ static int mds_cmd_setup(struct obd_device *obd, struct lustre_cfg *lcfg)
         const char     *dev;
         struct vfsmount *mnt;
         struct lustre_sb_info *lsi;
-        struct lustre_mount_info *lmi;
         struct dt_device_param dt_param;
         struct dentry  *dentry;
         int rc = 0;
@@ -372,25 +371,24 @@ static int mds_cmd_setup(struct obd_device *obd, struct lustre_cfg *lcfg)
                 RETURN(-EINVAL);
         }
         dev = lustre_cfg_string(lcfg, 4);
+
         /* MDT does all reference counting for us */
-        lmi = server_get_mount_2(dev);
-        LASSERT(lmi != NULL);
+        lsi = server_get_mount(dev);
 
         cfs_init_rwsem(&mds->mds_notify_lock);
 
         OBD_SET_CTXT_MAGIC(&obd->obd_lvfs_ctxt);
-        obd->obd_lvfs_ctxt.dt = lmi->lmi_dt;
+        obd->obd_lvfs_ctxt.dt = lsi->lsi_dt_dev;
         obd->u.obt.obt_magic = OBT_MAGIC;
 
-        lsi = lmi->lmi_lsi;
-        lmi->lmi_dt->dd_ops->dt_conf_get(NULL, lmi->lmi_dt, &dt_param);
+        lsi->lsi_dt_dev->dd_ops->dt_conf_get(NULL, lsi->lsi_dt_dev, &dt_param);
         mnt = dt_param.ddp_mnt;
         if (mnt == NULL) {
                 //CERROR("non-ldiskfs underlying filesystem\n");
                 goto new_diskfs;
         }
 
-        obd->obd_fsops = fsfilt_get_ops(MT_STR(lsi->lsi_ldd));
+        obd->obd_fsops = fsfilt_get_ops(mt_str(dt_param.ddp_mount_type));
         mds_init_ctxt(obd, mnt);
 
         push_ctxt(&saved, &obd->obd_lvfs_ctxt, NULL);
@@ -479,7 +477,8 @@ static int mds_cmd_cleanup(struct obd_device *obd)
 
                 pop_ctxt(&saved, &obd->obd_lvfs_ctxt, NULL);
         }
-        server_put_mount_2(obd->obd_name);
+
+        /* no server_put_mount() since we never took a ref */
         RETURN(rc);
 }
 

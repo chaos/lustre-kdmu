@@ -79,13 +79,14 @@ MKFSOPT=""
 [ "x$L_GETIDENTITY" != "x" ] &&
     MDSOPT=$MDSOPT" --param mdt.identity_upcall=$L_GETIDENTITY"
 
-MDS_MKFS_OPTS="--mdt --fsname=$FSNAME --device-size=$MDSSIZE --param sys.timeout=$TIMEOUT $MKFSOPT $MDSOPT $MDS_MKFS_OPTS"
+MDS_MKFS_OPTS="--mdt --fsname=$FSNAME --device-size=$MDSSIZE $MKFSOPT $MDSOPT $MDS_MKFS_OPTS"
 if [[ $mds1_HOST == $mgs_HOST ]] && [[ $MDSDEV1 == $MGSDEV ]]; then
     MDS_MKFS_OPTS="--mgs $MDS_MKFS_OPTS"
 else
     MDS_MKFS_OPTS="--mgsnode=$MGSNID $MDS_MKFS_OPTS"
     MGS_MKFS_OPTS="--mgs --device-size=$MGSSIZE"
 fi
+MDSn_MKFS_OPTS="--mgsnode=$MGSNID --mdt --fsname=$FSNAME --device-size=$MDSSIZE $MKFSOPT $MDSOPT $MDSn_MKFS_OPTS"
 
 MKFSOPT=""
 [ "x$OSTJOURNALSIZE" != "x" ] &&
@@ -98,7 +99,7 @@ MKFSOPT=""
     MKFSOPT=$MKFSOPT" --param ost.capa=$OSSCAPA"
 [ "x$ostfailover_HOST" != "x" ] &&
     OSTOPT=$OSTOPT" --failnode=`h2$NETTYPE $ostfailover_HOST`"
-OST_MKFS_OPTS="--ost --fsname=$FSNAME --device-size=$OSTSIZE --mgsnode=$MGSNID --param sys.timeout=$TIMEOUT $MKFSOPT $OSTOPT $OST_MKFS_OPTS"
+OST_MKFS_OPTS="--ost --fsname=$FSNAME --device-size=$OSTSIZE --mgsnode=$MGSNID $MKFSOPT $OSTOPT $OST_MKFS_OPTS"
 
 MDS_MOUNT_OPTS=${MDS_MOUNT_OPTS:-"-o loop,user_xattr"}
 OST_MOUNT_OPTS=${OST_MOUNT_OPTS:-"-o loop"}

@@ -384,6 +384,7 @@ EXPORT_SYMBOL(proc_lustre_root);
 
 EXPORT_SYMBOL(class_register_type);
 EXPORT_SYMBOL(class_unregister_type);
+EXPORT_SYMBOL(class_search_type);
 EXPORT_SYMBOL(class_get_type);
 EXPORT_SYMBOL(class_put_type);
 EXPORT_SYMBOL(class_name2dev);
@@ -506,8 +507,6 @@ int obd_init_checks(void)
 extern cfs_spinlock_t obd_types_lock;
 extern int class_procfs_init(void);
 extern int class_procfs_clean(void);
-extern void mconf_init(void);
-extern void mconf_fini(void);
 
 #ifdef __KERNEL__
 static int __init init_obdclass(void)
@@ -589,7 +588,6 @@ int init_obdclass(void)
                 return err;
 
 #ifdef __KERNEL__
-        mconf_init();
         err = lustre_register_fs();
 #endif
 
@@ -607,7 +605,6 @@ static void cleanup_obdclass(void)
         __u64 memory_max, pages_max;
         ENTRY;
 
-        mconf_fini();
         lustre_unregister_fs();
 
         cfs_psdev_deregister(&obd_psdev);

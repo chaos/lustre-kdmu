@@ -500,8 +500,7 @@ out:
 }
 
 int filter_stack_init(const struct lu_env *env,
-                          struct filter_device *m, struct lustre_cfg *cfg,
-                          struct lustre_mount_info  *lmi)
+                          struct filter_device *m, struct lustre_cfg *cfg)
 {
         struct lu_device  *d = &m->ofd_dt_dev.dd_lu_dev;
         struct lu_device  *tmp;
@@ -627,7 +626,6 @@ static int filter_init0(const struct lu_env *env, struct filter_device *m,
         const char *dev = lustre_cfg_string(cfg, 0);
         struct filter_thread_info *info = NULL;
         struct filter_obd *filter;
-        struct lustre_mount_info *lmi;
         struct obd_device *obd;
         struct dt_device  *next;
         int rc;
@@ -635,15 +633,6 @@ static int filter_init0(const struct lu_env *env, struct filter_device *m,
 
         obd = class_name2obd(dev);
         LASSERT(obd != NULL);
-
-        lmi = server_get_mount(dev);
-#if 0
-        obd->obd_fsops = fsfilt_get_ops(MT_STR(lmi->lmi_lsi->lsi_ldd));
-        if (IS_ERR(obd->obd_fsops)) {
-                obd->obd_fsops = NULL;
-                /* this filesystem doesn't support fsfilt */
-        }
-#endif
 
         m->ofd_fmd_max_num = FILTER_FMD_MAX_NUM_DEFAULT;
         m->ofd_fmd_max_age = FILTER_FMD_MAX_AGE_DEFAULT;
@@ -711,7 +700,7 @@ static int filter_init0(const struct lu_env *env, struct filter_device *m,
         }
 
         /* init the stack */
-        rc = filter_stack_init(env, m, cfg, lmi);
+        rc = filter_stack_init(env, m, cfg);
         if (rc) {
                 CERROR("Can't init device stack, rc %d\n", rc);
                 GOTO(err_fini_proc, rc);
@@ -828,7 +817,6 @@ static void filter_fini(const struct lu_env *env, struct filter_device *m)
          */
         filter_stack_fini(env, m, &m->ofd_osd->dd_lu_dev);
 
-        server_put_mount(obd->obd_name);
         LASSERT(cfs_atomic_read(&d->ld_ref) == 0);
 
         EXIT;

@@ -391,7 +391,6 @@ static int mdt_server_data_init(const struct lu_env *env,
         struct mdt_thread_info *mti;
         struct dt_object       *obj;
         struct lu_attr         *la;
-        struct lustre_disk_data  *ldd;
         unsigned long last_rcvd_size;
         __u64 mount_count;
         int rc;
@@ -448,8 +447,6 @@ static int mdt_server_data_init(const struct lu_env *env,
         }
         mount_count = lsd->lsd_mount_count;
 
-        ldd = lsi->lsi_ldd;
-
         if (lsd->lsd_feature_incompat & ~MDT_INCOMPAT_SUPP) {
                 CERROR("%s: unsupported incompat filesystem feature(s) %x\n",
                        obd->obd_name,
@@ -487,7 +484,8 @@ static int mdt_server_data_init(const struct lu_env *env,
                 last_rcvd_size = lsd->lsd_client_start;
         }
 
-        if (ldd->ldd_flags & LDD_F_IAM_DIR)
+        /* XXX: how to pass lsi? */
+        if (lsi->lsi_flags & LDD_F_IAM_DIR)
                 lsd->lsd_feature_incompat |= OBD_INCOMPAT_IAM_DIR;
 
         lsd->lsd_feature_incompat |= OBD_INCOMPAT_FID;

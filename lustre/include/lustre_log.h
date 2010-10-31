@@ -925,7 +925,7 @@ static inline int llog_declare_add_2(struct llog_ctxt *ctxt,
         }
 
         if (ctxt->loc_logops->lop_declare_add_2 == NULL)
-                dump_stack();
+                LBUG();
         raised = cfs_cap_raised(CFS_CAP_SYS_RESOURCE);
         if (!raised)
                 cfs_cap_raise(CFS_CAP_SYS_RESOURCE);

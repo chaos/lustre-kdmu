@@ -502,6 +502,8 @@ struct mgs_obd {
         cfs_list_t                       mgs_fs_db_list;
         cfs_semaphore_t                  mgs_sem;
         cfs_proc_dir_entry_t            *mgs_proc_live;
+        struct dt_device                *mgs_osd;
+        struct obd_export               *mgs_osd_exp;
 };
 
 struct dt_object;
@@ -804,14 +806,11 @@ struct niobuf_local {
 #define LUSTRE_LOV_NAME         "lov"
 #define LUSTRE_MGS_NAME         "mgs"
 #define LUSTRE_MGC_NAME         "mgc"
-#define LUSTRE_MCF_NAME         "mountconf"
-
 #define LUSTRE_CACHEOBD_NAME    "cobd"
 #define LUSTRE_ECHO_NAME        "obdecho"
 #define LUSTRE_ECHO_CLIENT_NAME "echo_client"
 
 /* Constant obd names (post-rename) */
-#define LUSTRE_MDS_OBDNAME "MDS"
 #define LUSTRE_OSS_OBDNAME "OSS"
 #define LUSTRE_MGS_OBDNAME "MGS"
 #define LUSTRE_MGC_OBDNAME "MGC"
@@ -1148,7 +1147,6 @@ enum obd_cleanup_stage {
 #define KEY_CHANGELOG_CLEAR     "changelog_clear"
 #define KEY_FID2PATH            "fid2path"
 #define KEY_CHECKSUM            "checksum"
-#define KEY_CLEAR_FS            "clear_fs"
 #define KEY_CONN_DATA           "conn_data"
 #define KEY_EVICT_BY_NID        "evict_by_nid"
 #define KEY_FIEMAP              "fiemap"
@@ -1169,7 +1167,6 @@ enum obd_cleanup_stage {
 #define KEY_READ_ONLY           "read-only"
 #define KEY_REGISTER_TARGET     "register_target"
 #define KEY_REVIMP_UPD          "revimp_update"
-#define KEY_SET_FS              "set_fs"
 /*      KEY_SET_INFO in lustre_idl.h */
 #define KEY_SPTLRPC_CONF        "sptlrpc_conf"
 #define KEY_CONNECT_FLAG        "connect_flags"

@@ -1112,27 +1112,6 @@ check_mgs_target_info(void)
 }
 
 static void
-check_lustre_disk_data(void)
-{
-        BLANK_LINE();
-        CHECK_STRUCT(lustre_disk_data);
-        CHECK_MEMBER(lustre_disk_data, ldd_magic);
-        CHECK_MEMBER(lustre_disk_data, ldd_feature_compat);
-        CHECK_MEMBER(lustre_disk_data, ldd_feature_rocompat);
-        CHECK_MEMBER(lustre_disk_data, ldd_feature_incompat);
-        CHECK_MEMBER(lustre_disk_data, ldd_config_ver);
-        CHECK_MEMBER(lustre_disk_data, ldd_flags);
-        CHECK_MEMBER(lustre_disk_data, ldd_svindex);
-        CHECK_MEMBER(lustre_disk_data, ldd_mount_type);
-        CHECK_MEMBER(lustre_disk_data, ldd_fsname);
-        CHECK_MEMBER(lustre_disk_data, ldd_svname);
-        CHECK_MEMBER(lustre_disk_data, ldd_uuid);
-        CHECK_MEMBER(lustre_disk_data, ldd_userdata);
-        CHECK_MEMBER(lustre_disk_data, ldd_mount_opts);
-        CHECK_MEMBER(lustre_disk_data, ldd_params);
-}
-
-static void
 check_posix_acl_xattr_entry(void)
 {
         BLANK_LINE();
@@ -1482,7 +1461,6 @@ main(int argc, char **argv)
         check_qunit_data();
         check_quota_adjust_qunit();
         check_mgs_target_info();
-        check_lustre_disk_data();
         check_ll_user_fiemap();
         check_ll_fiemap_extent();
         printf("#ifdef LIBLUSTRE_POSIX_ACL\n");

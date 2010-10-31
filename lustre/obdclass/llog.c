@@ -130,12 +130,12 @@ int llog_cancel_rec(struct llog_handle *loghandle, int index)
                 RETURN(rc);
         }
 
-        rc = llog_write_rec(loghandle, &llh->llh_hdr, NULL, 0, NULL, 0);
+        /*rc = llog_write_rec(loghandle, &llh->llh_hdr, NULL, 0, NULL, 0);
         if (rc) {
                 CERROR("Failure re-writing header %d\n", rc);
                 ext2_set_bit(index, llh->llh_bitmap);
                 llh->llh_count++;
-        }
+        }*/
         RETURN(rc);
 }
 EXPORT_SYMBOL(llog_cancel_rec);
