@@ -1399,6 +1399,7 @@ test_27z() {
                 { error "setstripe -c 1 failed"; return 3; }
         dd if=/dev/zero of=$DIR/$tdir/$tfile-2 bs=1M count=$OSTCOUNT ||
                 { error "dd $OSTCOUNT mb failed"; return 4; }
+        cancel_lru_locks osc
         sync
 
         check_seq_oid $DIR/$tdir/$tfile-1 || return 5
