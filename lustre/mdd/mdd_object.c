@@ -1435,7 +1435,8 @@ static int mdd_attr_set(const struct lu_env *env, struct md_object *obj,
         }
 
         if (rc == 0 && ma->ma_valid & MA_LOV) {
-                cfs_umode_t mode;
+                struct lu_buf *buf;
+                cfs_umode_t    mode;
 
                 mode = mdd_object_type(mdd_obj);
                 if (S_ISREG(mode) || S_ISDIR(mode)) {
@@ -1443,8 +1444,9 @@ static int mdd_attr_set(const struct lu_env *env, struct md_object *obj,
                         if (rc)
                                 GOTO(cleanup, rc);
 
-                        rc = mdd_lov_set_md(env, NULL, mdd_obj, ma->ma_lmm,
-                                            ma->ma_lmm_size, handle, 1);
+                        buf = mdd_buf_get(env, ma->ma_lmm, ma->ma_lmm_size);
+                        rc = mdd_xattr_set_txn(env, mdd_obj, buf, XATTR_NAME_LOV,
+                                               0, handle);
                 }
 
         }
