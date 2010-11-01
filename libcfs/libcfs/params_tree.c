@@ -119,7 +119,7 @@ static int lpe_hash_keycmp(void *key, cfs_hlist_node_t *compared_node)
 {
         libcfs_param_entry_t *lpe;
         char                 *lpe_name = key;
-        int                  rc;
+        int                   rc;
 
         lpe = cfs_hlist_entry(compared_node, libcfs_param_entry_t,
                               lpe_hash_n);
@@ -167,7 +167,7 @@ libcfs_param_entry_t *libcfs_param_get_root(void)
 }
 EXPORT_SYMBOL(libcfs_param_get_root);
 
-void libcfs_param_root_init(void)
+int libcfs_param_root_init(void)
 {
         libcfs_param_root.lpe_hash_t = cfs_hash_create("params_root",
                                                        LPE_HASH_CUR_BITS,
@@ -178,10 +178,14 @@ void libcfs_param_root_init(void)
                                                        &lpe_hash_ops,
                                                        CFS_HASH_DEFAULT |
                                                        CFS_HASH_BIGNAME);
+        if (libcfs_param_root.lpe_hash_t == NULL)
+                return -ENOMEM;
         cfs_init_rwsem(&libcfs_param_sem);
         cfs_init_rwsem(&libcfs_param_root.lpe_rw_sem);
         cfs_atomic_set(&libcfs_param_root.lpe_refcount, 1);
         libcfs_param_lnet_root = NULL;
+
+        return 0;
 }
 
 void libcfs_param_root_fini(void)
@@ -271,7 +275,7 @@ find_symlink_target(libcfs_param_entry_t *lpe)
         strcpy(path, lpe->lpe_data);
         path_temp = path;
         if (path[0] == '/')
-                entry = lookup_param_by_path(path++, NULL);
+                entry = lookup_param_by_path(++path, NULL);
         else
                 entry = lookup_param_by_path(path, lpe);
         LIBCFS_FREE(path_temp, strlen(lpe->lpe_data) + 1);
@@ -336,7 +340,6 @@ lookup_param_by_path(const char *pathname, libcfs_param_entry_t *entry)
                 if (!strcmp(temp, ".."))
                         lpe = libcfs_param_get(parent->lpe_parent);
                 else
-                        /* XXX: or lookup_param here ? */
                         lpe = lookup_param(temp, parent);
                 libcfs_param_put(parent);
         }
@@ -377,9 +380,9 @@ static libcfs_param_entry_t *
 _add_param(const char *name, mode_t mode, libcfs_param_entry_t *parent)
 {
         libcfs_param_entry_t *lpe = NULL;
-        char                      *ptr;
-        int                        len;
-        int                        rc = 0;
+        char                 *ptr;
+        int                   len;
+        int                   rc = 0;
 
         LASSERT(parent != NULL && name != NULL);
 
@@ -641,9 +644,9 @@ static int list_param(libcfs_param_entry_t *parent,
         lpcd.left = kern_buflen;
         /* we pass kern_buflen here, because we should avoid the real dir size
          * is larger than we have. */
-        cfs_down_write(&parent->lpe_rw_sem);
+        cfs_down_read(&parent->lpe_rw_sem);
         cfs_hash_for_each(parent->lpe_hash_t, list_param_cb, &lpcd);
-        cfs_up_write(&parent->lpe_rw_sem);
+        cfs_up_read(&parent->lpe_rw_sem);
 
         return rc;
 }
@@ -660,7 +663,7 @@ int libcfs_param_list(const char *parent_path, char *user_buf, int *buflen)
 
         if (user_buf == NULL) {
                 CERROR("The buffer is null.\n");
-                GOTO(out, rc = -ENOMEM);
+                GOTO(out, rc = -EINVAL);
         }
         if (parent_path == NULL)
                 /* list the entries under params_root */
@@ -670,7 +673,7 @@ int libcfs_param_list(const char *parent_path, char *user_buf, int *buflen)
         if (parent == NULL) {
                 CERROR("The parent entry %s doesn't exist.\n",
                        parent_path);
-                GOTO(out, rc = -EEXIST);
+                GOTO(out, rc = -ENOENT);
         }
         /* estimate if buflen is big enough */
         num = cfs_atomic_read(&(parent->lpe_hash_t->hs_count));
@@ -1281,7 +1284,7 @@ static void libcfs_param_change_mode(libcfs_param_sysctl_table_t *table,
         LASSERT(parent != NULL);
         for (; table->name != NULL; table ++) {
                 lpe = libcfs_param_lookup(table->name, parent);
-                if (lpe == NULL)
+                LASSERT(lpe == NULL);
                         continue;
                 /* for lnet write-once params */
                 cfs_down_write(&lpe->lpe_rw_sem);
@@ -1314,56 +1317,6 @@ void libcfs_param_sysctl_change(char *mod_name,
 
 }
 EXPORT_SYMBOL(libcfs_param_sysctl_change);
-
-/*
-void libcfs_param_change_mode(libcfs_param_entry_t *lpe, mode_t mode)
-{
-        LASSERT(lpe != NULL);
-
-        entry = libcfs_param_get(lpe);
-
-        cfs_down_write(&entry->lpe_rw_sem);
-        entry->lpe_mode = mode;
-        cfs_up_write(&entry->lpe_rw_sem);
-
-        libcfs_param_put(entry);
-}
-
-int libcfs_param_change_mode(const char *name, libcfs_param_entry_t *lpe,
-                             int flag)
-{
-        libcfs_param_entry_t *entry;
-
-        LASSERT(lpe != NULL || name != NULL);
-
-        if (lpe == NULL && name != NULL) {
-                char *path = NULL;
-
-                LIBCFS_ALLOC(path, strlen(PTREE_ROOT) + strlen(name) + 1);
-                if (path == NULL)
-                        return -ENOMEM;
-                entry = lookup_param_by_path(path);
-                LIBCFS_FREE(path, strlen(path) + 1);
-        } else if (lpe != NULL && name != NULL) {
-                entry = _lookup_param(name, strlen(name), lpe);
-        } else {
-                entry = libcfs_param_get(lpe);
-        }
-
-        if (entry == NULL)
-                return -EINVAL;
-        cfs_down_write(&entry->lpe_rw_sem);
-        if (flag == 1)
-                entry->lpe_mode |= S_IWUSR;
-        else (flag == 0)
-                entry->lpe_mode ~= S_IWUSR;
-        cfs_up_write(&entry->lpe_rw_sem);
-
-        libcfs_param_put(entry);
-
-        return 0;
-}
-*/
 
 /**
  * Since the usr buffer addr has been mapped to the kernel space through
@@ -1501,42 +1454,42 @@ EXPORT_SYMBOL(libcfs_param_snprintf_common);
  */
 static int libcfs_param_is_invalid(libcfs_param_data_t *data)
 {
-        if ((data->param_name != NULL) && !data->param_name_len) {
+        if (data->param_name != NULL && data->param_name_len == 0) {
                 CERROR("pve_name pointer but 0 length\n");
                 return 1;
         }
-        if ((data->param_unit != NULL) && !data->param_unit_len) {
+        if (data->param_unit != NULL && data->param_unit_len == 0) {
                 CERROR("pve_unit pointer but 0 length\n");
                 return 1;
         }
-        if ((data->param_value != NULL) && !data->param_value_len) {
+        if (data->param_value != NULL && data->param_value_len == 0) {
                 CERROR("pve_value pointer but 0 length\n");
                 return 1;
         }
-        if (data->param_name_len && (data->param_name == NULL)) {
+        if (data->param_name_len > 0 && data->param_name == NULL) {
                 CERROR("pve_name_len nozero but no name pointer\n");
                 return 1;
         }
-        if (data->param_unit_len && (data->param_unit == NULL)) {
+        if (data->param_unit_len > 0 && data->param_unit == NULL) {
                 CERROR("pve_unit_len nozero but no unit pointer\n");
                 return 1;
         }
-        if (data->param_value_len && (data->param_value == NULL)) {
+        if (data->param_value_len > 0 && data->param_value == NULL) {
                 CERROR("pve_value_len nozero but no value pointer\n");
                 return 1;
         }
-        if (data->param_name_len &&
+        if (data->param_name_len > 0 &&
             data->param_name[data->param_name_len] != '\0') {
                 CERROR ("pve_name not 0 terminated\n");
                 return 1;
         }
-        if (data->param_unit_len &&
+        if (data->param_unit_len > 0 &&
             data->param_unit[data->param_unit_len] != '\0') {
                 CERROR ("pve_unit not 0 terminated\n");
                 return 1;
         }
         if (data->param_type == LP_STR || data->param_type == LP_DB) {
-                if (data->param_value_len &&
+                if (data->param_value_len > 0 &&
                     data->param_value[data->param_value_len] != '\0') {
                         CERROR ("pve_value(string) not 0 terminated\n");
                         return 1;
@@ -1568,7 +1521,7 @@ static int libcfs_param_data_pack(char *buf, int buf_len,
                 return -ENOMEM;
         }
         value_len = get_value_len(type, buf);
-        if (value_len) {
+        if (value_len > 0) {
                 LIBCFS_ALLOC(value, value_len);
                 if (value == NULL)
                         return -ENOMEM;
@@ -1609,15 +1562,15 @@ static int libcfs_param_data_pack(char *buf, int buf_len,
                 data->param_unit_len = 0;
         }
         data->param_value_len = value_len;
-        if (value_len) {
+        if (value_len > 0) {
                 memcpy(ptr, value, value_len);
                 data->param_value = ptr;
         }
 
         if (libcfs_param_is_invalid(data))
-                GOTO(out, rc = -EINVAL);
+                rc = -EINVAL;
 out:
-        if (value_len)
+        if (value_len > 0)
                 LIBCFS_FREE(value, value_len);
 
         return rc < 0 ? rc : data_len;

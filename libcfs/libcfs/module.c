@@ -357,7 +357,7 @@ static int libcfs_ioctl(struct cfs_psdev_file *pfile, unsigned long cmd, void *a
 {
         char *buf = NULL;
         struct libcfs_ioctl_data *data;
-        int err = 0, len = 0;
+        int err, len;
         ENTRY;
 
         /* 'cmd' and permissions get checked in our arch-specific caller */
@@ -367,11 +367,6 @@ static int libcfs_ioctl(struct cfs_psdev_file *pfile, unsigned long cmd, void *a
         }
         data = (struct libcfs_ioctl_data *)buf;
 
-        if (!data) {
-                CERROR("PORTALS ioctl: data error cmd %lx \n", cmd);
-                GOTO(out, err = -EINVAL);
-        }
-
         err = libcfs_ioctl_int(pfile, cmd, arg, data);
 
 out:
@@ -379,7 +374,6 @@ out:
                 libcfs_ioctl_freedata(buf, len);
         RETURN(err);
 }
-
 
 struct cfs_psdev_ops libcfs_psdev_ops = {
         libcfs_psdev_open,
@@ -393,6 +387,36 @@ extern int insert_proc(void);
 extern void remove_proc(void);
 extern int insert_params(void);
 extern void remove_params(void);
+
+static int params_init(void)
+{
+        int rc = 0;
+
+        rc = insert_params();
+        if (rc) {
+                CERROR("insert_params: error %d\n", rc);
+                return rc;
+        }
+#ifdef LPROCFS
+        rc = insert_proc();
+        if (rc) {
+                CERROR("insert_proc: error %d\n", rc);
+                return rc;
+        }
+#endif
+
+        return rc;
+}
+
+static void params_fini(void)
+{
+#ifdef LPROCFS
+        remove_proc();
+#endif
+        remove_params();
+        libcfs_param_root_fini();
+}
+
 MODULE_AUTHOR("Peter J. Braam <braam@clusterfs.com>");
 MODULE_DESCRIPTION("Portals v3.1");
 MODULE_LICENSE("GPL");
@@ -415,7 +439,13 @@ static int init_libcfs_module(void)
         cfs_init_mutex(&cfs_trace_thread_sem);
         cfs_init_rwsem(&ioctl_list_sem);
         CFS_INIT_LIST_HEAD(&ioctl_list);
-        libcfs_param_root_init();
+
+        rc = libcfs_param_root_init();
+        if (rc < 0) {
+                printk(CFS_KERN_ERR "LustreError: libcfs_param_root_init: %d\n",
+                       rc);
+                return rc;
+        }
 
         rc = libcfs_debug_init(5 * 1024 * 1024);
         if (rc < 0) {
@@ -442,23 +472,15 @@ static int init_libcfs_module(void)
                 goto cleanup_deregister;
         }
 
-        rc = insert_params();
-        if (rc) {
-                CERROR("insert_params: error %d\n", rc);
-                goto cleanup_deregister;
-        }
-#ifdef LPROCFS
-        rc = insert_proc();
-        if (rc) {
-                CERROR("insert_proc: error %d\n", rc);
+        rc = params_init();
+        if (rc)
                 goto cleanup_wi;
-        }
-#endif
 
         CDEBUG (D_OTHER, "portals setup OK\n");
         return (0);
 
  cleanup_wi:
+        remove_params();
         cfs_wi_shutdown();
  cleanup_deregister:
         cfs_psdev_deregister(&libcfs_dev);
@@ -468,16 +490,8 @@ static int init_libcfs_module(void)
  cleanup_debug:
 #endif
         libcfs_debug_cleanup();
-        return rc;
-}
-
-static void params_fini(void)
-{
-#ifdef LPROCFS
-        remove_proc();
-#endif
-        remove_params();
         libcfs_param_root_fini();
+        return rc;
 }
 
 static void exit_libcfs_module(void)

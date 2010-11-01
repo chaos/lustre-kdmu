@@ -51,6 +51,8 @@ int libcfs_ioctl_getdata(char **buf, int *len, void *arg)
 
         
         err = cfs_copy_from_user(&hdr, (void *)arg, sizeof(hdr));
+        if (err)
+                RETURN(err);
 
         if (hdr.ioc_version != LIBCFS_IOCTL_VERSION) {
                 CERROR("PORTALS: version mismatch kernel vs application\n");
@@ -81,11 +83,11 @@ int libcfs_ioctl_getdata(char **buf, int *len, void *arg)
 
         err = cfs_copy_from_user(*buf, (void *)arg, hdr.ioc_len);
         if (err)
-                GOTO(cleanup, err);
+                RETURN(err);
 
         if (libcfs_ioctl_is_invalid(data)) {
                 CERROR("PORTALS: ioctl not correctly formatted\n");
-                GOTO(cleanup, err = -EINVAL);
+                RETURN(err = -EINVAL);
         }
 
         if (data->ioc_inllen1)
@@ -94,9 +96,6 @@ int libcfs_ioctl_getdata(char **buf, int *len, void *arg)
         if (data->ioc_inllen2)
                 data->ioc_inlbuf2 = &data->ioc_bulk[0] +
                         cfs_size_round(data->ioc_inllen1);
-cleanup:
-        if (err && *buf != NULL)
-                LIBCFS_FREE(*buf, hdr.ioc_len);
 
         RETURN(err);
 }
@@ -109,9 +108,9 @@ int libcfs_ioctl_popdata(void *arg, void *data, int size)
 }
 
 void libcfs_ioctl_freedata(char *buf, int len)
-{       
+{
         ENTRY;
-        
+
         LIBCFS_FREE(buf, len);
         EXIT;
         return;
@@ -159,9 +158,7 @@ libcfs_ioctl(struct inode *inode, struct file *file,
 	struct cfs_psdev_file	 pfile;
 	int    rc = 0;
 
-        /* ioctl should be permitted for non-root users with read operation */
-	if (current->fsuid != 0 &&
-            (cmd != IOC_LIBCFS_GET_PARAM && cmd != IOC_LIBCFS_LIST_PARAM))
+	if (current->fsuid != 0)
 		return -EACCES;
 
 	if ( _IOC_TYPE(cmd) != IOC_LIBCFS_TYPE ||

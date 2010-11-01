@@ -754,7 +754,8 @@ void cfs_trace_flush_pages(void)
 }
 
 int cfs_trace_copyin_string(char *knl_buffer, int knl_buffer_nob,
-                            const char *usr_buffer, int usr_buffer_nob, int flag)
+                            const char *usr_buffer, int usr_buffer_nob,
+                            int flag)
 {
         int    nob;
         int    rc;

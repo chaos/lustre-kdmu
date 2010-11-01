@@ -137,33 +137,33 @@ typedef struct libcfs_seq_file {
         cfs_mutex_t lock;
         struct libcfs_seq_operations *op;
         void *private;
-}libcfs_seq_file_t;
+} libcfs_seq_file_t;
 
 typedef struct libcfs_seq_operations {
         void *(*start) (libcfs_seq_file_t *m, loff_t *pos);
         void (*stop) (libcfs_seq_file_t *m, void *v);
         void *(*next) (libcfs_seq_file_t *m, void *v, loff_t *pos);
         int (*show) (libcfs_seq_file_t *m, void *v);
-}libcfs_seq_ops_t;
+} libcfs_seq_ops_t;
 
 typedef struct libcfs_params_inode {
         void    *lp_private;
-}libcfs_inode_t;
+} libcfs_inode_t;
 
 typedef struct libcfs_params_file {
         void           *lp_private;
         loff_t          lp_pos;
         unsigned int    lp_flags;
-}libcfs_file_t;
+} libcfs_file_t;
 
 typedef struct libcfs_proc_dentry {
         void *lp_data;
-}libcfs_param_dentry_t;
+} libcfs_param_dentry_t;
 
 typedef struct libcfs_proc_inode {
         libcfs_param_dentry_t *lp_pde;
         libcfs_inode_t lp_inode;
-}libcfs_proc_inode_t;
+} libcfs_proc_inode_t;
 
 typedef void *libcfs_module_t;
 typedef void *libcfs_poll_table_t;
@@ -176,7 +176,7 @@ typedef struct libcfs_file_ops {
         unsigned int (*poll) (libcfs_file_t *, libcfs_poll_table_t *);
         ssize_t (*write) (libcfs_file_t *, const char *, size_t, loff_t *);
         ssize_t (*read)(libcfs_file_t *, char *, size_t, loff_t *);
-}libcfs_file_ops_t;
+} libcfs_file_ops_t;
 typedef libcfs_file_ops_t *cfs_lproc_filep_t;
 
 #define LPROCFS_ENTRY()             do {} while(0)
@@ -249,7 +249,7 @@ typedef int (libcfs_param_read_t)(char *page, char **start, off_t off,
                                   int count, int *eof, void *data);
 typedef int (libcfs_param_write_t)(libcfs_file_t *filp, const char *buffer,
                                    unsigned long count, void *data);
-struct libcfs_param_entry {
+typedef struct libcfs_param_entry {
         /* hash table members */
         cfs_hash_t                *lpe_hash_t;/* =dir, someone's parent */
         cfs_rw_semaphore_t         lpe_rw_sem;
@@ -270,15 +270,14 @@ struct libcfs_param_entry {
         mode_t                     lpe_mode;   /* dir, file or symbol_link, and
                                                   also the access-control mode */
         void                      *lpe_proc;   /* proc entry */
-};
-typedef struct libcfs_param_entry       libcfs_param_entry_t;
+} libcfs_param_entry_t;
 
 #define PARAM_DEBUG_MAGIC 0x01DE01EE
 typedef struct libcfs_param_cb_data {
         int             cb_magic;
         int             cb_flag;       /* switch read cb function from proc to params_tree */
         void           *cb_data;     /* the original callback data */
-}lparcb_t;
+} lparcb_t;
 
 enum libcfs_param_flags {
         /* The dir object has been unlinked */
@@ -308,7 +307,7 @@ extern lparcb_t *libcfs_param_cb_data_alloc(void *data, int flag);
 extern void libcfs_param_cb_data_free(lparcb_t *cb_data, int flag);
 extern libcfs_param_entry_t *libcfs_param_lnet_root;
 
-extern void libcfs_param_root_init(void);
+extern int libcfs_param_root_init(void);
 extern void libcfs_param_root_fini(void);
 extern libcfs_param_entry_t *libcfs_param_get_root(void);
 
@@ -347,7 +346,7 @@ typedef struct libcfs_param_sysctl_table {
         libcfs_param_read_t    *read;
         libcfs_param_write_t   *write;
         int                     writeable_before_startup;
-}libcfs_param_sysctl_table_t;
+} libcfs_param_sysctl_table_t;
 extern int libcfs_param_intvec_write(libcfs_file_t *filp, const char *buffer,
                                      unsigned long count, void *data);
 extern int libcfs_param_intvec_read(char *page, char **start, off_t off,
@@ -373,7 +372,7 @@ typedef struct libcfs_param_info {
         int lpi_name_len;
         int lpi_mode;
         char lpi_name[LPE_NAME_MAXLEN];
-}libcfs_param_info_t;
+} libcfs_param_info_t;
 
 enum libcfs_param_value_type {
         LP_S8           = 0,
@@ -397,7 +396,7 @@ typedef struct libcfs_param_data {
         char                           *param_unit;  /* some params have unit */
         __u32                           param_unit_len;
         char                            param_bulk[0];
-}libcfs_param_data_t;
+} libcfs_param_data_t;
 
 extern int
 libcfs_param_snprintf_common(char *page, int count, void *cb_data,
