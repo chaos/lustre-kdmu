@@ -633,18 +633,12 @@ static void lod_ah_init(const struct lu_env *env,
         }
 
         nextp = dt_object_child(parent);
-        nextc = dt_object_child(parent);
+        nextc = dt_object_child(child);
         lp = lod_dt_obj(parent);
         lc = lod_dt_obj(child);
         LASSERT(lod_mti_get(env));
         LASSERT(parent);
         LASSERT(child);
-
-        nextp = dt_object_child(parent);
-        nextc = dt_object_child(parent);
-        lp = lod_dt_obj(parent);
-        lc = lod_dt_obj(child);
-        d = lu2lod_dev(parent->do_lu.lo_dev);
 
         LASSERT(lc->mbo_stripenr == 0);
         LASSERT(lc->mbo_stripe == NULL);
@@ -896,7 +890,7 @@ static int lod_object_create(const struct lu_env *env,
         /* create local object */
         rc = dt_create(env, next, attr, hint, dof, th);
 
-        if (mo->mbo_stripe && d->lod_recovery_completed)
+        if (rc == 0 && mo->mbo_stripe && d->lod_recovery_completed)
                 rc = lod_striping_create(env, dt, attr, dof, th);
 
         RETURN(rc);
