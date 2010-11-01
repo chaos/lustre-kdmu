@@ -65,7 +65,6 @@
 #define CFS_USRQUOTA 0
 #define CFS_GRPQUOTA 1
 #endif /* __linux__ */
-
 /** @} quota */
 
 #endif /* _LUSTRE_QUOTA_H */

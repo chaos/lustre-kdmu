@@ -17,11 +17,6 @@ init_logging
 
 require_dsh_ost || exit 0
 
-if [ "$FAILURE_MODE" = "HARD" ] && mixed_ost_devs; then
-    skip_env "$0: Several ost services on one ost node are used with FAILURE_MODE=$FAILURE_MODE. "
-    exit 0
-fi
-
 # Tests that fail on uml
 CPU=`awk '/model/ {print $4}' /proc/cpuinfo`
 [ "$CPU" = "UML" ] && EXCEPT="$EXCEPT 6"
@@ -191,7 +186,7 @@ test_6() {
     sleep 2 # ensure we have a fresh statfs
     sync
 #define OBD_FAIL_MDS_REINT_NET_REP       0x119
-    do_facet mds "lctl set_param fail_loc=0x80000119"
+    do_facet $SINGLEMDS "lctl set_param fail_loc=0x80000119"
     after_dd=`kbytesfree`
     log "before: $before after_dd: $after_dd"
     (( $before > $after_dd )) || return 1

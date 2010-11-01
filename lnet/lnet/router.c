@@ -94,7 +94,7 @@ CFS_MODULE_PARM(router_ping_timeout, "i", int, 0444,
                 "Seconds to wait for the reply to a router health query");
 
 #ifdef __KERNEL__
-static struct libcfs_param_ctl_table libcfs_param_router_ctl_table[] = {
+static libcfs_param_sysctl_table_t libcfs_param_router_ctl_table[] = {
         {
                 .name     = "forwarding",
                 .data     = forwarding,

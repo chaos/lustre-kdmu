@@ -226,7 +226,8 @@ void filter_grant_incoming(const struct lu_env *env, struct obd_export *exp,
         fed->fed_grant -= oa->o_dropped;
         fed->fed_dirty = oa->o_dirty;
 
-        if (oa->o_flags & OBD_FL_SHRINK_GRANT) {
+        if (oa->o_valid & OBD_MD_FLFLAGS &&
+            oa->o_flags & OBD_FL_SHRINK_GRANT) {
                 obd_size left_space = filter_grant_space_left(env, exp);
 
                 /*Only if left_space < fo_tot_clients * 32M, 

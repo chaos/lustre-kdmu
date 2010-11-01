@@ -811,17 +811,19 @@ int lov_setup(struct obd_device *obd, struct lustre_cfg *lcfg)
 
         lov->lov_pools_hash_body = cfs_hash_create("POOLS", HASH_POOLS_CUR_BITS,
                                                    HASH_POOLS_MAX_BITS,
-                                                   &pool_hash_operations, CFS_HASH_REHASH);
+                                                   HASH_POOLS_BKT_BITS, 0,
+                                                   CFS_HASH_MIN_THETA,
+                                                   CFS_HASH_MAX_THETA,
+                                                   &pool_hash_operations,
+                                                   CFS_HASH_DEFAULT);
         CFS_INIT_LIST_HEAD(&lov->lov_pool_list);
         lov->lov_pool_count = 0;
         rc = lov_ost_pool_init(&lov->lov_packed, 0);
         if (rc)
-                RETURN(rc);
+                GOTO(out_free_statfs, rc);
         rc = lov_ost_pool_init(&lov->lov_qos.lq_rr.lqr_pool, 0);
-        if (rc) {
-                lov_ost_pool_free(&lov->lov_packed);
-                RETURN(rc);
-        }
+        if (rc)
+                GOTO(out_free_lov_packed, rc);
 
         lprocfs_lov_init_vars(&lvars);
         lprocfs_obd_setup(obd, lvars.obd_vars);
@@ -837,6 +839,12 @@ int lov_setup(struct obd_device *obd, struct lustre_cfg *lcfg)
         lprocfs_put_lperef(lov->lov_pool_proc_entry);
 
         RETURN(0);
+
+out_free_lov_packed:
+        lov_ost_pool_free(&lov->lov_packed);
+out_free_statfs:
+        OBD_FREE_PTR(lov->lov_qos.lq_statfs_data);
+        return rc;
 }
 
 static int lov_precleanup(struct obd_device *obd, enum obd_cleanup_stage stage)
@@ -1582,6 +1590,40 @@ static int lov_sync(struct obd_export *exp, struct obdo *oa,
         err = lov_fini_sync_set(set);
         if (!rc)
                 rc = err;
+        RETURN(rc);
+}
+
+static int lov_sync_fs(struct obd_device *obd, struct obd_info *dummy,
+                       int wait)
+{
+        struct lov_obd *lov;
+        struct obd_info oinfo = { { { 0 } } };
+        struct lov_request *req;
+        struct lov_request_set *set;
+        struct l_wait_info  lwi = { 0 };
+        cfs_list_t *pos;
+        int rc = 0;
+        ENTRY;
+
+        lov = &obd->u.lov;
+        rc  = lov_prep_sync_fs_set(obd, &oinfo, &set);
+        if (rc)
+                RETURN(rc);
+
+        cfs_list_for_each(pos, &set->set_list) {
+                struct obd_device *osc_obd;
+                req = cfs_list_entry(pos, struct lov_request, rq_link);
+
+                osc_obd = class_exp2obd(lov->lov_tgts[req->rq_idx]->ltd_exp);
+                rc = obd_sync_fs(osc_obd, &req->rq_oi, wait);
+                if (rc)
+                        break;
+        }
+        /* if wait then check if all sync_fs IO's are done */
+        if (wait)
+                l_wait_event(set->set_waitq, lov_finished_set(set), &lwi);
+
+        rc = lov_fini_sync_fs_set(set);
         RETURN(rc);
 }
 
@@ -2826,6 +2868,7 @@ struct obd_ops lov_obd_ops = {
         .o_pool_del            = lov_pool_del,
         .o_getref              = lov_getref,
         .o_putref              = lov_putref,
+        .o_sync_fs             = lov_sync_fs,
 };
 
 cfs_mem_cache_t *lov_oinfo_slab;

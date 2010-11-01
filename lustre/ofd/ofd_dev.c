@@ -142,7 +142,7 @@ static int filter_intent_policy(struct ldlm_namespace *ns,
          * lock, and should not be granted if the lock will be blocked.
          */
 
-        LASSERT(ns == res->lr_namespace);
+        LASSERT(ns == ldlm_res_to_ns(res));
         lock_res(res);
         rc = policy(lock, &tmpflags, 0, &err, &rpc_list);
         check_res_locked(res);
@@ -880,7 +880,6 @@ static void filter_key_exit(const struct lu_context *ctx,
         info->fti_no_need_trans = 0;
 
         memset(&info->fti_attr, 0, sizeof info->fti_attr);
-        memset(&info->fti_lvb, 0, sizeof info->fti_lvb);
 }
 
 struct lu_context_key filter_thread_key = {

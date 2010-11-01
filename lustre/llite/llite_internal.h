@@ -721,6 +721,7 @@ void ll_umount_begin(struct super_block *sb);
 #endif
 int ll_remount_fs(struct super_block *sb, int *flags, char *data);
 int ll_show_options(struct seq_file *seq, struct vfsmount *vfs);
+int ll_sync_fs(struct super_block *sb, int wait);
 int ll_prep_inode(struct inode **inode, struct ptlrpc_request *req,
                   struct super_block *);
 void lustre_dump_dentry(struct dentry *, int recur);
@@ -949,12 +950,6 @@ void policy_from_vma(ldlm_policy_data_t *policy,
 struct vm_area_struct *our_vma(unsigned long addr, size_t count);
 
 #define    ll_s2sbi(sb)        (s2lsi(sb)->lsi_llsbi)
-
-static inline __u64 ll_ts2u64(struct timespec *time)
-{
-        __u64 t = time->tv_sec;
-        return t;
-}
 
 /* don't need an addref as the sb_info should be holding one */
 static inline struct obd_export *ll_s2dtexp(struct super_block *sb)

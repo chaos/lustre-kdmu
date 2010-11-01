@@ -52,14 +52,11 @@
 #endif
 
 #ifdef LPROCFS
-typedef struct file             *cfs_lproc_filep_t;
 typedef struct file              libcfs_file_t;
 typedef struct inode             libcfs_inode_t;
 typedef struct proc_inode        libcfs_proc_inode_t;
 typedef struct seq_file          libcfs_seq_file_t;
 typedef struct seq_operations    libcfs_seq_ops_t;
-typedef struct inode             libcfs_param_inode_t;
-typedef struct file              libcfs_param_file_t;
 typedef struct file_operations   libcfs_file_ops_t;
 typedef cfs_module_t            *libcfs_module_t;
 typedef struct proc_dir_entry    libcfs_param_dentry_t;
@@ -109,7 +106,7 @@ int LPROCFS_ENTRY_AND_CHECK(struct proc_dir_entry *dp)
         }
         return 0;
 }
-#else   /* !HAVE_PROCFS_DELETED */
+#else /* !HAVE_PROCFS_DELETED*/
 static inline
 int LPROCFS_ENTRY_AND_CHECK(struct proc_dir_entry *dp)
 {
@@ -125,7 +122,7 @@ int LPROCFS_ENTRY_AND_CHECK(struct proc_dir_entry *dp)
         cfs_up_write(&_lprocfs_lock);       \
 } while(0)
 
-#else   /* !LPROCFS */
+#else /* !LPROCFS */
 
 struct dummy {;};
 
@@ -180,8 +177,8 @@ typedef struct libcfs_file_ops {
         ssize_t (*write) (libcfs_file_t *, const char *, size_t, loff_t *);
         ssize_t (*read)(libcfs_file_t *, char *, size_t, loff_t *);
 }libcfs_file_ops_t;
-
 typedef libcfs_file_ops_t *cfs_lproc_filep_t;
+
 #define LPROCFS_ENTRY()             do {} while(0)
 #define LPROCFS_EXIT()              do {} while(0)
 static inline
@@ -242,9 +239,10 @@ do{                                                        \
         rc = 0;                                            \
 }while(0)
 
-#endif  /* LPROCFS */
+#endif /* LPROCFS */
 
 #define LPE_HASH_CUR_BITS       8
+#define LPE_HASH_BKT_BITS       8
 #define LPE_HASH_MAX_BITS       24
 
 typedef int (libcfs_param_read_t)(char *page, char **start, off_t off,
@@ -342,14 +340,14 @@ extern int libcfs_param_seq_puts_common(libcfs_seq_file_t *seq, const char *s);
 extern int libcfs_param_seq_putc_common(libcfs_seq_file_t *seq, const char c);
 
 /* APIs for sysctl table */
-struct libcfs_param_ctl_table {
+typedef struct libcfs_param_sysctl_table {
         const char             *name;
         void                   *data;
         mode_t                  mode;
         libcfs_param_read_t    *read;
         libcfs_param_write_t   *write;
         int                     writeable_before_startup;
-};
+}libcfs_param_sysctl_table_t;
 extern int libcfs_param_intvec_write(libcfs_file_t *filp, const char *buffer,
                                      unsigned long count, void *data);
 extern int libcfs_param_intvec_read(char *page, char **start, off_t off,
@@ -359,15 +357,15 @@ extern int libcfs_param_string_write(libcfs_file_t *filp, const char *buffer,
 extern int libcfs_param_string_read(char *page, char **start, off_t off,
                                     int count, int *eof, void *data);
 
-extern void libcfs_param_sysctl_register(struct libcfs_param_ctl_table *table,
+extern void libcfs_param_sysctl_register(libcfs_param_sysctl_table_t *table,
                                          libcfs_param_entry_t *parent);
 extern void libcfs_param_sysctl_init(char *mod_name,
-                                     struct libcfs_param_ctl_table *table,
+                                     libcfs_param_sysctl_table_t *table,
                                      libcfs_param_entry_t *parent);
 extern void libcfs_param_sysctl_fini(char *mod_name,
                                      libcfs_param_entry_t *parent);
 extern void libcfs_param_sysctl_change(char *mod_name,
-                                       struct libcfs_param_ctl_table *table,
+                                       libcfs_param_sysctl_table_t *table,
                                        libcfs_param_entry_t *parent);
 
 #define LPE_NAME_MAXLEN         48
@@ -391,7 +389,7 @@ enum libcfs_param_value_type {
                                    timeval and lprocfs_read_frac_helper */
 };
 typedef struct libcfs_param_data {
-        enum libcfs_param_value_type    param_type;     /* LP_S8, LP_S16, ... */
+        enum libcfs_param_value_type    param_type; /* LP_S16, LP_S32, ... */
         char                           *param_name;
         __u32                           param_name_len;
         char                           *param_value;

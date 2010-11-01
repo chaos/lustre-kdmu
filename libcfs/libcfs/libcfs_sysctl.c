@@ -263,7 +263,7 @@ static int libcfs_param_force_lbug_write(libcfs_file_t *filp,
 	return 0;
 }
 
-static struct libcfs_param_ctl_table libcfs_param_lnet_table[] = {
+static libcfs_param_sysctl_table_t libcfs_param_lnet_table[] = {
         {
                 .name   = "debug",
                 .data   = &libcfs_debug,

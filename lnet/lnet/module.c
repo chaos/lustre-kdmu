@@ -45,7 +45,7 @@ CFS_MODULE_PARM(config_on_load, "i", int, 0444,
                 "configure network at module load");
 
 static cfs_semaphore_t lnet_config_mutex;
-static struct libcfs_param_ctl_table libcfs_param_module_ctl_table[] = {
+static libcfs_param_sysctl_table_t libcfs_param_module_ctl_table[] = {
         {
                 .name     = "config_on_load",
                 .data     = &config_on_load,

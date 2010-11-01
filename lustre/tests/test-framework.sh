@@ -587,12 +587,17 @@ mount_facet() {
     shift
     local dev=$(facet_active $facet)_dev
     local opt=${facet}_opt
+
     local fstype
-    echo "Starting ${facet}: ${!opt} $@ ${!dev} ${MOUNT%/*}/${facet}"
-    do_facet ${facet} mount -t lustre ${!opt} $@ ${!dev} ${MOUNT%/*}/${facet}
+    # echo "Starting ${facet}: ${!opt} $@ ${!dev} ${MOUNT%/*}/${facet}"
+    # do_facet ${facet} mount -t lustre ${!opt} $@ ${!dev} ${MOUNT%/*}/${facet}
+    local mntpt=$(facet_mntpt $facet)
+    echo "Starting ${facet}: ${!opt} $@ ${!dev} $mntpt"
+    do_facet ${facet} mount -t lustre ${!opt} $@ ${!dev} $mntpt
+
     RC=${PIPESTATUS[0]}
     if [ $RC -ne 0 ]; then
-        echo "mount -t lustre $@ ${!dev} ${MOUNT%/*}/${facet}"
+        echo "mount -t lustre $@ ${!dev} $mntpt"
         echo "Start of ${!dev} on ${facet} failed ${RC}"
     else
         do_facet ${facet} "lctl set_param debug=\\\"$PTLDEBUG\\\"; \
@@ -629,7 +634,9 @@ start() {
         eval export ${facet}failover_dev=$device
     fi
 
-    do_facet ${facet} mkdir -p ${MOUNT%/*}/${facet}
+    local mntpt=$(facet_mntpt $facet)
+    do_facet ${facet} mkdir -p $mntpt
+    eval export ${facet}_MOUNT=$mntpt
     mount_facet ${facet}
     RC=$?
     return $RC
@@ -658,13 +665,14 @@ stop() {
     local running
     local facet=$1
     shift
-    HOST=`facet_active_host $facet`
+    local HOST=`facet_active_host $facet`
     [ -z $HOST ] && echo stop: no host for $facet && return 0
 
-    running=$(do_facet ${facet} "grep -c ${MOUNT%/*}/${facet}' ' /proc/mounts") || true
+    local mntpt=$(facet_mntpt $facet)
+    running=$(do_facet ${facet} "grep -c $mntpt' ' /proc/mounts") || true
     if [ ${running} -ne 0 ]; then
-        echo "Stopping ${MOUNT%/*}/${facet} (opts:$@)"
-        do_facet ${facet} umount -d $@ ${MOUNT%/*}/${facet}
+        echo "Stopping $mntpt (opts:$@)"
+        do_facet ${facet} umount -d $@ $mntpt
     fi
 
     # umount should block, but we should wait for unrelated obd's
@@ -840,12 +848,12 @@ sanity_mount_check_servers () {
     # FIXME: modify get_facets to display all facets wo params
     local facets="$(get_facets OST),$(get_facets MDS),mgs"
     local node
-    local mnt
+    local mntpt
     local facet
     for facet in ${facets//,/ }; do
         node=$(facet_host ${facet})
-        mnt=${MOUNT%/*}/${facet}
-        sanity_mount_check_nodes $node $mnt ||
+        mntpt=$(facet_mntpt $facet)
+        sanity_mount_check_nodes $node $mntpt ||
             { error "server $node environments are insane!"; return 1; }
     done
 }
@@ -1863,6 +1871,14 @@ mgsdevname()
     echo -n $DEVPTR
 }
 
+facet_mntpt () {
+    local facet=$1
+    local var=${facet}_MOUNT
+    eval mntpt=${!var:-${MOUNT%/*}/$facet}
+
+    echo -n $mntpt
+}
+
 ########
 ## MountConf setup
 
@@ -2333,6 +2349,17 @@ init_facet_vars () {
     else
         eval export ${facet}failover_dev=$device
     fi
+
+    # get mount point of already mounted device
+    # is facet_dev is already mounted then use the real
+    #  mount point of this facet; otherwise use $(facet_mntpt $facet)
+    # i.e. ${facet}_MOUNT if specified by user or default
+    local mntpt=$(do_facet ${facet} cat /proc/mounts | \
+            awk '"'${!dev}'" == $1 && $3 == "lustre" { print $2 }')
+    if [ -z $mntpt ]; then
+        mntpt=$(facet_mntpt $facet)
+    fi
+    eval export ${facet}_MOUNT=$mntpt
 }
 
 init_facets_vars () {
@@ -3381,6 +3408,11 @@ osc_to_ost()
     echo $ost
 }
 
+ostuuid_from_index()
+{
+    $LFS osts $2 | awk '/^'$1'/ { print $2 }'
+}
+
 remote_node () {
     local node=$1
     [ "$node" != "$(hostname)" ]
@@ -3992,8 +4024,8 @@ do_rpc_nodes () {
     shift
 
     # Add paths to lustre tests for 32 and 64 bit systems.
-    local RPATH="$RLUSTRE/tests:/usr/lib/lustre/tests:/usr/lib64/lustre/tests:$PATH"
-    do_nodesv $list "PATH=$RPATH sh rpc.sh $@ "
+    local RPATH="PATH=$RLUSTRE/tests:/usr/lib/lustre/tests:/usr/lib64/lustre/tests:$PATH"
+    do_nodesv $list "${RPATH} NAME=${NAME} sh rpc.sh $@ "
 }
 
 wait_clients_import_state () {

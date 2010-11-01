@@ -46,7 +46,7 @@
 #include <libcfs/params_tree.h>
 
 #ifdef __KERNEL__
-/* for bug 10866, global variable, moved from obdclass/lprocfs_status.c */
+/* for bug 10866, global variable, moved from lprocfs_status.c */
 CFS_DECLARE_RWSEM(_lprocfs_lock);
 EXPORT_SYMBOL(_lprocfs_lock);
 
@@ -115,11 +115,11 @@ static unsigned lpe_hash(cfs_hash_t *hs, void *key, unsigned mask)
         return cfs_hash_djb2_hash(key, strlen((char *)key), mask);
 }
 
-static int lpe_hash_compare(void *key, cfs_hlist_node_t *compared_node)
+static int lpe_hash_keycmp(void *key, cfs_hlist_node_t *compared_node)
 {
         libcfs_param_entry_t *lpe;
-        char                      *lpe_name = key;
-        int                        rc;
+        char                 *lpe_name = key;
+        int                  rc;
 
         lpe = cfs_hlist_entry(compared_node, libcfs_param_entry_t,
                               lpe_hash_n);
@@ -137,12 +137,19 @@ static void *lpe_hash_key(cfs_hlist_node_t *hnode)
         return ((void *)lpe->lpe_name);
 }
 
+static void *lpe_hash_object(cfs_hlist_node_t *hnode)
+{
+        return cfs_hlist_entry(hnode, libcfs_param_entry_t, lpe_hash_n);
+}
+
 static cfs_hash_ops_t lpe_hash_ops = {
-        .hs_hash = lpe_hash,
-        .hs_compare = lpe_hash_compare,
-        .hs_key = lpe_hash_key,
-        .hs_put = lpe_hash_put,
-        .hs_get = lpe_hash_get,
+        .hs_hash       = lpe_hash,
+        .hs_key        = lpe_hash_key,
+        .hs_keycmp     = lpe_hash_keycmp,
+        .hs_object     = lpe_hash_object,
+        .hs_get        = lpe_hash_get,
+        .hs_put        = lpe_hash_put,
+        .hs_put_locked = lpe_hash_put,
 };
 
 static libcfs_param_entry_t libcfs_param_root = {
@@ -165,8 +172,12 @@ void libcfs_param_root_init(void)
         libcfs_param_root.lpe_hash_t = cfs_hash_create("params_root",
                                                        LPE_HASH_CUR_BITS,
                                                        LPE_HASH_MAX_BITS,
+                                                       LPE_HASH_BKT_BITS, 0,
+                                                       CFS_HASH_MIN_THETA,
+                                                       CFS_HASH_MAX_THETA,
                                                        &lpe_hash_ops,
-                                                       CFS_HASH_REHASH);
+                                                       CFS_HASH_DEFAULT |
+                                                       CFS_HASH_BIGNAME);
         cfs_init_rwsem(&libcfs_param_sem);
         cfs_init_rwsem(&libcfs_param_root.lpe_rw_sem);
         cfs_atomic_set(&libcfs_param_root.lpe_refcount, 1);
@@ -399,8 +410,12 @@ _add_param(const char *name, mode_t mode, libcfs_param_entry_t *parent)
                 lpe->lpe_hash_t = cfs_hash_create((char *)name,
                                                   LPE_HASH_CUR_BITS,
                                                   LPE_HASH_MAX_BITS,
+                                                  LPE_HASH_BKT_BITS, 0,
+                                                  CFS_HASH_MIN_THETA,
+                                                  CFS_HASH_MAX_THETA,
                                                   &lpe_hash_ops,
-                                                  CFS_HASH_REHASH);
+                                                  CFS_HASH_DEFAULT |
+                                                  CFS_HASH_BIGNAME);
                 if (lpe->lpe_hash_t == NULL) {
                         CERROR("create lpe_hash_t %s failed", name);
                         GOTO(fail, rc = -ENOMEM);
@@ -494,6 +509,15 @@ libcfs_param_symlink(const char *name, libcfs_param_entry_t *parent,
 }
 EXPORT_SYMBOL(libcfs_param_symlink);
 
+static int find_firsthnode_cb(cfs_hash_t *hs, cfs_hash_bd_t *bd,
+                              cfs_hlist_node_t *hnode, void *data)
+{
+        *(libcfs_param_entry_t **)data = cfs_hash_get(hs, hnode);
+
+        /* return and break the loop */
+        return 1;
+}
+
 /**
  * Remove an entry and all of its children from params_tree
  */
@@ -511,12 +535,16 @@ static void _remove_param(libcfs_param_entry_t *lpe)
         while (1) {
                 while (rm_lpe->lpe_hash_t != NULL) {
                         temp = rm_lpe;
-                        /* get the first hnode */
-                        rm_lpe = cfs_hash_lookup(temp->lpe_hash_t, NULL);
-                        if (rm_lpe == NULL) {
-                                rm_lpe = temp;
+                        /* Use cfs_hash_for_each to get the first hnode:
+                         * Since in params_tree each hash table is probably
+                         * other table's hnode, when we remove one entry,
+                         * we have to find its bottom leaf node, and remove
+                         * them one by one.
+                         */
+                        cfs_hash_for_each(temp->lpe_hash_t,
+                                          find_firsthnode_cb, &rm_lpe);
+                        if (rm_lpe == temp)
                                 break;
-                        }
                         libcfs_param_put(temp);
                 }
                 temp = rm_lpe->lpe_parent;
@@ -572,10 +600,11 @@ struct list_param_cb_data {
         int left;
 };
 
-static void list_param_cb(void *obj, void *data)
+static int list_param_cb(cfs_hash_t *hs, cfs_hash_bd_t *bd,
+                         cfs_hlist_node_t *hnode, void *data)
 {
-        libcfs_param_entry_t *lpe = obj;
         struct list_param_cb_data *lpcb = data;
+        libcfs_param_entry_t *lpe = cfs_hash_object(hs, hnode);
         libcfs_param_info_t  *lpi;
         int len = sizeof(struct libcfs_param_info);
 
@@ -583,7 +612,7 @@ static void list_param_cb(void *obj, void *data)
 
         if (lpcb->left < len) {
                 CERROR("Have no enough buffer for list_param.\n");
-                return;
+                return -ENOMEM;
         }
         lpi = (libcfs_param_info_t *)(lpcb->buf + lpcb->pos);
         /* copy name_len, name, mode */
@@ -595,6 +624,7 @@ static void list_param_cb(void *obj, void *data)
         lpcb->left -= len;
 
         CDEBUG(D_INFO, "copy \"%s\" out, pos=%d\n", lpe->lpe_name, lpcb->pos);
+        return 0;
 }
 
 static int list_param(libcfs_param_entry_t *parent,
@@ -1073,8 +1103,7 @@ int libcfs_param_read(const char *path, char *buf, int nbytes, loff_t *ppos,
         cfs_down_read(&entry->lpe_rw_sem);
         if (entry->lpe_mode & S_IRUSR) {
                 if (IS_SEQ_LPE(entry))
-                        rc = libcfs_param_seq_read(buf, ppos, count,
-                                                   eof, entry);
+                        rc = libcfs_param_seq_read(buf, ppos, count, eof, entry);
                 else if (entry->lpe_cb_read != NULL)
                         rc = libcfs_param_normal_read(buf, ppos, count,
                                                       eof, entry);
@@ -1123,7 +1152,7 @@ int libcfs_param_write(const char *path, char *buf, int count)
         }
         entry = lookup_param_by_path(path, NULL);
         if (entry == NULL)
-                return -EINVAL;
+                return -ENOENT;
 
         cfs_down_write(&entry->lpe_rw_sem);
         if (entry->lpe_mode & S_IWUSR) {
@@ -1185,10 +1214,10 @@ int libcfs_param_string_read(char *page, char **start, off_t off, int count,
 EXPORT_SYMBOL(libcfs_param_string_read);
 
 void libcfs_param_sysctl_init(char *mod_name,
-                              struct libcfs_param_ctl_table *table,
-                              struct libcfs_param_entry *parent)
+                              libcfs_param_sysctl_table_t *table,
+                              libcfs_param_entry_t *parent)
 {
-        struct libcfs_param_entry *lpe;
+        libcfs_param_entry_t *lpe;
 
         lpe = libcfs_param_lookup(mod_name, parent);
         if (lpe == NULL)
@@ -1212,10 +1241,10 @@ EXPORT_SYMBOL(libcfs_param_sysctl_fini);
 /**
  * add params in sysctl table to params_tree
  */
-void libcfs_param_sysctl_register(struct libcfs_param_ctl_table *table,
-                                  struct libcfs_param_entry *parent)
+void libcfs_param_sysctl_register(libcfs_param_sysctl_table_t *table,
+                                  libcfs_param_entry_t *parent)
 {
-        struct libcfs_param_entry *lpe = NULL;
+        libcfs_param_entry_t *lpe = NULL;
 
         if (parent == NULL)
                 return;
@@ -1244,10 +1273,10 @@ EXPORT_SYMBOL(libcfs_param_sysctl_register);
  * CFS_MODULE_PARM, they will be written during configuration.
  * So, we provide such a function to meet this requirement.
  */
-static void libcfs_param_change_mode(struct libcfs_param_ctl_table *table,
-                                     struct libcfs_param_entry *parent)
+static void libcfs_param_change_mode(libcfs_param_sysctl_table_t *table,
+                                     libcfs_param_entry_t *parent)
 {
-        struct libcfs_param_entry *lpe = NULL;
+        libcfs_param_entry_t *lpe = NULL;
 
         LASSERT(parent != NULL);
         for (; table->name != NULL; table ++) {
@@ -1269,10 +1298,10 @@ static void libcfs_param_change_mode(struct libcfs_param_ctl_table *table,
 }
 
 void libcfs_param_sysctl_change(char *mod_name,
-                                struct libcfs_param_ctl_table *table,
-                                struct libcfs_param_entry *parent)
+                                libcfs_param_sysctl_table_t *table,
+                                libcfs_param_entry_t *parent)
 {
-        struct libcfs_param_entry *lpe;
+        libcfs_param_entry_t *lpe;
 
         lpe = libcfs_param_lookup(mod_name, parent);
         if (lpe != NULL) {
@@ -1338,7 +1367,7 @@ int libcfs_param_change_mode(const char *name, libcfs_param_entry_t *lpe,
 
 /**
  * Since the usr buffer addr has been mapped to the kernel space through
- * libcfs_ioctl_pack(), we don't need copy_from_user.
+ * libcfs_ioctl_pack(), we don't need cfs_copy_from_user.
  * Instead, just call memcpy.
  */
 int libcfs_param_copy(int flag, char *dest, const char *src, int count)
@@ -1372,7 +1401,7 @@ static int get_value_len(enum libcfs_param_value_type type, char *buf)
                         return 8;
                 case LP_DB:
                 case LP_STR:
-			return strlen(buf);
+                        return strlen(buf);
                 default:
                         return 0;
         }
@@ -1507,11 +1536,11 @@ static int libcfs_param_is_invalid(libcfs_param_data_t *data)
                 return 1;
         }
         if (data->param_type == LP_STR || data->param_type == LP_DB) {
-		if (data->param_value_len &&
+                if (data->param_value_len &&
                     data->param_value[data->param_value_len] != '\0') {
-			CERROR ("pve_value(string) not 0 terminated\n");
-			return 1;
-		}
+                        CERROR ("pve_value(string) not 0 terminated\n");
+                        return 1;
+                }
         }
 
         return 0;
@@ -1526,26 +1555,26 @@ static int libcfs_param_data_pack(char *buf, int buf_len,
                                   enum libcfs_param_value_type type,
                                   const char *name, const char *unit)
 {
-        struct libcfs_param_data  *data = NULL;
-        char                      *ptr;
-        char                      *value = NULL;
-        int                        data_len = 0;
-        int                        value_len = 0;
-	int			   rc = 0;
+        libcfs_param_data_t *data = NULL;
+        char                *ptr;
+        char                *value = NULL;
+        int                  data_len = 0;
+        int                  value_len = 0;
+        int                  rc = 0;
 
-	/* we store param_value into buf, copy it out first */
+        /* we store param_value into buf, copy it out first */
         if (buf == NULL) {
                 CERROR("buf is null.\n");
                 return -ENOMEM;
         }
         value_len = get_value_len(type, buf);
-	if (value_len) {
-		LIBCFS_ALLOC(value, value_len);
-		if (value == NULL)
-			return -ENOMEM;
-		memcpy(value, buf, value_len);
-	}
-	/* check buf_len */
+        if (value_len) {
+                LIBCFS_ALLOC(value, value_len);
+                if (value == NULL)
+                        return -ENOMEM;
+                memcpy(value, buf, value_len);
+        }
+        /* check buf_len */
         data_len = sizeof(struct libcfs_param_data);
         if (name != NULL)
                 data_len += strlen(name) + 1;
@@ -1581,15 +1610,15 @@ static int libcfs_param_data_pack(char *buf, int buf_len,
         }
         data->param_value_len = value_len;
         if (value_len) {
-		memcpy(ptr, value, value_len);
+                memcpy(ptr, value, value_len);
                 data->param_value = ptr;
-	}
+        }
 
         if (libcfs_param_is_invalid(data))
                 GOTO(out, rc = -EINVAL);
 out:
-	if (value_len)
-		LIBCFS_FREE(value, value_len);
+        if (value_len)
+                LIBCFS_FREE(value, value_len);
 
         return rc < 0 ? rc : data_len;
 }

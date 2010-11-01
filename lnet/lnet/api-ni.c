@@ -59,7 +59,7 @@ static char routes[MAX_STRLEN];
 CFS_MODULE_PARM_STR(routes, routes, sizeof(routes), 0444,
                 "routes to non-local networks");
 
-struct libcfs_param_ctl_table libcfs_param_apini_ctl_table[] = {
+libcfs_param_sysctl_table_t libcfs_param_apini_ctl_table[] = {
         {
                 .name     = "ip2nets",
                 .data     = ip2nets,

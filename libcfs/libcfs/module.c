@@ -436,6 +436,12 @@ static int init_libcfs_module(void)
                 goto cleanup_lwt;
         }
 
+        rc = cfs_wi_startup();
+        if (rc) {
+                CERROR("startup workitem: error %d\n", rc);
+                goto cleanup_deregister;
+        }
+
         rc = insert_params();
         if (rc) {
                 CERROR("insert_params: error %d\n", rc);
@@ -445,13 +451,15 @@ static int init_libcfs_module(void)
         rc = insert_proc();
         if (rc) {
                 CERROR("insert_proc: error %d\n", rc);
-                goto cleanup_deregister;
+                goto cleanup_wi;
         }
 #endif
 
         CDEBUG (D_OTHER, "portals setup OK\n");
         return (0);
 
+ cleanup_wi:
+        cfs_wi_shutdown();
  cleanup_deregister:
         cfs_psdev_deregister(&libcfs_dev);
  cleanup_lwt:
@@ -480,6 +488,7 @@ static void exit_libcfs_module(void)
         CDEBUG(D_MALLOC, "before Portals cleanup: kmem %d\n",
                cfs_atomic_read(&libcfs_kmemory));
 
+        cfs_wi_shutdown();
         rc = cfs_psdev_deregister(&libcfs_dev);
         if (rc)
                 CERROR("misc_deregister error %d\n", rc);

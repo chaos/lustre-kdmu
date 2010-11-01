@@ -1595,7 +1595,10 @@ static int filter_destroy_internal(struct obd_device *obd, obd_id objid,
         struct inode *inode = dchild->d_inode;
         int rc;
 
-        if (inode->i_nlink != 1 || atomic_read(&inode->i_count) != 1) {
+        /* There should be 2 references to the inode:
+         *  1) taken by filter_prepare_destroy
+         *  2) taken by filter_destroy */
+        if (inode->i_nlink != 1 || atomic_read(&inode->i_count) != 2) {
                 CERROR("destroying objid %.*s ino %lu nlink %lu count %d\n",
                        dchild->d_name.len, dchild->d_name.name, inode->i_ino,
                        (unsigned long)inode->i_nlink,
@@ -1699,7 +1702,7 @@ static int filter_intent_policy(struct ldlm_namespace *ns,
          * lock, and should not be granted if the lock will be blocked.
          */
 
-        LASSERT(ns == res->lr_namespace);
+        LASSERT(ns == ldlm_res_to_ns(res));
         lock_res(res);
         rc = policy(lock, &tmpflags, 0, &err, &rpc_list);
         check_res_locked(res);
@@ -3192,6 +3195,7 @@ int filter_setattr_internal(struct obd_export *exp, struct dentry *dentry,
                         *fcc = oa->o_lcookie;
         }
         if (ia_valid & (ATTR_SIZE | ATTR_UID | ATTR_GID)) {
+                unsigned long now = jiffies;
                 DQUOT_INIT(inode);
                 /* Filter truncates and writes are serialized by
                  * i_alloc_sem, see the comment in
@@ -3199,6 +3203,7 @@ int filter_setattr_internal(struct obd_export *exp, struct dentry *dentry,
                 if (ia_valid & ATTR_SIZE)
                         down_write(&inode->i_alloc_sem);
                 LOCK_INODE_MUTEX(inode);
+                fsfilt_check_slow(exp->exp_obd, now, "i_alloc_sem and i_mutex");
                 old_size = i_size_read(inode);
         }
 
@@ -3395,7 +3400,9 @@ int filter_setattr(struct obd_export *exp, struct obd_info *oinfo,
          */
         if (oa->o_valid &
             (OBD_MD_FLMTIME | OBD_MD_FLATIME | OBD_MD_FLCTIME)) {
+                unsigned long now = jiffies;
                 down_write(&dentry->d_inode->i_alloc_sem);
+                fsfilt_check_slow(exp->exp_obd, now, "i_alloc_sem");
                 fmd = filter_fmd_get(exp, oa->o_id, oa->o_seq);
                 if (fmd && fmd->fmd_mactime_xid < oti->oti_xid)
                         fmd->fmd_mactime_xid = oti->oti_xid;
@@ -3809,10 +3816,15 @@ static int filter_precreate(struct obd_device *obd, struct obdo *oa,
                 } else
                         next_id = filter_last_id(filter, group) + 1;
 
-                /* Temporary solution for oid in CMD before fid-on-OST */
-                if ((fid_seq_is_mdt0(oa->o_seq) && next_id >= IDIF_MAX_OID) &&
-                    (fid_seq_is_cmd(oa->o_seq) && next_id >= OBIF_MAX_OID)) {
-                        CERROR("%s:"POSTID" hit the max IDIF_MAX_OID(1<<48)!\n",
+                /* Don't create objects beyond the valid range for this SEQ */
+                if (unlikely(fid_seq_is_mdt0(group) &&
+                            next_id >= IDIF_MAX_OID)) {
+                        CERROR("%s:"POSTID" hit the IDIF_MAX_OID (1<<48)!\n",
+                                obd->obd_name, next_id, group);
+                        GOTO(cleanup, rc = -ENOSPC);
+               } else if (unlikely(!fid_seq_is_mdt0(group) &&
+                                   next_id >= OBIF_MAX_OID)) {
+                        CERROR("%s:"POSTID" hit the OBIF_MAX_OID (1<<32)!\n",
                                 obd->obd_name, next_id, group);
                         GOTO(cleanup, rc = -ENOSPC);
                 }
@@ -4015,6 +4027,7 @@ int filter_destroy(struct obd_export *exp, struct obdo *oa,
         struct llog_cookie *fcc = NULL;
         int rc, rc2, cleanup_phase = 0, sync = 0;
         struct iattr iattr;
+        unsigned long now;
         ENTRY;
 
         rc = filter_auth_capa(exp, NULL, oa->o_seq,
@@ -4083,8 +4096,10 @@ int filter_destroy(struct obd_export *exp, struct obdo *oa,
          * between page lock, i_mutex & starting new journal handle.
          * (see bug 20321) -johann
          */
+        now = jiffies;
         down_write(&dchild->d_inode->i_alloc_sem);
         LOCK_INODE_MUTEX(dchild->d_inode);
+        fsfilt_check_slow(exp->exp_obd, now, "i_alloc_sem and i_mutex");
 
         /* VBR: version recovery check */
         rc = filter_version_get_check(exp, oti, dchild->d_inode);

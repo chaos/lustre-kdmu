@@ -11,7 +11,8 @@ SRCDIR=`dirname $0`
 export PATH=$PWD/$SRCDIR:$SRCDIR:$PWD/$SRCDIR/../utils:$PATH:/sbin
 
 ONLY=${ONLY:-"$*"}
-ALWAYS_EXCEPT="$OST_POOLS_EXCEPT"
+# bug number for skipped test: 	23141
+ALWAYS_EXCEPT="			18 23	$OST_POOLS_EXCEPT"
 # bug number for skipped test: -
 # UPDATE THE COMMENT ABOVE WITH BUG NUMBERS WHEN CHANGING ALWAYS_EXCEPT!
 

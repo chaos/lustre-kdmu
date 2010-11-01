@@ -374,7 +374,7 @@ static cfs_sysctl_table_t kiblnd_top_ctl_table[] = {
 };
 #endif
 
-static struct libcfs_param_ctl_table libcfs_param_kiblnd_ctl_table[] = {
+static libcfs_param_sysctl_table_t libcfs_param_kiblnd_ctl_table[] = {
         {
                 .name     = "service",
                 .data     = &service,

@@ -194,7 +194,7 @@ static int libcfs_param_alloc_fail_rate_write(libcfs_file_t * filp,
 }
 #endif
 
-static struct libcfs_param_ctl_table libcfs_param_obd_table[] = {
+static libcfs_param_sysctl_table_t libcfs_param_obd_table[] = {
         {
                 .name   = "fail_loc",
                 .data   = &obd_fail_loc,

@@ -47,7 +47,7 @@ CFS_MODULE_PARM(local_nid_dist_zero, "i", int, 0444,
                 "Reserved");
 
 #ifdef __KERNEL__
-static struct libcfs_param_ctl_table libcfs_param_libmove_ctl_table[] = {
+static libcfs_param_sysctl_table_t libcfs_param_libmove_ctl_table[] = {
         {
                 .name     = "local_nid_dist_zero",
                 .data     = &local_nid_dist_zero,
