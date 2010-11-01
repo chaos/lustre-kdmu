@@ -210,7 +210,7 @@ static int do_lcfg(char *cfgname, lnet_nid_t nid, int cmd,
  * obd type-specific methods.
  */
 int lustre_start_simple(char *obdname, char *type, char *uuid,
-                        char *s1, char *s2, char *s3)
+                        char *s1, char *s2, char *s3, char *s4)
 {
         int rc;
         CDEBUG(D_MOUNT, "Starting obd %s (typ=%s)\n", obdname, type);
@@ -220,7 +220,7 @@ int lustre_start_simple(char *obdname, char *type, char *uuid,
                 CERROR("%s attach error %d\n", obdname, rc);
                 return(rc);
         }
-        rc = do_lcfg(obdname, 0, LCFG_SETUP, s1, s2, s3, 0);
+        rc = do_lcfg(obdname, 0, LCFG_SETUP, s1, s2, s3, s4);
         if (rc) {
                 CERROR("%s setup error %d\n", obdname, rc);
                 do_lcfg(obdname, 0, LCFG_DETACH, 0, 0, 0, 0);
@@ -249,7 +249,7 @@ static int server_start_mgs(struct lustre_sb_info *lsi)
 
         rc = lustre_start_simple(LUSTRE_MGS_OBDNAME, LUSTRE_MGS_NAME,
                                  LUSTRE_MGS_OBDNAME, 0, 0,
-                                 lsi->lsi_osd_obdname);
+                                 lsi->lsi_osd_obdname, 0);
         if (rc)
                 LCONSOLE_ERROR_MSG(0x15e, "Failed to start MGS '%s' (%d). "
                                    "Is the 'mgs' module loaded?\n",
@@ -407,7 +407,7 @@ static int lustre_start_mgc(struct lustre_sb_info *lsi)
         /* Start the MGC */
         rc = lustre_start_simple(mgcname, LUSTRE_MGC_NAME,
                                  (char *)uuid->uuid, LUSTRE_MGS_OBDNAME,
-                                 niduuid, 0);
+                                 niduuid, 0, 0);
         OBD_FREE_PTR(uuid);
         if (rc)
                 GOTO(out_free, rc);
@@ -846,7 +846,7 @@ static int server_start_targets(struct lustre_sb_info *lsi)
                         rc = lustre_start_simple(LUSTRE_OSS_OBDNAME,
                                                  LUSTRE_OSS_NAME,
                                                  LUSTRE_OSS_OBDNAME"_uuid",
-                                                 0, 0, 0);
+                                                 0, 0, 0, 0);
                         if (rc) {
                                 cfs_mutex_up(&server_start_lock);
                                 CERROR("failed to start OSS: %d\n", rc);
@@ -1086,11 +1086,12 @@ static int osd_start(struct lustre_sb_info *lsi, unsigned long mflags)
         sprintf(flagstr, "%lu", mflags);
 
         rc = lustre_start_simple(lsi->lsi_osd_obdname, LUSTRE_OSD_NAME,
-                                 lsi->lsi_osd_uuid, lmd->lmd_dev, flagstr, 0);
+                                 lsi->lsi_osd_uuid, lmd->lmd_dev, flagstr,
+                                 0, lsi->lsi_svname);
         if (rc)
                 rc = lustre_start_simple(lsi->lsi_osd_obdname, LUSTRE_ZFS_NAME,
                                          lsi->lsi_osd_uuid, lmd->lmd_dev,
-                                         flagstr, 0);
+                                         flagstr, 0, lsi->lsi_svname);
         RETURN(rc);
 }
 

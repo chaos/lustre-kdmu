@@ -245,6 +245,7 @@ struct osd_device {
 
         struct osd_compat_objid  *od_ost_map;
         char                      od_mntdev[128];
+        char                      od_svname[128];
 
         unsigned long long        od_readcache_max_filesize;
         int                       od_read_cache;

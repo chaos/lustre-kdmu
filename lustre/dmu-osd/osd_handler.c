@@ -788,11 +788,7 @@ static int osd_label_set(const struct lu_env *env, const struct dt_device *d,
 
         rc = -udmu_userprop_set_str(&dev->od_objset, DMU_PROP_NAME_LABEL, name);
 
-        if (rc == 0) {
-                /* rename procfs entry (it's special on the first setup ) */
-                osd_procfs_fini(dev);
-                osd_procfs_init(dev, name);
-        } else
+        if (rc)
                 CERROR("error setting ZFS label to '%s': %d\n", name, rc);
 
         RETURN(rc);
@@ -2712,6 +2708,8 @@ static int osd_mount(const struct lu_env *env,
         }
         o->od_root_db = rootdb;
 
+        strncpy(o->od_svname, lustre_cfg_string(cfg, 4), sizeof(o->od_svname) - 1);
+
         RETURN(rc);
 }
 
@@ -2754,8 +2752,6 @@ static int osd_device_init2(const struct lu_env *env,
         lu_site_init(&o->od_site, osd2lu_dev(o));
         o->od_site.ls_bottom_dev = osd2lu_dev(o);
         rc = osd_oi_init(env, o);
-        LASSERT(rc == 0);
-        rc = osd_procfs_init(o, osd_label_get(NULL, &o->od_dt_dev));
         LASSERT(rc == 0);
 
 out:
@@ -2895,8 +2891,12 @@ static int osd_prepare(const struct lu_env *env,
                        struct lu_device *pdev,
                        struct lu_device *dev)
 {
-        int rc = 0;
+        struct osd_device *osd = osd_dev(dev);
+        int                rc = 0;
         ENTRY;
+
+        rc = osd_procfs_init(osd, osd->od_svname);
+        LASSERT(rc == 0);
 
         if (lu_device_is_md(pdev)) {
                 /* 2. setup local objects */

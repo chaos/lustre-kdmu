@@ -125,6 +125,7 @@ struct osd_device {
         int                       od_connects;
         unsigned int              od_rdonly:1;
         char                      od_mntdev[128];
+        char                      od_svname[128];
         char                      od_label[MAXNAMELEN];
 
         int                       od_reserved_fraction;

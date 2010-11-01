@@ -872,11 +872,6 @@ static int osd_label_set(const struct lu_env *env, const struct dt_device *dt,
 out:
         ldiskfs_journal_stop(handle);
 
-        if (rc == 0) {
-                osd_procfs_fini(osd_dt_dev(dt));
-                osd_procfs_init(osd_dt_dev(dt), label);
-        }
-
         return rc;
 }
 
@@ -3704,6 +3699,7 @@ static int osd_ldiskfs_it_fill(const struct dt_it *di)
         it->oie_dirent = it->oie_buf;
         it->oie_rd_dirent = 0;
 
+        LASSERT(inode->i_fop->readdir);
         cfs_down_read(&obj->oo_ext_idx_sem);
         result = inode->i_fop->readdir(&it->oie_file, it,
                                        (filldir_t) osd_ldiskfs_filldir);
@@ -4001,7 +3997,7 @@ static int osd_mount(const struct lu_env *env,
 {
         const char               *dev = lustre_cfg_string(cfg, 1);
         const char               *opts;
-        unsigned long             page, s_flags, ldd_flags;
+        unsigned long             page, s_flags, ldd_flags = 0;
         struct page              *__page;
         char                     *options = NULL;
         int                      rc = 0;
@@ -4023,7 +4019,10 @@ static int osd_mount(const struct lu_env *env,
 
         s_flags = simple_strtoul(lustre_cfg_string(cfg, 2), NULL, 0);
         opts = lustre_cfg_string(cfg, 3);
+#if 0
+        /* XXX: how to pass flags, probably better to parse mount options? */
         ldd_flags = (unsigned long) lustre_cfg_buf(cfg, 4);
+#endif
 
         page = (unsigned long)cfs_page_address(__page);
         options = (char *)page;
@@ -4086,13 +4085,6 @@ static struct lu_device *osd_device_fini(const struct lu_env *env,
                 osd_dev(d)->od_mnt = NULL;
         }
 
-#if 0
-        if (osd_dev(d)->od_mount)
-                server_put_mount(osd_dev(d)->od_mount->lmi_name,
-                                 osd_dev(d)->od_mount->lmi_mnt);
-        osd_dev(d)->od_mount = NULL;
-#endif
-
         lu_context_fini(&osd_dev(d)->od_env_for_commit.le_ctx);
         RETURN(NULL);
 }
@@ -4137,6 +4129,8 @@ static struct lu_device *osd_device_alloc(const struct lu_env *env,
                                 dt_device_fini(&o->od_dt_dev);
                                 l = ERR_PTR(rc);
                         }
+                        strncpy(o->od_svname, lustre_cfg_string(cfg, 4),
+                                sizeof(o->od_svname) - 1);
                 } else
                         l = ERR_PTR(result);
 
@@ -4207,9 +4201,11 @@ static int osd_prepare(const struct lu_env *env,
         if (result != 0)
                 RETURN(result);
 
-        result = osd_procfs_init(osd, osd_label_get(env, &osd->od_dt_dev));
-        if (result != 0)
+        result = osd_procfs_init(osd, osd->od_svname);
+        if (result != 0) {
+                CERROR("can't initialize procfs entry for %s\n", osd->od_svname);
                 RETURN(result);
+        }
 
         result = osd_compat_init(osd);
         if (result != 0)
