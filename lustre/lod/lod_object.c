@@ -632,13 +632,14 @@ static void lod_ah_init(const struct lu_env *env,
                 return;
         }
 
+        LASSERT(parent);
+        LASSERT(child);
+        LASSERT(lod_mti_get(env));
+
         nextp = dt_object_child(parent);
         nextc = dt_object_child(child);
         lp = lod_dt_obj(parent);
         lc = lod_dt_obj(child);
-        LASSERT(lod_mti_get(env));
-        LASSERT(parent);
-        LASSERT(child);
 
         LASSERT(lc->mbo_stripenr == 0);
         LASSERT(lc->mbo_stripe == NULL);
