@@ -15,7 +15,6 @@ export GSS_KRB5=false
 export GSS_PIPEFS=false
 export IDENTITY_UPCALL=default
 export QUOTA_AUTO=0
-export ALLOSTFILE=file_to_sync_all_osts
 
 #export PDSH="pdsh -S -Rssh -w"
 
@@ -1222,32 +1221,49 @@ wait_update_facet () {
 
 sync_all_data () {
     sync
-    if [ "$MULTIOP" != "" ]; then
-        $MULTIOP $DIR/$ALLOSTFILE OY || echo "can't sync data"
-    else
-        multiop $DIR/$ALLOSTFILE OY || echo "can't sync data"
-    fi
+    # XXX: how to sync data on OST running DMU?
 }
 
 wait_delete_completed () {
-    local TOTALPREV=`lctl get_param -n osc.*.kbytesavail | \
-                     awk 'BEGIN{total=0}; {total+=$1}; END{print total}'`
+    local mds2sync=""
+    local stime=`date +%s`
+    local etime
 
+    # find MDS with pending deletions
+    for node in $(mdts_nodes); do
+        changes=$(do_node $node "lctl get_param -n osp*.*.sync_*" | awk '{sum=sum+$1} END{print sum}')
+        #echo "$node: $changes changes on $node"
+        if let "changes == 0"; then
+            continue
+        fi
+        mds2sync="$mds2sync $node"
+    done
+    if [ "$mds2sync" == "" ]; then
+        #echo "no delete in progress"
+        return
+    fi
+
+    # sync MDS transactions
+    do_node $mds2sync "lctl set_param -n osd*.*MD*.force_sync 1"
+
+    # wait till all changes are sent to OSTs
     local WAIT=0
     local MAX_WAIT=20
-    sync_all_data
-    echo "prev: $TOTALPREV"
     while [ "$WAIT" -ne "$MAX_WAIT" ]; do
+        changes=$(do_node $mds2sync "lctl get_param -n osp*.*.sync_changes" | awk '{sum=sum+$1} END{print sum}')
+        #echo "$node: $changes changes on all"
+        if [ "$changes" -eq "0" ]; then
+            do_node $(osts_nodes) "lctl set_param -n osd*.*OS*.force_sync 1"
+            etime=`date +%s`
+            #echo "delete took $((etime-stime)) seconds"
+            return
+        fi
         sleep 1
-        TOTAL=`lctl get_param -n osc.*.kbytesavail | \
-               awk 'BEGIN{total=0}; {total+=$1}; END{print total}'`
-        [ "$TOTAL" -gt "$TOTALPREV" ] && return 0
-        echo "Waiting delete completed ... prev: $TOTALPREV current: $TOTAL "
-        TOTALPREV=$TOTAL
         WAIT=$(( WAIT + 1))
     done
-    echo "Delete is not completed in $MAX_WAIT sec"
-    return 1
+
+    etime=`date +%s`
+    echo "Delete is not completed in $((etime-stime)) seconds"
 }
 
 wait_for_host() {
@@ -2159,10 +2175,6 @@ formatall() {
             add ost$num $(mkfs_opts ost${num}) $OSTFSTYPE_OPT --index $index --reformat `ostdevname $num` > /dev/null || exit 10
         fi
     done
-
-    # We always need to writeconf the first time we start up after format.
-    # This is used in setupall
-    WRITECONF="-o writeconf"
 }
 
 mount_client() {
@@ -2561,11 +2573,6 @@ check_and_setup_lustre() {
     if [ "$ONLY" == "setup" ]; then
         exit 0
     fi
-
-    # create file striped over all OSTs, to be used to sync all OSTs with fdatasync
-    rm -f $DIR/$ALLOSTFILE
-    lfs setstripe $DIR/$ALLOSTFILE -c -1 || exit "can't create special $ALLOSTFILE"
-    chmod a+rw $DIR/$ALLOSTFILE
 }
 
 restore_mount () {
