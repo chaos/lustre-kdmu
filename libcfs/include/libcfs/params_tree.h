@@ -124,8 +124,6 @@ int LPROCFS_ENTRY_AND_CHECK(struct proc_dir_entry *dp)
 
 #else /* !LPROCFS */
 
-struct dummy {;};
-
 struct libcfs_seq_operations;
 typedef struct libcfs_seq_file {
         char *buf;

@@ -46,9 +46,12 @@
 #include <libcfs/params_tree.h>
 
 #ifdef __KERNEL__
+
+#ifdef LPROCFS
 /* for bug 10866, global variable, moved from lprocfs_status.c */
 CFS_DECLARE_RWSEM(_lprocfs_lock);
 EXPORT_SYMBOL(_lprocfs_lock);
+#endif /* LPROCFS */
 
 static cfs_rw_semaphore_t libcfs_param_sem;
 libcfs_param_entry_t *libcfs_param_lnet_root;
@@ -198,6 +201,8 @@ void libcfs_param_root_fini(void)
                  cfs_atomic_read(&libcfs_param_root.lpe_refcount));
         if (libcfs_param_root.lpe_hash_t != NULL)
                 cfs_hash_putref(libcfs_param_root.lpe_hash_t);
+        cfs_fini_rwsem(&libcfs_param_sem);
+        cfs_fini_rwsem(&libcfs_param_root.lpe_rw_sem);
 }
 
 struct libcfs_param_cb_data *libcfs_param_cb_data_alloc(void *data, int flag)
@@ -219,9 +224,11 @@ EXPORT_SYMBOL(libcfs_param_cb_data_alloc);
 
 void libcfs_param_cb_data_free(struct libcfs_param_cb_data *cb_data, int flag)
 {
-        if (cb_data != NULL && cb_data->cb_magic == PARAM_DEBUG_MAGIC) {
+        if (cb_data != NULL) {
+                LASSERTF(cb_data->cb_magic == PARAM_DEBUG_MAGIC,
+                         "cb_magic is %x \n", cb_data->cb_magic);
                 LASSERTF((cb_data->cb_flag & flag) ||
-                          (cb_data->cb_flag == 0 && flag == 0),
+                         (cb_data->cb_flag == 0 && flag == 0),
                          "cb_flag is %x flag is %x \n", cb_data->cb_flag,
                           flag);
                 LIBCFS_FREE(cb_data, sizeof(*cb_data));
@@ -740,8 +747,7 @@ void libcfs_seq_release(libcfs_inode_t *inode, libcfs_file_t *file)
 {
         libcfs_seq_file_t *seqf = LIBCFS_FILE_PRIVATE(file);
 
-        if (seqf)
-                LIBCFS_FREE(seqf, sizeof(libcfs_seq_file_t));
+        LIBCFS_FREE(seqf, sizeof(libcfs_seq_file_t));
 }
 
 int libcfs_param_seq_release_common(libcfs_inode_t *inode, libcfs_file_t *file)
@@ -1110,6 +1116,8 @@ int libcfs_param_read(const char *path, char *buf, int nbytes, loff_t *ppos,
                 else if (entry->lpe_cb_read != NULL)
                         rc = libcfs_param_normal_read(buf, ppos, count,
                                                       eof, entry);
+                else
+                        rc = -EINVAL;
         }
         cfs_up_read(&entry->lpe_rw_sem);
 
@@ -1164,6 +1172,8 @@ int libcfs_param_write(const char *path, char *buf, int count)
                 else if (entry->lpe_cb_write != NULL)
                         rc = entry->lpe_cb_write(NULL, buf, count,
                                                  entry->lpe_data);
+                else
+                        rc = -EINVAL;
         }
         cfs_up_write(&entry->lpe_rw_sem);
 
@@ -1254,8 +1264,11 @@ void libcfs_param_sysctl_register(libcfs_param_sysctl_table_t *table,
         /* create sys subdir */
         for (; table->name != NULL; table ++) {
                 lpe = libcfs_param_create(table->name, table->mode, parent);
-                if (lpe == NULL)
+                if (lpe == NULL) {
+                        CERROR("No memory to create %s/%s.",
+                               parent->lpe_name, table->name);
                         continue;
+                }
                 lpe->lpe_data = LIBCFS_ALLOC_PARAMDATA(table->data);
                 if (lpe->lpe_data == NULL) {
                         CERROR("No memory for param cb_data.");
@@ -1285,7 +1298,6 @@ static void libcfs_param_change_mode(libcfs_param_sysctl_table_t *table,
         for (; table->name != NULL; table ++) {
                 lpe = libcfs_param_lookup(table->name, parent);
                 LASSERT(lpe == NULL);
-                        continue;
                 /* for lnet write-once params */
                 cfs_down_write(&lpe->lpe_rw_sem);
                 if (table->writeable_before_startup == 1 &&
@@ -1421,7 +1433,7 @@ int libcfs_param_snprintf_common(char *page, int count, void *cb_data,
                                 rc = cfs_vsnprintf(page, count, format, args);
                         if (done || rc > 0)
                                 rc = libcfs_param_data_pack(page, count,
-                                                    LP_STR, name, unit);
+                                                            LP_STR, name, unit);
                         break;
                 default:
                         /* else, they are numbers */
@@ -1438,7 +1450,7 @@ int libcfs_param_snprintf_common(char *page, int count, void *cb_data,
                                             format, args);
                         if (unit != NULL)
                                 rc += cfs_snprintf(page + rc, count - rc,
-                                                   "%s\n", unit);
+                                                   "%s", unit);
                 } else {
                         rc = get_value_len(type, page);
                 }
@@ -1534,7 +1546,7 @@ static int libcfs_param_data_pack(char *buf, int buf_len,
         if (unit != NULL)
                 data_len += strlen(unit) + 1;
         data_len += value_len;
-        if (data_len > buf_len) {
+        if (data_len >= buf_len) {
                 CERROR("max_buflen(%d) < pvelen (%d)\n", buf_len, data_len);
                 GOTO(out, rc = -ENOMEM);
         }
