@@ -355,6 +355,26 @@ static int lprocfs_osd_wr_reserved(struct file *file, const char *buffer,
 }
 #endif
 
+static int lprocfs_osd_wr_force_sync(struct file *file, const char *buffer,
+                                     unsigned long count, void *data)
+{
+        struct osd_device *osd = data;
+        struct dt_device  *dt;
+        struct lu_env      env;
+        int rc;
+
+        LASSERT(osd != NULL);
+        dt = &osd->od_dt_dev;
+
+        rc = lu_env_init(&env, dt->dd_lu_dev.ld_type->ldt_ctx_tags);
+        if (rc)
+                return rc;
+        rc = dt_sync(&env, dt);
+        lu_env_fini(&env);
+
+        return rc == 0 ? count : rc;
+}
+
 struct lprocfs_vars lprocfs_osd_obd_vars[] = {
         { "blocksize",       lprocfs_osd_rd_blksize,     0, 0 },
         { "kbytestotal",     lprocfs_osd_rd_kbytestotal, 0, 0 },
@@ -364,6 +384,7 @@ struct lprocfs_vars lprocfs_osd_obd_vars[] = {
         { "filesfree",       lprocfs_osd_rd_filesfree,   0, 0 },
         { "fstype",          lprocfs_osd_rd_fstype,      0, 0 },
         { "mntdev",          lprocfs_osd_rd_mntdev,      0, 0 },
+        { "force_sync",      0, lprocfs_osd_wr_force_sync     },
 #ifndef DMU_OSD_BUILD
         { "read_cache_enable",lprocfs_osd_rd_cache,
                              lprocfs_osd_wr_cache,          0 },
