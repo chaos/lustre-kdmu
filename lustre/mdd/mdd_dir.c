@@ -1585,12 +1585,24 @@ static int mdd_create_data(const struct lu_env *env, struct md_object *pobj,
         if (IS_ERR(handle))
                 RETURN(PTR_ERR(handle));
 
-        CDEBUG(D_OTHER, "ea %p/%u, cr_flags %x, no_create %u\n",
+        CDEBUG(D_OTHER, "ea %p/%u, cr_flags %o, no_create %u\n",
                spec->u.sp_ea.eadata, spec->u.sp_ea.eadatalen,
                spec->sp_cr_flags, spec->no_create);
 
-        buf.lb_buf = (void *) spec->u.sp_ea.eadata;
-        buf.lb_len = spec->u.sp_ea.eadatalen;
+        if (spec->no_create) {
+                /* replay case */
+                buf.lb_buf = (void *) spec->u.sp_ea.eadata;
+                buf.lb_len = spec->u.sp_ea.eadatalen;
+        } else  if (!(spec->sp_cr_flags & MDS_OPEN_HAS_OBJS)) {
+                if (spec->sp_cr_flags & MDS_OPEN_HAS_EA) {
+                        /* lfs setstripe */
+                        buf.lb_buf = (void *) spec->u.sp_ea.eadata;
+                        buf.lb_len = spec->u.sp_ea.eadatalen;
+                }
+        } else {
+                /* MDS_OPEN_HAS_OBJS is not used anymore ? */
+                LBUG();
+        }
 
         rc = mdo_declare_xattr_set(env, son, &buf, XATTR_NAME_LOV, 0, handle);
         if (rc)
@@ -1734,6 +1746,10 @@ static int mdd_create_sanity_check(const struct lu_env *env,
         if (mdd_is_dead_obj(obj))
                 RETURN(-ENOENT);
 
+        /* with this flags should should be in mdd_create_data() */
+        if (unlikely(spec->sp_cr_flags & MDS_OPEN_HAS_EA))
+                RETURN(-EINVAL);
+
         /*
          * In some cases this lookup is not needed - we know before if name
          * exists or not because MDT performs lookup for it.
@@ -1827,11 +1843,9 @@ mdd_start_and_declare_create(const struct lu_env *env,
                 if (dof->dof_type == DFT_REGULAR)
                         dof->u.dof_reg.striped = md_should_create(spec->sp_cr_flags);
         }
-        //if (!dt_object_exists(son)) {
-                rc = mdo_declare_create_obj(env, son, attr, NULL, dof, handle);
-                if (rc)
-                        GOTO(cleanup, rc);
-        //}
+        rc = mdo_declare_create_obj(env, son, attr, NULL, dof, handle);
+        if (rc)
+                GOTO(cleanup, rc);
         rc = __mdd_declare_index_insert(env, mdd_pobj, mdo2fid(son),dot,0,handle);
         if (rc)
                 GOTO(cleanup, rc);
@@ -1843,8 +1857,7 @@ mdd_start_and_declare_create(const struct lu_env *env,
                                         name, S_ISDIR(attr->la_mode), handle);
         if (rc)
                 GOTO(cleanup, rc);
-        if (dof->dof_type == DFT_REGULAR &&
-                        (spec->no_create || spec->sp_cr_flags & MDS_OPEN_HAS_EA)) {
+        if (dof->dof_type == DFT_REGULAR && spec->no_create) {
                 buf.lb_buf = (void *) spec->u.sp_ea.eadata;
                 buf.lb_len = spec->u.sp_ea.eadatalen;
                 rc = mdo_declare_xattr_set(env, son, &buf, XATTR_NAME_LOV,0,handle);
