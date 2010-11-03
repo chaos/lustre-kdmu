@@ -777,6 +777,7 @@ run_test 35 "test recovery from llog for unlink op"
 # b=2432 resent cancel after replay uses wrong cookie,
 # so don't resend cancels
 test_36() {
+    touch $DIR/$tfile-allocate-seq
     replay_barrier $SINGLEMDS
     touch $DIR/$tfile
     checkstat $DIR/$tfile
