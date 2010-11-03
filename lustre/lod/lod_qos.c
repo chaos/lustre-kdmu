@@ -1156,18 +1156,13 @@ static int lod_qos_parse_config(const struct lu_env *env, struct lod_object *lo,
         else if (v1->lmm_magic == __swab32(LOV_USER_MAGIC_V3))
                 lustre_swab_lov_user_md_v3(v3);
 
-        if (unlikely(v1->lmm_magic == 0)) {
-                CERROR("zero magic, use defaults\n");
-                RETURN(0);
-        }
-
         if (unlikely(v1->lmm_magic != LOV_MAGIC_V1 && v1->lmm_magic != LOV_MAGIC_V3)) {
                 CERROR("invalid magic: %x\n", v1->lmm_magic);
                 RETURN(-EINVAL);
         }
 
         if (unlikely(buf->lb_len < sizeof(*v1))) {
-                CERROR("wrong size: %d\n", buf->lb_len);
+                CERROR("wrong size: %u\n", (unsigned) buf->lb_len);
                 RETURN(-EINVAL);
         }
 
@@ -1196,7 +1191,7 @@ static int lod_qos_parse_config(const struct lu_env *env, struct lod_object *lo,
 
         if (v1->lmm_magic == LOV_MAGIC_V3) {
                 if (buf->lb_len < sizeof(*v3)) {
-                        CERROR("wrong size: %u\n", buf->lb_len);
+                        CERROR("wrong size: %u\n", (unsigned) buf->lb_len);
                         RETURN(-EINVAL);
                 }
 
