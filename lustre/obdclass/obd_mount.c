@@ -1655,6 +1655,7 @@ void lustre_server_umount(struct lustre_sb_info *lsi)
                 OBD_FREE(extraname, strlen(extraname) + 1);
         }
 
+        obd_zombie_barrier();
         LCONSOLE_WARN("server umount %s complete\n", tmpname);
         OBD_FREE(tmpname, tmpname_sz);
         EXIT;
