@@ -86,7 +86,6 @@ else
     MDS_MKFS_OPTS="--mgsnode=$MGSNID $MDS_MKFS_OPTS"
     MGS_MKFS_OPTS="--mgs --device-size=$MGSSIZE"
 fi
-MDSn_MKFS_OPTS="--mgsnode=$MGSNID --mdt --fsname=$FSNAME --device-size=$MDSSIZE $MKFSOPT $MDSOPT $MDSn_MKFS_OPTS"
 
 MKFSOPT=""
 [ "x$OSTJOURNALSIZE" != "x" ] &&
