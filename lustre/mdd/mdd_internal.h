@@ -67,6 +67,10 @@ static inline void mdd_quota_wrapper(struct lu_attr *la, unsigned int *qids)
 }
 #endif
 
+/* PDO lock is unnecessary for current MDT stack because operations
+ * are already protected by ldlm lock */
+#define MDD_DISABLE_PDO_LOCK    1
+
 enum mdd_txn_op {
         MDD_TXN_OBJECT_DESTROY_OP = 0,
         MDD_TXN_OBJECT_CREATE_OP,
@@ -103,7 +107,6 @@ struct mdd_txn_op_descr {
 
 struct mdd_changelog {
         cfs_spinlock_t                   mc_lock;    /* for index */
-        cfs_waitq_t                      mc_waitq;
         int                              mc_flags;
         int                              mc_mask;
         __u64                            mc_index;

@@ -974,11 +974,10 @@ struct inode *ll_inode_from_lock(struct ldlm_lock *lock)
                         inode = igrab(lock->l_ast_data);
                 } else {
                         inode = lock->l_ast_data;
-                        ldlm_lock_debug(NULL, inode->i_state & I_FREEING ?
-                                                D_INFO : D_WARNING,
-                                        lock, __FILE__, __func__, __LINE__,
-                                        "l_ast_data %p is bogus: magic %08x",
-                                        lock->l_ast_data, lli->lli_inode_magic);
+                        LDLM_DEBUG_LIMIT(inode->i_state & I_FREEING ?  D_INFO :
+                                         D_WARNING, lock, "l_ast_data %p is "
+                                         "bogus: magic %08x", lock->l_ast_data,
+                                         lli->lli_inode_magic);
                         inode = NULL;
                 }
         }
@@ -1277,9 +1276,9 @@ int ll_setattr_raw(struct inode *inode, struct iattr *attr)
 
         if (ia_valid & ATTR_SIZE)
                 attr->ia_valid |= ATTR_SIZE;
-        if ((ia_valid & ATTR_SIZE) ||
-            (ia_valid | ATTR_ATIME | ATTR_ATIME_SET) ||
-            (ia_valid | ATTR_MTIME | ATTR_MTIME_SET))
+        if (ia_valid & (ATTR_SIZE |
+                        ATTR_ATIME | ATTR_ATIME_SET |
+                        ATTR_MTIME | ATTR_MTIME_SET))
                 /* on truncate and utimes send attributes to osts, setting
                  * mtime/atime to past will be performed under PW 0:EOF extent
                  * lock (new_size:EOF for truncate)
@@ -2106,17 +2105,4 @@ int ll_show_options(struct seq_file *seq, struct vfsmount *vfs)
                 seq_puts(seq, ",lazystatfs");
 
         RETURN(0);
-}
-
-int ll_sync_fs(struct super_block *sb, int wait)
-{
-        struct ll_sb_info *sbi = ll_s2sbi(sb);
-        int rc = 0;
-        ENTRY;
-
-        rc = obd_sync_fs(class_exp2obd(sbi->ll_dt_exp), NULL, wait);
-        if (rc)
-                CERROR("sync_fs fails: rc = %d\n", rc);
-
-        RETURN(rc);
 }

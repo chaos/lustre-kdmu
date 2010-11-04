@@ -575,6 +575,7 @@ struct ptlrpc_request {
                                  rq_auth_remote:1,   /* authed as remote user */
                                  rq_auth_usr_root:1, /* authed as root */
                                  rq_auth_usr_mdt:1,  /* authed as mdt */
+                                 rq_auth_usr_ost:1,  /* authed as ost */
                                  /* security tfm flags */
                                  rq_pack_udesc:1,
                                  rq_pack_bulk:1,
@@ -1406,8 +1407,8 @@ struct ptlrpc_service *ptlrpc_init_svc(int nbufs, int bufsize, int max_req_size,
                                        svc_hpreq_handler_t);
 void ptlrpc_stop_all_threads(struct ptlrpc_service *svc);
 
-int ptlrpc_start_threads(struct obd_device *dev, struct ptlrpc_service *svc);
-int ptlrpc_start_thread(struct obd_device *dev, struct ptlrpc_service *svc);
+int ptlrpc_start_threads(struct ptlrpc_service *svc);
+int ptlrpc_start_thread(struct ptlrpc_service *svc);
 int ptlrpc_unregister_service(struct ptlrpc_service *service);
 int liblustre_check_services (void *arg);
 void ptlrpc_daemonize(char *name);
@@ -1429,7 +1430,6 @@ struct ptlrpc_svc_data {
         char *name;
         struct ptlrpc_service *svc;
         struct ptlrpc_thread *thread;
-        struct obd_device *dev;
 };
 /** @} */
 

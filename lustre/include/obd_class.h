@@ -382,7 +382,8 @@ do {                                                            \
 #define EXP_MD_COUNTER_INCREMENT(exp, op)
 #endif
 
-static inline int lprocfs_nid_ldlm_stats_init(struct nid_stat* tmp) {
+static inline int lprocfs_nid_ldlm_stats_init(struct nid_stat* tmp)
+{
         /* Always add in ldlm_stats */
         tmp->nid_ldlm_stats = lprocfs_alloc_stats(LDLM_LAST_OPC - LDLM_FIRST_OPC
                                                   ,LPROCFS_STATS_FLAG_NOPERCPU);
@@ -1256,20 +1257,6 @@ static inline int obd_sync(struct obd_export *exp, struct obdo *oa,
         EXP_COUNTER_INCREMENT(exp, sync);
 
         rc = OBP(exp->exp_obd, sync)(exp, oa, ea, start, end, capa);
-        RETURN(rc);
-}
-
-static inline int obd_sync_fs(struct obd_device *obd, struct obd_info *oinfo,
-                              int wait)
-{
-        int rc;
-        ENTRY;
-
-        OBD_CHECK_DT_OP(obd, sync_fs, -EOPNOTSUPP);
-        OBD_COUNTER_INCREMENT(obd, sync);
-
-        rc = OBP(obd, sync_fs)(obd, oinfo, wait);
-
         RETURN(rc);
 }
 
