@@ -388,7 +388,7 @@ static cfs_sysctl_table_t kptllnd_top_ctl_table[] = {
 };
 #endif
 
-static struct libcfs_param_ctl_table libcfs_param_kptllnd_ctl_table[] = {
+static libcfs_param_sysctl_table_t libcfs_param_kptllnd_ctl_table[] = {
         {
                 .name   = "ntx",
                 .data   = &ntx,

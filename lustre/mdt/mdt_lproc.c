@@ -160,7 +160,7 @@ static int lprocfs_rd_identity_expire(char *page, char **start, off_t off,
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         mdt = mdt_dev(obd->obd_lu_dev);
-        temp = mdt->mdt_identity_cache->uc_entry_expire / CFS_HZ;
+        temp = mdt->mdt_identity_cache->uc_entry_expire;
 
         return libcfs_param_snprintf(page, count, data, LP_U32, "%lu\n", temp);
 }
@@ -192,7 +192,7 @@ static int lprocfs_rd_identity_acquire_expire(char *page, char **start,
 
         LIBCFS_PARAM_GET_DATA(obd, data, NULL);
         mdt = mdt_dev(obd->obd_lu_dev);
-        temp = mdt->mdt_identity_cache->uc_acquire_expire / CFS_HZ;
+        temp = mdt->mdt_identity_cache->uc_acquire_expire;
 
         return libcfs_param_snprintf(page, count, data, LP_U32, "%lu\n", temp);
 }
