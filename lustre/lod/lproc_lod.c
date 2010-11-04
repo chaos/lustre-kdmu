@@ -61,7 +61,7 @@ static int lod_wr_stripesize(struct file *file, const char *buffer,
         struct lov_desc *desc;
         __u64 val;
         int rc;
-        
+
         LASSERT(dev != NULL);
         desc = &dev->u.lov.desc;
         rc = lprocfs_write_u64_helper(buffer, count, &val);
@@ -92,7 +92,7 @@ static int lod_wr_stripeoffset(struct file *file, const char *buffer,
         struct lov_desc *desc;
         __u64 val;
         int rc;
-        
+
         LASSERT(dev != NULL);
         desc = &dev->u.lov.desc;
         rc = lprocfs_write_u64_helper(buffer, count, &val);
@@ -121,7 +121,7 @@ static int lod_wr_stripetype(struct file *file, const char *buffer,
         struct obd_device *dev = (struct obd_device *)data;
         struct lov_desc *desc;
         int val, rc;
-        
+
         LASSERT(dev != NULL);
         desc = &dev->u.lov.desc;
         rc = lprocfs_write_helper(buffer, count, &val);
@@ -152,7 +152,7 @@ static int lod_wr_stripecount(struct file *file, const char *buffer,
         struct obd_device *dev = (struct obd_device *)data;
         struct lov_desc *desc;
         int val, rc;
-        
+
         LASSERT(dev != NULL);
         desc = &dev->u.lov.desc;
         rc = lprocfs_write_helper(buffer, count, &val);
