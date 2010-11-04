@@ -58,6 +58,7 @@ cfs_mem_cache_t *import_cachep;
 cfs_list_t      obd_zombie_imports;
 cfs_list_t      obd_zombie_exports;
 cfs_spinlock_t  obd_zombie_impexp_lock;
+static int      obd_zombie_inqueue = 0;
 static void obd_zombie_impexp_notify(void);
 static void obd_zombie_export_add(struct obd_export *exp);
 static void obd_zombie_import_add(struct obd_import *imp);
@@ -1500,11 +1501,19 @@ void obd_zombie_impexp_cull(void)
 
                 cfs_spin_unlock(&obd_zombie_impexp_lock);
 
-                if (import != NULL)
+                if (import != NULL) {
                         class_import_destroy(import);
+                        cfs_spin_lock(&obd_zombie_impexp_lock);
+                        obd_zombie_inqueue--;
+                        cfs_spin_unlock(&obd_zombie_impexp_lock);
+                }
 
-                if (export != NULL)
+                if (export != NULL) {
                         class_export_destroy(export);
+                        cfs_spin_lock(&obd_zombie_impexp_lock);
+                        obd_zombie_inqueue--;
+                        cfs_spin_unlock(&obd_zombie_impexp_lock);
+                }
 
                 cfs_cond_resched();
         } while (import != NULL || export != NULL);
@@ -1548,6 +1557,7 @@ static void obd_zombie_export_add(struct obd_export *exp) {
         cfs_spin_unlock(&exp->exp_obd->obd_dev_lock);
         cfs_spin_lock(&obd_zombie_impexp_lock);
         cfs_list_add(&exp->exp_obd_chain, &obd_zombie_exports);
+        obd_zombie_inqueue++;
         cfs_spin_unlock(&obd_zombie_impexp_lock);
 
         if (obd_zombie_impexp_notify != NULL)
@@ -1562,6 +1572,7 @@ static void obd_zombie_import_add(struct obd_import *imp) {
         cfs_spin_lock(&obd_zombie_impexp_lock);
         LASSERT(cfs_list_empty(&imp->imp_zombie_chain));
         cfs_list_add(&imp->imp_zombie_chain, &obd_zombie_imports);
+        obd_zombie_inqueue++;
         cfs_spin_unlock(&obd_zombie_impexp_lock);
 
         if (obd_zombie_impexp_notify != NULL)
@@ -1585,8 +1596,7 @@ static int obd_zombie_is_idle(void)
 
         LASSERT(!cfs_test_bit(OBD_ZOMBIE_STOP, &obd_zombie_flags));
         cfs_spin_lock(&obd_zombie_impexp_lock);
-        rc = cfs_list_empty(&obd_zombie_imports) &&
-             cfs_list_empty(&obd_zombie_exports);
+        rc = obd_zombie_inqueue == 0 ? 1 : 0;
         cfs_spin_unlock(&obd_zombie_impexp_lock);
         return rc;
 }
