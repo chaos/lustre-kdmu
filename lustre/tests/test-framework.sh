@@ -1264,6 +1264,7 @@ wait_delete_completed () {
 
     etime=`date +%s`
     echo "Delete is not completed in $((etime-stime)) seconds"
+    do_node $mds2sync "lctl get_param osp*.*.sync_*"
 }
 
 wait_for_host() {
