@@ -510,7 +510,7 @@ int filter_stack_init(const struct lu_env *env,
 
         LASSERT(m->ofd_osd_exp == NULL);
         snprintf(osdname, sizeof(osdname), "%s-dsk", lustre_cfg_string(cfg, 0));
-        
+
         rc = filter_connect_to_next(env, m, osdname);
         LASSERT(rc == 0);
 
@@ -563,14 +563,6 @@ static void filter_stack_fini(const struct lu_env *env,
 
         EXIT;
 }
-
-#if 0
-static struct lvfs_callback_ops null_ops = {
-        .l_fid2dentry = NULL
-};
-#endif
-
-extern int ost_handle(struct ptlrpc_request *req);
 
 static int filter_procfs_init(struct filter_device *ofd)
 {
@@ -746,17 +738,12 @@ static int filter_init0(const struct lu_env *env, struct filter_device *m,
         LASSERT(rc == 0);
 #endif
 
-        target_recovery_init(&m->ofd_lut, ost_handle);
-
         next = m->ofd_osd;
         rc = next->dd_ops->dt_quota.dt_setup(env, next, NULL);
         if (rc) {
                 CERROR("failed to setup quota\n");
                 GOTO(err_fs_cleanup, rc);
         }
-
-        //if (obd->obd_recovering == 0)
-        //        filter_postrecov(env, m);
 
         if (ldlm_timeout == LDLM_TIMEOUT_DEFAULT)
                 ldlm_timeout = 6;
@@ -765,7 +752,6 @@ static int filter_init0(const struct lu_env *env, struct filter_device *m,
 
 err_fs_cleanup:
         next->dd_ops->dt_quota.dt_cleanup(env, next);
-        target_recovery_fini(obd);
         filter_fs_cleanup(env, m);
 err_lut_fini:
         lut_fini(env, &m->ofd_lut);

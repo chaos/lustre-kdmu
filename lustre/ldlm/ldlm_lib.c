@@ -1446,11 +1446,8 @@ static int check_for_clients(struct obd_device *obd)
         if (obd->obd_abort_recovery || obd->obd_recovery_expired)
                 return 1;
         LASSERT(obd->obd_connected_clients <= obd->obd_max_recoverable_clients);
-        if (obd->obd_no_conn == 0 &&
-            obd->obd_connected_clients + obd->obd_stale_clients ==
-            obd->obd_max_recoverable_clients)
-                return 1;
-        return 0;
+        return (obd->obd_connected_clients + obd->obd_stale_clients ==
+                obd->obd_max_recoverable_clients);
 }
 
 static int check_for_next_transno(struct obd_device *obd)
@@ -1839,10 +1836,9 @@ static int target_start_recovery_thread(struct lu_target *lut,
         cfs_init_completion(&trd->trd_finishing);
         trd->trd_recovery_handler = handler;
 
-        if (cfs_kernel_thread(target_recovery_thread, lut, 0) > 0) {
+        if (cfs_kernel_thread(target_recovery_thread, lut, 0) > 0)
                 cfs_wait_for_completion(&trd->trd_starting);
-                LASSERT(obd->obd_recovering != 0);
-        } else
+        else
                 rc = -ECHILD;
 
         return rc;
@@ -1888,11 +1884,6 @@ static void target_recovery_expired(unsigned long castmeharder)
 void target_recovery_init(struct lu_target *lut, svc_handler_t handler)
 {
         struct obd_device *obd = lut->lut_obd;
-        if (obd->obd_max_recoverable_clients == 0) {
-                /** Update server last boot epoch */
-                lut_boot_epoch_update(lut);
-                return;
-        }
 
         CWARN("RECOVERY: service %s, %d recoverable clients, "
               "last_transno "LPU64"\n", obd->obd_name,

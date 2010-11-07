@@ -1884,6 +1884,7 @@ static int mdt_obd_qc_callback(struct mdt_thread_info *info)
  * LLOG handlers.
  */
 
+#ifdef XXX_MDD_CHANGELOG
 /** clone llog ctxt from child (mdd)
  * This allows remote llog (replicator) access.
  * We can either pass all llog RPCs (eg mdt_llog_create) on to child where the
@@ -1928,6 +1929,7 @@ static int mdt_llog_ctxt_unclone(const struct lu_env *env,
         llog_ctxt_put(ctxt);
         return 0;
 }
+#endif
 
 static int mdt_llog_create(struct mdt_thread_info *info)
 {
@@ -4301,7 +4303,9 @@ static void mdt_fini(const struct lu_env *env, struct mdt_device *m)
         ping_evictor_stop();
 
         mdt_stop_ptlrpc_service(m);
+#ifdef XXX_MDD_CHANGELOG
         mdt_llog_ctxt_unclone(env, m, LLOG_CHANGELOG_ORIG_CTXT);
+#endif
         mdt_obd_llog_cleanup(obd);
         obd_exports_barrier(obd);
         obd_zombie_barrier();
@@ -4417,8 +4421,6 @@ static void fsoptions_to_mdt_flags(struct mdt_device *m, char *options)
         }
 }
 
-int mdt_postrecov(const struct lu_env *, struct mdt_device *);
-
 static int mdt_connect_to_next(const struct lu_env *env, struct mdt_device *m,
                                const char *nextdev)
 {
@@ -4429,7 +4431,7 @@ static int mdt_connect_to_next(const struct lu_env *env, struct mdt_device *m,
 
         LASSERT(m->mdt_child_exp == NULL);
 
-        OBD_ALLOC(data, sizeof(*data));
+        OBD_ALLOC_PTR(data);
         if (data == NULL)
                 GOTO(out, rc = -ENOMEM);
 
@@ -4468,7 +4470,7 @@ static int mdt_connect_to_next(const struct lu_env *env, struct mdt_device *m,
 
 out:
         if (data)
-                OBD_FREE(data, sizeof(*data));
+                OBD_FREE_PTR(data);
         RETURN(rc);
 }
 
@@ -4588,8 +4590,7 @@ static int mdt_init0(const struct lu_env *env, struct mdt_device *m,
          * */
         obd->obd_replayable = 1;
         /* No connection accepted until configurations will finish */
-        /* XXX: turn off for a while */
-        obd->obd_no_conn = 0;
+        obd->obd_no_conn = 1;
 
         if (cfg->lcfg_bufcount > 4 && LUSTRE_CFG_BUFLEN(cfg, 4) > 0) {
                 char *str = lustre_cfg_string(cfg, 4);
@@ -4657,16 +4658,15 @@ static int mdt_init0(const struct lu_env *env, struct mdt_device *m,
         if (rc)
                 GOTO(err_fs_cleanup, rc);
 
+#ifdef XXX_MDD_CHANGELOG
         /* XXX: doesn't work w/o OBD yet */
         if (obd->obd_fsops) {
                 rc = mdt_llog_ctxt_clone(env, m, LLOG_CHANGELOG_ORIG_CTXT);
                 if (rc)
                         GOTO(err_llog_cleanup, rc);
         }
-
+#endif
         mdt_adapt_sptlrpc_conf(obd, 1);
-
-        target_recovery_init(&m->mdt_lut, mdt_recovery_handle);
 
         rc = mdt_start_ptlrpc_service(m);
         if (rc)
@@ -4681,9 +4681,6 @@ static int mdt_init0(const struct lu_env *env, struct mdt_device *m,
 #endif
         if (rc)
                 GOTO(err_stop_service, rc);
-
-        if (obd->obd_recovering == 0)
-                mdt_postrecov(env, m);
 
         mdt_init_capa_ctxt(env, m);
 
@@ -4700,9 +4697,10 @@ err_stop_service:
         ping_evictor_stop();
         mdt_stop_ptlrpc_service(m);
 err_recovery:
-        target_recovery_fini(obd);
+#ifdef XXX_MDD_CHANGELOG
 err_llog_cleanup:
         mdt_llog_ctxt_unclone(env, m, LLOG_CHANGELOG_ORIG_CTXT);
+#endif
         mdt_obd_llog_cleanup(obd);
 err_fs_cleanup:
         mdt_fs_cleanup(env, m);
@@ -5014,11 +5012,11 @@ static int mdt_obd_connect(const struct lu_env *env,
          * XXX: probably not very appropriate method is used now
          *      at some point we should find a better one
          */
-        if (mdt->mdt_ready == 0) {
+        if (!cfs_test_bit(MDT_FL_SYNCED, &mdt->mdt_state)) {
                 rc = obd_health_check(mdt->mdt_child_exp->exp_obd);
                 if (rc)
                         RETURN(-EAGAIN);
-                mdt->mdt_ready = 1;
+                cfs_set_bit(MDT_FL_SYNCED, &mdt->mdt_state);
         }
 
         rc = class_connect(&conn, obd, cluuid);
@@ -5209,28 +5207,6 @@ static int mdt_destroy_export(struct obd_export *exp)
         RETURN(rc);
 }
 
-static void mdt_allow_cli(struct mdt_device *m, unsigned int flag)
-{
-        if (flag & CONFIG_LOG)
-                cfs_set_bit(MDT_FL_CFGLOG, &m->mdt_state);
-
-        /* also notify active event */
-        if (flag & CONFIG_SYNC)
-                cfs_set_bit(MDT_FL_SYNCED, &m->mdt_state);
-
-        if (cfs_test_bit(MDT_FL_CFGLOG, &m->mdt_state) &&
-            cfs_test_bit(MDT_FL_SYNCED, &m->mdt_state)) {
-                struct obd_device *obd = m->mdt_md_dev.md_lu_dev.ld_obd;
-
-                /* Open for clients */
-                if (obd->obd_no_conn) {
-                        cfs_spin_lock(&obd->obd_dev_lock);
-                        obd->obd_no_conn = 0;
-                        cfs_spin_unlock(&obd->obd_dev_lock);
-                }
-        }
-}
-
 static int mdt_obd_notify(struct obd_device *host,
                           struct obd_device *watched,
                           enum obd_notify_event ev, void *data)
@@ -5243,7 +5219,13 @@ static int mdt_obd_notify(struct obd_device *host,
 
         switch (ev) {
         case OBD_NOTIFY_CONFIG:
-                mdt_allow_cli(mdt, (unsigned long)data);
+                LASSERT(!cfs_test_bit(MDT_FL_CFGLOG, &mdt->mdt_state));
+                target_recovery_init(&mdt->mdt_lut, mdt_recovery_handle);
+                cfs_set_bit(MDT_FL_CFGLOG, &mdt->mdt_state);
+                LASSERT(host->obd_no_conn);
+                cfs_spin_lock(&host->obd_dev_lock);
+                host->obd_no_conn = 0;
+                cfs_spin_unlock(&host->obd_dev_lock);
 
 #ifdef HAVE_QUOTA_SUPPORT
                /* quota_type has been processed, we can now handle
