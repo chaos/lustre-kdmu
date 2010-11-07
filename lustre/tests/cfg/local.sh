@@ -100,9 +100,25 @@ MKFSOPT=""
     OSTOPT=$OSTOPT" --failnode=`h2$NETTYPE $ostfailover_HOST`"
 OST_MKFS_OPTS="--ost --fsname=$FSNAME --device-size=$OSTSIZE --mgsnode=$MGSNID $MKFSOPT $OSTOPT $OST_MKFS_OPTS"
 
+OSTFSTYPE=${OSTFSTYPE:-$FSTYPE}
+if [ "$OSTFSTYPE" == "ldiskfs" ]; then
+OST_MOUNT_OPTS=${OST_MOUNT_OPTS:-"-o loop,user_xattr"}
+elif [ "$OSTFSTYPE" == "zfs" ]; then
+OST_MOUNT_OPTS=${OST_MOUNT_OPTS:-"-o mgsnode=$MGSNID"}
+fi
+
+MDSFSTYPE=${MDSFSTYPE:-$FSTYPE}
+if [ "$MDSFSTYPE" == "ldiskfs" ]; then
 MDS_MOUNT_OPTS=${MDS_MOUNT_OPTS:-"-o loop,user_xattr"}
-OST_MOUNT_OPTS=${OST_MOUNT_OPTS:-"-o loop"}
-MGS_MOUNT_OPTS=${MGS_MOUNT_OPTS:-$MDS_MOUNT_OPTS}
+elif [ "$MDSFSTYPE" == "zfs" ]; then
+MDS_MOUNT_OPTS=${MDS_MOUNT_OPTS:-"-o mgsnode=$MGSNID"}
+fi
+
+if [ "$MDSDEV1" != "$MGSDEV" ]; then
+    MGS_MOUNT_OPTS="-o loop"
+else
+    MGS_MOUNT_OPTS=${MGS_MOUNT_OPTS:-$MDS_MOUNT_OPTS}
+fi
 
 #client
 MOUNT=${MOUNT:-/mnt/${FSNAME}}
