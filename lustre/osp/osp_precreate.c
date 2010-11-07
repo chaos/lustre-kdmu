@@ -462,6 +462,9 @@ void osp_pre_update_status(struct osp_device *d, int rc)
                                (unsigned long) used,
                                (unsigned long) msfs->os_bavail,
                                d->opd_pre_status);
+                        CERROR("%s: non-commited changes: %lu, in progress: %u\n",
+                               d->opd_obd->obd_name,
+                               d->opd_syn_changes, d->opd_syn_rpc_in_progress);
                 } else if (old == -ENOSPC) {
                         d->opd_pre_status = 0;
                         d->opd_pre_grow_slow = 0;
