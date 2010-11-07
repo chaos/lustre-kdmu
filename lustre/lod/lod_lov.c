@@ -425,6 +425,12 @@ int lod_parse_striping(const struct lu_env *env, struct lod_object *mo,
                 idx = le64_to_cpu(objs[i].l_ost_idx);
                 fid_ostid_unpack(&fid, &ostid, idx);
 
+                /*
+                 * XXX: assertion is left for testing, to make
+                 * sure we never process requests till configuration
+                 * is completed. to be changed to -EINVAL
+                 */
+
                 LASSERTF(md->lod_ost[idx], "idx %d\n", idx);
                 nd = &md->lod_ost[idx]->dd_lu_dev;
 
