@@ -3065,6 +3065,9 @@ error_noexit() {
 }
 
 error() {
+    # specific lod/osp bits: check space available and in-progress deletes
+    lfd df
+    do_nodes $(mdts_nodes) "lctl get_param osp.*.sync_*"
     error_noexit "$@"
     exit 1
 }
@@ -3268,9 +3271,7 @@ run_one() {
     umask 0022
 
     banner "test $testnum: $message"
-    df $DIR
     test_${testnum} || error "test_$testnum failed with $?"
-    df $DIR
     cd $SAVE_PWD
     reset_fail_loc
     check_grant ${testnum} || error "check_grant $testnum failed with $?"
