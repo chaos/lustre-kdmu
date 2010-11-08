@@ -3066,7 +3066,7 @@ error_noexit() {
 
 error() {
     # specific lod/osp bits: check space available and in-progress deletes
-    lfd df
+    lfs df
     do_nodes $(mdts_nodes) "lctl get_param osp.*.sync_*"
     error_noexit "$@"
     exit 1
