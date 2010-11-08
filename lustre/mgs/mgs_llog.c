@@ -139,8 +139,8 @@ struct mgs_fsdb_handler_data
 */
 /* It might be better to have a separate db file, instead of parsing the info
    out of the client log.  This is slow and potentially error-prone. */
-static int mgs_fsdb_handler(struct llog_handle *llh, struct llog_rec_hdr *rec,
-                            void *data)
+static int mgs_fsdb_handler(const struct lu_env *env, struct llog_handle *llh,
+                            struct llog_rec_hdr *rec, void *data)
 {
         struct mgs_fsdb_handler_data *d = (struct mgs_fsdb_handler_data *) data;
         struct fs_db *fsdb = d->fsdb;
@@ -608,8 +608,8 @@ struct mgs_modify_lookup {
         int               mml_modified;
 };
 
-static int mgs_modify_handler(struct llog_handle *llh, struct llog_rec_hdr *rec,
-                              void *data)
+static int mgs_modify_handler(const struct lu_env *env, struct llog_handle *llh,
+                              struct llog_rec_hdr *rec, void *data)
 {
         struct mgs_modify_lookup *mml = (struct mgs_modify_lookup *)data;
         struct cfg_marker *marker;
@@ -1076,7 +1076,8 @@ struct temp_comp
 static int mgs_write_log_mdc_to_mdt(struct obd_device *, struct fs_db *,
                                     struct mgs_target_info *, char *);
 
-static int mgs_steal_llog_handler(struct llog_handle *llh,
+static int mgs_steal_llog_handler(const struct lu_env *env,
+                                  struct llog_handle *llh,
                                   struct llog_rec_hdr *rec,
                                   void *data)
 {
@@ -2330,7 +2331,8 @@ struct mgs_srpc_read_data {
         int             msrd_skip;
 };
 
-static int mgs_srpc_read_handler(struct llog_handle *llh,
+static int mgs_srpc_read_handler(const struct lu_env *env,
+                                 struct llog_handle *llh,
                                  struct llog_rec_hdr *rec,
                                  void *data)
 {
@@ -2843,7 +2845,7 @@ int mgs_erase_log(struct obd_device *obd, char *name)
         rc = llog_create(ctxt, &llh, NULL, name);
         if (rc == 0) {
                 llog_init_handle(llh, LLOG_F_IS_PLAIN, NULL);
-                rc = llog_destroy(llh);
+                rc = llog_destroy(NULL, llh);
                 llog_free_handle(llh);
         }
         pop_ctxt(&saved, &obd->obd_lvfs_ctxt, NULL);

@@ -94,7 +94,7 @@ void llog_free_handle(struct llog_handle *loghandle)
 EXPORT_SYMBOL(llog_free_handle);
 
 /* returns negative on error; 0 if success; 1 if success & log destroyed */
-int llog_cancel_rec(struct llog_handle *loghandle, int index)
+int llog_cancel_rec(const struct lu_env *env, struct llog_handle *loghandle, int index)
 {
         struct llog_log_hdr *llh = loghandle->lgh_hdr;
         int rc = 0;
@@ -118,7 +118,7 @@ int llog_cancel_rec(struct llog_handle *loghandle, int index)
         if ((llh->llh_flags & LLOG_F_ZAP_WHEN_EMPTY) &&
             (llh->llh_count == 1) &&
             (loghandle->lgh_last_idx == (LLOG_BITMAP_BYTES * 8) - 1)) {
-                rc = llog_destroy(loghandle);
+                rc = llog_destroy(env, loghandle);
                 if (rc) {
                         CERROR("Failure destroying log after last cancel: %d\n",
                                rc);
@@ -130,7 +130,7 @@ int llog_cancel_rec(struct llog_handle *loghandle, int index)
                 RETURN(rc);
         }
 
-        /*rc = llog_write_rec(loghandle, &llh->llh_hdr, NULL, 0, NULL, 0);
+        /*rc = llog_write_rec(env, loghandle, &llh->llh_hdr, NULL, 0, NULL, 0);
         if (rc) {
                 CERROR("Failure re-writing header %d\n", rc);
                 ext2_set_bit(index, llh->llh_bitmap);
@@ -225,6 +225,9 @@ static int __llog_process_thread(void *arg)
         struct llog_handle           *loghandle = lpi->lpi_loghandle;
         struct llog_log_hdr          *llh = loghandle->lgh_hdr;
         struct llog_process_cat_data *cd  = lpi->lpi_catdata;
+        struct dt_device             *dt = NULL;
+        const struct lu_env          *env;
+        struct lu_env                 _env;
         char                         *buf;
         __u64                         cur_offset = LLOG_CHUNK_SIZE;
         __u64                         last_offset;
@@ -237,6 +240,17 @@ static int __llog_process_thread(void *arg)
         if (!buf) {
                 lpi->lpi_rc = -ENOMEM;
                 return 0;
+        }
+
+        LASSERT(loghandle->lgh_ctxt);
+        LASSERT(loghandle->lgh_ctxt->loc_obd);
+        env = lpi->lpi_env;
+        if (env == NULL && loghandle->lgh_ctxt->loc_obd->obd_lvfs_ctxt.dt) {
+                dt = loghandle->lgh_ctxt->loc_obd->obd_lvfs_ctxt.dt;
+                rc = lu_env_init(&_env, dt->dd_lu_dev.ld_type->ldt_ctx_tags);
+                if (rc)
+                        GOTO(out, rc);
+                env = &_env;
         }
 
         if (cd != NULL) {
@@ -267,7 +281,7 @@ repeat:
                 /* get the buf with our target record; avoid old garbage */
                 memset(buf, 0, LLOG_CHUNK_SIZE);
                 last_offset = cur_offset;
-                rc = llog_next_block(loghandle, &saved_index, index,
+                rc = llog_next_block(env, loghandle, &saved_index, index,
                                      &cur_offset, buf, LLOG_CHUNK_SIZE);
                 if (rc)
                         GOTO(out, rc);
@@ -319,13 +333,13 @@ repeat:
 
                         /* if set, process the callback on this record */
                         if (ext2_test_bit(index, llh->llh_bitmap)) {
-                                rc = lpi->lpi_cb(loghandle, rec,
+                                rc = lpi->lpi_cb(env, loghandle, rec,
                                                  lpi->lpi_cbdata);
                                 last_called_index = index;
                                 if (rc == LLOG_PROC_BREAK) {
                                         GOTO(out, rc);
                                 } else if (rc == LLOG_DEL_RECORD) {
-                                        llog_cancel_rec(loghandle,
+                                        llog_cancel_rec(env, loghandle,
                                                         rec->lrh_index);
                                         rc = 0;
                                 }
@@ -347,6 +361,8 @@ repeat:
                 cd->lpcd_last_idx = last_called_index;
         if (buf)
                 OBD_FREE(buf, LLOG_CHUNK_SIZE);
+        if (dt)
+                lu_env_fini(&_env);
         lpi->lpi_rc = rc;
         return 0;
 }
@@ -366,8 +382,8 @@ static int llog_process_thread(void *arg)
         return rc;
 }
 
-int __llog_process(struct llog_handle *loghandle, llog_cb_t cb,
-                   void *data, void *catdata, int fork)
+int __llog_process(const struct lu_env *env, struct llog_handle *loghandle,
+                   llog_cb_t cb, void *data, void *catdata, int fork)
 {
         struct llog_process_info *lpi;
         int                      rc;
@@ -382,6 +398,7 @@ int __llog_process(struct llog_handle *loghandle, llog_cb_t cb,
         lpi->lpi_cb        = cb;
         lpi->lpi_cbdata    = data;
         lpi->lpi_catdata   = catdata;
+        lpi->lpi_env       = env;
 
 #ifdef __KERNEL__
         if (fork) {
@@ -408,7 +425,7 @@ EXPORT_SYMBOL(__llog_process);
 int llog_process(struct llog_handle *loghandle, llog_cb_t cb,
                  void *data, void *catdata)
 {
-        return __llog_process(loghandle, cb, data, catdata, 1);
+        return __llog_process(NULL, loghandle, cb, data, catdata, 1);
 }
 EXPORT_SYMBOL(llog_process);
 
@@ -420,7 +437,8 @@ inline int llog_get_size(struct llog_handle *loghandle)
 }
 EXPORT_SYMBOL(llog_get_size);
 
-int llog_reverse_process(struct llog_handle *loghandle, llog_cb_t cb,
+int llog_reverse_process(const struct lu_env *env,
+                         struct llog_handle *loghandle, llog_cb_t cb,
                          void *data, void *catdata)
 {
         struct llog_log_hdr *llh = loghandle->lgh_hdr;
@@ -455,7 +473,7 @@ int llog_reverse_process(struct llog_handle *loghandle, llog_cb_t cb,
 
                 /* get the buf with our target record; avoid old garbage */
                 memset(buf, 0, LLOG_CHUNK_SIZE);
-                rc = llog_prev_block(loghandle, index, buf, LLOG_CHUNK_SIZE);
+                rc = llog_prev_block(env, loghandle, index, buf, LLOG_CHUNK_SIZE);
                 if (rc)
                         GOTO(out, rc);
 
@@ -479,7 +497,7 @@ int llog_reverse_process(struct llog_handle *loghandle, llog_cb_t cb,
 
                         /* if set, process the callback on this record */
                         if (ext2_test_bit(index, llh->llh_bitmap)) {
-                                rc = cb(loghandle, rec, data);
+                                rc = cb(env, loghandle, rec, data);
                                 if (rc == LLOG_PROC_BREAK) {
                                         GOTO(out, rc);
                                 }

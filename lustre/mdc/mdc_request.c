@@ -1187,8 +1187,8 @@ struct changelog_show {
         struct obd_device *cs_obd;
 };
 
-static int changelog_show_cb(struct llog_handle *llh, struct llog_rec_hdr *hdr,
-                             void *data)
+static int changelog_show_cb(const struct lu_env *env, struct llog_handle *llh,
+                             struct llog_rec_hdr *hdr, void *data)
 {
         struct changelog_show *cs = data;
         struct llog_changelog_rec *rec = (struct llog_changelog_rec *)hdr;
@@ -1260,7 +1260,7 @@ static int mdc_changelog_send_thread(void *csdata)
         }
 
         /* We need the pipe fd open, so llog_process can't daemonize */
-        rc = __llog_cat_process(llh, changelog_show_cb, cs, 0, 0, 0);
+        rc = __llog_cat_process(NULL, llh, changelog_show_cb, cs, 0, 0, 0);
 
         /* Send EOF no matter what our result */
         if ((kuch = changelog_kuc_hdr(cs->cs_buf, sizeof(*kuch),

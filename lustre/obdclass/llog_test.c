@@ -373,8 +373,8 @@ ctxt_release:
 
 static int cat_counter;
 
-static int cat_print_cb(struct llog_handle *llh, struct llog_rec_hdr *rec,
-                        void *data)
+static int cat_print_cb(const struct lu_env *env, struct llog_handle *llh,
+                        struct llog_rec_hdr *rec, void *data)
 {
         struct llog_logid_rec *lir = (struct llog_logid_rec *)rec;
 
@@ -394,8 +394,8 @@ static int cat_print_cb(struct llog_handle *llh, struct llog_rec_hdr *rec,
 
 static int plain_counter;
 
-static int plain_print_cb(struct llog_handle *llh, struct llog_rec_hdr *rec,
-                          void *data)
+static int plain_print_cb(const struct lu_env *env, struct llog_handle *llh,
+                          struct llog_rec_hdr *rec, void *data)
 {
         if (!(llh->lgh_hdr->llh_flags & LLOG_F_IS_PLAIN)) {
                 CERROR("log is not plain\n");
@@ -410,8 +410,8 @@ static int plain_print_cb(struct llog_handle *llh, struct llog_rec_hdr *rec,
         RETURN(0);
 }
 
-static int llog_cancel_rec_cb(struct llog_handle *llh, struct llog_rec_hdr *rec,
-                              void *data)
+static int llog_cancel_rec_cb(const struct lu_env *env, struct llog_handle *llh,
+                              struct llog_rec_hdr *rec, void *data)
 {
         struct llog_cookie cookie;
         static int i = 0;
@@ -466,7 +466,7 @@ static int llog_test_5(struct obd_device *obd)
         }
 
         CWARN("5c: Cancel 40000 records, see one log zapped\n");
-        rc = llog_cat_process(llh, llog_cancel_rec_cb, "foobar", 0, 0);
+        rc = llog_cat_process(NULL, llh, llog_cancel_rec_cb, "foobar", 0, 0);
         if (rc != -4711) {
                 CERROR("5c: process with cat_cancel_cb failed: %d\n", rc);
                 GOTO(out, rc);
@@ -494,7 +494,7 @@ static int llog_test_5(struct obd_device *obd)
 
         CWARN("5e: print plain log entries.. expect 6\n");
         plain_counter = 0;
-        rc = llog_cat_process(llh, plain_print_cb, "foobar", 0, 0);
+        rc = llog_cat_process(NULL, llh, plain_print_cb, "foobar", 0, 0);
         if (rc) {
                 CERROR("5e: process with plain_print_cb failed: %d\n", rc);
                 GOTO(out, rc);
@@ -621,7 +621,7 @@ static int llog_test_7(struct obd_device *obd)
                 GOTO(ctxt_release, rc);
         }
 
-        rc = llog_destroy(llh);
+        rc = llog_destroy(NULL, llh);
         if (rc)
                 CERROR("7: llog_destroy failed: %d\n", rc);
         else

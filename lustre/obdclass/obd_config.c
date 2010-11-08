@@ -1144,7 +1144,7 @@ int class_process_proc_param(char *prefix, struct lprocfs_vars *lvars,
 #endif
 }
 
-int class_config_dump_handler(struct llog_handle * handle,
+int class_config_dump_handler(const struct lu_env *env, struct llog_handle * handle,
                               struct llog_rec_hdr *rec, void *data);
 
 #ifdef __KERNEL__
@@ -1158,7 +1158,8 @@ extern int lustre_check_exclusion(struct lustre_sb_info *lsi, char *svname);
  * records, change uuids, etc), then class_process_config() resulting
  * net records.
  */
-static int class_config_llog_handler(struct llog_handle * handle,
+static int class_config_llog_handler(const struct lu_env *env,
+                                     struct llog_handle * handle,
                                      struct llog_rec_hdr *rec, void *data)
 {
         struct config_llog_instance *clli = data;
@@ -1339,7 +1340,7 @@ static int class_config_llog_handler(struct llog_handle * handle,
 out:
         if (rc) {
                 CERROR("Err %d on cfg command:\n", rc);
-                class_config_dump_handler(handle, rec, data);
+                class_config_dump_handler(env, handle, rec, data);
         }
         RETURN(rc);
 }
@@ -1382,7 +1383,7 @@ parse_out:
         RETURN(rc);
 }
 
-int class_config_dump_handler(struct llog_handle * handle,
+int class_config_dump_handler(const struct lu_env *env, struct llog_handle * handle,
                               struct llog_rec_hdr *rec, void *data)
 {
         int cfg_len = rec->lrh_len;

@@ -405,8 +405,8 @@ static void llog_skip_over(__u64 *off, int curr, int goal)
  *  - cur_idx to the log index preceeding cur_offset
  * returns -EIO/-EINVAL on error
  */
-static int llog_lvfs_next_block(struct llog_handle *loghandle, int *cur_idx,
-                                int next_idx, __u64 *cur_offset, void *buf,
+static int llog_lvfs_next_block(const struct lu_env *env, struct llog_handle *loghandle,
+                                int *cur_idx, int next_idx, __u64 *cur_offset, void *buf,
                                 int len)
 {
         int rc;
@@ -489,7 +489,7 @@ static int llog_lvfs_next_block(struct llog_handle *loghandle, int *cur_idx,
         RETURN(-EIO);
 }
 
-static int llog_lvfs_prev_block(struct llog_handle *loghandle,
+static int llog_lvfs_prev_block(const struct lu_env *env, struct llog_handle *loghandle,
                                 int prev_idx, void *buf, int len)
 {
         __u64 cur_offset;
@@ -703,7 +703,7 @@ static int llog_lvfs_close(struct llog_handle *handle)
         RETURN(rc);
 }
 
-static int llog_lvfs_destroy(struct llog_handle *handle)
+static int llog_lvfs_destroy(const struct lu_env *env, struct llog_handle *handle)
 {
         struct dentry *fdentry;
         struct obdo *oa;

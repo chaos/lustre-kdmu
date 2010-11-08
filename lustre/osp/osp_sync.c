@@ -211,7 +211,7 @@ int osp_sync_declare_add(const struct lu_env *env, struct osp_object *o,
 
         ctxt = llog_get_context(obd, LLOG_MDS_OST_ORIG_CTXT);
         LASSERT(ctxt);
-        rc = llog_declare_add_2(ctxt, &hdr, NULL, th);
+        rc = llog_declare_add_2(env, ctxt, &hdr, NULL, th);
         llog_ctxt_put(ctxt);
 
         RETURN(rc);
@@ -272,7 +272,7 @@ int osp_sync_add(const struct lu_env *env, struct osp_object *o,
         ctxt = llog_get_context(obd, LLOG_MDS_OST_ORIG_CTXT);
         if (ctxt == NULL)
                 RETURN(-ENOMEM);
-        rc = llog_add_2(ctxt, &u.hdr, NULL, &cookie, 1, th);
+        rc = llog_add_2(env, ctxt, &u.hdr, NULL, &cookie, 1, th);
         llog_ctxt_put(ctxt);
 
         CDEBUG(D_OTHER, "%s: new record %lu:%lu:%lu/%lu: %d\n",
@@ -609,7 +609,7 @@ static int osp_sync_process_record(struct osp_device *d,
         return rc;
 }
 
-static void osp_sync_process_committed(struct osp_device *d)
+static void osp_sync_process_committed(const struct lu_env *env, struct osp_device *d)
 {
         struct obd_device     *obd = d->opd_obd;
         struct ost_body       *body;
@@ -649,7 +649,7 @@ static void osp_sync_process_committed(struct osp_device *d)
                 body = req_capsule_client_get(&req->rq_pill, &RMF_OST_BODY);
                 LASSERT(body);
 
-                rc = llog_cat_cancel_records(llh, 1, &body->oa.o_lcookie);
+                rc = llog_cat_cancel_records_2(env, llh, 1, &body->oa.o_lcookie);
                 if (rc)
                         CERROR("can't cancel record: %d\n", rc);
                 
@@ -675,7 +675,8 @@ static void osp_sync_process_committed(struct osp_device *d)
 /*
  * this is where most of queues processing happens
  */
-static int osp_sync_process_queues(struct llog_handle *llh,
+static int osp_sync_process_queues(const struct lu_env *env,
+                                   struct llog_handle *llh,
                                    struct llog_rec_hdr *rec,
                                    void *data)
 {
@@ -691,7 +692,7 @@ static int osp_sync_process_queues(struct llog_handle *llh,
                 }
 
                 /* process requests committed by OST */
-                osp_sync_process_committed(d);
+                osp_sync_process_committed(env, d);
 
                 /* if we there are changes to be processed and we have
                  * resources for this ... do now */
@@ -761,6 +762,7 @@ static int osp_sync_thread(void *_arg)
         struct llog_ctxt       *ctxt;
         struct obd_device      *obd = d->opd_obd;
         struct llog_handle     *llh;
+        struct lu_env           env;
         int                     rc;
         ENTRY;
        
@@ -775,6 +777,12 @@ static int osp_sync_thread(void *_arg)
         cfs_spin_unlock(&d->opd_syn_lock);
         cfs_waitq_signal(&thread->t_ctl_waitq);
 
+        rc = lu_env_init(&env, d->opd_storage->dd_lu_dev.ld_type->ldt_ctx_tags);
+        if (rc) {
+                CERROR("can't initialize env: %d\n", rc);
+                RETURN(rc);
+        }
+
         ctxt = llog_get_context(obd, LLOG_MDS_OST_ORIG_CTXT);
         if (ctxt == NULL) {
                 CERROR("can't get appropriate context\n");
@@ -788,7 +796,7 @@ static int osp_sync_thread(void *_arg)
                 GOTO(out, rc = -EINVAL);
         }
 
-        rc = __llog_cat_process(llh, osp_sync_process_queues, d, 0, 0, 0);
+        rc = __llog_cat_process(&env, llh, osp_sync_process_queues, d, 0, 0, 0);
         LASSERTF(rc == 0 || rc == LLOG_PROC_BREAK,
                  "%lu changes, %u in progress, %u in flight: %d\n",
                  d->opd_syn_changes, d->opd_syn_rpc_in_progress,
@@ -800,7 +808,7 @@ static int osp_sync_thread(void *_arg)
                  d->opd_syn_changes, d->opd_syn_rpc_in_progress,
                  d->opd_syn_rpc_in_flight);
 
-        osp_sync_process_committed(d);
+        osp_sync_process_committed(&env, d);
 
         rc = llog_cleanup(ctxt);
         if (rc)
@@ -822,6 +830,8 @@ out:
                  d->opd_obd->obd_name, d->opd_syn_rpc_in_progress,
                  d->opd_syn_rpc_in_flight,
                  cfs_list_empty(&d->opd_syn_committed_there) ? "" : "!");
+
+        lu_env_fini(&env);
 
         RETURN(0);
 }
