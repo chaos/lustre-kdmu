@@ -103,7 +103,7 @@ static void osp_sync_remove_from_tracker(struct osp_device *d);
  * should it be ~ number of changes fitting bulk? */
 #define OSP_SYN_THRESHOLD       10
 #define OSP_MAX_IN_FLIGHT       8
-#define OSP_MAX_IN_PROGRESS     256
+#define OSP_MAX_IN_PROGRESS     4096
 
 #define OSP_JOB_MAGIC         0x26112005
 
