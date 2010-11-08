@@ -617,9 +617,9 @@ static void lod_ah_init(const struct lu_env *env,
                         cfs_umode_t child_mode)
 {
         struct lod_device *d = lu2lod_dev(child->do_lu.lo_dev);
-        struct dt_object  *nextp;
+        struct dt_object  *nextp = NULL;
         struct dt_object  *nextc;
-        struct lod_object *lp;
+        struct lod_object *lp = NULL;
         struct lod_object *lc;
         struct lov_desc   *desc;
         ENTRY;
@@ -632,13 +632,14 @@ static void lod_ah_init(const struct lu_env *env,
                 return;
         }
 
-        LASSERT(parent);
         LASSERT(child);
         LASSERT(lod_mti_get(env));
 
-        nextp = dt_object_child(parent);
+        if (likely(parent)) {
+                nextp = dt_object_child(parent);
+                lp = lod_dt_obj(parent);
+        }
         nextc = dt_object_child(child);
-        lp = lod_dt_obj(parent);
         lc = lod_dt_obj(child);
 
         LASSERT(lc->mbo_stripenr == 0);
@@ -650,7 +651,7 @@ static void lod_ah_init(const struct lu_env *env,
          * can be called with local object existing
          */
         if (!dt_object_exists(nextc))
-                nextp->do_ops->do_ah_init(env, ah, nextp, nextc, child_mode);
+                nextc->do_ops->do_ah_init(env, ah, nextp, nextc, child_mode);
 
         /*
          * if object is going to be striped over OSTs, transfer default
@@ -664,22 +665,24 @@ static void lod_ah_init(const struct lu_env *env,
         /*
          * try from the parent
          */
-        if (lp->mbo_striping_cached == 0) {
-                /* we haven't tried to get default striping for
-                 * the directory yet, let's cache it in the object */
-                lod_cache_parent_striping(env, lp);
-        }
+        if (likely(parent)) {
+                if (lp->mbo_striping_cached == 0) {
+                        /* we haven't tried to get default striping for
+                         * the directory yet, let's cache it in the object */
+                        lod_cache_parent_striping(env, lp);
+                }
 
-        lc->mbo_def_stripe_offset = (__u16) -1;
+                lc->mbo_def_stripe_offset = (__u16) -1;
 
-        if (lp->mbo_def_stripenr || lp->mbo_pool) {
-                if (lp->mbo_pool)
-                        lod_object_set_pool(lc, lp->mbo_pool);
-                lc->mbo_stripenr = lp->mbo_def_stripenr;
-                lc->mbo_stripe_size = lp->mbo_def_stripe_size;
-                lc->mbo_def_stripe_offset = lp->mbo_def_stripe_offset;
-                CDEBUG(D_OTHER, "grab striping from parent: %d stripes, %d stripe size\n",
-                       lc->mbo_stripenr, lc->mbo_stripe_size);
+                if (lp->mbo_def_stripenr || lp->mbo_pool) {
+                        if (lp->mbo_pool)
+                                lod_object_set_pool(lc, lp->mbo_pool);
+                        lc->mbo_stripenr = lp->mbo_def_stripenr;
+                        lc->mbo_stripe_size = lp->mbo_def_stripe_size;
+                        lc->mbo_def_stripe_offset = lp->mbo_def_stripe_offset;
+                        CDEBUG(D_OTHER, "striping from parent: # %d , sz %d\n",
+                               lc->mbo_stripenr, lc->mbo_stripe_size);
+                }
         }
 
         /*
@@ -690,8 +693,8 @@ static void lod_ah_init(const struct lu_env *env,
                 lc->mbo_stripenr = desc->ld_default_stripe_count;
         if (lc->mbo_stripe_size == 0)
                 lc->mbo_stripe_size = desc->ld_default_stripe_size;
-        CDEBUG(D_OTHER, "final striping: %d stripes, %d stripe size\n",
-                        lc->mbo_stripenr, lc->mbo_stripe_size);
+        CDEBUG(D_OTHER, "final striping: # %d stripes, sz %d\n",
+               lc->mbo_stripenr, lc->mbo_stripe_size);
 
         EXIT;
 }
