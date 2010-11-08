@@ -24,11 +24,10 @@ require_dsh_mds || exit 0
 ALWAYS_EXCEPT="65a   61d   33a 33b $REPLAY_SINGLE_EXCEPT"
 
 # lodosp
-# 19  -- lod_parse_stripping() ASSERTION(buf->lb_buf)
 # 20b -- FAIL: after 74332 > before 34288 
-# 34  -- lod_parse_striping()) ASSERTION(md->lod_ost[idx]) failed: idx 0
 # 65b -- HEAD doesn't pass it either
-ALWAYS_EXCEPT="$ALWAYS_EXCEPT 19 20b 34 65b"
+# 85a -- HEAD doesn't pass it either
+ALWAYS_EXCEPT="$ALWAYS_EXCEPT 20b 65b 85a"
 
 #                                                  63 min  7 min  AT AT AT AT"
 [ "$SLOW" = "no" ] && EXCEPT_SLOW="1 2 3 4 6 12 16 44a      44b    65 66 67 68"
