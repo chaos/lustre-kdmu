@@ -65,19 +65,12 @@ typedef struct poll_table_struct libcfs_poll_table_t;
 #define LIBCFS_PDE(value)                       PDE(value)
 #define LIBCFS_SEQ_OPEN(file, ops, rc)          (rc = seq_open(file, ops))
 #define LIBCFS_FILE_PRIVATE(file)               (file->private_data)
-#define LIBCFS_FILE_POS(file)                   (file->f_pos)
-#define LIBCFS_FILE_FLAGS(file)                 (file->f_flags)
-#define LIBCFS_INODE_PRIVATE(inode)             (inode->i_private)
 #define LIBCFS_SEQ_READ_COMMON                  seq_read
 #define LIBCFS_SEQ_LSEEK_COMMON                 seq_lseek
 #define LIBCFS_SEQ_PRIVATE(seq)                 (seq->private)
-#define LIBCFS_SEQ_INDEX(seq)                   (seq->index)
-#define LIBCFS_SEQ_COUNT(seq)                   (seq->count)
-#define LIBCFS_SEQ_FROM(seq)                    (seq->from)
 #define LIBCFS_DENTRY_DATA(dentry)              (dentry->data)
 #define LIBCFS_PROC_INODE_PDE(proc_inode)       (proc_inode->pde)
 #define LIBCFS_PROCI_INODE(proc_inode)          (proc_inode->vfs_inode)
-#define LIBCFS_SEQ_BYTES(seq_file)              (seq_file->index)
 #define LIBCFS_SEQ_PRINTF(seq, format, ...)     seq_printf(seq, format,  \
                                                            ## __VA_ARGS__)
 #define LIBCFS_SEQ_RELEASE(inode, file)         seq_release(inode, file)
@@ -85,7 +78,6 @@ typedef struct poll_table_struct libcfs_poll_table_t;
 #define LIBCFS_SEQ_PUTC(seq, s)                 seq_putc(seq, s)
 #define LIBCFS_SEQ_READ(file, buf, count, ppos, rc) (rc = seq_read(file, buf, \
                                                             count, ppos))
-#define LIBCFS_POLL_WAIT(file, waitq, wait)     poll_wait(file, waitq, wait)
 /* in lprocfs_stat.c, to protect the private data for proc entries */
 extern cfs_rw_semaphore_t       _lprocfs_lock;
 #define LPROCFS_ENTRY()           do {  \
@@ -124,6 +116,25 @@ int LPROCFS_ENTRY_AND_CHECK(struct proc_dir_entry *dp)
 
 #else /* !LPROCFS */
 
+typedef struct libcfs_params_file {
+        void           *lp_private;
+        loff_t          lp_pos;
+        unsigned int    lp_flags;
+} libcfs_file_t;
+
+typedef struct libcfs_params_inode {
+        void    *lp_private;
+} libcfs_inode_t;
+
+typedef struct libcfs_proc_dentry {
+        void *lp_data;
+} libcfs_param_dentry_t;
+
+typedef struct libcfs_proc_inode {
+        libcfs_param_dentry_t *lp_pde;
+        libcfs_inode_t lp_inode;
+} libcfs_proc_inode_t;
+
 struct libcfs_seq_operations;
 typedef struct libcfs_seq_file {
         char *buf;
@@ -144,25 +155,6 @@ typedef struct libcfs_seq_operations {
         int (*show) (libcfs_seq_file_t *m, void *v);
 } libcfs_seq_ops_t;
 
-typedef struct libcfs_params_inode {
-        void    *lp_private;
-} libcfs_inode_t;
-
-typedef struct libcfs_params_file {
-        void           *lp_private;
-        loff_t          lp_pos;
-        unsigned int    lp_flags;
-} libcfs_file_t;
-
-typedef struct libcfs_proc_dentry {
-        void *lp_data;
-} libcfs_param_dentry_t;
-
-typedef struct libcfs_proc_inode {
-        libcfs_param_dentry_t *lp_pde;
-        libcfs_inode_t lp_inode;
-} libcfs_proc_inode_t;
-
 typedef void *libcfs_module_t;
 typedef void *libcfs_poll_table_t;
 
@@ -176,17 +168,6 @@ typedef struct libcfs_file_ops {
         ssize_t (*read)(libcfs_file_t *, char *, size_t, loff_t *);
 } libcfs_file_ops_t;
 typedef libcfs_file_ops_t *cfs_lproc_filep_t;
-
-#define LPROCFS_ENTRY()             do {} while(0)
-#define LPROCFS_EXIT()              do {} while(0)
-static inline
-int LPROCFS_ENTRY_AND_CHECK(libcfs_param_dentry_t *dp)
-{
-        LPROCFS_ENTRY();
-        return 0;
-}
-#define LPROCFS_WRITE_ENTRY()       do {} while(0)
-#define LPROCFS_WRITE_EXIT()        do {} while(0)
 
 static inline libcfs_proc_inode_t *FAKE_PROC_I(const libcfs_inode_t *inode)
 {
@@ -202,27 +183,19 @@ static inline libcfs_param_dentry_t *FAKE_PDE(libcfs_inode_t *inode)
 #define LIBCFS_PDE(value)                       FAKE_PDE(value)
 #define LIBCFS_PROCI_INODE(proc_inode)          (proc_inode->lp_inode)
 #define LIBCFS_FILE_PRIVATE(file)               (file->lp_private)
-#define LIBCFS_FILE_POS(file)                   (file->lp_pos)
-#define LIBCFS_FILE_FLAGS(file)                 (file->lp_flags)
 #define LIBCFS_SEQ_READ_COMMON                  NULL
 #define LIBCFS_SEQ_LSEEK_COMMON                 NULL
 #define LIBCFS_SEQ_PRIVATE(seq)                 (seq->private)
-#define LIBCFS_SEQ_INDEX(seq)                   (seq->index)
-#define LIBCFS_SEQ_COUNT(seq)                   (seq->count)
-#define LIBCFS_SEQ_FROM(seq)                    (seq->from)
-#define LIBCFS_INODE_PRIVATE(inode)             (inode->lp_private)
 #define LIBCFS_DENTRY_DATA(dentry)              (dentry->lp_data)
 #define LIBCFS_PROC_INODE_PDE(proc_inode)       (proc_inode->lp_pde)
-#define LIBCFS_SEQ_BYTES(seq_file)              (seq_file->index)
 #define LIBCFS_SEQ_PRINTF(seq, format, ...)     libcfs_param_seq_print_common(seq,\
                                                  format, ## __VA_ARGS__)
 #define LIBCFS_SEQ_RELEASE(inode, file)         libcfs_seq_release(inode, file)
 #define LIBCFS_SEQ_PUTS(seq, s)                 libcfs_param_seq_puts_common(seq, s)
 #define LIBCFS_SEQ_PUTC(seq, s)                 libcfs_param_seq_putc_common(seq, s)
 #define LIBCFS_SEQ_READ(file, buf, count, ppos, rc) do {} while(0)
-#define LIBCFS_POLL_WAIT(file, waitq, wait)         do {} while(0)
 #define LIBCFS_SEQ_OPEN(file, ops, rc)                     \
-do{                                                        \
+do {                                                       \
          libcfs_seq_file_t *p = LIBCFS_FILE_PRIVATE(file); \
          if (!p) {                                         \
                 LIBCFS_ALLOC(p, sizeof(*p));               \
@@ -235,7 +208,18 @@ do{                                                        \
         memset(p, 0, sizeof(*p));                          \
         p->op = ops;                                       \
         rc = 0;                                            \
-}while(0)
+} while(0)
+
+#define LPROCFS_ENTRY()             do {} while(0)
+#define LPROCFS_EXIT()              do {} while(0)
+static inline
+int LPROCFS_ENTRY_AND_CHECK(libcfs_param_dentry_t *dp)
+{
+        LPROCFS_ENTRY();
+        return 0;
+}
+#define LPROCFS_WRITE_ENTRY()       do {} while(0)
+#define LPROCFS_WRITE_EXIT()        do {} while(0)
 
 #endif /* LPROCFS */
 

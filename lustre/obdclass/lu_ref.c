@@ -404,11 +404,9 @@ static int lu_ref_seq_open(libcfs_inode_t *inode, libcfs_file_t *file)
         libcfs_seq_file_t       *seq;
         struct lu_ref           *marker = &lu_ref_marker;
         int result = 0;
-#ifdef LPROCFS
         libcfs_param_dentry_t   *dp = LIBCFS_PDE(inode);
 
         LPROCFS_ENTRY_AND_CHECK(dp);
-#endif
         LIBCFS_SEQ_OPEN(file, &lu_ref_seq_ops, result);
         if (result != 0)
                 GOTO(out, result);
