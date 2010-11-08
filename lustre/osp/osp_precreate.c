@@ -328,7 +328,7 @@ static int osp_precreate_connection_from_mds(struct osp_device *d)
                 CERROR("can't allocate request\n");
                 RETURN(-ENOMEM);
         }
-        
+
         req_capsule_set_size(&req->rq_pill, &RMF_SETINFO_KEY,
                              RCL_CLIENT, sizeof(KEY_MDS_CONN));
         req_capsule_set_size(&req->rq_pill, &RMF_SETINFO_VAL,
@@ -339,7 +339,7 @@ static int osp_precreate_connection_from_mds(struct osp_device *d)
                 CERROR("can't pack request\n");
                 RETURN(rc);
         }
-        
+
         tmp = req_capsule_client_get(&req->rq_pill, &RMF_SETINFO_KEY);
         memcpy(tmp, KEY_MDS_CONN, sizeof(KEY_MDS_CONN));
         group = FID_SEQ_OST_MDT0; /* XXX: what about CMD? */
@@ -414,7 +414,7 @@ static int osp_precreate_cleanup_orphans(struct osp_device *d)
         cfs_spin_lock(&d->opd_pre_lock);
         d->opd_pre_next = body->oa.o_id + 1;
         /* nothing precreated yet, the pool is empty */
-        d->opd_pre_last_created = d->opd_pre_next; 
+        d->opd_pre_last_created = d->opd_pre_next;
         d->opd_pre_grow_count = OST_MIN_PRECREATE;
         d->opd_pre_grow_slow = 0;
         cfs_spin_unlock(&d->opd_pre_lock);
@@ -438,7 +438,7 @@ out_req:
  * rc is a last code from the transport, rc == 0 meaning transport works
  * well and users of lod can use objects from this OSP
  *
- * the status depends on current usage of OST 
+ * the status depends on current usage of OST
  */
 void osp_pre_update_status(struct osp_device *d, int rc)
 {
@@ -491,7 +491,7 @@ static int osp_precreate_thread(void *_arg)
         struct l_wait_info      lwi = { 0 };
         int                     rc;
         ENTRY;
-       
+
         {
                 char pname[16];
                 sprintf(pname, "osp-pre-%u\n", d->opd_index);
@@ -502,7 +502,7 @@ static int osp_precreate_thread(void *_arg)
         thread->t_flags = SVC_RUNNING;
         cfs_spin_unlock(&d->opd_pre_lock);
         cfs_waitq_signal(&thread->t_ctl_waitq);
-       
+
         while (osp_precreate_running(d)) {
 
                 /*
@@ -577,8 +577,11 @@ static int osp_precreate_thread(void *_arg)
 
                         if (osp_precreate_near_empty(d)) {
                                 rc = osp_precreate_send(d);
-                                /* XXX: error handling? */
-                                LASSERTF(rc == 0, "%d\n", rc);
+                                /* osp_precreate_send() sets opd_pre_status
+                                 * in case of error, that prevent the using of
+                                 * failed device. */
+                                if (rc != 0)
+                                        CERROR("Can't precreate: %d\n", rc);
                         }
                 }
         }
@@ -793,7 +796,7 @@ int osp_init_precreate(struct osp_device *d)
                 CERROR("can't start precreate thread %d\n", rc);
                 RETURN(rc);
         }
-        
+
         l_wait_event(d->opd_pre_thread.t_ctl_waitq,
                      osp_precreate_running(d) || osp_precreate_stopped(d),
                      &lwi);
