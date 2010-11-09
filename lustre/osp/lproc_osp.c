@@ -380,6 +380,20 @@ static int osp_rd_destroys_in_flight(char *page, char **start, off_t off,
                         osp->opd_syn_rpc_in_progress + osp->opd_syn_changes);
 }
 
+static int osp_rd_old_sync_processed(char *page, char **start, off_t off,
+                                     int count, int *eof, void *data)
+{
+        struct obd_device *dev = data;
+        struct osp_device *osp = lu2osp_dev(dev->obd_lu_dev);
+        int rc;
+
+        if (osp == NULL)
+                return -EINVAL;
+
+        rc = snprintf(page, count, "%d\n", osp->opd_syn_prev_done);
+        return rc;
+}
+
 static struct lprocfs_vars lprocfs_osp_obd_vars[] = {
         { "uuid",                 lprocfs_rd_uuid,          0, 0 },
         { "ping",                 0, lprocfs_wr_ping,       0, 0, 0222 },
@@ -411,8 +425,9 @@ static struct lprocfs_vars lprocfs_osp_obd_vars[] = {
         { "maxage",               osp_rd_maxage, osp_wr_maxage,0 },
         { "prealloc_status",      osp_rd_pre_status,        0, 0 },
         { "sync_changes",         osp_rd_syn_changes,       0, 0 },
-        { "sync_in_flight",       osp_rd_syn_in_flight,    0, 0 },
-        { "sync_in_progress",     osp_rd_syn_in_prog,      0, 0 },
+        { "sync_in_flight",       osp_rd_syn_in_flight,     0, 0 },
+        { "sync_in_progress",     osp_rd_syn_in_prog,       0, 0 },
+        { "old_sync_processed",   osp_rd_old_sync_processed,0, 0 },
 
         /* for compatibility reasons */
         { "destroys_in_flight",   osp_rd_destroys_in_flight, 0, 0 },
