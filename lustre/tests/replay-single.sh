@@ -2157,11 +2157,11 @@ test_88() { #bug 17485
     lfs setstripe $DIR/$tdir -o 0 -c 1 || error "setstripe"
 
     replay_barrier ost1
-    replay_barrier mds1
+    replay_barrier $SINGLEMDS
 
     # exhaust precreations on ost1
     local OST=$(lfs osts | grep ^0": " | awk '{print $2}' | sed -e 's/_UUID$//')
-    local mdtosc=$(get_mdtosc_proc_path $OST)
+    local mdtosc=$(get_mdtosc_proc_path $SINGLEMDS $OST)
     local last_id=$(do_facet mds1 lctl get_param -n os[cp].$mdtosc.prealloc_last_id)
     local next_id=$(do_facet mds1 lctl get_param -n os[cp].$mdtosc.prealloc_next_id)
     echo "before test: last_id = $last_id, next_id = $next_id" 
@@ -2177,18 +2177,23 @@ test_88() { #bug 17485
     next_id2=$(do_facet mds1 lctl get_param -n os[cp].$mdtosc.prealloc_next_id)
     echo "before recovery: last_id = $last_id2, next_id = $next_id2" 
 
-    shutdown_facet mds1
+    # if test uses shutdown_facet && reboot_facet instead of facet_failover ()
+    # it has to take care about the affected facets, bug20407
+    local affected_mds1=$(affected_facets mds1)
+    local affected_ost1=$(affected_facets ost1)
+
+    shutdown_facet $SINGLEMDS
     shutdown_facet ost1
 
-    reboot_facet mds1
-    change_active mds1
-    wait_for mds1
-    mount_facet mds1 || error "Restart of mds failed"
+    reboot_facet $SINGLEMDS
+    change_active $affected_mds1
+    wait_for_facet $affected_mds1
+    mount_facets $affected_mds1 || error "Restart of mds failed"
 
     reboot_facet ost1
-    change_active ost1
-    wait_for ost1
-    mount_facet ost1 || error "Restart of ost1 failed"
+    change_active $affected_ost1
+    wait_for_facet $affected_ost1
+    mount_facets $affected_ost1 || error "Restart of ost1 failed"
 
     clients_up
 
@@ -2226,10 +2231,12 @@ test_88() { #bug 17485
 run_test 88 "MDS should not assign same objid to different files "
 
 test_89() {
+        cancel_lru_locks osc
         mkdir -p $DIR/$tdir
         rm -f $DIR/$tdir/$tfile
-        sleep 2
-        BLOCKS1=$(df $MOUNT | tail -n 1 | awk '{ print $3 }')
+        wait_mds_ost_sync
+        wait_destroy_complete
+        BLOCKS1=$(df -P $MOUNT | tail -n 1 | awk '{ print $3 }')
         lfs setstripe -i 0 -c 1 $DIR/$tdir/$tfile
         dd if=/dev/zero bs=1M count=10 of=$DIR/$tdir/$tfile
         sync
@@ -2239,9 +2246,9 @@ test_89() {
         umount $MOUNT
         mount_facet ost1
         zconf_mount $(hostname) $MOUNT
-	wait_mds_ost_sync
-        df $MOUNT
-        BLOCKS2=$(df $MOUNT | tail -n 1 | awk '{ print $3 }')
+        client_up || return 1
+        wait_mds_ost_sync
+        BLOCKS2=$(df -P $MOUNT | tail -n 1 | awk '{ print $3 }')
         [ "$BLOCKS1" == "$BLOCKS2" ] || error $((BLOCKS2 - BLOCKS1)) blocks leaked
 }
 

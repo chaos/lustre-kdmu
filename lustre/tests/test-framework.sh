@@ -582,6 +582,15 @@ ostdevlabel() {
 }
 
 # Facet functions
+mount_facets () {
+    local facets=${1:-$(get_facets)}
+    local facet
+
+    for facet in ${facets//,/ }; do
+        mount_facet $facet || error "Restart of $facet failed!"
+    done
+}
+
 mount_facet() {
     local facet=$1
     shift
@@ -979,6 +988,28 @@ facets_on_host () {
     echo $(comma_list $affected)
 }
 
+facet_up () {
+    local facet=$1
+    local host=${2:-$(facet_host $facet)}
+
+    local label=$(convert_facet2label $facet)
+    do_node $host lctl dl | awk '{print $4}' | grep -q $label
+}
+
+facets_up_on_host () {
+    local host=$1
+    local facets=$(facets_on_host $host)
+    local affected_up
+
+    for facet in ${facets//,/ }; do
+        if $(facet_up $facet $host); then
+            affected_up="$affected_up $facet"
+        fi
+    done
+
+    echo $(comma_list $affected_up)
+}
+
 shutdown_facet() {
     local facet=$1
 
@@ -1335,15 +1366,15 @@ wait_mds_ost_sync () {
     # orphan cleanup. Wait for llogs to get synchronized.
     echo "Waiting for orphan cleanup..."
     # MAX value includes time needed for MDS-OST reconnection
-    local MAX=$(( TIMEOUT * 2 ))
+    local MAX=$(( TIMEOUT * 3 + 3 ))
     local WAIT=0
     while [ $WAIT -lt $MAX ]; do
-        local -a sync=($(do_nodes $(comma_list $(osts_nodes)) \
-            "$LCTL get_param -n obdfilter.*.mds_sync"))
+        local -a sync=($(do_nodes $(comma_list $(mdts_nodes)) \
+            "$LCTL get_param -n osp.*.old_sync_processed"))
         local con=1
         local i
         for ((i=0; i<${#sync[@]}; i++)); do
-            [ ${sync[$i]} -eq 0 ] && continue
+            [ ${sync[$i]} -ne 0 ] && continue
             # there is a not finished MDS-OST synchronization
             con=0
             break;
@@ -1471,6 +1502,18 @@ client_reconnect() {
     cat $MOUNT/recon
     ls -l $MOUNT/recon > /dev/null
     rm $MOUNT/recon
+}
+
+affected_facets () {
+    local facet=$1
+
+    local host=$(facet_active_host $facet)
+    local affected=$facet
+
+    if [ "$FAILURE_MODE" = HARD ]; then
+        affected=$(facets_up_on_host $host)
+    fi
+    echo $affected
 }
 
 facet_failover() {
