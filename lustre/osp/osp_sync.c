@@ -119,8 +119,9 @@ static inline int osp_sync_stopped(struct osp_device *d)
 
 static inline int osp_sync_has_new_job(struct osp_device *d)
 {
-        return (d->opd_syn_last_processed_id < d->opd_syn_last_used_id)
-                && (d->opd_syn_last_processed_id < d->opd_syn_last_committed_id);
+        return ((d->opd_syn_last_processed_id < d->opd_syn_last_used_id)
+                && (d->opd_syn_last_processed_id < d->opd_syn_last_committed_id))
+                        || (d->opd_syn_prev_done == 0);
 }
 
 static inline int osp_sync_low_in_progress(struct osp_device *d)
