@@ -685,10 +685,10 @@ static struct obd_ops lod_obd_device_ops = {
         .o_connect      = lod_obd_connect,
         .o_disconnect   = lod_obd_disconnect,
         .o_health_check = lod_obd_health_check,
-        .o_pool_new     = lov_pool_new,
-        .o_pool_rem     = lov_pool_remove,
-        .o_pool_add     = lov_pool_add,
-        .o_pool_del     = lov_pool_del,
+        .o_pool_new     = lod_pool_new,
+        .o_pool_rem     = lod_pool_remove,
+        .o_pool_add     = lod_pool_add,
+        .o_pool_del     = lod_pool_del,
 };
 
 

@@ -130,6 +130,15 @@ start_full_debug_logging
 run_test 0c "fld create"
 stop_full_debug_logging
 
+test_0d() {
+    replay_barrier $SINGLEMDS
+    umount $MOUNT
+    facet_failover $SINGLEMDS
+    zconf_mount `hostname` $MOUNT || error "mount fails"
+    client_up || error "post-failover df failed"
+}
+run_test 0d "expired recovery with no clients"
+
 test_1() {
     replay_barrier $SINGLEMDS
     mcreate $DIR/$tfile
@@ -1568,7 +1577,7 @@ at_cleanup () {
     echo "Cleaning up AT ..."
     if [ -n "$ATOLDBASE" ]; then
         local at_history=$($LCTL get_param -n at_history)
-        do_facet mds "lctl set_param at_history=$at_history" || true
+        do_facet $SINGLEMDS "lctl set_param at_history=$at_history" || true
         do_facet ost1 "lctl set_param at_history=$at_history" || true
     fi
 
@@ -1608,9 +1617,9 @@ at_start()
     done
 
     if [ -z "$ATOLDBASE" ]; then
-	ATOLDBASE=$(do_facet mds "lctl get_param -n at_history")
+	ATOLDBASE=$(do_facet $SINGLEMDS "lctl get_param -n at_history")
         # speed up the timebase so we can check decreasing AT
-        do_facet mds "lctl set_param at_history=8" || true
+        do_facet $SINGLEMDS "lctl set_param at_history=8" || true
         do_facet ost1 "lctl set_param at_history=8" || true
 
 	# sleep for a while to cool down, should be > 8s and also allow
@@ -1633,9 +1642,9 @@ test_65a() #bug 3055
                awk '/portal 12/ {print $5}'`
     REQ_DELAY=$((${REQ_DELAY} + ${REQ_DELAY} / 4 + 5))
 
-    do_facet mds lctl set_param fail_val=$((${REQ_DELAY} * 1000))
+    do_facet $SINGLEMDS lctl set_param fail_val=$((${REQ_DELAY} * 1000))
 #define OBD_FAIL_PTLRPC_PAUSE_REQ        0x50a
-    do_facet mds sysctl -w lustre.fail_loc=0x8000050a
+    do_facet $SINGLEMDS sysctl -w lustre.fail_loc=0x8000050a
     createmany -o $DIR/$tfile 10 > /dev/null
     unlinkmany $DIR/$tfile 10 > /dev/null
     # check for log message
@@ -1690,18 +1699,18 @@ test_66a() #bug 3055
     at_start || return 0
     lctl get_param -n mdc.${FSNAME}-MDT0000-mdc-*.timeouts | grep "portal 12"
     # adjust 5s at a time so no early reply is sent (within deadline)
-    do_facet mds "sysctl -w lustre.fail_val=5000"
+    do_facet $SINGLEMDS "sysctl -w lustre.fail_val=5000"
 #define OBD_FAIL_PTLRPC_PAUSE_REQ        0x50a
-    do_facet mds "sysctl -w lustre.fail_loc=0x8000050a"
+    do_facet $SINGLEMDS "sysctl -w lustre.fail_loc=0x8000050a"
     createmany -o $DIR/$tfile 20 > /dev/null
     unlinkmany $DIR/$tfile 20 > /dev/null
     lctl get_param -n mdc.${FSNAME}-MDT0000-mdc-*.timeouts | grep "portal 12"
-    do_facet mds "sysctl -w lustre.fail_val=10000"
-    do_facet mds "sysctl -w lustre.fail_loc=0x8000050a"
+    do_facet $SINGLEMDS "sysctl -w lustre.fail_val=10000"
+    do_facet $SINGLEMDS "sysctl -w lustre.fail_loc=0x8000050a"
     createmany -o $DIR/$tfile 20 > /dev/null
     unlinkmany $DIR/$tfile 20 > /dev/null
     lctl get_param -n mdc.${FSNAME}-MDT0000-mdc-*.timeouts | grep "portal 12"
-    do_facet mds "sysctl -w lustre.fail_loc=0"
+    do_facet $SINGLEMDS "sysctl -w lustre.fail_loc=0"
     sleep 9
     createmany -o $DIR/$tfile 20 > /dev/null
     unlinkmany $DIR/$tfile 20 > /dev/null
@@ -1762,9 +1771,9 @@ test_67b() #bug 3055
     # exhaust precreations on ost1
     local OST=$(lfs osts | grep ^0": " | awk '{print $2}' | sed -e 's/_UUID$//')
     local mdtosc=$(get_mdtosc_proc_path mds $OST)
-    local last_id=$(do_facet mds lctl get_param -n \
+    local last_id=$(do_facet $SINGLEMDS lctl get_param -n \
         os[cp].$mdtosc.prealloc_last_id)
-    local next_id=$(do_facet mds lctl get_param -n \
+    local next_id=$(do_facet $SINGLEMDS lctl get_param -n \
         os[cp].$mdtosc.prealloc_next_id)
 
     mkdir -p $DIR/$tdir/${OST}
@@ -1999,10 +2008,10 @@ test_80b() {
     [ $MDSCOUNT -lt 2 ] && skip "needs >= 2 MDTs" && return 0
 
     mkdir -p $DIR/$tdir
-    replay_barrier mds1
+    replay_barrier $SINGLEMDS
     $CHECKSTAT -t dir $DIR/$tdir || error "$CHECKSTAT -t dir $DIR/$tdir failed"
     rmdir $DIR/$tdir || error "rmdir $DIR/$tdir failed"
-    fail mds1
+    fail $SINGLEMDS
     stat $DIR/$tdir 2&>/dev/null && error "$DIR/$tdir still exist after recovery!"
     return 0
 }
@@ -2016,9 +2025,9 @@ test_81a() {
     sleep 10
     $CHECKSTAT -t dir $DIR/$tdir || error "$CHECKSTAT -t dir failed"
     $CHECKSTAT -t file $DIR/$tdir/f1002 || error "$CHECKSTAT -t file failed"
-    replay_barrier mds1
+    replay_barrier $SINGLEMDS
     rm $DIR/$tdir/f1002 || error "rm $DIR/$tdir/f1002 failed"
-    fail mds1
+    fail $SINGLEMDS
     stat $DIR/$tdir/f1002
 }
 run_test 81a "CMD: unlink cross-node file (fail mds with name)"
@@ -2040,10 +2049,10 @@ test_82b() {
     [ $MDSCOUNT -lt 2 ] && skip "needs >= 2 MDTs" && return 0
 
     local dir=$DIR/d82b
-    replay_barrier mds1
+    replay_barrier $SINGLEMDS
     mkdir $dir || error "mkdir $dir failed"
     log "FAILOVER mds1"
-    fail mds1
+    fail $SINGLEMDS
     stat $DIR
     $CHECKSTAT -t dir $dir || error "$CHECKSTAT -t dir $dir failed"
 }
@@ -2104,6 +2113,37 @@ test_85a() { #bug 16774
 }
 run_test 85a "check the cancellation of unused locks during recovery(IBITS)"
 
+test_85b() { #bug 16774
+    lctl set_param -n ldlm.cancel_unused_locks_before_replay "1"
+
+    lfs setstripe -o 0 -c 1 $DIR
+
+    for i in `seq 100`; do
+        dd if=/dev/urandom of=$DIR/$tfile-$i bs=4096 count=32 >/dev/null 2>&1
+    done
+
+    cancel_lru_locks osc
+
+    for i in `seq 100`; do
+        dd if=$DIR/$tfile-$i of=/dev/null bs=4096 count=32 >/dev/null 2>&1
+    done
+
+    lov_id=`lctl dl | grep "clilov"`
+    addr=`echo $lov_id | awk '{print $4}' | awk -F '-' '{print $3}'`
+    count=`lctl get_param -n ldlm.namespaces.*OST0000*$addr.lock_unused_count`
+    echo "before recovery: unused locks count = $count"
+
+    fail ost1
+
+    count2=`lctl get_param -n ldlm.namespaces.*OST0000*$addr.lock_unused_count`
+    echo "after recovery: unused locks count = $count2"
+
+    if [ $count2 -ge $count ]; then
+        error "unused locks are not canceled"
+    fi
+}
+run_test 85b "check the cancellation of unused locks during recovery(EXTENT)"
+
 test_86() {
         local clients=${CLIENTS:-$HOSTNAME}
 
@@ -2162,8 +2202,8 @@ test_88() { #bug 17485
     # exhaust precreations on ost1
     local OST=$(lfs osts | grep ^0": " | awk '{print $2}' | sed -e 's/_UUID$//')
     local mdtosc=$(get_mdtosc_proc_path $SINGLEMDS $OST)
-    local last_id=$(do_facet mds1 lctl get_param -n os[cp].$mdtosc.prealloc_last_id)
-    local next_id=$(do_facet mds1 lctl get_param -n os[cp].$mdtosc.prealloc_next_id)
+    local last_id=$(do_facet $SINGLEMDS lctl get_param -n os[cp].$mdtosc.prealloc_last_id)
+    local next_id=$(do_facet $SINGLEMDS lctl get_param -n os[cp].$mdtosc.prealloc_next_id)
     echo "before test: last_id = $last_id, next_id = $next_id" 
 
     echo "Creating to objid $last_id on ost $OST..."
@@ -2173,32 +2213,27 @@ test_88() { #bug 17485
     last_id=$(($last_id + 1))
     createmany -o $DIR/$tdir/f-%d $last_id 8
 
-    last_id2=$(do_facet mds1 lctl get_param -n os[cp].$mdtosc.prealloc_last_id)
-    next_id2=$(do_facet mds1 lctl get_param -n os[cp].$mdtosc.prealloc_next_id)
+    last_id2=$(do_facet $SINGLEMDS lctl get_param -n os[cp].$mdtosc.prealloc_last_id)
+    next_id2=$(do_facet $SINGLEMDS lctl get_param -n os[cp].$mdtosc.prealloc_next_id)
     echo "before recovery: last_id = $last_id2, next_id = $next_id2" 
-
-    # if test uses shutdown_facet && reboot_facet instead of facet_failover ()
-    # it has to take care about the affected facets, bug20407
-    local affected_mds1=$(affected_facets mds1)
-    local affected_ost1=$(affected_facets ost1)
 
     shutdown_facet $SINGLEMDS
     shutdown_facet ost1
 
     reboot_facet $SINGLEMDS
-    change_active $affected_mds1
-    wait_for_facet $affected_mds1
-    mount_facets $affected_mds1 || error "Restart of mds failed"
+    change_active $SINGLEMDS
+    wait_for_facet $SINGLEMDS
+    mount_facet $SINGLEMDS || error "Restart of mds failed"
 
     reboot_facet ost1
-    change_active $affected_ost1
-    wait_for_facet $affected_ost1
-    mount_facets $affected_ost1 || error "Restart of ost1 failed"
+    change_active ost1
+    wait_for_facet ost1
+    mount_facet ost1 || error "Restart of ost1 failed"
 
     clients_up
 
-    last_id2=$(do_facet mds1 lctl get_param -n os[cp].$mdtosc.prealloc_last_id)
-    next_id2=$(do_facet mds1 lctl get_param -n os[cp].$mdtosc.prealloc_next_id)
+    last_id2=$(do_facet $SINGLEMDS lctl get_param -n os[cp].$mdtosc.prealloc_last_id)
+    next_id2=$(do_facet $SINGLEMDS lctl get_param -n os[cp].$mdtosc.prealloc_next_id)
     echo "after recovery: last_id = $last_id2, next_id = $next_id2" 
 
     # create new files, which should use new objids, and ensure the orphan 

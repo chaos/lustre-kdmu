@@ -414,7 +414,7 @@ static void cleanup_resource(struct ldlm_resource *res, cfs_list_t *q,
                              int flags)
 {
         cfs_list_t *tmp;
-        int rc = 0, client = ns_is_client(res->lr_namespace);
+        int rc = 0, client = ns_is_client(ldlm_res_to_ns(res));
         int local_only = (flags & LDLM_FL_LOCAL_ONLY);
         ENTRY;
 
@@ -797,7 +797,6 @@ static struct ldlm_resource *ldlm_resource_new(void)
 
         memset(res, 0, sizeof(*res));
 
-        CFS_INIT_LIST_HEAD(&res->lr_children);
         CFS_INIT_LIST_HEAD(&res->lr_childof);
         CFS_INIT_LIST_HEAD(&res->lr_granted);
         CFS_INIT_LIST_HEAD(&res->lr_converting);
@@ -886,12 +885,8 @@ ldlm_resource_add(struct ldlm_namespace *ns, struct ldlm_resource *parent,
         ns->ns_resources++;
         ldlm_namespace_get_locked(ns);
 
-        if (parent == NULL) {
-                cfs_list_add(&res->lr_childof, &ns->ns_root_list);
-        } else {
-                res->lr_parent = parent;
-                cfs_list_add(&res->lr_childof, &parent->lr_children);
-        }
+        LASSERT(parent == NULL); /* legacy... */
+        cfs_list_add(&res->lr_childof, &ns->ns_root_list);
         cfs_spin_unlock(&ns->ns_hash_lock);
 
         if (ns->ns_lvbo && ns->ns_lvbo->lvbo_init) {
@@ -957,7 +952,7 @@ struct ldlm_resource *ldlm_resource_getref(struct ldlm_resource *res)
 
 void __ldlm_resource_putref_final(struct ldlm_resource *res)
 {
-        struct ldlm_namespace *ns = res->lr_namespace;
+        struct ldlm_namespace *ns = ldlm_res_to_ns(res);
 
         LASSERT_SPIN_LOCKED(&ns->ns_hash_lock);
 
@@ -976,11 +971,6 @@ void __ldlm_resource_putref_final(struct ldlm_resource *res)
                 LBUG();
         }
 
-        if (!cfs_list_empty(&res->lr_children)) {
-                ldlm_resource_dump(D_ERROR, res);
-                LBUG();
-        }
-
         /* Pass 0 here to not wake ->ns_waitq up yet, we will do it few
          * lines below when all children are freed. */
         ldlm_namespace_put_locked(ns, 0);
@@ -995,7 +985,7 @@ void __ldlm_resource_putref_final(struct ldlm_resource *res)
 
 int ldlm_resource_putref_internal(struct ldlm_resource *res, int locked)
 {
-        struct ldlm_namespace *ns = res->lr_namespace;
+        struct ldlm_namespace *ns = ldlm_res_to_ns(res);
         ENTRY;
 
         CDEBUG(D_INFO, "putref res: %p count: %d\n", res,

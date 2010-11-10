@@ -604,7 +604,11 @@ int lod_lov_init(struct lod_device *m, struct lustre_cfg *lcfg)
 
         lov->lov_pools_hash_body = cfs_hash_create("POOLS", HASH_POOLS_CUR_BITS,
                                                    HASH_POOLS_MAX_BITS,
-                                                   &pool_hash_operations, CFS_HASH_REHASH);
+                                                   HASH_POOLS_BKT_BITS, 0,
+                                                   CFS_HASH_MIN_THETA,
+                                                   CFS_HASH_MAX_THETA,
+                                                   &pool_hash_operations,
+                                                   CFS_HASH_DEFAULT);
         CFS_INIT_LIST_HEAD(&lov->lov_pool_list);
         lov->lov_pool_count = 0;
         rc = lov_ost_pool_init(&lov->lov_packed, 0);
@@ -649,7 +653,7 @@ int lod_lov_fini(struct lod_device *m)
                 pool = cfs_list_entry(pos, struct pool_desc, pool_list);
                 /* free pool structs */
                 CDEBUG(D_INFO, "delete pool %p\n", pool);
-                lov_pool_del(obd, pool->pool_name);
+                lod_pool_del(obd, pool->pool_name);
         }
         cfs_hash_putref(lov->lov_pools_hash_body);
         lov_ost_pool_free(&(lov->lov_qos.lq_rr.lqr_pool));

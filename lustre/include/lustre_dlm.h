@@ -648,6 +648,13 @@ struct ldlm_lock {
 
         ldlm_policy_data_t       l_policy_data;
 
+        /**
+         * Traffic index indicating how busy the resource will be, if it is
+         * high, the lock's granted region will not be so big lest it conflicts
+         * other locks, causing frequent lock cancellation and re-enqueue
+         */
+        int                   l_traffic;
+
         /*
          * Protected by lr_lock. Various counters: readers, writers, etc.
          */
@@ -694,10 +701,6 @@ struct ldlm_lock {
         void                 *l_lvb_data;
 
         void                 *l_ast_data;
-        cfs_spinlock_t        l_extents_list_lock;
-        cfs_list_t            l_extents_list;
-
-        cfs_list_t            l_cache_locks_list;
 
         /*
          * Server-side-only members.
@@ -757,8 +760,6 @@ struct ldlm_resource {
 
         /* protected by ns_hash_lock */
         cfs_list_t             lr_hash;
-        struct ldlm_resource  *lr_parent;   /* 0 for a root resource */
-        cfs_list_t             lr_children; /* list head for child resources */
         cfs_list_t             lr_childof;  /* part of ns_root_list if root res,
                                              * part of lr_children if child */
         cfs_spinlock_t         lr_lock;
@@ -778,8 +779,6 @@ struct ldlm_resource {
         cfs_semaphore_t        lr_lvb_sem;
         __u32                  lr_lvb_len;
         void                  *lr_lvb_data;
-        struct lu_object      *lr_lvb_obj;
-        struct lu_env         *lr_lvb_env;
 
         /* when the resource was considered as contended */
         cfs_time_t             lr_contention_time;
@@ -788,6 +787,30 @@ struct ldlm_resource {
          */
         struct lu_ref          lr_reference;
 };
+
+static inline struct ldlm_namespace *
+ldlm_res_to_ns(struct ldlm_resource *res)
+{
+        return res->lr_namespace;
+}
+
+static inline struct ldlm_namespace *
+ldlm_lock_to_ns(struct ldlm_lock *lock)
+{
+        return ldlm_res_to_ns(lock->l_resource);
+}
+
+static inline char *
+ldlm_lock_to_ns_name(struct ldlm_lock *lock)
+{
+        return ldlm_lock_to_ns(lock)->ns_name;
+}
+
+static inline struct adaptive_timeout *
+ldlm_lock_to_ns_at(struct ldlm_lock *lock)
+{
+        return &ldlm_lock_to_ns(lock)->ns_at_estimate;
+}
 
 struct ldlm_ast_work {
         struct ldlm_lock      *w_lock;
@@ -943,10 +966,10 @@ ldlm_handle2lock_long(const struct lustre_handle *h, int flags)
 static inline int ldlm_res_lvbo_update(struct ldlm_resource *res,
                                        struct ptlrpc_request *r, int increase)
 {
-        if (res->lr_namespace->ns_lvbo &&
-            res->lr_namespace->ns_lvbo->lvbo_update) {
-                return res->lr_namespace->ns_lvbo->lvbo_update(res, r,
-                                                               increase);
+        if (ldlm_res_to_ns(res)->ns_lvbo &&
+            ldlm_res_to_ns(res)->ns_lvbo->lvbo_update) {
+                return ldlm_res_to_ns(res)->ns_lvbo->lvbo_update(res, r,
+                                                                 increase);
         }
         return 0;
 }

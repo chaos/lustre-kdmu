@@ -178,10 +178,15 @@ recreate_out:
 
         /* XXX: how do we calculate used ? */
 
-        /* do not zero out oa->o_valid as it is used in
-         * * filter_commitrw_write() for setting UID/GID and
-         * * fid EA in first write time. */
-        if (oa->o_valid & OBD_MD_FLGRANT)
+        /* do not zero out oa->o_valid as it is used in filter_commitrw_write()
+         * for setting UID/GID and fid EA in first write time. */
+        /* If OBD_FL_SHRINK_GRANT is set, the client just returned us some grant
+         * so no sense in allocating it some more. We either return the grant
+         * back to the client if we have plenty of space or we don't return
+         * anything if we are short. This was decided in filter_grant_incoming*/
+        if (oa->o_valid & OBD_MD_FLGRANT &&
+            (!(oa->o_valid & OBD_MD_FLFLAGS) ||
+             !(oa->o_flags & OBD_FL_SHRINK_GRANT)))
                 oa->o_grant = filter_grant(env, exp, oa->o_grant,
                                            oa->o_undirty, left);
         cfs_mutex_up(&ofd->ofd_grant_sem);
@@ -248,7 +253,8 @@ int filter_preprw(int cmd, struct obd_export *exp, struct obdo *oa, int objcount
                         if (oa && oa->o_valid & OBD_MD_FLGRANT) {
                                 cfs_mutex_down(&ofd->ofd_grant_sem);
                                 filter_grant_incoming(env, exp, oa);
-                                if (!(oa->o_flags & OBD_FL_SHRINK_GRANT))
+                                if (!(oa->o_valid & OBD_MD_FLFLAGS) ||
+                                    !(oa->o_flags & OBD_FL_SHRINK_GRANT))
                                         oa->o_grant = 0;
                                 cfs_mutex_up(&ofd->ofd_grant_sem);
                         }

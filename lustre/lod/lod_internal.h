@@ -201,15 +201,15 @@ int lod_parse_striping(const struct lu_env *env, struct lod_object *mo,
 int lov_ost_pool_add(struct ost_pool *op, __u32 idx, unsigned int min_count);
 int lov_ost_pool_extend(struct ost_pool *op, unsigned int min_count);
 struct pool_desc *lov_find_pool(struct lov_obd *lov, char *poolname);
-void lov_pool_putref(struct pool_desc *pool);
+void lod_pool_putref(struct pool_desc *pool);
 int lov_ost_pool_free(struct ost_pool *op);
-int lov_pool_del(struct obd_device *obd, char *poolname);
+int lod_pool_del(struct obd_device *obd, char *poolname);
 int lov_ost_pool_init(struct ost_pool *op, unsigned int count);
 extern cfs_hash_ops_t pool_hash_operations;
 int lov_check_index_in_pool(__u32 idx, struct pool_desc *pool);
-int lov_pool_new(struct obd_device *obd, char *poolname);
-int lov_pool_add(struct obd_device *obd, char *poolname, char *ostname);
-int lov_pool_remove(struct obd_device *obd, char *poolname, char *ostname);
+int lod_pool_new(struct obd_device *obd, char *poolname);
+int lod_pool_add(struct obd_device *obd, char *poolname, char *ostname);
+int lod_pool_remove(struct obd_device *obd, char *poolname, char *ostname);
 
 /* lod_qos.c */
 int lod_qos_prep_create(const struct lu_env *env, struct lod_object *lo,

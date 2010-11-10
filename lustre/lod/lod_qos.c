@@ -744,7 +744,7 @@ out:
         if (pool != NULL) {
                 cfs_up_read(&pool_tgt_rw_sem(pool));
                 /* put back ref got by lov_find_pool() */
-                lov_pool_putref(pool);
+                lod_pool_putref(pool);
         }
 
         RETURN(rc);
@@ -867,7 +867,7 @@ out:
         if (pool != NULL) {
                 cfs_up_read(&pool_tgt_rw_sem(pool));
                 /* put back ref got by lov_find_pool() */
-                lov_pool_putref(pool);
+                lod_pool_putref(pool);
         }
 
         RETURN(rc);
@@ -1075,7 +1075,7 @@ out_nolock:
         if (pool != NULL) {
                 cfs_up_read(&pool_tgt_rw_sem(pool));
                 /* put back ref got by lov_find_pool() */
-                lov_pool_putref(pool);
+                lod_pool_putref(pool);
         }
 
         if (rc == -EAGAIN)
@@ -1205,7 +1205,7 @@ static int lod_qos_parse_config(const struct lu_env *env, struct lod_object *lo,
                                 rc = lov_check_index_in_pool(lo->mbo_def_stripe_offset,
                                                              pool);
                                 if (rc < 0) {
-                                        lov_pool_putref(pool);
+                                        lod_pool_putref(pool);
                                         CERROR("invalid offset\n");
                                         RETURN(-EINVAL);
                                 }
@@ -1214,7 +1214,7 @@ static int lod_qos_parse_config(const struct lu_env *env, struct lod_object *lo,
                         if (lo->mbo_stripenr > pool_tgt_count(pool))
                                 lo->mbo_stripenr= pool_tgt_count(pool);
 
-                        lov_pool_putref(pool);
+                        lod_pool_putref(pool);
                 }
         }
 
