@@ -31,6 +31,7 @@ ALWAYS_EXCEPT="$ALWAYS_EXCEPT 76"
 # 180 -- ofd doesn't work with obdecho 
 ALWAYS_EXCEPT="$ALWAYS_EXCEPT 52 54c 56a 160 180"
 
+# 56r -- dmu-osd doesn't return correct type in direntry
 # 57a -- (bug 22607) can't determine dnode size in ZFS yet
 # 57b -- (bug 14113) don't have large dnodes yet
 # 103 -- ACL support still relies on linux VFS
@@ -44,7 +45,7 @@ ALWAYS_EXCEPT="$ALWAYS_EXCEPT 52 54c 56a 160 180"
 	ALWAYS_EXCEPT="$ALWAYS_EXCEPT 130 155 156"
 
 [ "$FSTYPE" = "zfs" -o "$MDSFSTYPE" = "zfs" ] && \
-	ALWAYS_EXCEPT="$ALWAYS_EXCEPT 57 103 129 162"
+	ALWAYS_EXCEPT="$ALWAYS_EXCEPT 56r 57 103 129 162"
 
 # LOD/OSP branch needs fixes:
 # 60  -- llog_osd_create()) ASSERTION(dt) failed
