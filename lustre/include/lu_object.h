@@ -264,7 +264,7 @@ struct lu_device {
          * Stack this device belongs to.
          */
         struct lu_site                    *ld_site;
-        libcfs_param_entry_t              *ld_proc_entry;
+        cfs_param_entry_t              *ld_proc_entry;
 
         /** \todo XXX: temporary back pointer into obd. */
         struct obd_device                 *ld_obd;
@@ -1165,7 +1165,7 @@ struct lu_context_key {
 
 #define LU_CONTEXT_KEY_INIT(key)                        \
 do {                                                    \
-        (key)->lct_owner = THIS_MODULE;                 \
+        (key)->lct_owner = CFS_PARAM_MODULE;                 \
 } while (0)
 
 int   lu_context_key_register(struct lu_context_key *key);

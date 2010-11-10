@@ -1094,7 +1094,7 @@ struct ptlrpc_service {
         cfs_spinlock_t        srv_lock;
 
         /** Root of /proc dir tree for this service */
-        libcfs_param_entry_t  *srv_procroot;
+        cfs_param_entry_t  *srv_procroot;
         /** Pointer to statistic data for this service */
         struct lprocfs_stats *srv_stats;
 
@@ -1390,7 +1390,7 @@ void ptlrpc_dispatch_difficult_reply (struct ptlrpc_reply_state *rs);
 void ptlrpc_schedule_difficult_reply (struct ptlrpc_reply_state *rs);
 struct ptlrpc_service *ptlrpc_init_svc_conf(struct ptlrpc_service_conf *c,
                                             svc_handler_t h, char *name,
-                                            libcfs_param_entry_t *proc_entry,
+                                            cfs_param_entry_t *proc_entry,
                                             svcreq_printfn_t prntfn,
                                             char *threadname);
 
@@ -1399,7 +1399,7 @@ struct ptlrpc_service *ptlrpc_init_svc(int nbufs, int bufsize, int max_req_size,
                                        int req_portal, int rep_portal,
                                        int watchdog_factor,
                                        svc_handler_t, char *name,
-                                       libcfs_param_entry_t *proc_entry,
+                                       cfs_param_entry_t *proc_entry,
                                        svcreq_printfn_t,
                                        int min_threads, int max_threads,
                                        char *threadname, __u32 ctx_tags,

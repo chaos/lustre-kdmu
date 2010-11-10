@@ -40,293 +40,293 @@
 /* To avoid the error "initializer element is not constant",
  * we use a function to initialize these elements.
  */
-static libcfs_param_sysctl_table_t lp_ksocknal_ctl_table[30];
-static void libcfs_param_ksocknal_ctl_table_init(void)
+static cfs_param_sysctl_table_t lp_ksocknal_ctl_table[30];
+static void cfs_param_ksocknal_ctl_table_init(void)
 {
         int i = 0;
 
-        lp_ksocknal_ctl_table[i] = (libcfs_param_sysctl_table_t)
+        lp_ksocknal_ctl_table[i] = (cfs_param_sysctl_table_t)
         {
                 .name     = "timeout",
                 .data     = ksocknal_tunables.ksnd_timeout,
                 .mode     = 0644,
-                .read     = libcfs_param_intvec_read,
-                .write    = libcfs_param_intvec_write
+                .read     = cfs_param_intvec_read,
+                .write    = cfs_param_intvec_write
         };
         i++;
 
-        lp_ksocknal_ctl_table[i] = (libcfs_param_sysctl_table_t)
+        lp_ksocknal_ctl_table[i] = (cfs_param_sysctl_table_t)
         {
                 .name     = "credits",
                 .data     = ksocknal_tunables.ksnd_credits,
                 .mode     = 0444,
-                .read     = libcfs_param_intvec_read
+                .read     = cfs_param_intvec_read
         };
         i++;
 
-        lp_ksocknal_ctl_table[i] = (libcfs_param_sysctl_table_t)
+        lp_ksocknal_ctl_table[i] = (cfs_param_sysctl_table_t)
         {
                 .name     = "peer_credits",
                 .data     = ksocknal_tunables.ksnd_peertxcredits,
                 .mode     = 0444,
-                .read     = libcfs_param_intvec_read
+                .read     = cfs_param_intvec_read
         };
         i++;
 
-        lp_ksocknal_ctl_table[i] = (libcfs_param_sysctl_table_t)
+        lp_ksocknal_ctl_table[i] = (cfs_param_sysctl_table_t)
         {
                 .name     = "peer_buffer_credits",
                 .data     = ksocknal_tunables.ksnd_peerrtrcredits,
                 .mode     = 0444,
-                .read     = libcfs_param_intvec_read
+                .read     = cfs_param_intvec_read
         };
         i++;
 
-        lp_ksocknal_ctl_table[i] = (libcfs_param_sysctl_table_t)
+        lp_ksocknal_ctl_table[i] = (cfs_param_sysctl_table_t)
         {
                 .name     = "peer_timeout",
                 .data     = ksocknal_tunables.ksnd_peertimeout,
                 .mode     = 0444,
-                .read     = libcfs_param_intvec_read
+                .read     = cfs_param_intvec_read
         };
         i++;
 
-        lp_ksocknal_ctl_table[i] = (libcfs_param_sysctl_table_t)
+        lp_ksocknal_ctl_table[i] = (cfs_param_sysctl_table_t)
         {
                 .name     = "nconnds",
                 .data     = ksocknal_tunables.ksnd_nconnds,
                 .mode     = 0444,
-                .read     = libcfs_param_intvec_read
+                .read     = cfs_param_intvec_read
         };
         i++;
 
-        lp_ksocknal_ctl_table[i] = (libcfs_param_sysctl_table_t)
+        lp_ksocknal_ctl_table[i] = (cfs_param_sysctl_table_t)
         {
                 .name     = "min_reconnectms",
                 .data     = ksocknal_tunables.ksnd_min_reconnectms,
                 .mode     = 0444,
-                .read     = libcfs_param_intvec_read
+                .read     = cfs_param_intvec_read
         };
         i++;
 
-        lp_ksocknal_ctl_table[i] = (libcfs_param_sysctl_table_t)
+        lp_ksocknal_ctl_table[i] = (cfs_param_sysctl_table_t)
         {
                 .name     = "max_reconnectms",
                 .data     = ksocknal_tunables.ksnd_max_reconnectms,
                 .mode     = 0444,
-                .read     = libcfs_param_intvec_read
+                .read     = cfs_param_intvec_read
         };
         i++;
 
-        lp_ksocknal_ctl_table[i] = (libcfs_param_sysctl_table_t)
+        lp_ksocknal_ctl_table[i] = (cfs_param_sysctl_table_t)
         {
                 .name     = "eager_ack",
                 .data     = ksocknal_tunables.ksnd_eager_ack,
                 .mode     = 0644,
-                .read     = libcfs_param_intvec_read,
-                .write    = libcfs_param_intvec_write
+                .read     = cfs_param_intvec_read,
+                .write    = cfs_param_intvec_write
         };
         i++;
 
-        lp_ksocknal_ctl_table[i] = (libcfs_param_sysctl_table_t)
+        lp_ksocknal_ctl_table[i] = (cfs_param_sysctl_table_t)
         {
                 .name     = "nonblk_zcack",
                 .data     = ksocknal_tunables.ksnd_nonblk_zcack,
                 .mode     = 0644,
-                .read     = libcfs_param_intvec_read,
-                .write    = libcfs_param_intvec_write
+                .read     = cfs_param_intvec_read,
+                .write    = cfs_param_intvec_write
         };
         i++;
 
-        lp_ksocknal_ctl_table[i] = (libcfs_param_sysctl_table_t)
+        lp_ksocknal_ctl_table[i] = (cfs_param_sysctl_table_t)
         {
                 .name     = "zero_copy_min_payload",
                 .data     = ksocknal_tunables.ksnd_zc_min_payload,
                 .mode     = 0644,
-                .read     = libcfs_param_intvec_read,
-                .write    = libcfs_param_intvec_write
+                .read     = cfs_param_intvec_read,
+                .write    = cfs_param_intvec_write
         };
         i++;
 
-        lp_ksocknal_ctl_table[i] = (libcfs_param_sysctl_table_t)
+        lp_ksocknal_ctl_table[i] = (cfs_param_sysctl_table_t)
         {
                 .name     = "zero_copy_recv",
                 .data     = ksocknal_tunables.ksnd_zc_recv,
                 .mode     = 0644,
-                .read     = libcfs_param_intvec_read,
-                .write    = libcfs_param_intvec_write
+                .read     = cfs_param_intvec_read,
+                .write    = cfs_param_intvec_write
         };
         i++;
 
-        lp_ksocknal_ctl_table[i] = (libcfs_param_sysctl_table_t)
+        lp_ksocknal_ctl_table[i] = (cfs_param_sysctl_table_t)
         {
                 .name     = "zero_copy_recv_min_nfrags",
                 .data     = ksocknal_tunables.ksnd_zc_recv_min_nfrags,
                 .mode     = 0644,
-                .read     = libcfs_param_intvec_read,
-                .write    = libcfs_param_intvec_write
+                .read     = cfs_param_intvec_read,
+                .write    = cfs_param_intvec_write
         };
         i++;
 
-        lp_ksocknal_ctl_table[i] = (libcfs_param_sysctl_table_t)
+        lp_ksocknal_ctl_table[i] = (cfs_param_sysctl_table_t)
         {
                 .name     = "typed",
                 .data     = ksocknal_tunables.ksnd_typed_conns,
                 .mode     = 0444,
-                .read     = libcfs_param_intvec_read
+                .read     = cfs_param_intvec_read
         };
         i++;
 
-        lp_ksocknal_ctl_table[i] = (libcfs_param_sysctl_table_t)
+        lp_ksocknal_ctl_table[i] = (cfs_param_sysctl_table_t)
         {
                 .name     = "min_bulk",
                 .data     = ksocknal_tunables.ksnd_min_bulk,
                 .mode     = 0644,
-                .read     = libcfs_param_intvec_read,
-                .write    = libcfs_param_intvec_write
+                .read     = cfs_param_intvec_read,
+                .write    = cfs_param_intvec_write
         };
         i++;
 
-        lp_ksocknal_ctl_table[i] = (libcfs_param_sysctl_table_t)
+        lp_ksocknal_ctl_table[i] = (cfs_param_sysctl_table_t)
         {
                 .name     = "rx_buffer_size",
                 .data     = ksocknal_tunables.ksnd_rx_buffer_size,
                 .mode     = 0644,
-                .read     = libcfs_param_intvec_read,
-                .write    = libcfs_param_intvec_write
+                .read     = cfs_param_intvec_read,
+                .write    = cfs_param_intvec_write
         };
         i++;
 
-        lp_ksocknal_ctl_table[i] = (libcfs_param_sysctl_table_t)
+        lp_ksocknal_ctl_table[i] = (cfs_param_sysctl_table_t)
         {
                 .name     = "tx_buffer_size",
                 .data     = ksocknal_tunables.ksnd_tx_buffer_size,
                 .mode     = 0644,
-                .read     = libcfs_param_intvec_read,
-                .write    = libcfs_param_intvec_write
+                .read     = cfs_param_intvec_read,
+                .write    = cfs_param_intvec_write
         };
         i++;
 
-        lp_ksocknal_ctl_table[i] = (libcfs_param_sysctl_table_t)
+        lp_ksocknal_ctl_table[i] = (cfs_param_sysctl_table_t)
         {
                 .name     = "nagle",
                 .data     = ksocknal_tunables.ksnd_nagle,
                 .mode     = 0644,
-                .read     = libcfs_param_intvec_read,
-                .write    = libcfs_param_intvec_write
+                .read     = cfs_param_intvec_read,
+                .write    = cfs_param_intvec_write
         };
         i++;
 
 #ifdef CPU_AFFINITY
-        lp_ksocknal_ctl_table[i] = (libcfs_param_sysctl_table_t)
+        lp_ksocknal_ctl_table[i] = (cfs_param_sysctl_table_t)
         {
                 .name     = "irq_affinity",
                 .data     = ksocknal_tunables.ksnd_irq_affinity,
                 .mode     = 0644,
-                .read     = libcfs_param_intvec_read,
-                .write    = libcfs_param_intvec_write
+                .read     = cfs_param_intvec_read,
+                .write    = cfs_param_intvec_write
         };
         i++;
 #endif
 
-        lp_ksocknal_ctl_table[i] = (libcfs_param_sysctl_table_t)
+        lp_ksocknal_ctl_table[i] = (cfs_param_sysctl_table_t)
         {
                 .name     = "round_robin",
                 .data     = ksocknal_tunables.ksnd_round_robin,
                 .mode     = 0644,
-                .read     = libcfs_param_intvec_read,
-                .write    = libcfs_param_intvec_write
+                .read     = cfs_param_intvec_read,
+                .write    = cfs_param_intvec_write
         };
         i++;
 
-        lp_ksocknal_ctl_table[i] = (libcfs_param_sysctl_table_t)
+        lp_ksocknal_ctl_table[i] = (cfs_param_sysctl_table_t)
         {
                 .name     = "keepalive",
                 .data     = ksocknal_tunables.ksnd_keepalive,
                 .mode     = 0644,
-                .read     = libcfs_param_intvec_read,
-                .write    = libcfs_param_intvec_write
+                .read     = cfs_param_intvec_read,
+                .write    = cfs_param_intvec_write
         };
         i++;
 
-        lp_ksocknal_ctl_table[i] = (libcfs_param_sysctl_table_t)
+        lp_ksocknal_ctl_table[i] = (cfs_param_sysctl_table_t)
         {
                 .name     = "keepalive_idle",
                 .data     = ksocknal_tunables.ksnd_keepalive_idle,
                 .mode     = 0644,
-                .read     = libcfs_param_intvec_read,
-                .write    = libcfs_param_intvec_write
+                .read     = cfs_param_intvec_read,
+                .write    = cfs_param_intvec_write
         };
         i++;
 
-        lp_ksocknal_ctl_table[i] = (libcfs_param_sysctl_table_t)
+        lp_ksocknal_ctl_table[i] = (cfs_param_sysctl_table_t)
         {
                 .name     = "keepalive_count",
                 .data     = ksocknal_tunables.ksnd_keepalive_count,
                 .mode     = 0644,
-                .read     = libcfs_param_intvec_read,
-                .write    = libcfs_param_intvec_write
+                .read     = cfs_param_intvec_read,
+                .write    = cfs_param_intvec_write
         };
         i++;
 
-        lp_ksocknal_ctl_table[i] = (libcfs_param_sysctl_table_t)
+        lp_ksocknal_ctl_table[i] = (cfs_param_sysctl_table_t)
         {
                 .name     = "keepalive_intvl",
                 .data     = ksocknal_tunables.ksnd_keepalive_intvl,
                 .mode     = 0644,
-                .read     = libcfs_param_intvec_read,
-                .write    = libcfs_param_intvec_write
+                .read     = cfs_param_intvec_read,
+                .write    = cfs_param_intvec_write
         };
         i++;
 
 #ifdef SOCKNAL_BACKOFF
-        lp_ksocknal_ctl_table[i] = (libcfs_param_sysctl_table_t)
+        lp_ksocknal_ctl_table[i] = (cfs_param_sysctl_table_t)
         {
                 .name     = "backoff_init",
                 .data     = ksocknal_tunables.ksnd_backoff_init,
                 .mode     = 0644,
-                .read     = libcfs_param_intvec_read,
-                .write    = libcfs_param_intvec_write
+                .read     = cfs_param_intvec_read,
+                .write    = cfs_param_intvec_write
         };
         i++;
 
-        lp_ksocknal_ctl_table[i] = (libcfs_param_sysctl_table_t)
+        lp_ksocknal_ctl_table[i] = (cfs_param_sysctl_table_t)
         {
                 .name     = "backoff_max",
                 .data     = ksocknal_tunables.ksnd_backoff_max,
                 .mode     = 0644,
-                .read     = libcfs_param_intvec_read,
-                .write    = libcfs_param_intvec_write
+                .read     = cfs_param_intvec_read,
+                .write    = cfs_param_intvec_write
         };
         i++;
 #endif
 #if SOCKNAL_VERSION_DEBUG
-        lp_ksocknal_ctl_table[i] = (libcfs_param_sysctl_table_t)
+        lp_ksocknal_ctl_table[i] = (cfs_param_sysctl_table_t)
         {
                 .name     = "protocol",
                 .data     = ksocknal_tunables.ksnd_protocol,
                 .mode     = 0644,
-                .read     = libcfs_param_intvec_read,
-                .write    = libcfs_param_intvec_write
+                .read     = cfs_param_intvec_read,
+                .write    = cfs_param_intvec_write
         };
         i++;
 #endif
-        lp_ksocknal_ctl_table[i] = (libcfs_param_sysctl_table_t)
+        lp_ksocknal_ctl_table[i] = (cfs_param_sysctl_table_t)
         {
                 .name     = "enable_csum",
                 .data     = ksocknal_tunables.ksnd_enable_csum,
                 .mode     = 0644,
-                .read     = libcfs_param_intvec_read,
-                .write    = libcfs_param_intvec_write
+                .read     = cfs_param_intvec_read,
+                .write    = cfs_param_intvec_write
         };
         i++;
-        lp_ksocknal_ctl_table[i] = (libcfs_param_sysctl_table_t)
+        lp_ksocknal_ctl_table[i] = (cfs_param_sysctl_table_t)
         {
                 .name     = "inject_csum_error",
                 .data     = ksocknal_tunables.ksnd_inject_csum_error,
                 .mode     = 0644,
-                .read     = libcfs_param_intvec_read,
-                .write    = libcfs_param_intvec_write
+                .read     = cfs_param_intvec_read,
+                .write    = cfs_param_intvec_write
         };
         i++;
 }
@@ -351,9 +351,9 @@ ksocknal_lib_params_init ()
         if (*ksocknal_tunables.ksnd_zc_recv_min_nfrags > LNET_MAX_IOV)
                 *ksocknal_tunables.ksnd_zc_recv_min_nfrags = LNET_MAX_IOV;
 
-        libcfs_param_ksocknal_ctl_table_init();
-        libcfs_param_sysctl_init("socknal", lp_ksocknal_ctl_table,
-                                 libcfs_param_lnet_root);
+        cfs_param_ksocknal_ctl_table_init();
+        cfs_param_sysctl_init("socknal", lp_ksocknal_ctl_table,
+                              cfs_param_lnet_root);
 
         return 0;
 }
@@ -361,5 +361,5 @@ ksocknal_lib_params_init ()
 void
 ksocknal_lib_params_fini ()
 {
-        libcfs_param_sysctl_fini("socknal", libcfs_param_lnet_root);
+        cfs_param_sysctl_fini("socknal", cfs_param_lnet_root);
 }

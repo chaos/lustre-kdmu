@@ -453,7 +453,7 @@ ptlrpc_server_post_idle_rqbds (struct ptlrpc_service *svc)
  */
 struct ptlrpc_service *ptlrpc_init_svc_conf(struct ptlrpc_service_conf *c,
                                             svc_handler_t h, char *name,
-                                            libcfs_param_entry_t *proc_entry,
+                                            cfs_param_entry_t *proc_entry,
                                             svcreq_printfn_t prntfn,
                                             char *threadname)
 {
@@ -497,7 +497,7 @@ struct ptlrpc_service *
 ptlrpc_init_svc(int nbufs, int bufsize, int max_req_size, int max_reply_size,
                 int req_portal, int rep_portal, int watchdog_factor,
                 svc_handler_t handler, char *name,
-                libcfs_param_entry_t *proc_entry,
+                cfs_param_entry_t *proc_entry,
                 svcreq_printfn_t svcreq_printfn,
                 int min_threads, int max_threads,
                 char *threadname, __u32 ctx_tags,

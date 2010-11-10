@@ -356,7 +356,7 @@ struct ll_sb_info {
         struct obd_uuid           ll_sb_uuid;
         struct obd_export        *ll_md_exp;
         struct obd_export        *ll_dt_exp;
-        libcfs_param_entry_t *ll_proc_root;
+        cfs_param_entry_t        *ll_proc_root;
         struct lu_fid             ll_root_fid; /* root object fid */
 
         int                       ll_flags;
@@ -520,7 +520,7 @@ struct lov_stripe_md;
 
 extern cfs_spinlock_t inode_lock;
 
-extern libcfs_param_entry_t *proc_lustre_fs_root;
+extern cfs_param_entry_t *proc_lustre_fs_root;
 
 static inline struct inode *ll_info2i(struct ll_inode_info *lli)
 {

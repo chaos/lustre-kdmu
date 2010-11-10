@@ -1100,15 +1100,15 @@ int class_process_proc_param(char *prefix, struct lprocfs_vars *lvars,
                                 matched++;
                                 rc = -EROFS;
                                 if (var->write_fptr) {
-                                        struct libcfs_param_cb_data cb_data;
+                                        cfs_param_cb_data_t cpcd;
                                         mm_segment_t oldfs;
                                         oldfs = get_fs();
                                         set_fs(KERNEL_DS);
-                                        cb_data.cb_data = data;
-                                        cb_data.cb_flag = 0;
-                                        cb_data.cb_magic = PARAM_DEBUG_MAGIC;
+                                        cpcd.cb_data = data;
+                                        cpcd.cb_flag = 0;
+                                        cpcd.cb_magic = CFS_PARAM_DEBUG_MAGIC;
                                         rc = (var->write_fptr)(NULL, sval,
-                                                               vallen, &cb_data);
+                                                               vallen, &cpcd);
                                         set_fs(oldfs);
                                 }
                                 break;

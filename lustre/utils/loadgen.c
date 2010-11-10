@@ -251,7 +251,7 @@ static int write_proc(char *proc_path, char *value)
 {
         int rc;
 
-        rc = params_write(proc_path, strlen(proc_path), value, strlen(value));
+        rc = cfs_param_uwrite(proc_path, strlen(proc_path), value, strlen(value));
         if (rc < 0) {
                 fprintf(stderr, "write('%s') failed: %s (%d)\n",
                         proc_path, strerror(errno), errno);
@@ -266,7 +266,7 @@ static int read_proc(char *proc_path,  unsigned long long *value)
         long long offset = 0;
         char buf[50];
 
-        rc = params_read(proc_path, strlen(proc_path), buf, 50, &offset, &rc);
+        rc = cfs_param_uread(proc_path, strlen(proc_path), buf, 50, &offset, &rc);
         if (rc <= 0) {
                 fprintf(stderr, "read('%s') failed: %s (%d)\n",
                         proc_path, strerror(rc), rc);

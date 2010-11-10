@@ -48,9 +48,9 @@ int  lu_time_global_init(void);
 void lu_time_global_fini(void);
 
 int  lu_time_named_init(struct lprocfs_stats **stats, const char *name,
-                        libcfs_param_entry_t *entry, const char **names,
+                        cfs_param_entry_t *entry, const char **names,
                         int nr);
-int  lu_time_init(struct lprocfs_stats **stats, libcfs_param_entry_t *entry,
+int  lu_time_init(struct lprocfs_stats **stats, cfs_param_entry_t *entry,
                   const char **names, int nr);
 void lu_time_fini(struct lprocfs_stats **stats);
 

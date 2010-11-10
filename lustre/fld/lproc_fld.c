@@ -71,15 +71,15 @@ fld_proc_read_targets(char *page, char **start, off_t off,
 	int total = 0, rc;
 	ENTRY;
 
-        LIBCFS_PARAM_GET_DATA(fld, data, NULL);
+        cfs_param_get_data(fld, data, NULL);
         LASSERT(fld != NULL);
 
         cfs_spin_lock(&fld->lcf_lock);
         cfs_list_for_each_entry(target,
                                 &fld->lcf_targets, ft_chain)
         {
-                rc = libcfs_param_snprintf(page, count, data, LP_STR,
-                                           "%s\n", fld_target_name(target));
+                rc = cfs_param_snprintf(page, count, data, CFS_PARAM_STR,
+                                        "%s\n", fld_target_name(target));
                 if (rc > 0) {
                         page += rc;
                         count -= rc;
@@ -100,19 +100,19 @@ fld_proc_read_hash(char *page, char **start, off_t off,
 	int rc;
 	ENTRY;
 
-        LIBCFS_PARAM_GET_DATA(fld, data, NULL);
+        cfs_param_get_data(fld, data, NULL);
         LASSERT(fld != NULL);
 
         cfs_spin_lock(&fld->lcf_lock);
-        rc = libcfs_param_snprintf(page, count, data, LP_STR,
-                                   "%s\n", fld->lcf_hash->fh_name);
+        rc = cfs_param_snprintf(page, count, data, CFS_PARAM_STR,
+                                "%s\n", fld->lcf_hash->fh_name);
         cfs_spin_unlock(&fld->lcf_lock);
 
 	RETURN(rc);
 }
 
 static int
-fld_proc_write_hash(libcfs_file_t *file, const char *buffer,
+fld_proc_write_hash(cfs_param_file_t *file, const char *buffer,
                     unsigned long count, void *data)
 {
         struct lu_client_fld *fld;
@@ -120,7 +120,7 @@ fld_proc_write_hash(libcfs_file_t *file, const char *buffer,
         int i;
 	ENTRY;
 
-        LIBCFS_PARAM_GET_DATA(fld, data, NULL);
+        cfs_param_get_data(fld, data, NULL);
         LASSERT(fld != NULL);
 
         for (i = 0; fld_hash[i].fh_name != NULL; i++) {
@@ -146,13 +146,13 @@ fld_proc_write_hash(libcfs_file_t *file, const char *buffer,
 }
 
 static int
-fld_proc_write_cache_flush(libcfs_file_t *file, const char *buffer,
+fld_proc_write_cache_flush(cfs_param_file_t *file, const char *buffer,
                            unsigned long count, void *data)
 {
         struct lu_client_fld *fld;
 	ENTRY;
 
-        LIBCFS_PARAM_GET_DATA(fld, data, NULL);
+        cfs_param_get_data(fld, data, NULL);
         LASSERT(fld != NULL);
 
         fld_cache_flush(fld->lcf_cache);

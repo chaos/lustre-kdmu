@@ -94,74 +94,74 @@ CFS_MODULE_PARM(router_ping_timeout, "i", int, 0444,
                 "Seconds to wait for the reply to a router health query");
 
 #ifdef __KERNEL__
-static libcfs_param_sysctl_table_t libcfs_param_router_ctl_table[] = {
+static cfs_param_sysctl_table_t cfs_param_router_ctl_table[] = {
         {
                 .name     = "forwarding",
                 .data     = forwarding,
                 .mode     = 0444,
-                .read     = libcfs_param_string_read
+                .read     = cfs_param_string_read
         },
         {
                 .name     = "tiny_router_buffers",
                 .data     = &tiny_router_buffers,
                 .mode     = 0444,
-                .read     = libcfs_param_intvec_read
+                .read     = cfs_param_intvec_read
         },
         {
                 .name     = "small_router_buffers",
                 .data     = &small_router_buffers,
                 .mode     = 0444,
-                .read     = libcfs_param_intvec_read
+                .read     = cfs_param_intvec_read
         },
         {
                 .name     = "large_router_buffers",
                 .data     = &large_router_buffers,
                 .mode     = 0444,
-                .read     = libcfs_param_intvec_read
+                .read     = cfs_param_intvec_read
         },
         {
                 .name     = "peer_buffer_credits",
                 .data     = &peer_buffer_credits,
                 .mode     = 0444,
-                .read     = libcfs_param_intvec_read
+                .read     = cfs_param_intvec_read
         },
         {
                 .name     = "auto_down",
                 .data     = &auto_down,
                 .mode     = 0444,
-                .read     = libcfs_param_intvec_read
+                .read     = cfs_param_intvec_read
         },
         {
                 .name     = "check_routers_before_use",
                 .data     = &check_routers_before_use,
                 .mode     = 0444,
-                .read     = libcfs_param_intvec_read
+                .read     = cfs_param_intvec_read
         },
         {
                 .name     = "dead_router_check_interval",
                 .data     = &dead_router_check_interval,
                 .mode     = 0444,
-                .read     = libcfs_param_intvec_read
+                .read     = cfs_param_intvec_read
         },
         {
                 .name     = "live_router_check_interval",
                 .data     = &live_router_check_interval,
                 .mode     = 0444,
-                .read     = libcfs_param_intvec_read
+                .read     = cfs_param_intvec_read
         },
         {
                 .name     = "router_ping_timeout",
                 .data     = &router_ping_timeout,
                 .mode     = 0444,
-                .read     = libcfs_param_intvec_read
+                .read     = cfs_param_intvec_read
         },
         {0}
 };
 
 void lnet_router_sysctl_init()
 {
-        libcfs_param_sysctl_init("lnet", libcfs_param_router_ctl_table,
-                                 libcfs_param_lnet_root);
+        cfs_param_sysctl_init("lnet", cfs_param_router_ctl_table,
+                              cfs_param_lnet_root);
 }
 #endif
 

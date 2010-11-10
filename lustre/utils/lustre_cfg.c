@@ -492,7 +492,7 @@ int jt_lcfg_param(int argc, char **argv)
 
 /* Param set in config log on MGS */
 /* conf_param key=value */
-/* Note we can actually send mgc conf_params from clients, but currently
+/* Note we can actually send mgc conf_param from clients, but currently
  * that's only done for default file striping (see ll_send_mgc_param),
  * and not here. */
 /* After removal of a parameter (-d) Lustre will use the default
@@ -557,7 +557,7 @@ int jt_lcfg_mgsparam(int argc, char **argv)
  * -part of param name in IP address. In this case, we add escape character '\\'
  *  e.g. from "ldlm.*.MGC10.10.121.1@tcp" to "ldlm.*.MGC10\.10\.121\.1@tcp"
  */
-struct params_opts{
+struct param_opts{
         int show_path:1;
         int only_path:1;
         int show_type:1;
@@ -648,12 +648,12 @@ static char *display_name(char *filename, mode_t mode, int show_type)
         return filename;
 }
 
-static void params_show(int show_path, char *buf)
+static void param_show(int show_path, char *buf)
 {
         char outbuf[CFS_PAGE_SIZE];
         int rc = 0, pos = 0;
 
-        while ((rc = params_unpack(buf + pos, outbuf, sizeof(outbuf)))) {
+        while ((rc = cfs_param_unpack(buf + pos, outbuf, sizeof(outbuf)))) {
                 /* start from a new line if there are multi-lines */
                 if (show_path &&
                     strstr(outbuf, "\n") != (outbuf + strlen(outbuf) - 1))
@@ -664,14 +664,14 @@ static void params_show(int show_path, char *buf)
         }
 }
 
-static int listparam_display(struct params_opts *popt, char *pattern)
+static int listparam_display(struct param_opts *popt, char *pattern)
 {
         int rc = 0;
         char filename[PATH_MAX + 1];    /* extra 1 byte for file type */
-        struct params_entry_list *pel = NULL;
-        struct params_entry_list *pel_head = NULL;
+        struct param_entry_list *pel = NULL;
+        struct param_entry_list *pel_head = NULL;
 
-        if ((rc = params_list(pattern, &pel)) < 0)
+        if ((rc = cfs_param_ulist(pattern, &pel)) < 0)
                 return rc;
         pel_head = pel;
         pel = pel_head->pel_next;
@@ -690,23 +690,23 @@ static int listparam_display(struct params_opts *popt, char *pattern)
                 }
                 pel = pel->pel_next;
         }
-        params_free_entrylist(pel_head);
+        cfs_param_free_entrylist(pel_head);
 
         return rc;
 }
 
-static int getparam_display(struct params_opts *popt, char *pattern)
+static int getparam_display(struct param_opts *popt, char *pattern)
 {
         int rc = 0;
         char *buf = NULL;
         char filename[PATH_MAX + 1];    /* extra 1 byte for file type */
         long long offset = 0;
         int eof = 0;
-        int params_count = 0;
-        struct params_entry_list *pel = NULL;
-        struct params_entry_list *pel_head = NULL;
+        int param_count = 0;
+        struct param_entry_list *pel = NULL;
+        struct param_entry_list *pel_head = NULL;
 
-        if ((rc = params_list(pattern, &pel)) < 0)
+        if ((rc = cfs_param_ulist(pattern, &pel)) < 0)
                 return rc;
         pel_head = pel;
         pel = pel_head->pel_next;
@@ -735,20 +735,21 @@ static int getparam_display(struct params_opts *popt, char *pattern)
                 if (popt->show_path)
                         printf("%s=", valuename);
                 while (!eof) {
-                        params_count =
-                                params_read(pel->pel_name, pel->pel_name_len,
-                                            buf, CFS_PAGE_SIZE, &offset, &eof);
-                        if (params_count > 0) {
-                                params_show(popt->show_path, buf);
+                        param_count = cfs_param_uread(pel->pel_name,
+                                                      pel->pel_name_len,
+                                                      buf, CFS_PAGE_SIZE,
+                                                      &offset, &eof);
+                        if (param_count > 0) {
+                                param_show(popt->show_path, buf);
                                 /* usually, offset is set only in seq_read,
                                  * but not in common read cb. */
-                        } else if (params_count == 0) {
+                        } else if (param_count == 0) {
                                 if (popt->show_path)
                                         printf("\n");
                                 break;
-                        } else if (params_count < 0){
+                        } else if (param_count < 0){
                                 fprintf(stderr, "error: get_param: read value"
-                                        "failed (%d).\n", params_count);
+                                        "failed (%d).\n", param_count);
                                 break;
                         }
                 }
@@ -757,19 +758,19 @@ next:
         }
         if (buf)
                 free(buf);
-        params_free_entrylist(pel_head);
+        cfs_param_free_entrylist(pel_head);
         return rc;
 }
 
-static int setparam_display(struct params_opts *popt, char *pattern,
+static int setparam_display(struct param_opts *popt, char *pattern,
                             char *value)
 {
         int rc = 0;
         char filename[PATH_MAX + 1];    /* extra 1 byte for file type */
-        struct params_entry_list *pel = NULL;
-        struct params_entry_list *pel_head = NULL;
+        struct param_entry_list *pel = NULL;
+        struct param_entry_list *pel_head = NULL;
 
-        if ((rc = params_list(pattern, &pel)) < 0)
+        if ((rc = cfs_param_ulist(pattern, &pel)) < 0)
                 return rc;
         pel_head = pel;
         pel = pel_head->pel_next;
@@ -786,7 +787,7 @@ static int setparam_display(struct params_opts *popt, char *pattern,
                                 "parameter '%s' is a directory.\n", valuename);
                         goto next;
                 }
-                rc = params_write(pel->pel_name, pel->pel_name_len,
+                rc = cfs_param_uwrite(pel->pel_name, pel->pel_name_len,
                                   value, strlen(value));
                 if (rc >= 0 && popt->show_path)
                         printf("%s=%s\n", valuename, value);
@@ -794,13 +795,13 @@ next:
                 pel = pel->pel_next;
         }
         rc = rc > 0 ? 0 : rc;
-        params_free_entrylist(pel_head);
+        cfs_param_free_entrylist(pel_head);
 
         return rc;
 }
 
-static int params_cmdline(int argc, char **argv, char *options,
-                         struct params_opts *popt)
+static int param_cmdline(int argc, char **argv, char *options,
+                         struct param_opts *popt)
 {
         int ch;
 
@@ -833,10 +834,10 @@ static int params_cmdline(int argc, char **argv, char *options,
 int jt_lcfg_listparam(int argc, char **argv)
 {
         int rc = 0, i;
-        struct params_opts popt;
+        struct param_opts popt;
         char pattern[PATH_MAX];
 
-        rc = params_cmdline(argc, argv, "FR", &popt);
+        rc = param_cmdline(argc, argv, "FR", &popt);
         if (rc == argc && popt.recursive) {
                 /* if '-R' is given without a path, list all params.
                  * Let's overwrite  the last param with '*' and
@@ -860,10 +861,10 @@ int jt_lcfg_listparam(int argc, char **argv)
 int jt_lcfg_getparam(int argc, char **argv)
 {
         int rc = 0, i;
-        struct params_opts popt;
+        struct param_opts popt;
         char pattern[PATH_MAX];
 
-        rc = params_cmdline(argc, argv, "nNF", &popt);
+        rc = param_cmdline(argc, argv, "nNF", &popt);
         if (rc < 0 || rc >= argc)
                 return CMD_HELP;
 
@@ -880,11 +881,11 @@ int jt_lcfg_getparam(int argc, char **argv)
 int jt_lcfg_setparam(int argc, char **argv)
 {
         int rc = 0, i;
-        struct params_opts popt;
+        struct param_opts popt;
         char pattern[PATH_MAX];
         char *path = NULL, *value = NULL;
 
-        rc = params_cmdline(argc, argv, "n", &popt);
+        rc = param_cmdline(argc, argv, "n", &popt);
         if (rc < 0 || rc >= argc)
                 return CMD_HELP;
 

@@ -2195,12 +2195,12 @@ static int filter_setup(struct obd_device *obd, struct lustre_cfg* lcfg)
                 }
         }
         if (obd->obd_proc_exports_entry) {
-                libcfs_param_entry_t *temp;
+                cfs_param_entry_t *temp;
                 temp = lprocfs_add_simple(obd->obd_proc_exports_entry, "clear",
                                           lprocfs_nid_stats_clear_read,
                                           lprocfs_nid_stats_clear_write,
                                           obd, NULL);
-                lprocfs_put_lperef(temp);
+                lprocfs_put_peref(temp);
         }
 
         memcpy((void *)addr, lustre_cfg_buf(lcfg, 4),
@@ -2215,7 +2215,7 @@ static int filter_setup(struct obd_device *obd, struct lustre_cfg* lcfg)
                 lprocfs_obd_cleanup(obd);
         }
         if (register_exports)
-                lprocfs_put_lperef(obd->obd_proc_exports_entry);
+                lprocfs_put_peref(obd->obd_proc_exports_entry);
 
         return rc;
 }
@@ -4606,7 +4606,7 @@ static struct lvfs_callback_ops filter_lvfs_ops = {
 };
 
 static struct obd_ops filter_obd_ops = {
-        .o_owner          = THIS_MODULE,
+        .o_owner          = CFS_PARAM_MODULE,
         .o_get_info       = filter_get_info,
         .o_set_info_async = filter_set_info_async,
         .o_setup          = filter_setup,

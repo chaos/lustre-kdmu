@@ -146,7 +146,7 @@ int sptlrpc_proc_read_enc_pool(char *page, char **start, off_t off, int count,
 
         cfs_spin_lock(&page_pools.epp_lock);
 
-        rc = libcfs_param_snprintf(page, count, data, LP_STR,
+        rc = cfs_param_snprintf(page, count, data, CFS_PARAM_STR,
                       "physical pages:          %lu\n"
                       "pages per pool:          %lu\n"
                       "max pages:               %lu\n"

@@ -52,10 +52,10 @@ static int lprocfs_filter_rd_groups(char *page, char **start, off_t off,
         struct obd_device *obd;
         struct filter_device *ofd;
 
-        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        cfs_param_get_data(obd, data, NULL);
         ofd = filter_dev(obd->obd_lu_dev);
 
-        return libcfs_param_snprintf(page, count, data, LP_S32, "%u\n",
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_S32, "%u\n",
                                      ofd->ofd_max_group);
 }
 
@@ -65,11 +65,11 @@ static int lprocfs_filter_rd_tot_dirty(char *page, char **start, off_t off,
         struct obd_device *obd;
         struct filter_device *ofd;
 
-        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        cfs_param_get_data(obd, data, NULL);
         LASSERT(obd != NULL);
         ofd = filter_dev(obd->obd_lu_dev);
 
-        return libcfs_param_snprintf(page, count, data, LP_U64, LPU64"\n",
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_U64, LPU64"\n",
                                      ofd->ofd_tot_dirty);
 }
 
@@ -79,11 +79,11 @@ static int lprocfs_filter_rd_tot_granted(char *page, char **start, off_t off,
         struct obd_device *obd;
         struct filter_device *ofd;
 
-        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        cfs_param_get_data(obd, data, NULL);
         LASSERT(obd != NULL);
         ofd = filter_dev(obd->obd_lu_dev);
 
-        return libcfs_param_snprintf(page, count, data, LP_U64, LPU64"\n",
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_U64, LPU64"\n",
                                      ofd->ofd_tot_granted);
 }
 
@@ -93,11 +93,11 @@ static int lprocfs_filter_rd_tot_pending(char *page, char **start, off_t off,
         struct obd_device *obd;
         struct filter_device *ofd;
 
-        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        cfs_param_get_data(obd, data, NULL);
         LASSERT(obd != NULL);
         ofd = filter_dev(obd->obd_lu_dev);
 
-        return libcfs_param_snprintf(page, count, data, LP_U64, LPU64"\n",
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_U64, LPU64"\n",
                                      ofd->ofd_tot_pending);
 }
 
@@ -110,7 +110,7 @@ static int lprocfs_filter_rd_last_id(char *page, char **start, off_t off,
         int retval = 0, rc, i;
 	__u64 temp;
 
-	LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+	cfs_param_get_data(obd, data, NULL);
         if (obd == NULL)
                 return 0;
         ofd = filter_dev(obd->obd_lu_dev);
@@ -118,7 +118,7 @@ static int lprocfs_filter_rd_last_id(char *page, char **start, off_t off,
 
         for (i = FID_SEQ_OST_MDT0; i <= ofd->ofd_max_group; i++) {
 		temp = filter_last_id(ofd, i);
-                rc = libcfs_param_snprintf(page, count, data, LP_U64,
+                rc = cfs_param_snprintf(page, count, data, CFS_PARAM_U64,
 				           LPU64"\n", temp);
                 if (rc < 0) {
                         retval = rc;
@@ -136,13 +136,13 @@ int lprocfs_filter_rd_readcache(char *page, char **start, off_t off, int count,
 {
         struct obd_device *obd;
 
-        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        cfs_param_get_data(obd, data, NULL);
 
-        return libcfs_param_snprintf(page, count, data, LP_U64, LPU64"\n",
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_U64, LPU64"\n",
                             obd->u.filter.fo_readcache_max_filesize);
 }
 
-int lprocfs_filter_wr_readcache(libcfs_file_t * file, const char *buffer,
+int lprocfs_filter_wr_readcache(cfs_param_file_t * file, const char *buffer,
                                 unsigned long count, void *data)
 {
         struct obd_device *obd;
@@ -150,7 +150,7 @@ int lprocfs_filter_wr_readcache(libcfs_file_t * file, const char *buffer,
         int rc;
         int flag = 0;
 
-        LIBCFS_PARAM_GET_DATA(obd, data, &flag);
+        cfs_param_get_data(obd, data, &flag);
         rc = lprocfs_write_u64_helper(buffer, count, &val, flag);
         if (rc)
                 return rc;
@@ -165,14 +165,14 @@ int lprocfs_filter_rd_fmd_max_num(char *page, char **start, off_t off,
         struct obd_device *obd;
         struct filter_device *ofd;
 
-        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        cfs_param_get_data(obd, data, NULL);
         ofd = filter_dev(obd->obd_lu_dev);
 
-        return libcfs_param_snprintf(page, count, data, LP_S32, "%u\n",
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_S32, "%u\n",
                                      ofd->ofd_fmd_max_num);
 }
 
-int lprocfs_filter_wr_fmd_max_num(libcfs_file_t * file, const char *buffer,
+int lprocfs_filter_wr_fmd_max_num(cfs_param_file_t * file, const char *buffer,
                                   unsigned long count, void *data)
 {
         struct obd_device *obd;
@@ -181,7 +181,7 @@ int lprocfs_filter_wr_fmd_max_num(libcfs_file_t * file, const char *buffer,
         int rc;
         int flag = 0;
 
-        LIBCFS_PARAM_GET_DATA(obd, data, &flag);
+        cfs_param_get_data(obd, data, &flag);
         ofd = filter_dev(obd->obd_lu_dev);
         rc = lprocfs_write_helper(buffer, count, &val, flag);
         if (rc)
@@ -201,14 +201,14 @@ int lprocfs_filter_rd_fmd_max_age(char *page, char **start, off_t off,
         struct filter_device *ofd;
         int temp;
 
-        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        cfs_param_get_data(obd, data, NULL);
         ofd = filter_dev(obd->obd_lu_dev);
         temp = ofd->ofd_fmd_max_age / CFS_HZ;
 
-        return libcfs_param_snprintf(page, count, data, LP_S32, "%u\n", temp);
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_S32, "%u\n", temp);
 }
 
-int lprocfs_filter_wr_fmd_max_age(libcfs_file_t * file, const char *buffer,
+int lprocfs_filter_wr_fmd_max_age(cfs_param_file_t * file, const char *buffer,
                                   unsigned long count, void *data)
 {
         struct obd_device *obd;
@@ -217,7 +217,7 @@ int lprocfs_filter_wr_fmd_max_age(libcfs_file_t * file, const char *buffer,
         int rc;
         int flag = 0;
 
-        LIBCFS_PARAM_GET_DATA(obd, data, &flag);
+        cfs_param_get_data(obd, data, &flag);
         ofd = filter_dev(obd->obd_lu_dev);
         rc = lprocfs_write_helper(buffer, count, &val, flag);
         if (rc)
@@ -236,22 +236,22 @@ static int lprocfs_filter_rd_capa(char *page, char **start, off_t off,
         struct obd_device *obd;
         struct filter_device *ofd;
 
-        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        cfs_param_get_data(obd, data, NULL);
         ofd = filter_dev(obd->obd_lu_dev);
 
-        return libcfs_param_snprintf(page, count, data, LP_STR,
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_STR,
                                      "capability on: %s\n",
                                      ofd->ofd_fl_oss_capa ? "oss" : "");
 }
 
-static int lprocfs_filter_wr_capa(libcfs_file_t * file, const char *buffer,
+static int lprocfs_filter_wr_capa(cfs_param_file_t * file, const char *buffer,
                                   unsigned long count, void *data)
 {
         struct obd_device *obd;
         struct filter_device *ofd;
         int val, rc, flag = 0;
 
-        LIBCFS_PARAM_GET_DATA(obd, data, &flag);
+        cfs_param_get_data(obd, data, &flag);
         ofd = filter_dev(obd->obd_lu_dev);
         rc = lprocfs_write_helper(buffer, count, &val, flag);
         if (rc)
@@ -273,7 +273,7 @@ static int lprocfs_filter_wr_capa(libcfs_file_t * file, const char *buffer,
 static int lprocfs_filter_rd_capa_count(char *page, char **start, off_t off,
                                         int count, int *eof, void *data)
 {
-        return libcfs_param_snprintf(page, count, data, LP_STR, "%d %d\n",
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_STR, "%d %d\n",
                       capa_count[CAPA_SITE_CLIENT],
                       capa_count[CAPA_SITE_SERVER]);
 }
@@ -284,21 +284,21 @@ int lprocfs_filter_rd_degraded(char *page, char **start, off_t off,
         struct obd_device *obd;
         struct filter_device *ofd;
 
-        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        cfs_param_get_data(obd, data, NULL);
         ofd = filter_dev(obd->obd_lu_dev);
 
-        return libcfs_param_snprintf(page, count, data, LP_U32,
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_U32,
                                      "%u\n", ofd->ofd_raid_degraded);
 }
 
-int lprocfs_filter_wr_degraded(libcfs_file_t *file, const char *buffer,
+int lprocfs_filter_wr_degraded(cfs_param_file_t *file, const char *buffer,
                                unsigned long count, void *data)
 {
         struct obd_device *obd;
         struct filter_device *ofd;
         int val, rc, flag = 0;
 
-        LIBCFS_PARAM_GET_DATA(obd, data, &flag);
+        cfs_param_get_data(obd, data, &flag);
         ofd = filter_dev(obd->obd_lu_dev);
         rc = lprocfs_write_helper(buffer, count, &val, flag);
         if (rc)
@@ -318,13 +318,13 @@ int lprocfs_filter_rd_fstype(char *page, char **start, off_t off, int count,
         struct filter_device *ofd;
         struct lu_device *d;
 
-        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        cfs_param_get_data(obd, data, NULL);
         ofd = filter_dev(obd->obd_lu_dev);
         LASSERT(ofd->ofd_osd);
         d = &ofd->ofd_osd->dd_lu_dev;
         LASSERT(d->ld_type);
 
-        return libcfs_param_snprintf(page, count, data, LP_STR,
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_STR,
 			             "%s\n", d->ld_type->ldt_name);
 }
 
@@ -334,13 +334,13 @@ int lprocfs_filter_rd_syncjournal(char *page, char **start, off_t off,
         struct obd_device *obd;
         struct filter_device *ofd;
 
-        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        cfs_param_get_data(obd, data, NULL);
         ofd = filter_dev(obd->obd_lu_dev);
-        return libcfs_param_snprintf(page, count, data, LP_U32,
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_U32,
                                      "%u\n", ofd->ofd_syncjournal);
 }
 
-int lprocfs_filter_wr_syncjournal(libcfs_file_t *file, const char *buffer,
+int lprocfs_filter_wr_syncjournal(cfs_param_file_t *file, const char *buffer,
                                   unsigned long count, void *data)
 {
         struct obd_device *obd;
@@ -349,7 +349,7 @@ int lprocfs_filter_wr_syncjournal(libcfs_file_t *file, const char *buffer,
         int rc;
         int flag = 0;
 
-        LIBCFS_PARAM_GET_DATA(obd, data, &flag);
+        cfs_param_get_data(obd, data, &flag);
         ofd = filter_dev(obd->obd_lu_dev);
         rc = lprocfs_write_helper(buffer, count, &val, flag);
         if (rc)
@@ -376,13 +376,13 @@ int lprocfs_filter_rd_sync_lock_cancel(char *page, char **start, off_t off,
         struct obd_device *obd;
         struct filter_device *ofd;
 
-        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        cfs_param_get_data(obd, data, NULL);
         ofd = filter_dev(obd->obd_lu_dev);
-        return libcfs_param_snprintf(page, count, data, LP_STR, "%s\n",
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_STR, "%s\n",
                       sync_on_cancel_states[ofd->ofd_sync_lock_cancel]);
 }
 
-int lprocfs_filter_wr_sync_lock_cancel(libcfs_file_t *file, const char *buffer,
+int lprocfs_filter_wr_sync_lock_cancel(cfs_param_file_t *file, const char *buffer,
                                        unsigned long count, void *data)
 {
         struct obd_device *obd;
@@ -391,7 +391,7 @@ int lprocfs_filter_wr_sync_lock_cancel(libcfs_file_t *file, const char *buffer,
         int i;
         int flag = 0;
 
-        LIBCFS_PARAM_GET_DATA(obd, data, &flag);
+        cfs_param_get_data(obd, data, &flag);
         ofd = filter_dev(obd->obd_lu_dev);
         for (i = 0 ; i < NUM_SYNC_ON_CANCEL_STATES; i++) {
                 if (memcmp(buffer, sync_on_cancel_states[i],
@@ -521,14 +521,14 @@ void filter_tally(struct obd_export *exp, struct page **pages, int nr_pages,
 
 #define pct(a,b) (b ? a * 100 / b : 0)
 
-static void display_brw_stats(libcfs_seq_file_t *seq, char *name, char *units,
+static void display_brw_stats(cfs_seq_file_t *seq, char *name, char *units,
         struct obd_histogram *read, struct obd_histogram *write, int log2)
 {
         unsigned long read_tot, write_tot, r, w, read_cum = 0, write_cum = 0;
         int i;
 
-        LIBCFS_SEQ_PRINTF(seq, "\n%26s read      |     write\n", " ");
-        LIBCFS_SEQ_PRINTF(seq, "%-22s %-5s %% cum %% |  %-5s %% cum %%\n",
+        cfs_seq_printf(seq, "\n%26s read      |     write\n", " ");
+        cfs_seq_printf(seq, "%-22s %-5s %% cum %% |  %-5s %% cum %%\n",
                    name, units, units);
 
         read_tot = lprocfs_oh_sum(read);
@@ -542,15 +542,15 @@ static void display_brw_stats(libcfs_seq_file_t *seq, char *name, char *units,
                         continue;
 
                 if (!log2)
-                        LIBCFS_SEQ_PRINTF(seq, "%u", i);
+                        cfs_seq_printf(seq, "%u", i);
                 else if (i < 10)
-                        LIBCFS_SEQ_PRINTF(seq, "%u", 1<<i);
+                        cfs_seq_printf(seq, "%u", 1<<i);
                 else if (i < 20)
-                        LIBCFS_SEQ_PRINTF(seq, "%uK", 1<<(i-10));
+                        cfs_seq_printf(seq, "%uK", 1<<(i-10));
                 else
-                        LIBCFS_SEQ_PRINTF(seq, "%uM", 1<<(i-20));
+                        cfs_seq_printf(seq, "%uM", 1<<(i-20));
 
-                LIBCFS_SEQ_PRINTF(seq, ":\t\t%10lu %3lu %3lu   | %4lu %3lu %3lu\n",
+                cfs_seq_printf(seq, ":\t\t%10lu %3lu %3lu   | %4lu %3lu %3lu\n",
                            r, pct(r, read_tot), pct(read_cum, read_tot),
                            w, pct(w, write_tot), pct(write_cum, write_tot));
 
@@ -559,13 +559,13 @@ static void display_brw_stats(libcfs_seq_file_t *seq, char *name, char *units,
         }
 }
 
-static void brw_stats_show(libcfs_seq_file_t *seq, struct brw_stats *brw_stats)
+static void brw_stats_show(cfs_seq_file_t *seq, struct brw_stats *brw_stats)
 {
         struct timeval now;
 
         /* this sampling races with updates */
         cfs_gettimeofday(&now);
-        LIBCFS_SEQ_PRINTF(seq, "snapshot_time:         %lu.%lu (secs.usecs)\n",
+        cfs_seq_printf(seq, "snapshot_time:         %lu.%lu (secs.usecs)\n",
                    now.tv_sec, now.tv_usec);
 
         display_brw_stats(seq, "pages per bulk r/w", "rpcs",
@@ -603,9 +603,9 @@ static void brw_stats_show(libcfs_seq_file_t *seq, struct brw_stats *brw_stats)
 
 #undef pct
 
-static int filter_brw_stats_seq_show(libcfs_seq_file_t *seq, void *v)
+static int filter_brw_stats_seq_show(cfs_seq_file_t *seq, void *v)
 {
-        struct obd_device *dev = LIBCFS_SEQ_PRIVATE(seq);
+        struct obd_device *dev = cfs_seq_private(seq);
         struct filter_obd *filter = &dev->u.filter;
 
         brw_stats_show(seq, &filter->fo_filter_stats);
@@ -613,11 +613,11 @@ static int filter_brw_stats_seq_show(libcfs_seq_file_t *seq, void *v)
         return 0;
 }
 
-static ssize_t filter_brw_stats_seq_write(libcfs_file_t *file, const char *buf,
+static ssize_t filter_brw_stats_seq_write(cfs_param_file_t *file, const char *buf,
                                        size_t len, loff_t *off)
 {
-        libcfs_seq_file_t *seq = LIBCFS_FILE_PRIVATE(file);
-        struct obd_device *dev = LIBCFS_SEQ_PRIVATE(seq);
+        cfs_seq_file_t *seq = cfs_file_private(file);
+        struct obd_device *dev = cfs_seq_private(seq);
         struct filter_obd *filter = &dev->u.filter;
         int i;
 
@@ -635,7 +635,7 @@ int lproc_filter_attach_seqstat(struct obd_device *dev)
                                       &filter_brw_stats_fops, dev);
 }
 
-static int filter_per_export_stats_seq_show(libcfs_seq_file_t *seq, void *v)
+static int filter_per_export_stats_seq_show(cfs_seq_file_t *seq, void *v)
 {
 #if 0
         struct filter_export_data *fed = seq->private;
@@ -646,11 +646,11 @@ static int filter_per_export_stats_seq_show(libcfs_seq_file_t *seq, void *v)
         return 0;
 }
 
-static ssize_t filter_per_export_stats_seq_write(libcfs_file_t *file,
+static ssize_t filter_per_export_stats_seq_write(cfs_param_file_t *file,
                                        const char *buf, size_t len, loff_t *off)
 {
 #if 0
-        libcfs_seq_file_t *seq = file->private_data;
+        cfs_seq_file_t *seq = file->private_data;
         struct filter_export_data *fed = seq->private;
         int i;
 
@@ -669,9 +669,9 @@ void lprocfs_filter_init_vars(struct lprocfs_static_vars *lvars)
     lvars->obd_vars     = lprocfs_filter_obd_vars;
 }
 
-static int filter_per_nid_stats_seq_show(libcfs_seq_file_t *seq, void *v)
+static int filter_per_nid_stats_seq_show(cfs_seq_file_t *seq, void *v)
 {
-        nid_stat_t *tmp = LIBCFS_SEQ_PRIVATE(seq);
+        nid_stat_t *tmp = cfs_seq_private(seq);
 
         if (tmp->nid_brw_stats)
                 brw_stats_show(seq, tmp->nid_brw_stats);
@@ -679,12 +679,12 @@ static int filter_per_nid_stats_seq_show(libcfs_seq_file_t *seq, void *v)
         return 0;
 }
 
-static ssize_t filter_per_nid_stats_seq_write(libcfs_file_t *file,
+static ssize_t filter_per_nid_stats_seq_write(cfs_param_file_t *file,
                                               const char *buf, size_t len,
                                               loff_t *off)
 {
-        libcfs_seq_file_t *seq = LIBCFS_FILE_PRIVATE(file);
-        nid_stat_t *tmp = LIBCFS_SEQ_PRIVATE(seq);
+        cfs_seq_file_t *seq = cfs_file_private(file);
+        nid_stat_t *tmp = cfs_seq_private(seq);
         int i;
 
         if (tmp->nid_brw_stats)

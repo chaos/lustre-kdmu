@@ -148,10 +148,10 @@ struct lu_client_seq {
          * clients, this contains meta-sequence range. And for servers this
          * contains super-sequence range.
          */
-        struct lu_seq_range         lcs_space;
+        struct lu_seq_range     lcs_space;
 
         /* Seq related proc */
-        libcfs_param_entry_t      *lcs_proc_dir;
+        cfs_param_entry_t      *lcs_proc_dir;
 
         /* This holds last allocated fid in last obtained seq */
         struct lu_fid           lcs_fid;
@@ -194,10 +194,10 @@ struct lu_server_seq {
         struct dt_object       *lss_obj;
 
         /* Seq related proc */
-        libcfs_param_entry_t    *lss_proc_dir;
+        cfs_param_entry_t      *lss_proc_dir;
 
         /* LUSTRE_SEQ_SERVER or LUSTRE_SEQ_CONTROLLER */
-        enum lu_mgr_type       lss_type;
+        enum lu_mgr_type        lss_type;
 
         /* Client interafce to request controller */
         struct lu_client_seq   *lss_cli;

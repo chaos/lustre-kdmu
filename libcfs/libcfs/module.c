@@ -307,25 +307,25 @@ static int libcfs_ioctl_int(struct cfs_psdev_file *pfile,unsigned long cmd,
         }
 
         case IOC_LIBCFS_GET_PARAM: {
-                err = libcfs_param_read(data->ioc_inlbuf1, data->ioc_pbuf1,
-                                        data->ioc_plen1, &data->ioc_u64[0],
-                                        &data->ioc_u32[1]);
+                err = cfs_param_kread(data->ioc_inlbuf1, data->ioc_pbuf1,
+                                      data->ioc_plen1, &data->ioc_u64[0],
+                                      &data->ioc_u32[1]);
                 data->ioc_u32[0] = err;
                 err = libcfs_ioctl_popdata(arg, data, sizeof(*data));
                 break;
         }
 
         case IOC_LIBCFS_SET_PARAM: {
-                err = libcfs_param_write(data->ioc_inlbuf1, data->ioc_inlbuf2,
-                                         data->ioc_inllen2);
+                err = cfs_param_kwrite(data->ioc_inlbuf1, data->ioc_inlbuf2,
+                                       data->ioc_inllen2);
                 data->ioc_u32[0] = err;
                 err = libcfs_ioctl_popdata(arg, data, sizeof(*data));
                 break;
         }
 
         case IOC_LIBCFS_LIST_PARAM: {
-                err = libcfs_param_list(data->ioc_inlbuf1, data->ioc_pbuf1,
-                                        &data->ioc_plen1);
+                err = cfs_param_klist(data->ioc_inlbuf1, data->ioc_pbuf1,
+                                      &data->ioc_plen1);
                 data->ioc_u32[0] = err;
                 err = libcfs_ioctl_popdata(arg, data, sizeof(*data));
                 break;
@@ -414,7 +414,7 @@ static void params_fini(void)
         remove_proc();
 #endif
         remove_params();
-        libcfs_param_root_fini();
+        cfs_param_root_fini();
 }
 
 MODULE_AUTHOR("Peter J. Braam <braam@clusterfs.com>");
@@ -440,9 +440,9 @@ static int init_libcfs_module(void)
         cfs_init_rwsem(&ioctl_list_sem);
         CFS_INIT_LIST_HEAD(&ioctl_list);
 
-        rc = libcfs_param_root_init();
+        rc = cfs_param_root_init();
         if (rc < 0) {
-                printk(CFS_KERN_ERR "LustreError: libcfs_param_root_init: %d\n",
+                printk(CFS_KERN_ERR "LustreError: cfs_param_root_init: %d\n",
                        rc);
                 return rc;
         }
@@ -490,7 +490,7 @@ static int init_libcfs_module(void)
  cleanup_debug:
 #endif
         libcfs_debug_cleanup();
-        libcfs_param_root_fini();
+        cfs_param_root_fini();
         return rc;
 }
 

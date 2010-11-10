@@ -251,5 +251,5 @@ static inline void lprocfs_lmv_init_vars(struct lprocfs_static_vars *lvars)
 }
 #endif
 
-extern libcfs_file_ops_t lmv_proc_target_fops;
+extern cfs_param_file_ops_t lmv_proc_target_fops;
 #endif

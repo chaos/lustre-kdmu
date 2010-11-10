@@ -76,14 +76,15 @@ lnet_router_proc_stats_read (char *page, char **start, off_t off,
                       ctrs->send_length, ctrs->recv_length,
                       ctrs->route_length, ctrs->drop_length);
         if (data != NULL)
-                rc = libcfs_param_snprintf(page, count, data, LP_STR, NULL, NULL);
+                rc = cfs_param_snprintf(page, count, data, CFS_PARAM_STR,
+                                        NULL, NULL);
 
         LIBCFS_FREE(ctrs, sizeof(*ctrs));
         return rc;
 }
 
 static int
-lnet_router_proc_stats_write(libcfs_file_t * file, const char *ubuffer,
+lnet_router_proc_stats_write(cfs_param_file_t * file, const char *ubuffer,
                              unsigned long count, void *data)
 {
         LNET_LOCK();
@@ -175,7 +176,7 @@ lnet_route_seq_seek (lnet_route_seq_iterator_t *lrsi, loff_t off)
 }
 
 static void *
-lnet_route_seq_start (libcfs_seq_file_t *s, loff_t *pos)
+lnet_route_seq_start (cfs_seq_file_t *s, loff_t *pos)
 {
         lnet_route_seq_iterator_t *lrsi;
         int                        rc;
@@ -194,7 +195,7 @@ lnet_route_seq_start (libcfs_seq_file_t *s, loff_t *pos)
 }
 
 static void
-lnet_route_seq_stop (libcfs_seq_file_t *s, void *iter)
+lnet_route_seq_stop (cfs_seq_file_t *s, void *iter)
 {
         lnet_route_seq_iterator_t  *lrsi = iter;
 
@@ -203,7 +204,7 @@ lnet_route_seq_stop (libcfs_seq_file_t *s, void *iter)
 }
 
 static void *
-lnet_route_seq_next (libcfs_seq_file_t *s, void *iter, loff_t *pos)
+lnet_route_seq_next (cfs_seq_file_t *s, void *iter, loff_t *pos)
 {
         lnet_route_seq_iterator_t *lrsi = iter;
         int                        rc;
@@ -220,7 +221,7 @@ lnet_route_seq_next (libcfs_seq_file_t *s, void *iter, loff_t *pos)
 }
 
 static int
-lnet_route_seq_show (libcfs_seq_file_t *s, void *iter)
+lnet_route_seq_show (cfs_seq_file_t *s, void *iter)
 {
         lnet_route_seq_iterator_t *lrsi = iter;
         __u32                      net;
@@ -229,10 +230,10 @@ lnet_route_seq_show (libcfs_seq_file_t *s, void *iter)
         int                        alive;
 
         if (lrsi->lrsi_off == 0) {
-                LIBCFS_SEQ_PRINTF(s, "Routing %s\n",
-                                  the_lnet.ln_routing ? "enabled" : "disabled");
-                LIBCFS_SEQ_PRINTF(s, "%-8s %4s %7s %s\n",
-                                  "net", "hops", "state", "router");
+                cfs_seq_printf(s, "Routing %s\n",
+                               the_lnet.ln_routing ? "enabled" : "disabled");
+                cfs_seq_printf(s, "%-8s %4s %7s %s\n",
+                               "net", "hops", "state", "router");
                 return 0;
         }
 
@@ -253,12 +254,12 @@ lnet_route_seq_show (libcfs_seq_file_t *s, void *iter)
 
         LNET_UNLOCK();
 
-        LIBCFS_SEQ_PRINTF(s, "%-8s %4u %7s %s\n", libcfs_net2str(net), hops,
-                          alive ? "up" : "down", libcfs_nid2str(nid));
+        cfs_seq_printf(s, "%-8s %4u %7s %s\n", libcfs_net2str(net), hops,
+                       alive ? "up" : "down", libcfs_nid2str(nid));
         return 0;
 }
 
-static libcfs_seq_ops_t lnet_routes_sops = {
+static cfs_seq_ops_t lnet_routes_sops = {
         /* start */ lnet_route_seq_start,
         /* stop */  lnet_route_seq_stop,
         /* next */  lnet_route_seq_next,
@@ -266,30 +267,17 @@ static libcfs_seq_ops_t lnet_routes_sops = {
 };
 
 static int
-lnet_route_seq_open(libcfs_inode_t *inode, libcfs_file_t *file)
+lnet_route_seq_open(cfs_inode_t *inode, cfs_param_file_t *file)
 {
-        libcfs_param_dentry_t *dp = LIBCFS_PDE(inode);
-        libcfs_seq_file_t     *sf;
-        int                    rc;
-
-        LPROCFS_ENTRY_AND_CHECK(dp);
-        LIBCFS_SEQ_OPEN(file, &lnet_routes_sops, rc);
-        if (rc) {
-                LPROCFS_EXIT();
-                return rc;
-        }
-        sf = LIBCFS_FILE_PRIVATE(file);
-        LIBCFS_SEQ_PRIVATE(sf) = LIBCFS_DENTRY_DATA(dp);
-
-        return 0;
+        return cfs_param_seq_fopen(inode, file, &lnet_routes_sops);
 }
 
-static libcfs_file_ops_t lnet_routes_fops = {
-        .owner   =  THIS_MODULE,
-        .llseek  =  LIBCFS_SEQ_LSEEK_COMMON,
-        .read    =  LIBCFS_SEQ_READ_COMMON,
+static cfs_param_file_ops_t lnet_routes_fops = {
+        .owner   =  CFS_PARAM_MODULE,
+        .llseek  =  cfs_seq_lseek,
+        .read    =  cfs_seq_read,
         .open    =  lnet_route_seq_open,
-        .release =  libcfs_param_seq_release_common,
+        .release =  cfs_seq_release,
 };
 
 typedef struct {
@@ -357,7 +345,7 @@ lnet_router_seq_seek (lnet_router_seq_iterator_t *lrtrsi, loff_t off)
 }
 
 static void *
-lnet_router_seq_start (libcfs_seq_file_t *s, loff_t *pos)
+lnet_router_seq_start (cfs_seq_file_t *s, loff_t *pos)
 {
         lnet_router_seq_iterator_t *lrtrsi;
         int                        rc;
@@ -376,7 +364,7 @@ lnet_router_seq_start (libcfs_seq_file_t *s, loff_t *pos)
 }
 
 static void
-lnet_router_seq_stop (libcfs_seq_file_t *s, void *iter)
+lnet_router_seq_stop (cfs_seq_file_t *s, void *iter)
 {
         lnet_router_seq_iterator_t  *lrtrsi = iter;
 
@@ -385,7 +373,7 @@ lnet_router_seq_stop (libcfs_seq_file_t *s, void *iter)
 }
 
 static void *
-lnet_router_seq_next (libcfs_seq_file_t *s, void *iter, loff_t *pos)
+lnet_router_seq_next (cfs_seq_file_t *s, void *iter, loff_t *pos)
 {
         lnet_router_seq_iterator_t *lrtrsi = iter;
         int                        rc;
@@ -402,7 +390,7 @@ lnet_router_seq_next (libcfs_seq_file_t *s, void *iter, loff_t *pos)
 }
 
 static int
-lnet_router_seq_show (libcfs_seq_file_t *s, void *iter)
+lnet_router_seq_show (cfs_seq_file_t *s, void *iter)
 {
         lnet_router_seq_iterator_t *lrtrsi = iter;
         lnet_peer_t *lp;
@@ -418,9 +406,9 @@ lnet_router_seq_show (libcfs_seq_file_t *s, void *iter)
         int          down_ni;
 
         if (lrtrsi->lrtrsi_off == 0) {
-                LIBCFS_SEQ_PRINTF(s, "%-4s %7s %9s %6s %12s %9s %8s %7s %s\n",
-                                  "ref", "rtr_ref", "alive_cnt", "state", "last_ping",
-                                  "ping_sent", "deadline", "down_ni", "router");
+                cfs_seq_printf(s, "%-4s %7s %9s %6s %12s %9s %8s %7s %s\n",
+                               "ref", "rtr_ref", "alive_cnt", "state", "last_ping",
+                               "ping_sent", "deadline", "down_ni", "router");
                 return 0;
         }
 
@@ -446,23 +434,23 @@ lnet_router_seq_show (libcfs_seq_file_t *s, void *iter)
         down_ni   = lnet_router_down_ni(lp, LNET_NIDNET(LNET_NID_ANY));
 
         if (deadline == 0)
-                LIBCFS_SEQ_PRINTF(s, "%-4d %7d %9d %6s %12d %9d %8s %7d %s\n",
-                                  nrefs, nrtrrefs, alive_cnt,
-                                  alive ? "up" : "down", last_ping, pingsent,
-                                  "NA", down_ni, libcfs_nid2str(nid));
+                cfs_seq_printf(s, "%-4d %7d %9d %6s %12d %9d %8s %7d %s\n",
+                               nrefs, nrtrrefs, alive_cnt,
+                               alive ? "up" : "down", last_ping, pingsent,
+                               "NA", down_ni, libcfs_nid2str(nid));
         else
-                LIBCFS_SEQ_PRINTF(s, "%-4d %7d %9d %6s %12d %9d %8lu %7d %s\n",
-                                  nrefs, nrtrrefs, alive_cnt,
-                                  alive ? "up" : "down", last_ping, pingsent,
-                                  cfs_duration_sec(cfs_time_sub(deadline, now)),
-                                  down_ni, libcfs_nid2str(nid));
+                cfs_seq_printf(s, "%-4d %7d %9d %6s %12d %9d %8lu %7d %s\n",
+                               nrefs, nrtrrefs, alive_cnt,
+                               alive ? "up" : "down", last_ping, pingsent,
+                               cfs_duration_sec(cfs_time_sub(deadline, now)),
+                               down_ni, libcfs_nid2str(nid));
 
         LNET_UNLOCK();
 
         return 0;
 }
 
-static libcfs_seq_ops_t lnet_routers_sops = {
+static cfs_seq_ops_t lnet_routers_sops = {
         /* start */ lnet_router_seq_start,
         /* stop */  lnet_router_seq_stop,
         /* next */  lnet_router_seq_next,
@@ -470,30 +458,17 @@ static libcfs_seq_ops_t lnet_routers_sops = {
 };
 
 static int
-lnet_router_seq_open(libcfs_inode_t *inode, libcfs_file_t *file)
+lnet_router_seq_open(cfs_inode_t *inode, cfs_param_file_t *file)
 {
-        libcfs_param_dentry_t *dp = LIBCFS_PDE(inode);
-        libcfs_seq_file_t     *sf;
-        int                    rc;
-
-        LPROCFS_ENTRY_AND_CHECK(dp);
-        LIBCFS_SEQ_OPEN(file, &lnet_routers_sops, rc);
-        if (rc) {
-                LPROCFS_EXIT();
-                return rc;
-        }
-        sf = LIBCFS_FILE_PRIVATE(file);
-        LIBCFS_SEQ_PRIVATE(sf) = LIBCFS_DENTRY_DATA(dp);
-
-        return 0;
+        return cfs_param_seq_fopen(inode, file, &lnet_routers_sops);
 }
 
-static libcfs_file_ops_t lnet_routers_fops = {
-        .owner   =  THIS_MODULE,
-        .llseek  =  LIBCFS_SEQ_LSEEK_COMMON,
-        .read    =  LIBCFS_SEQ_READ_COMMON,
+static cfs_param_file_ops_t lnet_routers_fops = {
+        .owner   =  CFS_PARAM_MODULE,
+        .llseek  =  cfs_seq_lseek,
+        .read    =  cfs_seq_read,
         .open    =  lnet_router_seq_open,
-        .release =  libcfs_param_seq_release_common,
+        .release =  cfs_seq_release,
 };
 
 typedef struct {
@@ -575,7 +550,7 @@ lnet_peer_seq_seek (lnet_peer_seq_iterator_t *lpsi, loff_t off)
 }
 
 static void *
-lnet_peer_seq_start (libcfs_seq_file_t *s, loff_t *pos)
+lnet_peer_seq_start (cfs_seq_file_t *s, loff_t *pos)
 {
         lnet_peer_seq_iterator_t *lpsi;
         int                        rc;
@@ -595,7 +570,7 @@ lnet_peer_seq_start (libcfs_seq_file_t *s, loff_t *pos)
 }
 
 static void
-lnet_peer_seq_stop (libcfs_seq_file_t *s, void *iter)
+lnet_peer_seq_stop (cfs_seq_file_t *s, void *iter)
 {
         lnet_peer_seq_iterator_t  *lpsi = iter;
 
@@ -604,7 +579,7 @@ lnet_peer_seq_stop (libcfs_seq_file_t *s, void *iter)
 }
 
 static void *
-lnet_peer_seq_next (libcfs_seq_file_t *s, void *iter, loff_t *pos)
+lnet_peer_seq_next (cfs_seq_file_t *s, void *iter, loff_t *pos)
 {
         lnet_peer_seq_iterator_t *lpsi = iter;
         int                       rc;
@@ -621,7 +596,7 @@ lnet_peer_seq_next (libcfs_seq_file_t *s, void *iter, loff_t *pos)
 }
 
 static int
-lnet_peer_seq_show (libcfs_seq_file_t *s, void *iter)
+lnet_peer_seq_show (cfs_seq_file_t *s, void *iter)
 {
         lnet_peer_seq_iterator_t *lpsi = iter;
         char                     *aliveness = "NA";
@@ -636,9 +611,9 @@ lnet_peer_seq_show (libcfs_seq_file_t *s, void *iter)
         int                       nrefs;
 
         if (lpsi->lpsi_off == 0) {
-                LIBCFS_SEQ_PRINTF(s, "%-24s %4s %5s %5s %5s %5s %5s %5s %s\n",
-                                  "nid", "refs", "state", "max",
-                                  "rtr", "min", "tx", "min", "queue");
+                cfs_seq_printf(s, "%-24s %4s %5s %5s %5s %5s %5s %5s %s\n",
+                               "nid", "refs", "state", "max",
+                               "rtr", "min", "tx", "min", "queue");
                 return 0;
         }
 
@@ -667,13 +642,13 @@ lnet_peer_seq_show (libcfs_seq_file_t *s, void *iter)
 
         LNET_UNLOCK();
 
-        LIBCFS_SEQ_PRINTF(s, "%-24s %4d %5s %5d %5d %5d %5d %5d %d\n",
-                          libcfs_nid2str(nid), nrefs, aliveness,
-                          maxcr, rtrcr, minrtrcr, txcr, mintxcr, txqnob);
+        cfs_seq_printf(s, "%-24s %4d %5s %5d %5d %5d %5d %5d %d\n",
+                       libcfs_nid2str(nid), nrefs, aliveness,
+                       maxcr, rtrcr, minrtrcr, txcr, mintxcr, txqnob);
         return 0;
 }
 
-static libcfs_seq_ops_t lnet_peer_sops = {
+static cfs_seq_ops_t lnet_peer_sops = {
         /* start */ lnet_peer_seq_start,
         /* stop */  lnet_peer_seq_stop,
         /* next */  lnet_peer_seq_next,
@@ -681,30 +656,17 @@ static libcfs_seq_ops_t lnet_peer_sops = {
 };
 
 static int
-lnet_peer_seq_open(libcfs_inode_t *inode, libcfs_file_t *file)
+lnet_peer_seq_open(cfs_inode_t *inode, cfs_param_file_t *file)
 {
-        libcfs_param_dentry_t *dp = LIBCFS_PDE(inode);
-        libcfs_seq_file_t     *sf;
-        int                    rc;
-
-        LPROCFS_ENTRY_AND_CHECK(dp);
-        LIBCFS_SEQ_OPEN(file, &lnet_peer_sops, rc);
-        if (rc) {
-                LPROCFS_EXIT();
-                return rc;
-        }
-        sf = LIBCFS_FILE_PRIVATE(file);
-        LIBCFS_SEQ_PRIVATE(sf) = LIBCFS_DENTRY_DATA(dp);
-
-        return 0;
+        return cfs_param_seq_fopen(inode, file, &lnet_peer_sops);
 }
 
-static libcfs_file_ops_t lnet_peer_fops = {
-        .owner   =  THIS_MODULE,
-        .llseek  =  LIBCFS_SEQ_LSEEK_COMMON,
-        .read    =  LIBCFS_SEQ_READ_COMMON,
+static cfs_param_file_ops_t lnet_peer_fops = {
+        .owner   =  CFS_PARAM_MODULE,
+        .llseek  =  cfs_seq_lseek,
+        .read    =  cfs_seq_read,
         .open    =  lnet_peer_seq_open,
-        .release =  libcfs_param_seq_release_common,
+        .release =  cfs_seq_release,
 };
 
 typedef struct {
@@ -758,7 +720,7 @@ lnet_buffer_seq_seek (lnet_buffer_seq_iterator_t *lbsi, loff_t off)
 }
 
 static void *
-lnet_buffer_seq_start (libcfs_seq_file_t *s, loff_t *pos)
+lnet_buffer_seq_start (cfs_seq_file_t *s, loff_t *pos)
 {
         lnet_buffer_seq_iterator_t *lbsi;
         int                        rc;
@@ -777,7 +739,7 @@ lnet_buffer_seq_start (libcfs_seq_file_t *s, loff_t *pos)
 }
 
 static void
-lnet_buffer_seq_stop (libcfs_seq_file_t *s, void *iter)
+lnet_buffer_seq_stop (cfs_seq_file_t *s, void *iter)
 {
         lnet_buffer_seq_iterator_t  *lbsi = iter;
 
@@ -786,7 +748,7 @@ lnet_buffer_seq_stop (libcfs_seq_file_t *s, void *iter)
 }
 
 static void *
-lnet_buffer_seq_next (libcfs_seq_file_t *s, void *iter, loff_t *pos)
+lnet_buffer_seq_next (cfs_seq_file_t *s, void *iter, loff_t *pos)
 {
         lnet_buffer_seq_iterator_t *lbsi = iter;
         int                         rc;
@@ -803,7 +765,7 @@ lnet_buffer_seq_next (libcfs_seq_file_t *s, void *iter, loff_t *pos)
 }
 
 static int
-lnet_buffer_seq_show (libcfs_seq_file_t *s, void *iter)
+lnet_buffer_seq_show (cfs_seq_file_t *s, void *iter)
 {
         lnet_buffer_seq_iterator_t *lbsi = iter;
         lnet_rtrbufpool_t          *rbp;
@@ -813,8 +775,8 @@ lnet_buffer_seq_show (libcfs_seq_file_t *s, void *iter)
         int                         mincr;
 
         if (lbsi->lbsi_off == 0) {
-                LIBCFS_SEQ_PRINTF(s, "%5s %5s %7s %7s\n",
-                                  "pages", "count", "credits", "min");
+                cfs_seq_printf(s, "%5s %5s %7s %7s\n",
+                               "pages", "count", "credits", "min");
                 return 0;
         }
 
@@ -831,11 +793,11 @@ lnet_buffer_seq_show (libcfs_seq_file_t *s, void *iter)
 
         LNET_UNLOCK();
 
-        LIBCFS_SEQ_PRINTF(s, "%5d %5d %7d %7d\n", npages, nbuf, cr, mincr);
+        cfs_seq_printf(s, "%5d %5d %7d %7d\n", npages, nbuf, cr, mincr);
         return 0;
 }
 
-static libcfs_seq_ops_t lnet_buffer_sops = {
+static cfs_seq_ops_t lnet_buffer_sops = {
         /* start */ lnet_buffer_seq_start,
         /* stop */  lnet_buffer_seq_stop,
         /* next */  lnet_buffer_seq_next,
@@ -843,30 +805,17 @@ static libcfs_seq_ops_t lnet_buffer_sops = {
 };
 
 static int
-lnet_buffer_seq_open(libcfs_inode_t *inode, libcfs_file_t *file)
+lnet_buffer_seq_open(cfs_inode_t *inode, cfs_param_file_t *file)
 {
-        libcfs_param_dentry_t *dp = LIBCFS_PDE(inode);
-        libcfs_seq_file_t     *sf;
-        int                    rc;
-
-        LPROCFS_ENTRY_AND_CHECK(dp);
-        LIBCFS_SEQ_OPEN(file, &lnet_buffer_sops, rc);
-        if (rc) {
-                LPROCFS_EXIT();
-                return rc;
-        }
-        sf = LIBCFS_FILE_PRIVATE(file);
-        LIBCFS_SEQ_PRIVATE(sf) = LIBCFS_DENTRY_DATA(dp);
-
-        return 0;
+        return cfs_param_seq_fopen(inode, file, &lnet_buffer_sops);
 }
 
-static libcfs_file_ops_t lnet_buffers_fops = {
-        .owner   =  THIS_MODULE,
-        .llseek  =  LIBCFS_SEQ_LSEEK_COMMON,
-        .read    =  LIBCFS_SEQ_READ_COMMON,
+static cfs_param_file_ops_t lnet_buffers_fops = {
+        .owner   =  CFS_PARAM_MODULE,
+        .llseek  =  cfs_seq_lseek,
+        .read    =  cfs_seq_read,
         .open    =  lnet_buffer_seq_open,
-        .release =  libcfs_param_seq_release_common,
+        .release =  cfs_seq_release,
 };
 
 typedef struct {
@@ -923,7 +872,7 @@ lnet_ni_seq_seek (lnet_ni_seq_iterator_t *lnsi, loff_t off)
 }
 
 static void *
-lnet_ni_seq_start (libcfs_seq_file_t *s, loff_t *pos)
+lnet_ni_seq_start (cfs_seq_file_t *s, loff_t *pos)
 {
         lnet_ni_seq_iterator_t *lnsi;
         int                     rc;
@@ -942,7 +891,7 @@ lnet_ni_seq_start (libcfs_seq_file_t *s, loff_t *pos)
 }
 
 static void
-lnet_ni_seq_stop (libcfs_seq_file_t *s, void *iter)
+lnet_ni_seq_stop (cfs_seq_file_t *s, void *iter)
 {
         lnet_ni_seq_iterator_t  *lnsi = iter;
 
@@ -951,7 +900,7 @@ lnet_ni_seq_stop (libcfs_seq_file_t *s, void *iter)
 }
 
 static void *
-lnet_ni_seq_next (libcfs_seq_file_t *s, void *iter, loff_t *pos)
+lnet_ni_seq_next (cfs_seq_file_t *s, void *iter, loff_t *pos)
 {
         lnet_ni_seq_iterator_t *lnsi = iter;
         int                     rc;
@@ -968,7 +917,7 @@ lnet_ni_seq_next (libcfs_seq_file_t *s, void *iter, loff_t *pos)
 }
 
 static int
-lnet_ni_seq_show (libcfs_seq_file_t *s, void *iter)
+lnet_ni_seq_show (cfs_seq_file_t *s, void *iter)
 {
         lnet_ni_seq_iterator_t *lnsi = iter;
         lnet_ni_t              *ni;
@@ -984,9 +933,9 @@ lnet_ni_seq_show (libcfs_seq_file_t *s, void *iter)
         char                   *stat;
 
         if (lnsi->lnsi_off == 0) {
-                LIBCFS_SEQ_PRINTF(s, "%-24s %6s %5s %4s %4s %4s %5s %5s %5s\n",
-                                  "nid", "status", "alive", "refs", "peer",
-                                  "rtr", "max", "tx", "min");
+                cfs_seq_printf(s, "%-24s %6s %5s %4s %4s %4s %5s %5s %5s\n",
+                               "nid", "status", "alive", "refs", "peer",
+                               "rtr", "max", "tx", "min");
                 return 0;
         }
 
@@ -1013,17 +962,16 @@ lnet_ni_seq_show (libcfs_seq_file_t *s, void *iter)
         nid        = ni->ni_nid;
         nref       = ni->ni_refcount;
 
-        LIBCFS_SEQ_PRINTF(s, "%-24s %6s %5d %4d %4d %4d %5d %5d %5d\n",
-                          libcfs_nid2str(nid), stat, last_alive, nref,
-                          npeertxcr, npeerrtrcr, maxtxcr,
-                          txcr, mintxcr);
+        cfs_seq_printf(s, "%-24s %6s %5d %4d %4d %4d %5d %5d %5d\n",
+                       libcfs_nid2str(nid), stat, last_alive, nref,
+                       npeertxcr, npeerrtrcr, maxtxcr, txcr, mintxcr);
 
         LNET_UNLOCK();
 
         return 0;
 }
 
-static libcfs_seq_ops_t lnet_ni_sops = {
+static cfs_seq_ops_t lnet_ni_sops = {
         /* start */ lnet_ni_seq_start,
         /* stop */  lnet_ni_seq_stop,
         /* next */  lnet_ni_seq_next,
@@ -1031,30 +979,17 @@ static libcfs_seq_ops_t lnet_ni_sops = {
 };
 
 static int
-lnet_ni_seq_open(libcfs_inode_t *inode, libcfs_file_t *file)
+lnet_ni_seq_open(cfs_inode_t *inode, cfs_param_file_t *file)
 {
-        libcfs_param_dentry_t *dp = LIBCFS_PDE(inode);
-        libcfs_seq_file_t     *sf;
-        int                    rc;
-
-        LPROCFS_ENTRY_AND_CHECK(dp);
-        LIBCFS_SEQ_OPEN(file, &lnet_ni_sops, rc);
-        if (rc) {
-                LPROCFS_EXIT();
-                return rc;
-        }
-        sf = LIBCFS_FILE_PRIVATE(file);
-        LIBCFS_SEQ_PRIVATE(sf) = LIBCFS_DENTRY_DATA(dp);
-
-        return rc;
+        return cfs_param_seq_fopen(inode, file, &lnet_ni_sops);
 }
 
-static libcfs_file_ops_t lnet_ni_fops = {
-        .owner   =  THIS_MODULE,
-        .llseek  =  LIBCFS_SEQ_LSEEK_COMMON,
-        .read    =  LIBCFS_SEQ_READ_COMMON,
+static cfs_param_file_ops_t lnet_ni_fops = {
+        .owner   =  CFS_PARAM_MODULE,
+        .llseek  =  cfs_seq_lseek,
+        .read    =  cfs_seq_read,
         .open    =  lnet_ni_seq_open,
-        .release =  libcfs_param_seq_release_common,
+        .release =  cfs_seq_release,
 };
 #endif /* __KERNEL__ && LNET_ROUTER */
 
@@ -1164,95 +1099,95 @@ lnet_proc_fini(void)
 int
 lnet_params_init(void)
 {
-        libcfs_param_entry_t *lpe;
-        int                   rc = 0;
+        cfs_param_entry_t *pe;
+        int                rc = 0;
 
-        if (libcfs_param_lnet_root == NULL) {
-                libcfs_param_lnet_root = libcfs_param_mkdir(LNET_PARAM_ROOT,
-                                                      libcfs_param_get_root());
-                if (libcfs_param_lnet_root == NULL) {
+        if (cfs_param_lnet_root == NULL) {
+                cfs_param_lnet_root = cfs_param_mkdir(LNET_PARAM_ROOT,
+                                                      cfs_param_get_root());
+                if (cfs_param_lnet_root == NULL) {
                         CERROR("couldn't create "LNET_PARAM_ROOT"\n");
                         return -EINVAL;
                 }
         } else {
-                libcfs_param_get(libcfs_param_lnet_root);
+                cfs_param_get(cfs_param_lnet_root);
         }
 
         /* Initialize LNET_PARAM_STATS */
-        lpe = libcfs_param_create(LNET_PARAM_STATS, 0644, libcfs_param_lnet_root);
-        if (lpe == NULL) {
+        pe = cfs_param_create(LNET_PARAM_STATS, 0644, cfs_param_lnet_root);
+        if (pe == NULL) {
                 CERROR("couldn't create param entry %s\n", LNET_PARAM_STATS);
                 GOTO(out, rc = -EINVAL);
         }
 
-        lpe->lpe_data = LIBCFS_ALLOC_PARAMDATA(NULL);
-        lpe->lpe_cb_read = lnet_router_proc_stats_read;
-        lpe->lpe_cb_write = lnet_router_proc_stats_write;
-        libcfs_param_put(lpe);
+        pe->pe_data = CFS_ALLOC_PARAMDATA(NULL);
+        pe->pe_cb_read = lnet_router_proc_stats_read;
+        pe->pe_cb_write = lnet_router_proc_stats_write;
+        cfs_param_put(pe);
 
         /* Initialize LNET_PARAM_ROUTES */
-        lpe = libcfs_param_create(LNET_PARAM_ROUTES, 0444, libcfs_param_lnet_root);
-        if (lpe == NULL) {
+        pe = cfs_param_create(LNET_PARAM_ROUTES, 0444, cfs_param_lnet_root);
+        if (pe == NULL) {
                 CERROR("couldn't create param entry %s\n", LNET_PARAM_ROUTES);
                 GOTO(out, rc = -EINVAL);
         }
-        lpe->lpe_data = NULL;
-        lpe->lpe_cb_sfops = &lnet_routes_fops;
-        libcfs_param_put(lpe);
+        pe->pe_data = NULL;
+        pe->pe_cb_sfops = &lnet_routes_fops;
+        cfs_param_put(pe);
 
         /* Initialize LNET_PARAM_ROUTERS */
-        lpe = libcfs_param_create(LNET_PARAM_ROUTERS, 0444, libcfs_param_lnet_root);
-        if (lpe == NULL) {
+        pe = cfs_param_create(LNET_PARAM_ROUTERS, 0444, cfs_param_lnet_root);
+        if (pe == NULL) {
                 CERROR("couldn't create param entry %s\n", LNET_PARAM_ROUTERS);
                 GOTO(out, rc = -EINVAL);
         }
-        lpe->lpe_data = NULL;
-        lpe->lpe_cb_sfops = &lnet_routers_fops;
-        libcfs_param_put(lpe);
+        pe->pe_data = NULL;
+        pe->pe_cb_sfops = &lnet_routers_fops;
+        cfs_param_put(pe);
 
         /* Initialize LNET_PARAM_PEERS */
-        lpe = libcfs_param_create(LNET_PARAM_PEERS, 0444, libcfs_param_lnet_root);
-        if (lpe == NULL) {
+        pe = cfs_param_create(LNET_PARAM_PEERS, 0444, cfs_param_lnet_root);
+        if (pe == NULL) {
                 CERROR("couldn't create param entry %s\n", LNET_PARAM_PEERS);
                 GOTO(out, rc = -EINVAL);
         }
-        lpe->lpe_data = NULL;
-        lpe->lpe_cb_sfops = &lnet_peer_fops;
-        libcfs_param_put(lpe);
+        pe->pe_data = NULL;
+        pe->pe_cb_sfops = &lnet_peer_fops;
+        cfs_param_put(pe);
 
         /* Initialize LNET_PARAM_BUFFERS */
-        lpe = libcfs_param_create(LNET_PARAM_BUFFERS, 0444, libcfs_param_lnet_root);
-        if (lpe == NULL) {
+        pe = cfs_param_create(LNET_PARAM_BUFFERS, 0444, cfs_param_lnet_root);
+        if (pe == NULL) {
                 CERROR("couldn't create param entry %s\n", LNET_PARAM_BUFFERS);
                 GOTO(out, rc = -EINVAL);
         }
-        lpe->lpe_data = NULL;
-        lpe->lpe_cb_sfops = &lnet_buffers_fops;
-        libcfs_param_put(lpe);
+        pe->pe_data = NULL;
+        pe->pe_cb_sfops = &lnet_buffers_fops;
+        cfs_param_put(pe);
 
         /* Initialize LNET_PARAM_NIS */
-        lpe = libcfs_param_create(LNET_PARAM_NIS, 0444, libcfs_param_lnet_root);
-        if (lpe == NULL) {
+        pe = cfs_param_create(LNET_PARAM_NIS, 0444, cfs_param_lnet_root);
+        if (pe == NULL) {
                 CERROR("couldn't create param entry %s\n", LNET_PARAM_NIS);
                 GOTO(out, rc = -EINVAL);
         }
-        lpe->lpe_data = NULL;
-        lpe->lpe_cb_sfops = &lnet_ni_fops;
-        libcfs_param_put(lpe);
+        pe->pe_data = NULL;
+        pe->pe_cb_sfops = &lnet_ni_fops;
+        cfs_param_put(pe);
 out:
-        libcfs_param_put(libcfs_param_lnet_root);
+        cfs_param_put(cfs_param_lnet_root);
         return rc;
 }
 
 void
 lnet_params_fini(void)
 {
-        libcfs_param_remove(LNET_PARAM_STATS, libcfs_param_lnet_root);
-        libcfs_param_remove(LNET_PARAM_ROUTES, libcfs_param_lnet_root);
-        libcfs_param_remove(LNET_PARAM_ROUTERS, libcfs_param_lnet_root);
-        libcfs_param_remove(LNET_PARAM_PEERS, libcfs_param_lnet_root);
-        libcfs_param_remove(LNET_PARAM_BUFFERS, libcfs_param_lnet_root);
-        libcfs_param_remove(LNET_PARAM_NIS, libcfs_param_lnet_root);
+        cfs_param_remove(LNET_PARAM_STATS, cfs_param_lnet_root);
+        cfs_param_remove(LNET_PARAM_ROUTES, cfs_param_lnet_root);
+        cfs_param_remove(LNET_PARAM_ROUTERS, cfs_param_lnet_root);
+        cfs_param_remove(LNET_PARAM_PEERS, cfs_param_lnet_root);
+        cfs_param_remove(LNET_PARAM_BUFFERS, cfs_param_lnet_root);
+        cfs_param_remove(LNET_PARAM_NIS, cfs_param_lnet_root);
 }
 #else
 

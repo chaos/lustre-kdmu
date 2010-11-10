@@ -48,15 +48,15 @@ static int lprocfs_mgs_rd_mntdev(char *page, char **start, off_t off, int count,
 {
         struct obd_device* obd;
 
-        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        cfs_param_get_data(obd, data, NULL);
         LASSERT(obd != NULL);
         LASSERT(obd->u.mgs.mgs_vfsmnt->mnt_devname);
 
-        return libcfs_param_snprintf(page, count, data, LP_STR, "%s\n",
-                                     obd->u.mgs.mgs_vfsmnt->mnt_devname);
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_STR, "%s\n",
+                                  obd->u.mgs.mgs_vfsmnt->mnt_devname);
 }
 
-static int mgs_fs_seq_show(libcfs_seq_file_t *seq, void *v)
+static int mgs_fs_seq_show(cfs_seq_file_t *seq, void *v)
 {
         struct obd_device *obd = seq->private;
         struct mgs_obd *mgs = &obd->u.mgs;
@@ -77,7 +77,7 @@ static int mgs_fs_seq_show(libcfs_seq_file_t *seq, void *v)
                 len = strlen(dirent->lld_name);
                 if ((len > 7) && (strncmp(dirent->lld_name + len - 7, "-client",
                                           len) == 0)) {
-                        LIBCFS_SEQ_PRINTF(seq, "%.*s\n", len - 7, dirent->lld_name);
+                        cfs_seq_printf(seq, "%.*s\n", len - 7, dirent->lld_name);
                 }
                 OBD_FREE(dirent, sizeof(*dirent));
         }
@@ -86,7 +86,7 @@ static int mgs_fs_seq_show(libcfs_seq_file_t *seq, void *v)
 }
 LPROC_SEQ_FOPS_RO(mgs_fs);
 
-static void seq_show_srpc_rules(libcfs_seq_file_t *seq, const char *tgtname,
+static void seq_show_srpc_rules(cfs_seq_file_t *seq, const char *tgtname,
                                 struct sptlrpc_rule_set *rset)
 {
         struct sptlrpc_rule    *r;
@@ -111,12 +111,12 @@ static void seq_show_srpc_rules(libcfs_seq_file_t *seq, const char *tgtname,
                                  sptlrpc_part2name(r->sr_to));
 
                 sptlrpc_flavor2name(&r->sr_flvr, flvrbuf, sizeof(flvrbuf));
-                LIBCFS_SEQ_PRINTF(seq, "%s.srpc.flavor.%s%s=%s\n", tgtname,
-                           net, dirbuf, flvrbuf);
+                cfs_seq_printf(seq, "%s.srpc.flavor.%s%s=%s\n", tgtname,
+                               net, dirbuf, flvrbuf);
         }
 }
 
-static int mgsself_srpc_seq_show(libcfs_seq_file_t *seq, void *v)
+static int mgsself_srpc_seq_show(cfs_seq_file_t *seq, void *v)
 {
         struct obd_device *obd = seq->private;
         struct fs_db      *fsdb;
@@ -162,8 +162,8 @@ int lproc_mgs_setup(struct obd_device *obd)
                 obd->obd_proc_exports_entry = NULL;
         }
 
-        lprocfs_put_lperef(mgs->mgs_proc_live);
-        lprocfs_put_lperef(obd->obd_proc_exports_entry);
+        lprocfs_put_peref(mgs->mgs_proc_live);
+        lprocfs_put_peref(obd->obd_proc_exports_entry);
         return rc;
 }
 
@@ -177,7 +177,7 @@ int lproc_mgs_cleanup(struct obd_device *obd)
         mgs = &obd->u.mgs;
         if (mgs->mgs_proc_live) {
                 /* Should be no live entries */
-                cfs_hash_t *hash = mgs->mgs_proc_live->lpe_hash_t;
+                cfs_hash_t *hash = mgs->mgs_proc_live->pe_hs;
                 LASSERT(cfs_atomic_read(&hash->hs_count) == 0);
                 lprocfs_remove(&mgs->mgs_proc_live);
                 mgs->mgs_proc_live = NULL;
@@ -190,27 +190,27 @@ int lproc_mgs_cleanup(struct obd_device *obd)
         return lprocfs_obd_cleanup(obd);
 }
 
-static int mgs_live_seq_show(libcfs_seq_file_t *seq, void *v)
+static int mgs_live_seq_show(cfs_seq_file_t *seq, void *v)
 {
-        struct fs_db             *fsdb = LIBCFS_SEQ_PRIVATE(seq);
+        struct fs_db             *fsdb = cfs_seq_private(seq);
         struct mgs_tgt_srpc_conf *srpc_tgt;
         int i;
 
         cfs_down(&fsdb->fsdb_sem);
 
-        LIBCFS_SEQ_PRINTF(seq, "fsname: %s\n", fsdb->fsdb_name);
-        LIBCFS_SEQ_PRINTF(seq, "flags: %#lx     gen: %d\n",
+        cfs_seq_printf(seq, "fsname: %s\n", fsdb->fsdb_name);
+        cfs_seq_printf(seq, "flags: %#lx     gen: %d\n",
                           fsdb->fsdb_flags, fsdb->fsdb_gen);
         for (i = 0; i < INDEX_MAP_SIZE * 8; i++)
                  if (cfs_test_bit(i, fsdb->fsdb_mdt_index_map))
-                         LIBCFS_SEQ_PRINTF(seq, "%s-MDT%04x\n", fsdb->fsdb_name, i);
+                         cfs_seq_printf(seq, "%s-MDT%04x\n", fsdb->fsdb_name, i);
         for (i = 0; i < INDEX_MAP_SIZE * 8; i++)
                  if (cfs_test_bit(i, fsdb->fsdb_ost_index_map))
-                         LIBCFS_SEQ_PRINTF(seq, "%s-OST%04x\n", fsdb->fsdb_name, i);
+                         cfs_seq_printf(seq, "%s-OST%04x\n", fsdb->fsdb_name, i);
 
-        LIBCFS_SEQ_PRINTF(seq, "\nSecure RPC Config Rules:\n");
+        cfs_seq_printf(seq, "\nSecure RPC Config Rules:\n");
 #if 0
-        LIBCFS_SEQ_PRINTF(seq, "%s.%s=%s\n", fsdb->fsdb_name,
+        cfs_seq_printf(seq, "%s.%s=%s\n", fsdb->fsdb_name,
                    PARAM_SRPC_UDESC, fsdb->fsdb_srpc_fl_udesc ? "yes" : "no");
 #endif
         for (srpc_tgt = fsdb->fsdb_srpc_tgt; srpc_tgt;

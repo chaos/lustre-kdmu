@@ -168,8 +168,8 @@ int ldlm_process_inodebits_lock(struct ldlm_lock *lock, int *flags,
 void l_check_ns_lock(struct ldlm_namespace *ns);
 void l_check_no_ns_lock(struct ldlm_namespace *ns);
 
-extern libcfs_param_entry_t *ldlm_svc_proc_dir;
-extern libcfs_param_entry_t *ldlm_type_proc_dir;
+extern cfs_param_entry_t *ldlm_svc_proc_dir;
+extern cfs_param_entry_t *ldlm_type_proc_dir;
 
 struct ldlm_state {
         struct ptlrpc_service *ldlm_cb_service;
@@ -212,11 +212,11 @@ typedef enum ldlm_policy_res ldlm_policy_res_t;
         static int lprocfs_rd_##var(char *page, char **start, off_t off,    \
                                     int count, int *eof, void *data)        \
         {                                                                   \
-                struct libcfs_param_cb_data tmp_data;                       \
+                struct cfs_param_cb_data tmp_data;                          \
                 struct ldlm_pool *pl;                                       \
                 type tmp;                                                   \
                                                                             \
-                LIBCFS_PARAM_GET_DATA(pl, data, NULL);                      \
+                cfs_param_get_data(pl, data, NULL);                         \
                 cfs_spin_lock(&pl->pl_lock);                                \
                 tmp = pl->pl_##var;                                         \
                 cfs_spin_unlock(&pl->pl_lock);                              \
@@ -228,15 +228,15 @@ typedef enum ldlm_policy_res ldlm_policy_res_t;
         struct __##var##__dummy_read {;} /* semicolon catcher */
 
 #define LDLM_POOL_PROC_WRITER(var, type)                                    \
-        int lprocfs_wr_##var(libcfs_file_t *file, const char *buffer,       \
+        int lprocfs_wr_##var(cfs_param_file_t *file, const char *buffer,    \
                              unsigned long count, void *data)               \
         {                                                                   \
-                struct libcfs_param_cb_data tmp_data;                       \
+                struct cfs_param_cb_data tmp_data;                          \
                 struct ldlm_pool *pl;                                       \
                 type tmp;                                                   \
                 int rc;                                                     \
                                                                             \
-                LIBCFS_PARAM_GET_DATA(pl, data, NULL);                      \
+                cfs_param_get_data(pl, data, NULL);                         \
                 memcpy(&tmp_data, data, sizeof(tmp_data));                  \
                 tmp_data.cb_data = &tmp;                                    \
                 rc = lprocfs_wr_uint(file, buffer, count, &tmp_data);       \

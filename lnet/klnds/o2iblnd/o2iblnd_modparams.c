@@ -374,131 +374,131 @@ static cfs_sysctl_table_t kiblnd_top_ctl_table[] = {
 };
 #endif
 
-static libcfs_param_sysctl_table_t libcfs_param_kiblnd_ctl_table[] = {
+static cfs_param_sysctl_table_t cfs_param_kiblnd_ctl_table[] = {
         {
                 .name     = "service",
                 .data     = &service,
                 .mode     = 0444,
-                .read     = libcfs_param_intvec_read
+                .read     = cfs_param_intvec_read
         },
         {
                 .name     = "cksum",
                 .data     = &cksum,
                 .mode     = 0644,
-                .read     = libcfs_param_intvec_read,
-                .write    = libcfs_param_intvec_write
+                .read     = cfs_param_intvec_read,
+                .write    = cfs_param_intvec_write
         },
         {
                 .name     = "timeout",
                 .data     = &timeout,
                 .mode     = 0644,
-                .read     = libcfs_param_intvec_read,
-                .write    = libcfs_param_intvec_write
+                .read     = cfs_param_intvec_read,
+                .write    = cfs_param_intvec_write
         },
         {
                 .name     = "ntx",
                 .data     = &ntx,
                 .mode     = 0444,
-                .read     = libcfs_param_intvec_read
+                .read     = cfs_param_intvec_read
         },
         {
                 .name     = "credits",
                 .data     = &credits,
                 .mode     = 0444,
-                .read     = libcfs_param_intvec_read
+                .read     = cfs_param_intvec_read
         },
         {
                 .name     = "peer_credits",
                 .data     = &peer_credits,
                 .mode     = 0444,
-                .read     = libcfs_param_intvec_read
+                .read     = cfs_param_intvec_read
         },
         {
                 .name     = "peer_credits_hiw",
                 .data     = &peer_credits_hiw,
                 .mode     = 0444,
-                .read     = libcfs_param_intvec_read
+                .read     = cfs_param_intvec_read
         },
         {
                 .name     = "peer_buffer_credits",
                 .data     = &peer_buffer_credits,
                 .mode     = 0444,
-                .read     = libcfs_param_intvec_read
+                .read     = cfs_param_intvec_read
         },
         {
                 .name     = "peer_timeout",
                 .data     = &peer_timeout,
                 .mode     = 0444,
-                .read     = libcfs_param_intvec_read
+                .read     = cfs_param_intvec_read
         },
         {
                 .name     = "ipif_name",
                 .data     = ipif_basename_space,
                 .mode     = 0444,
-                .read     = libcfs_param_string_read
+                .read     = cfs_param_string_read
         },
         {
                 .name     = "retry_count",
                 .data     = &retry_count,
                 .mode     = 0644,
-                .read     = libcfs_param_intvec_read,
-                .write    = libcfs_param_intvec_write
+                .read     = cfs_param_intvec_read,
+                .write    = cfs_param_intvec_write
         },
         {
                 .name     = "rnr_retry_count",
                 .data     = &rnr_retry_count,
                 .mode     = 0644,
-                .read     = libcfs_param_intvec_read,
-                .write    = libcfs_param_intvec_write
+                .read     = cfs_param_intvec_read,
+                .write    = cfs_param_intvec_write
         },
         {
                 .name     = "keepalive",
                 .data     = &keepalive,
                 .mode     = 0644,
-                .read     = libcfs_param_intvec_read,
-                .write    = libcfs_param_intvec_write
+                .read     = cfs_param_intvec_read,
+                .write    = cfs_param_intvec_write
         },
         {
                 .name     = "concurrent_sends",
                 .data     = &concurrent_sends,
                 .mode     = 0444,
-                .read     = libcfs_param_intvec_read
+                .read     = cfs_param_intvec_read
         },
         {
                 .name     = "ib_mtu",
                 .data     = &ib_mtu,
                 .mode     = 0444,
-                .read     = libcfs_param_intvec_read
+                .read     = cfs_param_intvec_read
         },
         {
                 .name     = "map_on_demand",
                 .data     = &map_on_demand,
                 .mode     = 0444,
-                .read     = libcfs_param_intvec_read
+                .read     = cfs_param_intvec_read
         },
         {
                 .name     = "fmr_pool_size",
                 .data     = &fmr_pool_size,
                 .mode     = 0444,
-                .read     = libcfs_param_intvec_read
+                .read     = cfs_param_intvec_read
         },
         {
                 .name     = "fmr_flush_trigger",
                 .data     = &fmr_flush_trigger,
                 .mode     = 0444,
-                .read     = libcfs_param_intvec_read
+                .read     = cfs_param_intvec_read
         },
         {
                 .name     = "fmr_cache",
                 .data     = &fmr_cache,
                 .mode     = 0444,
-                .read     = libcfs_param_intvec_read
+                .read     = cfs_param_intvec_read
         },
         {
                 .name     = "pmr_pool_size",
                 .data     = &pmr_pool_size,
                 .mode     = 0444,
-                .read     = libcfs_param_intvec_read
+                .read     = cfs_param_intvec_read
         },
         {0}
 };
@@ -516,8 +516,8 @@ kiblnd_sysctl_init (void)
         kiblnd_initstrtunable(ipif_basename_space, ipif_name,
                               sizeof(ipif_basename_space));
 
-        libcfs_param_sysctl_init("o2iblnd", libcfs_param_kiblnd_ctl_table,
-                                 libcfs_param_lnet_root);
+        cfs_param_sysctl_init("o2iblnd", cfs_param_kiblnd_ctl_table,
+                              cfs_param_lnet_root);
 
 #if defined(CONFIG_SYSCTL) && !CFS_SYSFS_MODULE_PARM
         kiblnd_tunables.kib_sysctl =
@@ -531,7 +531,7 @@ kiblnd_sysctl_init (void)
 void
 kiblnd_sysctl_fini (void)
 {
-        libcfs_param_sysctl_fini("o2iblnd", libcfs_param_lnet_root);
+        cfs_param_sysctl_fini("o2iblnd", cfs_param_lnet_root);
 #if defined(CONFIG_SYSCTL) && !CFS_SYSFS_MODULE_PARM
         if (kiblnd_tunables.kib_sysctl != NULL)
                 cfs_unregister_sysctl_table(kiblnd_tunables.kib_sysctl);

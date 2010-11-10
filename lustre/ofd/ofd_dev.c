@@ -569,12 +569,12 @@ static int filter_procfs_init(struct filter_device *ofd)
         }
 
         if (obd->obd_proc_exports_entry) {
-                struct libcfs_param_entry *temp = lprocfs_add_simple(
+                struct cfs_param_entry *temp = lprocfs_add_simple(
                                    obd->obd_proc_exports_entry, "clear",
                                    lprocfs_nid_stats_clear_read,
                                    lprocfs_nid_stats_clear_write, obd, NULL);
-                lprocfs_put_lperef(obd->obd_proc_exports_entry);
-                lprocfs_put_lperef(temp);
+                lprocfs_put_peref(obd->obd_proc_exports_entry);
+                lprocfs_put_peref(temp);
         }
         return rc;
 }

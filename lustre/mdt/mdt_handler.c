@@ -3861,7 +3861,7 @@ static int mdt_start_ptlrpc_service(struct mdt_device *m)
 {
         int rc;
         static struct ptlrpc_service_conf conf;
-        libcfs_param_entry_t *procfs_entry;
+        cfs_param_entry_t *procfs_entry;
         ENTRY;
 
         procfs_entry = m->mdt_md_dev.md_lu_dev.ld_obd->obd_proc_entry;
@@ -5619,7 +5619,7 @@ int mdt_hsm_copytool_send(struct obd_export *exp)
 }
 
 static struct obd_ops mdt_obd_device_ops = {
-        .o_owner          = THIS_MODULE,
+        .o_owner          = CFS_PARAM_MODULE,
         .o_set_info_async = mdt_obd_set_info_async,
         .o_connect        = mdt_obd_connect,
         .o_reconnect      = mdt_obd_reconnect,

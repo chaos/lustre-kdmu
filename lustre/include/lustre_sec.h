@@ -685,7 +685,7 @@ struct ptlrpc_sec_cops {
          * misc
          */
         int                     (*display)     (struct ptlrpc_sec *sec,
-                                                libcfs_seq_file_t *seq);
+                                                cfs_seq_file_t *seq);
 };
 
 /**
@@ -911,7 +911,7 @@ struct ptlrpc_bulk_sec_desc {
 /*
  * lprocfs
  */
-extern libcfs_param_entry_t *sptlrpc_proc_root;
+extern cfs_param_entry_t *sptlrpc_proc_root;
 
 /*
  * round size up to next power of 2, for slab allocation.

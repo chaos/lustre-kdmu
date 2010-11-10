@@ -212,7 +212,7 @@ struct obd_type {
         cfs_list_t typ_chain;
         struct obd_ops *typ_dt_ops;
         struct md_ops *typ_md_ops;
-        libcfs_param_entry_t *typ_procroot;
+        cfs_param_entry_t *typ_procroot;
         char *typ_name;
         int  typ_refcnt;
         struct lu_device_type *typ_lu;
@@ -510,7 +510,7 @@ struct mgs_obd {
 #endif /* __linux__ */
         cfs_list_t                       mgs_fs_db_list;
         cfs_semaphore_t                  mgs_sem;
-        libcfs_param_entry_t            *mgs_proc_live;
+        cfs_param_entry_t               *mgs_proc_live;
 };
 
 struct dt_object;
@@ -707,7 +707,7 @@ struct pool_desc {
         struct lov_qos_rr     pool_rr;                /* round robin qos */
         cfs_hlist_node_t      pool_hash;              /* access by poolname */
         cfs_list_t            pool_list;              /* serial access */
-        libcfs_param_entry_t *pool_proc_entry;        /* file in /proc */
+        cfs_param_entry_t    *pool_proc_entry;        /* file in /proc */
         struct lov_obd       *pool_lov;               /* lov obd to which this
                                                          pool belong */
 };
@@ -729,7 +729,7 @@ struct lov_obd {
         int                     lov_pool_count;
         cfs_hash_t             *lov_pools_hash_body; /* used for key access */
         cfs_list_t              lov_pool_list; /* used for sequential access */
-        libcfs_param_entry_t *lov_pool_proc_entry;
+        cfs_param_entry_t      *lov_pool_proc_entry;
         enum lustre_sec_part    lov_sp_me;
 };
 
@@ -796,7 +796,7 @@ struct niobuf_local {
 #define LUSTRE_VVP_NAME         "vvp"
 #define LUSTRE_LMV_NAME         "lmv"
 #define LUSTRE_CMM_MDC_NAME     "cmm-mdc"
-#define LUSTRE_SLP_NAME         "slp"
+#define LUSTRE_SCFS_PARAM_NAME         "slp"
 #define LUSTRE_ZFS_NAME         "osd-zfs"
 
 /* obd device type names */
@@ -1115,9 +1115,9 @@ struct obd_device {
         unsigned int           md_cntr_base;
         struct lprocfs_stats  *md_stats;
 
-        libcfs_param_entry_t  *obd_proc_entry;
-        libcfs_param_entry_t  *obd_proc_exports_entry;
-        libcfs_param_entry_t  *obd_svc_procroot;
+        cfs_param_entry_t     *obd_proc_entry;
+        cfs_param_entry_t     *obd_proc_exports_entry;
+        cfs_param_entry_t     *obd_svc_procroot;
         struct lprocfs_stats  *obd_svc_stats;
         cfs_atomic_t           obd_evict_inprogress;
         cfs_waitq_t            obd_evict_inprogress_waitq;

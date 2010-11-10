@@ -976,7 +976,7 @@ void gss_sec_gc_ctx_kr(struct ptlrpc_sec *sec)
 }
 
 static
-int gss_sec_display_kr(struct ptlrpc_sec *sec, libcfs_seq_file_t *seq)
+int gss_sec_display_kr(struct ptlrpc_sec *sec, cfs_seq_file_t *seq)
 {
         struct gss_sec_keyring *gsec_kr = sec2gsec_keyring(sec);
         cfs_hlist_node_t       *pos, *next;
@@ -1004,7 +1004,7 @@ int gss_sec_display_kr(struct ptlrpc_sec *sec, libcfs_seq_file_t *seq)
                         snprintf(mech, sizeof(mech), "N/A");
                 mech[sizeof(mech) - 1] = '\0';
 
-                LIBCFS_SEQ_PRINTF(seq,
+                cfs_seq_printf(seq,
                            "%p: uid %u, ref %d, expire %ld(%+ld), fl %s, "
                            "seq %d, win %u, key %08x(ref %d), "
                            "hdl "LPX64":"LPX64", mech: %s\n",
@@ -1450,7 +1450,7 @@ static struct ptlrpc_sec_sops gss_sec_keyring_sops = {
 };
 
 static struct ptlrpc_sec_policy gss_policy_keyring = {
-        .sp_owner               = THIS_MODULE,
+        .sp_owner               = CFS_PARAM_MODULE,
         .sp_name                = "gss.keyring",
         .sp_policy              = SPTLRPC_POLICY_GSS,
         .sp_cops                = &gss_sec_keyring_cops,

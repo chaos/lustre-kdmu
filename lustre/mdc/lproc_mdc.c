@@ -48,17 +48,17 @@ static int mdc_rd_max_rpcs_in_flight(char *page, char **start, off_t off,
         struct client_obd *cli;
         int rc;
 
-        LIBCFS_PARAM_GET_DATA(dev, data, NULL);
+        cfs_param_get_data(dev, data, NULL);
         cli = &dev->u.cli;
         client_obd_list_lock(&cli->cl_loi_list_lock);
-        rc = libcfs_param_snprintf(page, count, data, LP_U32, "%u\n",
+        rc = cfs_param_snprintf(page, count, data, CFS_PARAM_U32, "%u\n",
                                    cli->cl_max_rpcs_in_flight);
         client_obd_list_unlock(&cli->cl_loi_list_lock);
 
         return rc;
 }
   
-static int mdc_wr_max_rpcs_in_flight(libcfs_file_t *file, const char *buffer,
+static int mdc_wr_max_rpcs_in_flight(cfs_param_file_t *file, const char *buffer,
                                      unsigned long count, void *data)
 {
         struct obd_device *dev;
@@ -66,7 +66,7 @@ static int mdc_wr_max_rpcs_in_flight(libcfs_file_t *file, const char *buffer,
         int val, rc;
         int flag = 0;
   
-        LIBCFS_PARAM_GET_DATA(dev, data, &flag);
+        cfs_param_get_data(dev, data, &flag);
         cli = &dev->u.cli;
         rc = lprocfs_write_helper(buffer, count, &val, flag);
         if (rc)
@@ -83,7 +83,7 @@ static int mdc_wr_max_rpcs_in_flight(libcfs_file_t *file, const char *buffer,
 }
 
 /* temporary for testing */
-static int mdc_wr_kuc(libcfs_file_t *file, const char *buffer,
+static int mdc_wr_kuc(cfs_param_file_t *file, const char *buffer,
                       unsigned long count, void *data)
 {
         struct obd_device *obd;
@@ -94,7 +94,7 @@ static int mdc_wr_kuc(libcfs_file_t *file, const char *buffer,
         int fd, rc;
         int flag;
 
-        LIBCFS_PARAM_GET_DATA(obd, data, &flag);
+        cfs_param_get_data(obd, data, &flag);
         rc = lprocfs_write_helper(buffer, count, &fd, flag);
         if (rc)
                 return rc;

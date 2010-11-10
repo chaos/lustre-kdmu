@@ -69,18 +69,18 @@ EXPORT_SYMBOL(lprocfs_seq_release);
 #endif
 
 /* lprocfs API calls */
-libcfs_param_entry_t *
-lprocfs_srch(libcfs_param_entry_t *head, const char *name)
+cfs_param_entry_t *
+lprocfs_srch(cfs_param_entry_t *head, const char *name)
 {
-        libcfs_param_entry_t *lpe = NULL;
+        cfs_param_entry_t *pe = NULL;
 
         if (head == NULL)
                 return NULL;
-        libcfs_param_get(head);
-        lpe = libcfs_param_lookup(name, head);
-        libcfs_param_put(head);
+        cfs_param_get(head);
+        pe = cfs_param_lookup(name, head);
+        cfs_param_put(head);
 
-        return lpe;
+        return pe;
 }
 
 /* Function that emulates snprintf but also has the side effect of advancing
@@ -172,22 +172,21 @@ static ssize_t lprocfs_fops_write(struct file *f, const char __user *buf,
         return rc;
 }
 
-static libcfs_file_ops_t lprocfs_generic_fops = {
-        .owner = THIS_MODULE,
+static cfs_param_file_ops_t lprocfs_generic_fops = {
+        .owner = CFS_PARAM_MODULE,
         .read = lprocfs_fops_read,
         .write = lprocfs_fops_write,
 };
 #endif /* LPROCFS */
 
-libcfs_param_entry_t * lprocfs_add_simple(libcfs_param_entry_t *root,
-                                          char *name,
-                                          libcfs_param_read_t *read_proc,
-                                          libcfs_param_write_t *write_proc,
-                                          void *data,
-                                          libcfs_file_ops_t *fops)
+cfs_param_entry_t *
+lprocfs_add_simple(cfs_param_entry_t *root, char *name,
+                   cfs_param_read_t *read_proc,
+                   cfs_param_write_t *write_proc,
+                   void *data, cfs_param_file_ops_t *fops)
 {
-        libcfs_param_entry_t *lpe = NULL;
-        lparcb_t *param_data = NULL;
+        cfs_param_entry_t *pe = NULL;
+        cfs_param_cb_data_t *param_data = NULL;
         mode_t mode = 0;
 
         if (root == NULL || name == NULL)
@@ -199,53 +198,53 @@ libcfs_param_entry_t * lprocfs_add_simple(libcfs_param_entry_t *root,
         if (fops)
                 mode = 0644;
 
-        libcfs_param_get(root);
-        lpe = libcfs_param_create(name, mode, root);
-        if (lpe) {
+        cfs_param_get(root);
+        pe = cfs_param_create(name, mode, root);
+        if (pe) {
                 /* init seq file operation */
-                lpe->lpe_cb_read = read_proc;
-                lpe->lpe_cb_write = write_proc;
+                pe->pe_cb_read = read_proc;
+                pe->pe_cb_write = write_proc;
                 if (fops != NULL) {
-                        lpe->lpe_cb_sfops = fops;
-                        lpe->lpe_data = data;
+                        pe->pe_cb_sfops = fops;
+                        pe->pe_data = data;
                 } else {
-                        param_data = LIBCFS_ALLOC_PARAMDATA(data);
+                        param_data = CFS_ALLOC_PARAMDATA(data);
                         if (param_data == NULL)
                                 return ERR_PTR(-ENOMEM);
-                        lpe->lpe_data = param_data;
+                        pe->pe_data = param_data;
                 }
 #ifdef  LPROCFS
-                if (root->lpe_proc != NULL) {
+                if (root->pe_proc != NULL) {
                         cfs_proc_dir_entry_t *proc = NULL;
-                        proc = create_proc_entry(name, mode, root->lpe_proc);
+                        proc = create_proc_entry(name, mode, root->pe_proc);
                         if (proc != NULL) {
                                 if (fops != NULL) {
                                         proc->data = data;
                                         proc->proc_fops = fops;
                                 } else {
                                         proc->proc_fops = &lprocfs_generic_fops;
-                                        param_data = LIBCFS_ALLOC_PROCDATA(data);
+                                        param_data = CFS_ALLOC_PROCDATA(data);
                                         if (param_data == NULL)
                                                 return ERR_PTR(-ENOMEM);
                                         proc->data = param_data;
                                 }
                                 proc->read_proc = read_proc;
                                 proc->write_proc = write_proc;
-                                lpe->lpe_proc = proc;
+                                pe->pe_proc = proc;
                         }
                 }
 #endif
         }
-        libcfs_param_put(root);
+        cfs_param_put(root);
 
-        return lpe;
+        return pe;
 }
 
-libcfs_param_entry_t *
-lprocfs_add_symlink(const char *name, libcfs_param_entry_t *parent,
+cfs_param_entry_t *
+lprocfs_add_symlink(const char *name, cfs_param_entry_t *parent,
                     const char *format, ...)
 {
-        libcfs_param_entry_t *lpe_sym;
+        cfs_param_entry_t *pe_sym;
         char *dest;
         va_list ap;
 
@@ -260,21 +259,21 @@ lprocfs_add_symlink(const char *name, libcfs_param_entry_t *parent,
         vsnprintf(dest, MAX_STRING_SIZE, format, ap);
         va_end(ap);
 
-        libcfs_param_get(parent);
-        lpe_sym = libcfs_param_symlink(name, parent, dest);
+        cfs_param_get(parent);
+        pe_sym = cfs_param_symlink(name, parent, dest);
 #ifdef LPROCFS
-        if (lpe_sym && parent->lpe_proc) {
-                lpe_sym->lpe_proc = proc_symlink(name, parent->lpe_proc,
+        if (pe_sym && parent->pe_proc) {
+                pe_sym->pe_proc = proc_symlink(name, parent->pe_proc,
                                                  dest);
         }
 #endif
-        if (lpe_sym == NULL)
+        if (pe_sym == NULL)
                 CERROR("LprocFS: Could not create symbolic link from %s to %s",
                        name, dest);
-        libcfs_param_put(parent);
+        cfs_param_put(parent);
 
         OBD_FREE(dest, MAX_STRING_SIZE + 1);
-        return lpe_sym;
+        return pe_sym;
 }
 
 /**
@@ -288,25 +287,25 @@ lprocfs_add_symlink(const char *name, libcfs_param_entry_t *parent,
  * \retval 0   on success
  *         < 0 on error
  */
-int lprocfs_add_vars(libcfs_param_entry_t *root,
+int lprocfs_add_vars(cfs_param_entry_t *root,
                      struct lprocfs_vars *list, void *data)
 {
         if (root == NULL || list == NULL)
                 return -EINVAL;
 
         while (list->name != NULL) {
-                libcfs_param_entry_t *cur_lpe, *lpe = NULL;
+                cfs_param_entry_t *cur_pe, *pe = NULL;
                 char *pathcopy, *cur, *next, pathbuf[64];
                 int pathsize = strlen(list->name) + 1;
                 void *cb_data = list->data ? list->data : data;
 
-                cur_lpe = libcfs_param_get(root);
+                cur_pe = cfs_param_get(root);
 
                 /* need copy of path for strsep */
                 if (strlen(list->name) > sizeof(pathbuf) - 1) {
                         OBD_ALLOC(pathcopy, pathsize);
                         if (pathcopy == NULL) {
-                                libcfs_param_put(cur_lpe);
+                                cfs_param_put(cur_pe);
                                 return -ENOMEM;
                         }
                 } else {
@@ -315,42 +314,42 @@ int lprocfs_add_vars(libcfs_param_entry_t *root,
                 next = pathcopy;
                 strcpy(pathcopy, list->name);
 
-                while ((cur_lpe != NULL) && (cur = strsep(&next, "/"))) {
+                while ((cur_pe != NULL) && (cur = strsep(&next, "/"))) {
                         if (*cur == '\0') /* skip double/trailing "/" */
                                 continue;
-                        lpe = libcfs_param_lookup(cur, cur_lpe);
-                        CDEBUG(D_OTHER, "cur_lpe=%s, cur=%s, next=%s, (%s)\n",
-                               cur_lpe->lpe_name, cur, next,
-                               (lpe ? "exists" : "new"));
+                        pe = cfs_param_lookup(cur, cur_pe);
+                        CDEBUG(D_OTHER, "cur_pe=%s, cur=%s, next=%s, (%s)\n",
+                               cur_pe->pe_name, cur, next,
+                               (pe ? "exists" : "new"));
                         if (next != NULL) {
-                                if (lpe == NULL) {
-                                        lpe = libcfs_param_mkdir(cur, cur_lpe);
+                                if (pe == NULL) {
+                                        pe = cfs_param_mkdir(cur, cur_pe);
 #ifdef LPROCFS
-                                        if (cur_lpe->lpe_proc && lpe)
-                                                lpe->lpe_proc = proc_mkdir(cur,
-                                                                cur_lpe->lpe_proc);
+                                        if (cur_pe->pe_proc && pe)
+                                                pe->pe_proc = proc_mkdir(cur,
+                                                                cur_pe->pe_proc);
 #endif
                                 }
-                                if (lpe != NULL) {
-                                        libcfs_param_put(cur_lpe);
-                                        cur_lpe = lpe;
+                                if (pe != NULL) {
+                                        cfs_param_put(cur_pe);
+                                        cur_pe = pe;
                                 }
-                        } else if (lpe == NULL) {
+                        } else if (pe == NULL) {
                                 /* use lprocfs_add_simple here */
-                                lpe = lprocfs_add_simple(cur_lpe, cur,
+                                pe = lprocfs_add_simple(cur_pe, cur,
                                                 list->read_fptr,
                                                 list->write_fptr,
                                                 cb_data, list->fops);
-                                if (lpe == NULL)
+                                if (pe == NULL)
                                         break;
-                                libcfs_param_put(lpe);
+                                cfs_param_put(pe);
                         }
                 }
                 if (pathcopy != pathbuf)
                         OBD_FREE(pathcopy, pathsize);
-                if (cur_lpe)
-                        libcfs_param_put(cur_lpe);
-                if (cur_lpe == NULL || lpe == NULL) {
+                if (cur_pe)
+                        cfs_param_put(cur_pe);
+                if (cur_pe == NULL || pe == NULL) {
                         CERROR("LprocFS: No memory to create /proc entry %s\n",
                                list->name);
                         return -ENOMEM;
@@ -361,109 +360,109 @@ int lprocfs_add_vars(libcfs_param_entry_t *root,
         return 0;
 }
 
-void lprocfs_remove(libcfs_param_entry_t **rooth)
+void lprocfs_remove(cfs_param_entry_t **rooth)
 {
-        libcfs_param_entry_t *root = *rooth;
+        cfs_param_entry_t *root = *rooth;
 
         if (!root)
                 return;
 #ifdef  LPROCFS
-        if (root->lpe_proc) {
-                struct proc_dir_entry *temp = root->lpe_proc;
+        if (root->pe_proc) {
+                struct proc_dir_entry *temp = root->pe_proc;
                 struct proc_dir_entry *rm_entry;
                 struct proc_dir_entry *parent;
 
-                rm_entry = root->lpe_proc;
+                rm_entry = root->pe_proc;
                 parent = rm_entry->parent;
-                if (parent != NULL) {
-                        LPROCFS_WRITE_ENTRY(); /* search vs remove race */
-                        while (1) {
-                                while (temp->subdir != NULL)
-                                        temp = temp->subdir;
+                if (parent == NULL)
+                        goto out;
+                LPROCFS_WRITE_ENTRY(); /* search vs remove race */
+                while (1) {
+                        while (temp->subdir != NULL)
+                                temp = temp->subdir;
 
-                                rm_entry = temp;
-                                temp = temp->parent;
+                        rm_entry = temp;
+                        temp = temp->parent;
 
-                                /* Memory corruption once caused this to fail, and
-                                   without this LASSERT we would loop here forever. */
-                                LASSERTF(strlen(rm_entry->name) == rm_entry->namelen,
-                                         "0x%p  %s/%s len %d\n", rm_entry, temp->name,
-                                         rm_entry->name, (int)strlen(rm_entry->name));
+                        /* Memory corruption once caused this to fail, and
+                           without this LASSERT we would loop here forever. */
+                        LASSERTF(strlen(rm_entry->name) == rm_entry->namelen,
+                                 "0x%p  %s/%s len %d\n", rm_entry, temp->name,
+                                 rm_entry->name, (int)strlen(rm_entry->name));
 
-                                /* Now, the rm_entry->deleted flags is protected
-                                 * by _lprocfs_lock. */
-                                if (S_ISREG(rm_entry->mode) &&
-                                     rm_entry->proc_fops == &lprocfs_generic_fops)
-                                        /* seq params use orig data */
-                                        LIBCFS_FREE_PROCDATA(rm_entry->data);
-                                rm_entry->data = NULL;
-                                remove_proc_entry(rm_entry->name, temp);
-                                if (temp == parent)
-                                        break;
-                        }
-                        LPROCFS_WRITE_EXIT();
+                        /* Now, the rm_entry->deleted flags is protected
+                         * by _lprocfs_lock. */
+                        if (S_ISREG(rm_entry->mode) &&
+                             rm_entry->proc_fops == &lprocfs_generic_fops)
+                                /* seq params use orig data */
+                                CFS_FREE_PROCDATA(rm_entry->data);
+                        rm_entry->data = NULL;
+                        remove_proc_entry(rm_entry->name, temp);
+                        if (temp == parent)
+                                break;
                 }
+                LPROCFS_WRITE_EXIT();
         }
+out:
 #endif
-        libcfs_param_remove(NULL, root);
+        cfs_param_remove(NULL, root);
         *rooth = NULL;
 }
 
-void lprocfs_remove_proc_entry(const char *name,
-                               libcfs_param_entry_t *parent)
+void lprocfs_remove_proc_entry(const char *name, cfs_param_entry_t *parent)
 {
-        if (parent) {
-                libcfs_param_get(parent);
+        if (parent == NULL)
+                return;
+        cfs_param_get(parent);
 #ifdef  LPROCFS
-                if (parent->lpe_proc) {
-                        struct proc_dir_entry *temp = parent->lpe_proc;
-                        while (temp->subdir != NULL) {
-                                temp = temp->subdir;
-                                if (strlen(name) == strlen(temp->name) &&
-                                    !strcmp(temp->name, name)) {
-                                        if (S_ISREG(temp->mode) &&
-                                            temp->proc_fops == &lprocfs_generic_fops)
-                                                /* seq params use orig data */
-                                                LIBCFS_FREE_PROCDATA(
-                                                          temp->data);
-                                        temp->data = NULL;
-                                        remove_proc_entry(temp->name, temp);
-                                }
+        if (parent->pe_proc) {
+                struct proc_dir_entry *temp = parent->pe_proc;
+                while (temp->subdir != NULL) {
+                        temp = temp->subdir;
+                        if (strlen(name) == strlen(temp->name) &&
+                            !strcmp(temp->name, name)) {
+                                if (S_ISREG(temp->mode) &&
+                                    temp->proc_fops == &lprocfs_generic_fops)
+                                        /* seq params use orig data */
+                                        CFS_FREE_PROCDATA(
+                                                  temp->data);
+                                temp->data = NULL;
+                                remove_proc_entry(temp->name, temp);
                         }
                 }
-#endif
-                libcfs_param_remove(name, parent);
-                libcfs_param_put(parent);
         }
+#endif
+        cfs_param_remove(name, parent);
+        cfs_param_put(parent);
 }
 
-void lprocfs_put_lperef(libcfs_param_entry_t *entry)
+void lprocfs_put_peref(cfs_param_entry_t *entry)
 {
         if (entry != NULL)
-                libcfs_param_put(entry);
+                cfs_param_put(entry);
 }
 
-libcfs_param_entry_t *
-lprocfs_register(const char *name, libcfs_param_entry_t *parent,
+cfs_param_entry_t *
+lprocfs_register(const char *name, cfs_param_entry_t *parent,
                  struct lprocfs_vars *list, void *data)
 {
-        libcfs_param_entry_t *newchild;
+        cfs_param_entry_t *newchild;
 
         /* we have done lookup in params_add_entry, so here we only
          * check for proc
          */
-        libcfs_param_get(parent);
-        newchild = libcfs_param_mkdir(name, parent);
+        cfs_param_get(parent);
+        newchild = cfs_param_mkdir(name, parent);
 #ifdef LPROCFS
-        if (newchild && parent->lpe_proc) {
-                newchild->lpe_proc = proc_mkdir(name, parent->lpe_proc);
+        if (newchild && parent->pe_proc) {
+                newchild->pe_proc = proc_mkdir(name, parent->pe_proc);
         }
 #endif
-        libcfs_param_put(parent);
+        cfs_param_put(parent);
         if (newchild != NULL && list != NULL) {
                 int rc = lprocfs_add_vars(newchild, list, data);
                 if (rc) {
-                        libcfs_param_put(newchild);
+                        cfs_param_put(newchild);
                         lprocfs_remove((void *)&newchild);
                         return ERR_PTR(rc);
                 }
@@ -478,12 +477,13 @@ int lprocfs_rd_uint(char *page, char **start, off_t off,
 {
         unsigned int *temp;
 
-        LIBCFS_PARAM_GET_DATA(temp, data, NULL);
+        cfs_param_get_data(temp, data, NULL);
 
-        return libcfs_param_snprintf(page, count, data, LP_U32, "%u\n", *temp);
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_U32,
+                                  "%u\n", *temp);
 }
 
-int lprocfs_wr_uint(libcfs_file_t *file, const char *buffer,
+int lprocfs_wr_uint(cfs_param_file_t *file, const char *buffer,
                     unsigned long count, void *data)
 {
         unsigned *p;
@@ -492,9 +492,9 @@ int lprocfs_wr_uint(libcfs_file_t *file, const char *buffer,
         int rc;
         int flag = 0;
 
-        LIBCFS_PARAM_GET_DATA(p, data, &flag);
+        cfs_param_get_data(p, data, &flag);
         dummy[MAX_STRING_SIZE] = '\0';
-        rc = libcfs_param_copy(flag, dummy, buffer, MAX_STRING_SIZE);
+        rc = cfs_param_copy(flag, dummy, buffer, MAX_STRING_SIZE);
         if (rc < 0)
                 return rc;
 
@@ -511,10 +511,10 @@ int lprocfs_rd_u64(char *page, char **start, off_t off,
 {
         __u64 *temp;
 
-        LIBCFS_PARAM_GET_DATA(temp, data, NULL);
+        cfs_param_get_data(temp, data, NULL);
 
-        return libcfs_param_snprintf(page, count, data, LP_U64,
-                                     LPU64"\n", *temp);
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_U64,
+                                  LPU64"\n", *temp);
 }
 
 int lprocfs_rd_atomic(char *page, char **start, off_t off,
@@ -522,14 +522,14 @@ int lprocfs_rd_atomic(char *page, char **start, off_t off,
 {
         cfs_atomic_t *atom;
 
-        LIBCFS_PARAM_GET_DATA(atom, data, NULL);
+        cfs_param_get_data(atom, data, NULL);
         LASSERT(atom != NULL);
 
-        return libcfs_param_snprintf(page, count, data, LP_S32, "%d\n",
-                                     cfs_atomic_read(atom));
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_S32, "%d\n",
+                                  cfs_atomic_read(atom));
 }
 
-int lprocfs_wr_atomic(libcfs_file_t *file, const char *buffer,
+int lprocfs_wr_atomic(cfs_param_file_t *file, const char *buffer,
                       unsigned long count, void *data)
 {
         cfs_atomic_t *atm;
@@ -537,7 +537,7 @@ int lprocfs_wr_atomic(libcfs_file_t *file, const char *buffer,
         int flag = 0;
         int rc;
 
-        LIBCFS_PARAM_GET_DATA(atm, data, &flag);
+        cfs_param_get_data(atm, data, &flag);
         rc = lprocfs_write_helper(buffer, count, &val, flag);
         if (rc < 0)
                 return rc;
@@ -554,11 +554,11 @@ int lprocfs_rd_uuid(char *page, char **start, off_t off, int count,
 {
         struct obd_device *obd;
 
-        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        cfs_param_get_data(obd, data, NULL);
         LASSERT(obd != NULL);
 
-        return libcfs_param_snprintf(page, count, data, LP_STR,
-                                     "%s\n", obd->obd_uuid.uuid);
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_STR,
+                                  "%s\n", obd->obd_uuid.uuid);
 }
 
 int lprocfs_rd_name(char *page, char **start, off_t off, int count,
@@ -566,12 +566,12 @@ int lprocfs_rd_name(char *page, char **start, off_t off, int count,
 {
         struct obd_device *dev;
 
-        LIBCFS_PARAM_GET_DATA(dev, data, NULL);
+        cfs_param_get_data(dev, data, NULL);
         LASSERT(dev != NULL);
         LASSERT(dev->obd_name != NULL);
 
-        return libcfs_param_snprintf(page, count, data, LP_STR,
-                                     "%s\n", dev->obd_name);
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_STR,
+                                  "%s\n", dev->obd_name);
 }
 
 int lprocfs_rd_fstype(char *page, char **start, off_t off, int count, int *eof,
@@ -579,13 +579,13 @@ int lprocfs_rd_fstype(char *page, char **start, off_t off, int count, int *eof,
 {
         struct obd_device *obd;
 
-        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        cfs_param_get_data(obd, data, NULL);
         LASSERT(obd != NULL);
         LASSERT(obd->obd_fsops != NULL);
         LASSERT(obd->obd_fsops->fs_type != NULL);
 
-        return libcfs_param_snprintf(page, count, data, LP_STR, "%s\n",
-                                     obd->obd_fsops->fs_type);
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_STR, "%s\n",
+                                  obd->obd_fsops->fs_type);
 }
 
 int lprocfs_rd_blksize(char *page, char **start, off_t off, int count,
@@ -595,13 +595,13 @@ int lprocfs_rd_blksize(char *page, char **start, off_t off, int count,
         struct obd_statfs osfs;
         int rc;
 
-        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        cfs_param_get_data(obd, data, NULL);
         rc = obd_statfs(obd, &osfs,
                         cfs_time_shift_64(-OBD_STATFS_CACHE_SECONDS),
                         OBD_STATFS_NODELAY);
         if (!rc)
-                rc = libcfs_param_snprintf(page, count, data, LP_U32,
-                                           "%u\n", osfs.os_bsize);
+                rc = cfs_param_snprintf(page, count, data, CFS_PARAM_U32,
+                                        "%u\n", osfs.os_bsize);
         return rc;
 }
 
@@ -612,7 +612,7 @@ int lprocfs_rd_kbytestotal(char *page, char **start, off_t off, int count,
         struct obd_statfs osfs;
         int rc;
 
-        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        cfs_param_get_data(obd, data, NULL);
         rc = obd_statfs(obd, &osfs,
                         cfs_time_shift_64(-OBD_STATFS_CACHE_SECONDS),
                         OBD_STATFS_NODELAY);
@@ -623,8 +623,8 @@ int lprocfs_rd_kbytestotal(char *page, char **start, off_t off, int count,
                 while (blk_size >>= 1)
                         result <<= 1;
 
-                rc = libcfs_param_snprintf(page, count, data, LP_U64,
-                                           LPU64"\n", result);
+                rc = cfs_param_snprintf(page, count, data, CFS_PARAM_U64,
+                                        LPU64"\n", result);
         }
         return rc;
 }
@@ -636,7 +636,7 @@ int lprocfs_rd_kbytesfree(char *page, char **start, off_t off, int count,
         struct obd_statfs osfs;
         int rc;
 
-        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        cfs_param_get_data(obd, data, NULL);
         rc = obd_statfs(obd, &osfs,
                         cfs_time_shift_64(-OBD_STATFS_CACHE_SECONDS),
                         OBD_STATFS_NODELAY);
@@ -647,8 +647,8 @@ int lprocfs_rd_kbytesfree(char *page, char **start, off_t off, int count,
                 while (blk_size >>= 1)
                         result <<= 1;
 
-                rc = libcfs_param_snprintf(page, count, data, LP_U64,
-                                           LPU64"\n", result);
+                rc = cfs_param_snprintf(page, count, data, CFS_PARAM_U64,
+                                        LPU64"\n", result);
         }
         return rc;
 }
@@ -660,7 +660,7 @@ int lprocfs_rd_kbytesavail(char *page, char **start, off_t off, int count,
         struct obd_statfs osfs;
         int rc;
 
-        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        cfs_param_get_data(obd, data, NULL);
         rc = obd_statfs(obd, &osfs,
                         cfs_time_shift_64(-OBD_STATFS_CACHE_SECONDS),
                         OBD_STATFS_NODELAY);
@@ -671,8 +671,8 @@ int lprocfs_rd_kbytesavail(char *page, char **start, off_t off, int count,
                 while (blk_size >>= 1)
                         result <<= 1;
 
-                rc = libcfs_param_snprintf(page, count, data, LP_U64,
-                                           LPU64"\n", result);
+                rc = cfs_param_snprintf(page, count, data, CFS_PARAM_U64,
+                                        LPU64"\n", result);
         }
         return rc;
 }
@@ -684,13 +684,13 @@ int lprocfs_rd_filestotal(char *page, char **start, off_t off, int count,
         struct obd_statfs osfs;
         int rc;
 
-        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        cfs_param_get_data(obd, data, NULL);
         rc = obd_statfs(obd, &osfs,
                         cfs_time_shift_64(-OBD_STATFS_CACHE_SECONDS),
                         OBD_STATFS_NODELAY);
         if (!rc)
-                rc = libcfs_param_snprintf(page, count, data, LP_U64,
-                                           LPU64"\n", osfs.os_files);
+                rc = cfs_param_snprintf(page, count, data, CFS_PARAM_U64,
+                                        LPU64"\n", osfs.os_files);
 
         return rc;
 }
@@ -702,13 +702,13 @@ int lprocfs_rd_filesfree(char *page, char **start, off_t off, int count,
         struct obd_statfs osfs;
         int rc;
 
-        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        cfs_param_get_data(obd, data, NULL);
         rc = obd_statfs(obd, &osfs,
                         cfs_time_shift_64(-OBD_STATFS_CACHE_SECONDS),
                         OBD_STATFS_NODELAY);
         if (!rc)
-                rc = libcfs_param_snprintf(page, count, data, LP_U64,
-                                           LPU64"\n", osfs.os_ffree);
+                rc = cfs_param_snprintf(page, count, data, CFS_PARAM_U64,
+                                        LPU64"\n", osfs.os_ffree);
         return rc;
 }
 
@@ -720,14 +720,14 @@ int lprocfs_rd_server_uuid(char *page, char **start, off_t off, int count,
         char *imp_state_name = NULL;
         int rc = 0;
 
-        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        cfs_param_get_data(obd, data, NULL);
         LASSERT(obd != NULL);
         LPROCFS_CLIMP_CHECK(obd);
         imp = obd->u.cli.cl_import;
         imp_state_name = ptlrpc_import_state_name(imp->imp_state);
-        rc = libcfs_param_snprintf(page, count, data, LP_STR, "%s\t%s%s\n",
-                      obd2cli_tgt(obd), imp_state_name,
-                      imp->imp_deactive ? "\tDEACTIVATED" : "");
+        rc = cfs_param_snprintf(page, count, data, CFS_PARAM_STR, "%s\t%s%s\n",
+                                obd2cli_tgt(obd), imp_state_name,
+                                imp->imp_deactive ? "\tDEACTIVATED" : "");
 
         LPROCFS_CLIMP_EXIT(obd);
         return rc;
@@ -740,17 +740,17 @@ int lprocfs_rd_conn_uuid(char *page, char **start, off_t off, int count,
         struct ptlrpc_connection *conn;
         int rc = 0;
 
-        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        cfs_param_get_data(obd, data, NULL);
         LASSERT(obd != NULL);
 
         LPROCFS_CLIMP_CHECK(obd);
         conn = obd->u.cli.cl_import->imp_connection;
         if (conn && obd->u.cli.cl_import)
-                rc = libcfs_param_snprintf(page, count, data, LP_STR,
-                                "%s\n", conn->c_remote_uuid.uuid);
+                rc = cfs_param_snprintf(page, count, data, CFS_PARAM_STR,
+                                        "%s\n", conn->c_remote_uuid.uuid);
         else
-                rc = libcfs_param_snprintf(page, count, data, LP_STR,
-                                           "%s\n", "<none>");
+                rc = cfs_param_snprintf(page, count, data, CFS_PARAM_STR,
+                                        "%s\n", "<none>");
 
         LPROCFS_CLIMP_EXIT(obd);
         return rc;
@@ -897,7 +897,7 @@ int lprocfs_rd_import(char *page, char **start, off_t off, int count,
         int i, j, k, rw = 0;
         int flag = 0;
 
-        LIBCFS_PARAM_GET_DATA(obd, data, &flag);
+        cfs_param_get_data(obd, data, &flag);
         LASSERT(obd != NULL);
         LPROCFS_CLIMP_CHECK(obd);
         imp = obd->u.cli.cl_import;
@@ -1019,7 +1019,7 @@ int lprocfs_rd_import(char *page, char **start, off_t off, int count,
                 }
         }
         LPROCFS_CLIMP_EXIT(obd);
-        return libcfs_param_snprintf(page, count, data, LP_STR, NULL, NULL);
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_STR, NULL, NULL);
 }
 
 int lprocfs_rd_state(char *page, char **start, off_t off, int count,
@@ -1029,7 +1029,7 @@ int lprocfs_rd_state(char *page, char **start, off_t off, int count,
         struct obd_import *imp;
         int rc, j, k;
 
-        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        cfs_param_get_data(obd, data, NULL);
         LASSERT(obd != NULL);
         LPROCFS_CLIMP_CHECK(obd);
         imp = obd->u.cli.cl_import;
@@ -1049,7 +1049,7 @@ int lprocfs_rd_state(char *page, char **start, off_t off, int count,
                               ptlrpc_import_state_name(ish->ish_state));
         }
         LPROCFS_CLIMP_EXIT(obd);
-        return libcfs_param_snprintf(page, count, data, LP_STR, NULL, NULL);
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_STR, NULL, NULL);
 }
 
 int lprocfs_at_hist_helper(char *page, int count, int rc,
@@ -1073,7 +1073,7 @@ int lprocfs_rd_timeouts(char *page, char **start, off_t off, int count,
         struct dhms ts;
         int i, rc = 0, flag = 0;
 
-        LIBCFS_PARAM_GET_DATA(obd, data, &flag);
+        cfs_param_get_data(obd, data, &flag);
         LASSERT(obd != NULL);
         LPROCFS_CLIMP_CHECK(obd);
         imp = obd->u.cli.cl_import;
@@ -1113,7 +1113,7 @@ int lprocfs_rd_timeouts(char *page, char **start, off_t off, int count,
                                 &imp->imp_at.iat_service_estimate[i]);
         }
         LPROCFS_CLIMP_EXIT(obd);
-        return libcfs_param_snprintf(page, count, data, LP_STR, NULL, NULL);
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_STR, NULL, NULL);
 }
 
 int lprocfs_rd_connect_flags(char *page, char **start, off_t off,
@@ -1123,7 +1123,7 @@ int lprocfs_rd_connect_flags(char *page, char **start, off_t off,
         __u64 flags;
         int rc = 0;
 
-        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        cfs_param_get_data(obd, data, NULL);
         LPROCFS_CLIMP_CHECK(obd);
         flags = obd->u.cli.cl_import->imp_connect_data.ocd_connect_flags;
         rc = snprintf(page, count, "flags="LPX64"\n", flags);
@@ -1132,7 +1132,7 @@ int lprocfs_rd_connect_flags(char *page, char **start, off_t off,
         rc += snprintf(page + rc, count - rc, "\n");
         LPROCFS_CLIMP_EXIT(obd);
 
-        return libcfs_param_snprintf(page, count, data, LP_STR, NULL, NULL);
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_STR, NULL, NULL);
 }
 EXPORT_SYMBOL(lprocfs_rd_connect_flags);
 
@@ -1141,11 +1141,11 @@ int lprocfs_rd_num_exports(char *page, char **start, off_t off, int count,
 {
         struct obd_device *obd;
 
-        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        cfs_param_get_data(obd, data, NULL);
         LASSERT(obd != NULL);
 
-        return libcfs_param_snprintf(page, count, data, LP_S32,
-                                     "%u\n", obd->obd_num_exports);
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_S32,
+                                  "%u\n", obd->obd_num_exports);
 }
 
 int lprocfs_rd_numrefs(char *page, char **start, off_t off, int count,
@@ -1153,11 +1153,11 @@ int lprocfs_rd_numrefs(char *page, char **start, off_t off, int count,
 {
         struct obd_type *class;
 
-        LIBCFS_PARAM_GET_DATA(class, data, NULL);
+        cfs_param_get_data(class, data, NULL);
         LASSERT(class != NULL);
 
-        return libcfs_param_snprintf(page, count, data, LP_S32,
-                                     "%d\n", class->typ_refcnt);
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_S32,
+                                  "%d\n", class->typ_refcnt);
 }
 
 int lprocfs_obd_setup(struct obd_device *obd, struct lprocfs_vars *list)
@@ -1176,7 +1176,7 @@ int lprocfs_obd_setup(struct obd_device *obd, struct lprocfs_vars *list)
                 CERROR("error %d setting up lprocfs for %s\n",rc,obd->obd_name);
                 obd->obd_proc_entry = NULL;
         } else {
-                lprocfs_put_lperef(obd->obd_proc_entry);
+                lprocfs_put_peref(obd->obd_proc_entry);
         }
 
         return rc;
@@ -1188,7 +1188,7 @@ int lprocfs_obd_cleanup(struct obd_device *obd)
                 return -EINVAL;
         if (obd->obd_proc_exports_entry) {
                 /* Should be no exports left */
-                cfs_hash_t *hash = obd->obd_proc_exports_entry->lpe_hash_t;
+                cfs_hash_t *hash = obd->obd_proc_exports_entry->pe_hs;
                 LASSERT(cfs_atomic_read(&hash->hs_count) == 0);
                 lprocfs_remove(&obd->obd_proc_exports_entry);
                 obd->obd_proc_exports_entry = NULL;
@@ -1346,32 +1346,32 @@ void lprocfs_clear_stats(struct lprocfs_stats *stats)
         lprocfs_stats_unlock(stats);
 }
 
-static ssize_t lprocfs_stats_seq_write(libcfs_file_t *file, const char *buf,
+static ssize_t lprocfs_stats_seq_write(cfs_param_file_t *file, const char *buf,
                                        size_t len,  loff_t *off)
 {
-        libcfs_seq_file_t *seq = LIBCFS_FILE_PRIVATE(file);
-        struct lprocfs_stats *stats = LIBCFS_SEQ_PRIVATE(seq);
+        cfs_seq_file_t *seq = cfs_file_private(file);
+        struct lprocfs_stats *stats = cfs_seq_private(seq);
 
         lprocfs_clear_stats(stats);
 
         return len;
 }
 
-static void *lprocfs_stats_seq_start(libcfs_seq_file_t *p, loff_t *pos)
+static void *lprocfs_stats_seq_start(cfs_seq_file_t *p, loff_t *pos)
 {
-        struct lprocfs_stats *stats = LIBCFS_SEQ_PRIVATE(p);
+        struct lprocfs_stats *stats = cfs_seq_private(p);
         /* return 1st cpu location */
         return (*pos >= stats->ls_num) ? NULL :
                 &(stats->ls_percpu[0]->lp_cntr[*pos]);
 }
 
-static void lprocfs_stats_seq_stop(libcfs_seq_file_t *p, void *v)
+static void lprocfs_stats_seq_stop(cfs_seq_file_t *p, void *v)
 {
 }
 
-static void *lprocfs_stats_seq_next(libcfs_seq_file_t *p, void *v, loff_t *pos)
+static void *lprocfs_stats_seq_next(cfs_seq_file_t *p, void *v, loff_t *pos)
 {
-        struct lprocfs_stats *stats = LIBCFS_SEQ_PRIVATE(p);
+        struct lprocfs_stats *stats = cfs_seq_private(p);
 
         ++*pos;
 
@@ -1380,9 +1380,9 @@ static void *lprocfs_stats_seq_next(libcfs_seq_file_t *p, void *v, loff_t *pos)
 }
 
 /* seq file export of one lprocfs counter */
-static int lprocfs_stats_seq_show(libcfs_seq_file_t *p, void *v)
+static int lprocfs_stats_seq_show(cfs_seq_file_t *p, void *v)
 {
-       struct lprocfs_stats *stats = LIBCFS_SEQ_PRIVATE(p);
+       struct lprocfs_stats *stats = cfs_seq_private(p);
        struct lprocfs_counter *cntr = v;
        struct lprocfs_counter ret;
        int idx, rc = 0;
@@ -1390,7 +1390,7 @@ static int lprocfs_stats_seq_show(libcfs_seq_file_t *p, void *v)
        if (cntr == &(stats->ls_percpu[0])->lp_cntr[0]) {
                struct timeval now;
                cfs_gettimeofday(&now);
-               rc = LIBCFS_SEQ_PRINTF(p, "%-25s %lu.%lu secs.usecs\n",
+               rc = cfs_seq_printf(p, "%-25s %lu.%lu secs.usecs\n",
                                "snapshot_time", now.tv_sec, now.tv_usec);
                if (rc < 0)
                        return rc;
@@ -1402,76 +1402,61 @@ static int lprocfs_stats_seq_show(libcfs_seq_file_t *p, void *v)
        if (ret.lc_count == 0)
                goto out;
 
-       rc = LIBCFS_SEQ_PRINTF(p, "%-25s "LPD64" samples [%s]", cntr->lc_name,
+       rc = cfs_seq_printf(p, "%-25s "LPD64" samples [%s]", cntr->lc_name,
                        ret.lc_count, cntr->lc_units);
 
        if (rc < 0)
                goto out;
 
        if ((cntr->lc_config & LPROCFS_CNTR_AVGMINMAX) && (ret.lc_count > 0)) {
-               rc = LIBCFS_SEQ_PRINTF(p, " "LPD64" "LPD64" "LPD64,
+               rc = cfs_seq_printf(p, " "LPD64" "LPD64" "LPD64,
                                ret.lc_min, ret.lc_max, ret.lc_sum);
                if (rc < 0)
                        goto out;
                if (cntr->lc_config & LPROCFS_CNTR_STDDEV)
-                       rc = LIBCFS_SEQ_PRINTF(p, " "LPD64, ret.lc_sumsquare);
+                       rc = cfs_seq_printf(p, " "LPD64, ret.lc_sumsquare);
                if (rc < 0)
                        goto out;
        }
-       rc = LIBCFS_SEQ_PRINTF(p, "\n");
+       rc = cfs_seq_printf(p, "\n");
  out:
        return (rc < 0) ? rc : 0;
 }
 
-libcfs_seq_ops_t lprocfs_stats_seq_sops = {
+cfs_seq_ops_t lprocfs_stats_seq_sops = {
         start: lprocfs_stats_seq_start,
         stop:  lprocfs_stats_seq_stop,
         next:  lprocfs_stats_seq_next,
         show:  lprocfs_stats_seq_show,
 };
 
-static int lprocfs_stats_seq_open(libcfs_inode_t *inode,
-                                  libcfs_file_t *file)
+static int lprocfs_stats_seq_open(cfs_inode_t *inode, cfs_param_file_t *file)
 {
-        libcfs_param_dentry_t *dp = LIBCFS_PDE(inode);
-        libcfs_seq_file_t *seq;
-        int rc;
-
-        if (LPROCFS_ENTRY_AND_CHECK(dp))
-                return -ENOENT;
-
-        LIBCFS_SEQ_OPEN(file, &lprocfs_stats_seq_sops, rc);
-        if (rc) {
-                LPROCFS_EXIT();
-                return rc;
-        }
-        seq = LIBCFS_FILE_PRIVATE(file);
-        LIBCFS_SEQ_PRIVATE(seq) = LIBCFS_DENTRY_DATA(dp);
-        return 0;
+        return cfs_param_seq_fopen(inode, file, &lprocfs_stats_seq_sops);
 }
 
-libcfs_file_ops_t lprocfs_stats_seq_fops = {
-        .owner   = THIS_MODULE,
+cfs_param_file_ops_t lprocfs_stats_seq_fops = {
+        .owner   = CFS_PARAM_MODULE,
         .open    = lprocfs_stats_seq_open,
-        .read    = LIBCFS_SEQ_READ_COMMON,
+        .read    = cfs_seq_read,
         .write   = lprocfs_stats_seq_write,
-        .llseek  = LIBCFS_SEQ_LSEEK_COMMON,
-        .release = libcfs_param_seq_release_common,
+        .llseek  = cfs_seq_lseek,
+        .release = cfs_seq_release,
 };
 
 
-int lprocfs_register_stats(libcfs_param_entry_t *root, const char *name,
+int lprocfs_register_stats(cfs_param_entry_t *root, const char *name,
                            struct lprocfs_stats *stats)
 {
-        libcfs_param_entry_t *lpe = NULL;
+        cfs_param_entry_t *pe = NULL;
         int rc = 0;
         LASSERT(root != NULL);
 
         LPROCFS_WRITE_ENTRY();
-        lpe = lprocfs_add_simple(root, (char *)name, NULL, NULL,
+        pe = lprocfs_add_simple(root, (char *)name, NULL, NULL,
                                  stats, &lprocfs_stats_seq_fops);
-        if (lpe != NULL)
-                libcfs_param_put(lpe);
+        if (pe != NULL)
+                cfs_param_put(pe);
         else
                 rc = -ENOMEM;
         LPROCFS_WRITE_EXIT();
@@ -1740,11 +1725,11 @@ int lprocfs_exp_rd_nid(char *page, char **start, off_t off, int count,
 {
         struct obd_export *exp;
 
-        LIBCFS_PARAM_GET_DATA(exp, data, NULL);
+        cfs_param_get_data(exp, data, NULL);
         LASSERT(exp != NULL);
 
-        return libcfs_param_snprintf(page, count, data, LP_STR,
-                                     "%s\n", obd_export_nid2str(exp));
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_STR,
+                                  "%s\n", obd_export_nid2str(exp));
 }
 
 struct exp_uuid_cb_data {
@@ -1786,14 +1771,14 @@ int lprocfs_exp_rd_uuid(char *page, char **start, off_t off, int count,
         struct obd_device *obd;
         int len = 0;
 
-        LIBCFS_PARAM_GET_DATA(stats, data, NULL);
+        cfs_param_get_data(stats, data, NULL);
         obd = stats->nid_obd;
         page[0] = '\0';
         lprocfs_exp_rd_cb_data_init(&cb_data, page, count, eof, &len);
         cfs_hash_for_each_key(obd->obd_nid_hash, &stats->nid,
                               lprocfs_exp_print_uuid, &cb_data);
 
-        return libcfs_param_snprintf(page, count, data, LP_STR, NULL, NULL);
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_STR, NULL, NULL);
 }
 
 int lprocfs_exp_print_hash(cfs_hash_t *hs, cfs_hash_bd_t *bd,
@@ -1822,20 +1807,20 @@ int lprocfs_exp_rd_hash(char *page, char **start, off_t off, int count,
         struct obd_device *obd;
         int len = 0;
 
-        LIBCFS_PARAM_GET_DATA(stats, data, NULL);
+        cfs_param_get_data(stats, data, NULL);
         obd = stats->nid_obd;
         page[0] = '\0';
         lprocfs_exp_rd_cb_data_init(&cb_data, page, count, eof, &len);
         cfs_hash_for_each_key(obd->obd_nid_hash, &stats->nid,
                               lprocfs_exp_print_hash, &cb_data);
 
-        return libcfs_param_snprintf(page, count, data, LP_STR, NULL, NULL);
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_STR, NULL, NULL);
 }
 
 int lprocfs_nid_stats_clear_read(char *page, char **start, off_t off,
                                         int count, int *eof,  void *data)
 {
-        return libcfs_param_snprintf(page, count, data, LP_STR, "%s\n",
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_STR, "%s\n",
                             "Write into this file to clear all nid stats and "
                             "stale nid entries");
 }
@@ -1866,14 +1851,14 @@ int lprocfs_nid_stats_clear_write_cb(void *obj, void *data)
         RETURN(0);
 }
 
-int lprocfs_nid_stats_clear_write(libcfs_file_t *file, const char *buffer,
+int lprocfs_nid_stats_clear_write(cfs_param_file_t *file, const char *buffer,
                                   unsigned long count, void *data)
 {
         struct obd_device *obd;
         struct nid_stat *client_stat;
         CFS_LIST_HEAD(free_list);
 
-        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        cfs_param_get_data(obd, data, NULL);
         cfs_hash_cond_del(obd->obd_nid_stats_hash,
                           lprocfs_nid_stats_clear_write_cb, &free_list);
 
@@ -1893,7 +1878,7 @@ int lprocfs_exp_setup(struct obd_export *exp, lnet_nid_t *nid, int reconnect,
 {
         struct nid_stat *new_stat, *old_stat;
         struct obd_device *obd = NULL;
-        libcfs_param_entry_t *entry;
+        cfs_param_entry_t *entry;
         char *buffer = NULL;
         int rc = 0;
         ENTRY;
@@ -1962,11 +1947,11 @@ int lprocfs_exp_setup(struct obd_export *exp, lnet_nid_t *nid, int reconnect,
                                    lprocfs_exp_rd_uuid, NULL, new_stat, NULL);
         if (IS_ERR(entry)) {
                 CWARN("Error adding the NID stats file\n");
-                lprocfs_put_lperef(new_stat->nid_proc);
+                lprocfs_put_peref(new_stat->nid_proc);
                 rc = PTR_ERR(entry);
                 GOTO(destroy_new_ns, rc);
         }
-        lprocfs_put_lperef(entry);
+        lprocfs_put_peref(entry);
 
         entry = lprocfs_add_simple(new_stat->nid_proc, "hash",
                                    lprocfs_exp_rd_hash, NULL, new_stat, NULL);
@@ -1975,7 +1960,7 @@ int lprocfs_exp_setup(struct obd_export *exp, lnet_nid_t *nid, int reconnect,
                 rc = PTR_ERR(entry);
                 GOTO(destroy_new_ns, rc);
         }
-        lprocfs_put_lperef(entry);
+        lprocfs_put_peref(entry);
 
         exp->exp_nid_stats = new_stat;
         *newnid = 1;
@@ -1983,13 +1968,13 @@ int lprocfs_exp_setup(struct obd_export *exp, lnet_nid_t *nid, int reconnect,
         cfs_spin_lock(&obd->obd_nid_lock);
         cfs_list_add(&new_stat->nid_list, &obd->obd_nid_stats);
         cfs_spin_unlock(&obd->obd_nid_lock);
-        lprocfs_put_lperef(new_stat->nid_proc);
+        lprocfs_put_peref(new_stat->nid_proc);
 
         RETURN(rc);
 
 destroy_new_ns:
         if (new_stat->nid_proc != NULL) {
-                lprocfs_put_lperef(new_stat->nid_proc);
+                lprocfs_put_peref(new_stat->nid_proc);
                 lprocfs_remove(&new_stat->nid_proc);
         }
         cfs_hash_del(obd->obd_nid_stats_hash, nid, &new_stat->nid_hash);
@@ -2028,7 +2013,7 @@ int lprocfs_write_frac_helper(const char *buffer, unsigned long count,
         if (count > (sizeof(kernbuf) - 1))
                 return -EINVAL;
 
-        if ((rc = libcfs_param_copy(flag, kernbuf, buffer, count)))
+        if ((rc = cfs_param_copy(flag, kernbuf, buffer, count)))
                 return rc;
 
         kernbuf[count] = '\0';
@@ -2135,7 +2120,7 @@ int lprocfs_write_frac_u64_helper(const char *buffer, unsigned long count,
         if (count > (sizeof(kernbuf) - 1))
                 return -EINVAL;
 
-        if ((rc = libcfs_param_copy(flag, kernbuf, buffer, count)))
+        if ((rc = cfs_param_copy(flag, kernbuf, buffer, count)))
                 return rc;
 
         kernbuf[count] = '\0';
@@ -2186,36 +2171,36 @@ int lprocfs_write_frac_u64_helper(const char *buffer, unsigned long count,
         return 0;
 }
 
-int lprocfs_seq_create(libcfs_param_entry_t *parent, char *name,
-                       mode_t mode, libcfs_file_ops_t *seq_fops, void *data)
+int lprocfs_seq_create(cfs_param_entry_t *parent, char *name,
+                       mode_t mode, cfs_param_file_ops_t *seq_fops, void *data)
 {
-        libcfs_param_entry_t *lpe = NULL;
+        cfs_param_entry_t *pe = NULL;
         int rc = 0;
         ENTRY;
 
         if (parent == NULL)
                 RETURN(-EINVAL);
-        libcfs_param_get(parent);
-        lpe = libcfs_param_create(name, mode, parent);
-        if (lpe) {
-                lpe->lpe_data = data;
-                lpe->lpe_cb_sfops = seq_fops;
+        cfs_param_get(parent);
+        pe = cfs_param_create(name, mode, parent);
+        if (pe) {
+                pe->pe_data = data;
+                pe->pe_cb_sfops = seq_fops;
 #ifdef LPROCFS
-                if (parent->lpe_proc) {
+                if (parent->pe_proc) {
                         struct proc_dir_entry *proc;
-                        proc = create_proc_entry(name, mode, parent->lpe_proc);
+                        proc = create_proc_entry(name, mode, parent->pe_proc);
                         if (proc) {
                                 proc->proc_fops = seq_fops;
                                 proc->data = data;
-                                lpe->lpe_proc = proc;
+                                pe->pe_proc = proc;
                         }
                 }
 #endif
-                libcfs_param_put(lpe);
+                cfs_param_put(pe);
         } else {
                 rc = -ENOMEM;
         }
-        libcfs_param_put(parent);
+        cfs_param_put(parent);
 
         RETURN(rc);
 }
@@ -2223,7 +2208,7 @@ EXPORT_SYMBOL(lprocfs_seq_create);
 
 __inline__ int lprocfs_obd_seq_create(struct obd_device *dev, char *name,
                                       mode_t mode,
-                                      libcfs_file_ops_t *seq_fops,
+                                      cfs_param_file_ops_t *seq_fops,
                                       void *data)
 {
         return (lprocfs_seq_create(dev->obd_proc_entry, name,
@@ -2278,7 +2263,7 @@ int lprocfs_obd_rd_hash(char *page, char **start, off_t off,
         struct obd_device *obd;
         int c = 0;
 
-        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        cfs_param_get_data(obd, data, NULL);
         if (obd == NULL)
                 return 0;
 
@@ -2292,7 +2277,7 @@ int lprocfs_obd_rd_hash(char *page, char **start, off_t off,
                                         page + c, count - c);
 #endif
 
-        return libcfs_param_snprintf(page, count, data, LP_STR, NULL, NULL);
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_STR, NULL, NULL);
 }
 EXPORT_SYMBOL(lprocfs_obd_rd_hash);
 
@@ -2303,7 +2288,7 @@ int lprocfs_obd_rd_recovery_status(char *page, char **start, off_t off,
         int len = 0, size;
         int flag = 0;
 
-        LIBCFS_PARAM_GET_DATA(obd, data, &flag);
+        cfs_param_get_data(obd, data, &flag);
         LASSERT(obd != NULL);
         LASSERT(count >= 0);
 
@@ -2410,7 +2395,7 @@ fclose:
 out:
         page = *start;
 
-        return libcfs_param_snprintf(page, count, data, LP_STR, NULL, NULL);
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_STR, NULL, NULL);
 }
 EXPORT_SYMBOL(lprocfs_obd_rd_recovery_status);
 
@@ -2419,21 +2404,21 @@ int lprocfs_obd_rd_recovery_time_soft(char *page, char **start, off_t off,
 {
         struct obd_device *obd;
 
-        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        cfs_param_get_data(obd, data, NULL);
         LASSERT(obd != NULL);
 
-        return libcfs_param_snprintf(page, count, data, LP_S32, "%d\n",
-                                     obd->obd_recovery_timeout);
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_S32, "%d\n",
+                                  obd->obd_recovery_timeout);
 }
 EXPORT_SYMBOL(lprocfs_obd_rd_recovery_time_soft);
 
-int lprocfs_obd_wr_recovery_time_soft(libcfs_file_t *file, const char *buffer,
+int lprocfs_obd_wr_recovery_time_soft(cfs_param_file_t *file, const char *buffer,
                                       unsigned long count, void *data)
 {
         struct obd_device *obd;
         int val, rc, flag = 0;
 
-        LIBCFS_PARAM_GET_DATA(obd, data, &flag);
+        cfs_param_get_data(obd, data, &flag);
         LASSERT(obd != NULL);
         rc = lprocfs_write_helper(buffer, count, &val, flag);
         if (rc)
@@ -2449,21 +2434,21 @@ int lprocfs_obd_rd_recovery_time_hard(char *page, char **start, off_t off,
 {
         struct obd_device *obd;
 
-        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        cfs_param_get_data(obd, data, NULL);
         LASSERT(obd != NULL);
 
-        return libcfs_param_snprintf(page, count, data, LP_U32, "%lu\n",
-                                     obd->obd_recovery_time_hard);
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_U32, "%lu\n",
+                                  obd->obd_recovery_time_hard);
 }
 EXPORT_SYMBOL(lprocfs_obd_rd_recovery_time_hard);
 
-int lprocfs_obd_wr_recovery_time_hard(libcfs_file_t *file, const char *buffer,
+int lprocfs_obd_wr_recovery_time_hard(cfs_param_file_t *file, const char *buffer,
                                       unsigned long count, void *data)
 {
         struct obd_device *obd;
         int val, rc, flag = 0;
 
-        LIBCFS_PARAM_GET_DATA(obd, data, &flag);
+        cfs_param_get_data(obd, data, &flag);
         LASSERT(obd != NULL);
 
         rc = lprocfs_write_helper(buffer, count, &val, flag);
@@ -2480,11 +2465,11 @@ int lprocfs_obd_rd_mntdev(char *page, char **start, off_t off,
 {
         struct obd_device *obd;
 
-        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        cfs_param_get_data(obd, data, NULL);
         LASSERT(obd != NULL);
         LASSERT(obd->u.obt.obt_vfsmnt->mnt_devname);
-        return libcfs_param_snprintf(page, count, data, LP_STR, "%s\n",
-                                     obd->u.obt.obt_vfsmnt->mnt_devname);
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_STR, "%s\n",
+                                  obd->u.obt.obt_vfsmnt->mnt_devname);
 }
 EXPORT_SYMBOL(lprocfs_obd_rd_mntdev);
 
@@ -2492,7 +2477,7 @@ EXPORT_SYMBOL(lprocfs_register);
 EXPORT_SYMBOL(lprocfs_srch);
 EXPORT_SYMBOL(lprocfs_remove);
 EXPORT_SYMBOL(lprocfs_remove_proc_entry);
-EXPORT_SYMBOL(lprocfs_put_lperef);
+EXPORT_SYMBOL(lprocfs_put_peref);
 EXPORT_SYMBOL(lprocfs_add_vars);
 EXPORT_SYMBOL(lprocfs_obd_setup);
 EXPORT_SYMBOL(lprocfs_obd_cleanup);

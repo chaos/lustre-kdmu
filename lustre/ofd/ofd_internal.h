@@ -38,7 +38,7 @@
 
 #define FILTER_RECOVERY_TIMEOUT (obd_timeout * 5 * CFS_HZ / 2) /* *waves hands* */
 
-extern libcfs_file_ops_t filter_per_export_stats_fops;
+extern cfs_param_file_ops_t filter_per_export_stats_fops;
 
 /* Limit the returned fields marked valid to those that we actually might set */
 #define FILTER_VALID_FLAGS (LA_TYPE | LA_MODE | LA_SIZE | LA_BLOCKS | \

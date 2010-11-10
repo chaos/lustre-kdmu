@@ -234,7 +234,7 @@ struct osd_device {
         struct lustre_capa_key   *od_capa_keys;
         cfs_hlist_head_t         *od_capa_hash;
 
-        libcfs_param_entry_t *od_proc_entry;
+        cfs_param_entry_t        *od_proc_entry;
         struct lprocfs_stats     *od_stats;
         /*
          * statfs optimization: we cache a bit.

@@ -301,7 +301,7 @@ static int fld_client_proc_init(struct lu_client_fld *fld)
 
         rc = lprocfs_add_vars(fld->lcf_proc_dir,
                               fld_client_proc_list, fld);
-        lprocfs_put_lperef(fld->lcf_proc_dir);
+        lprocfs_put_peref(fld->lcf_proc_dir);
         if (rc) {
                 CERROR("%s: Can't init FLD proc, rc %d\n",
                        fld->lcf_name, rc);

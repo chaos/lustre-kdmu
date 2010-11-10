@@ -35,7 +35,7 @@
  *
  * API and structure definitions for params_tree.
  *
- * Author: LiuYing <emoly.liu@sun.com>
+ * Author: LiuYing <emoly.liu@oracle.com>
  */
 #ifndef __PARAMS_TREE_H__
 #define __PARAMS_TREE_H__
@@ -52,39 +52,40 @@
 #endif
 
 #ifdef LPROCFS
-typedef struct file              libcfs_file_t;
-typedef struct inode             libcfs_inode_t;
-typedef struct proc_inode        libcfs_proc_inode_t;
-typedef struct seq_file          libcfs_seq_file_t;
-typedef struct seq_operations    libcfs_seq_ops_t;
-typedef struct file_operations   libcfs_file_ops_t;
-typedef cfs_module_t            *libcfs_module_t;
-typedef struct proc_dir_entry    libcfs_param_dentry_t;
-typedef struct poll_table_struct libcfs_poll_table_t;
-#define LIBCFS_PARAM_MODULE      THIS_MODULE
-#define LIBCFS_PDE(value)                       PDE(value)
-#define LIBCFS_SEQ_OPEN(file, ops, rc)          (rc = seq_open(file, ops))
-#define LIBCFS_FILE_PRIVATE(file)               (file->private_data)
-#define LIBCFS_SEQ_READ_COMMON                  seq_read
-#define LIBCFS_SEQ_LSEEK_COMMON                 seq_lseek
-#define LIBCFS_SEQ_PRIVATE(seq)                 (seq->private)
-#define LIBCFS_DENTRY_DATA(dentry)              (dentry->data)
-#define LIBCFS_PROC_INODE_PDE(proc_inode)       (proc_inode->pde)
-#define LIBCFS_PROCI_INODE(proc_inode)          (proc_inode->vfs_inode)
-#define LIBCFS_SEQ_PRINTF(seq, format, ...)     seq_printf(seq, format,  \
+typedef cfs_module_t                           *cfs_param_module_t;
+typedef struct file                             cfs_param_file_t;
+typedef struct inode                            cfs_inode_t;
+typedef struct proc_inode                       cfs_proc_inode_t;
+typedef struct seq_file                         cfs_seq_file_t;
+typedef struct seq_operations                   cfs_seq_ops_t;
+typedef struct file_operations                  cfs_param_file_ops_t;
+typedef struct proc_dir_entry                   cfs_param_dentry_t;
+typedef struct poll_table_struct                cfs_poll_table_t;
+#define CFS_PARAM_MODULE                        THIS_MODULE
+#define CFS_PDE(value)                          PDE(value)
+#define cfs_file_private(file)                  (file->private_data)
+#define cfs_inode_private(inode)                (inode->i_private)
+#define cfs_seq_private(seq)                    (seq->private)
+#define cfs_dentry_data(dentry)                 (dentry->data)
+#define cfs_proc_inode_pde(proc_inode)          (proc_inode->pde)
+#define cfs_proci_inode(proc_inode)             (proc_inode->vfs_inode)
+#define cfs_seq_open(file, op)                  seq_open(file, op)
+#define cfs_seq_read                            seq_read
+#define cfs_seq_lseek                           seq_lseek
+#define cfs_seq_printf(seq, format, ...)        seq_printf(seq, format,  \
                                                            ## __VA_ARGS__)
-#define LIBCFS_SEQ_RELEASE(inode, file)         seq_release(inode, file)
-#define LIBCFS_SEQ_PUTS(seq, s)                 seq_puts(seq, s)
-#define LIBCFS_SEQ_PUTC(seq, s)                 seq_putc(seq, s)
-#define LIBCFS_SEQ_READ(file, buf, count, ppos, rc) (rc = seq_read(file, buf, \
-                                                            count, ppos))
+#define cfs_seq_puts(seq, s)                    seq_puts(seq, s)
+#define cfs_seq_putc(seq, s)                    seq_putc(seq, s)
+
 /* in lprocfs_stat.c, to protect the private data for proc entries */
 extern cfs_rw_semaphore_t       _lprocfs_lock;
-#define LPROCFS_ENTRY()           do {  \
-        cfs_down_read(&_lprocfs_lock);      \
+#define LPROCFS_ENTRY()                 \
+do {                                    \
+        cfs_down_read(&_lprocfs_lock);  \
 } while(0)
-#define LPROCFS_EXIT()            do {  \
-        cfs_up_read(&_lprocfs_lock);        \
+#define LPROCFS_EXIT()                  \
+do {                                    \
+        cfs_up_read(&_lprocfs_lock);    \
 } while(0)
 
 #ifdef HAVE_PROCFS_DELETED
@@ -107,113 +108,74 @@ int LPROCFS_ENTRY_AND_CHECK(struct proc_dir_entry *dp)
 }
 #endif /* HAVE_PROCFS_DELETED */
 
-#define LPROCFS_WRITE_ENTRY()     do {  \
-        cfs_down_write(&_lprocfs_lock);     \
+#define LPROCFS_WRITE_ENTRY()           \
+do {                                    \
+        cfs_down_write(&_lprocfs_lock); \
 } while(0)
-#define LPROCFS_WRITE_EXIT()      do {  \
-        cfs_up_write(&_lprocfs_lock);       \
+#define LPROCFS_WRITE_EXIT()            \
+do {                                    \
+        cfs_up_write(&_lprocfs_lock);   \
 } while(0)
 
 #else /* !LPROCFS */
 
-typedef struct libcfs_params_file {
-        void           *lp_private;
-        loff_t          lp_pos;
-        unsigned int    lp_flags;
-} libcfs_file_t;
+struct cfs_seq_operations;
+typedef struct cfs_seq_file {
+        char                      *buf;
+        size_t                     size;
+        size_t                     from;
+        size_t                     count;
+        loff_t                     index;
+        loff_t                     version;
+        cfs_mutex_t                lock;
+        struct cfs_seq_operations *op;
+        void                      *private;
+} cfs_seq_file_t;
 
-typedef struct libcfs_params_inode {
-        void    *lp_private;
-} libcfs_inode_t;
+typedef struct cfs_seq_operations {
+        void *(*start) (cfs_seq_file_t *m, loff_t *pos);
+        void  (*stop) (cfs_seq_file_t *m, void *v);
+        void *(*next) (cfs_seq_file_t *m, void *v, loff_t *pos);
+        int   (*show) (cfs_seq_file_t *m, void *v);
+} cfs_seq_ops_t;
 
-typedef struct libcfs_proc_dentry {
-        void *lp_data;
-} libcfs_param_dentry_t;
+typedef struct cfs_param_inode {
+        void                   *param_private;
+} cfs_inode_t;
 
-typedef struct libcfs_proc_inode {
-        libcfs_param_dentry_t *lp_pde;
-        libcfs_inode_t lp_inode;
-} libcfs_proc_inode_t;
+typedef struct cfs_param_file {
+        void                   *param_private;
+        loff_t                  param_pos;
+        unsigned int            param_flags;
+} cfs_param_file_t;
 
-struct libcfs_seq_operations;
-typedef struct libcfs_seq_file {
-        char *buf;
-        size_t size;
-        size_t from;
-        size_t count;
-        loff_t index;
-        loff_t version;
-        cfs_mutex_t lock;
-        struct libcfs_seq_operations *op;
-        void *private;
-} libcfs_seq_file_t;
+typedef struct cfs_param_dentry {
+        void                   *param_data;
+} cfs_param_dentry_t;
 
-typedef struct libcfs_seq_operations {
-        void *(*start) (libcfs_seq_file_t *m, loff_t *pos);
-        void (*stop) (libcfs_seq_file_t *m, void *v);
-        void *(*next) (libcfs_seq_file_t *m, void *v, loff_t *pos);
-        int (*show) (libcfs_seq_file_t *m, void *v);
-} libcfs_seq_ops_t;
+typedef struct cfs_proc_inode {
+        cfs_param_dentry_t     *param_pde;
+        cfs_inode_t             param_inode;
+} cfs_proc_inode_t;
 
-typedef void *libcfs_module_t;
-typedef void *libcfs_poll_table_t;
+typedef void *cfs_param_module_t;
+typedef void *cfs_poll_table_t;
 
-typedef struct libcfs_file_ops {
-        libcfs_module_t owner;
-        int (*open) (libcfs_inode_t *, libcfs_file_t *);
-        loff_t (*llseek)(libcfs_file_t *, loff_t, int);
-        int (*release) (libcfs_inode_t *, libcfs_file_t *);
-        unsigned int (*poll) (libcfs_file_t *, libcfs_poll_table_t *);
-        ssize_t (*write) (libcfs_file_t *, const char *, size_t, loff_t *);
-        ssize_t (*read)(libcfs_file_t *, char *, size_t, loff_t *);
-} libcfs_file_ops_t;
-typedef libcfs_file_ops_t *cfs_lproc_filep_t;
-
-static inline libcfs_proc_inode_t *FAKE_PROC_I(const libcfs_inode_t *inode)
-{
-        return container_of(inode, libcfs_proc_inode_t, lp_inode);
-}
-
-static inline libcfs_param_dentry_t *FAKE_PDE(libcfs_inode_t *inode)
-{
-        return FAKE_PROC_I(inode)->lp_pde;
-}
-
-#define LIBCFS_PARAM_MODULE                     NULL
-#define LIBCFS_PDE(value)                       FAKE_PDE(value)
-#define LIBCFS_PROCI_INODE(proc_inode)          (proc_inode->lp_inode)
-#define LIBCFS_FILE_PRIVATE(file)               (file->lp_private)
-#define LIBCFS_SEQ_READ_COMMON                  NULL
-#define LIBCFS_SEQ_LSEEK_COMMON                 NULL
-#define LIBCFS_SEQ_PRIVATE(seq)                 (seq->private)
-#define LIBCFS_DENTRY_DATA(dentry)              (dentry->lp_data)
-#define LIBCFS_PROC_INODE_PDE(proc_inode)       (proc_inode->lp_pde)
-#define LIBCFS_SEQ_PRINTF(seq, format, ...)     libcfs_param_seq_print_common(seq,\
-                                                 format, ## __VA_ARGS__)
-#define LIBCFS_SEQ_RELEASE(inode, file)         libcfs_seq_release(inode, file)
-#define LIBCFS_SEQ_PUTS(seq, s)                 libcfs_param_seq_puts_common(seq, s)
-#define LIBCFS_SEQ_PUTC(seq, s)                 libcfs_param_seq_putc_common(seq, s)
-#define LIBCFS_SEQ_READ(file, buf, count, ppos, rc) do {} while(0)
-#define LIBCFS_SEQ_OPEN(file, ops, rc)                     \
-do {                                                       \
-         libcfs_seq_file_t *p = LIBCFS_FILE_PRIVATE(file); \
-         if (!p) {                                         \
-                LIBCFS_ALLOC(p, sizeof(*p));               \
-                if (!p) {                                  \
-                        rc = -ENOMEM;                      \
-                        break;                             \
-                }                                          \
-                LIBCFS_FILE_PRIVATE(file) = p;             \
-        }                                                  \
-        memset(p, 0, sizeof(*p));                          \
-        p->op = ops;                                       \
-        rc = 0;                                            \
-} while(0)
+typedef struct cfs_param_file_ops {
+        cfs_param_module_t owner;
+        int (*open) (cfs_inode_t *, cfs_param_file_t *);
+        loff_t (*llseek)(cfs_param_file_t *, loff_t, int);
+        int (*release) (cfs_inode_t *, cfs_param_file_t *);
+        unsigned int (*poll) (cfs_param_file_t *, cfs_poll_table_t *);
+        ssize_t (*write) (cfs_param_file_t *, const char *, size_t, loff_t *);
+        ssize_t (*read)(cfs_param_file_t *, char *, size_t, loff_t *);
+} cfs_param_file_ops_t;
+typedef cfs_param_file_ops_t *cfs_lproc_filep_t;
 
 #define LPROCFS_ENTRY()             do {} while(0)
 #define LPROCFS_EXIT()              do {} while(0)
 static inline
-int LPROCFS_ENTRY_AND_CHECK(libcfs_param_dentry_t *dp)
+int LPROCFS_ENTRY_AND_CHECK(cfs_param_dentry_t *dp)
 {
         LPROCFS_ENTRY();
         return 0;
@@ -221,175 +183,208 @@ int LPROCFS_ENTRY_AND_CHECK(libcfs_param_dentry_t *dp)
 #define LPROCFS_WRITE_ENTRY()       do {} while(0)
 #define LPROCFS_WRITE_EXIT()        do {} while(0)
 
-#endif /* LPROCFS */
-
-#define LPE_HASH_CUR_BITS       8
-#define LPE_HASH_BKT_BITS       8
-#define LPE_HASH_MAX_BITS       24
-
-typedef int (libcfs_param_read_t)(char *page, char **start, off_t off,
-                                  int count, int *eof, void *data);
-typedef int (libcfs_param_write_t)(libcfs_file_t *filp, const char *buffer,
-                                   unsigned long count, void *data);
-typedef struct libcfs_param_entry {
-        /* hash table members */
-        cfs_hash_t                *lpe_hash_t;/* =dir, someone's parent */
-        cfs_rw_semaphore_t         lpe_rw_sem;
-        /* hash node members */
-        cfs_hlist_node_t           lpe_hash_n;/* =leaf_entry, someone's child */
-        libcfs_param_read_t       *lpe_cb_read;
-        libcfs_param_write_t      *lpe_cb_write;
-        libcfs_file_ops_t         *lpe_cb_sfops;/* used only by seq operation */
-        void                      *lpe_data;   /* if entry is a symlink, it
-                                                  stores the path to the target;
-                                                  otherwise, it points to a
-                                                  libcfs_param_cb_data */
-        /* common members */
-        struct libcfs_param_entry *lpe_parent;
-        cfs_atomic_t               lpe_refcount;/* lpe reference count */
-        const char                *lpe_name;
-        int                        lpe_name_len;
-        mode_t                     lpe_mode;   /* dir, file or symbol_link, and
-                                                  also the access-control mode */
-        void                      *lpe_proc;   /* proc entry */
-} libcfs_param_entry_t;
-
-#define PARAM_DEBUG_MAGIC 0x01DE01EE
-typedef struct libcfs_param_cb_data {
-        int             cb_magic;
-        int             cb_flag;       /* switch read cb function from proc to params_tree */
-        void           *cb_data;     /* the original callback data */
-} lparcb_t;
-
-enum libcfs_param_flags {
-        /* The dir object has been unlinked */
-        LIBCFS_PARAM_ACCESS   = 1 << 0,
-};
-
-
-#define LIBCFS_PARAM_GET_DATA(value, cb_param, flagp)                   \
-{                                                                       \
-        int *cb_flag = (int *)flagp;                                    \
-        LASSERT(((lparcb_t *)cb_param)->cb_magic == PARAM_DEBUG_MAGIC); \
-        value = ((lparcb_t *)cb_param)->cb_data;                        \
-        if (flagp != NULL)                                              \
-                *cb_flag = ((lparcb_t *)cb_param)->cb_flag;             \
+static inline
+cfs_proc_inode_t *FAKE_PROC_I(const cfs_inode_t *inode)
+{
+        return container_of(inode, cfs_proc_inode_t, param_inode);
 }
 
-#define LIBCFS_ALLOC_PROCDATA(data)  libcfs_param_cb_data_alloc(data,0)
-#define LIBCFS_ALLOC_PARAMDATA(data) libcfs_param_cb_data_alloc(data,    \
-                                     LIBCFS_PARAM_ACCESS)
+static inline
+cfs_param_dentry_t *FAKE_PDE(cfs_inode_t *inode)
+{
+        return FAKE_PROC_I(inode)->param_pde;
+}
 
-#define LIBCFS_FREE_PROCDATA(data)  libcfs_param_cb_data_free(data,0)
-#define LIBCFS_FREE_PARAMDATA(data) libcfs_param_cb_data_free(data,     \
-                                     LIBCFS_PARAM_ACCESS)
+#define CFS_PARAM_MODULE                     NULL
+#define CFS_PDE(value)                       FAKE_PDE(value)
+#define cfs_proci_inode(proc_inode)          (proc_inode->lp_inode)
+#define cfs_file_private(file)               (file->lp_private)
+#define cfs_seq_private(seq)                 (seq->private)
+#define cfs_inode_private(inode)             (inode->lp_private)
+#define cfs_dentry_data(dentry)              (dentry->lp_data)
+#define cfs_proc_inode_pde(proc_inode)       (proc_inode->lp_pde)
+#define cfs_seq_open(file, op)               cfs_param_seq_open(file, op)
+#define cfs_seq_read                         NULL
+#define cfs_seq_lseek                        NULL
+#define cfs_seq_printf(seq, format, ...)     cfs_param_seq_printf(seq, \
+                                             format, ## __VA_ARGS__)
+#define cfs_seq_puts(seq, s)                 cfs_param_seq_puts(seq, s)
+#define cfs_seq_putc(seq, s)                 cfs_param_seq_putc(seq, s)
 
+#endif /* LPROCFS */
 
-extern lparcb_t *libcfs_param_cb_data_alloc(void *data, int flag);
-extern void libcfs_param_cb_data_free(lparcb_t *cb_data, int flag);
-extern libcfs_param_entry_t *libcfs_param_lnet_root;
+/* params_tree definitions */
+#define PE_HASH_CUR_BITS       8
+#define PE_HASH_BKT_BITS       8
+#define PE_HASH_MAX_BITS       24
 
-extern int libcfs_param_root_init(void);
-extern void libcfs_param_root_fini(void);
-extern libcfs_param_entry_t *libcfs_param_get_root(void);
+typedef int (cfs_param_read_t)(char *page, char **start, off_t off,
+                               int count, int *eof, void *data);
+typedef int (cfs_param_write_t)(cfs_param_file_t *filp, const char *buffer,
+                                unsigned long count, void *data);
+typedef struct cfs_param_entry {
+        /* hash table members */
+        cfs_hash_t             *pe_hs;      /* =dir, someone's parent */
+        cfs_rw_semaphore_t      pe_rw_sem;
+        /* hash node members */
+        cfs_hlist_node_t        pe_hnode;   /* =leaf_entry, someone's child */
+        cfs_param_read_t       *pe_cb_read;
+        cfs_param_write_t      *pe_cb_write;
+        cfs_param_file_ops_t   *pe_cb_sfops;/* used only by seq operation */
+        void                   *pe_data;    /* if entry is a symlink, it
+                                               stores the path to the target;
+                                               otherwise, it points to a
+                                               libcfs_param_cb_data */
+        /* common members */
+        struct cfs_param_entry *pe_parent;
+        cfs_atomic_t            pe_refcount;/* pe reference count */
+        const char             *pe_name;
+        int                     pe_name_len;
+        mode_t                  pe_mode;    /* dir, file or symbol_link, and
+                                               also the access-control mode */
+        void                   *pe_proc;    /* proc entry */
+} cfs_param_entry_t;
 
-extern libcfs_param_entry_t *
-libcfs_param_create(const char *name, mode_t mode,
-                    libcfs_param_entry_t *parent);
-extern libcfs_param_entry_t *
-libcfs_param_mkdir(const char *name, libcfs_param_entry_t *parent);
-extern libcfs_param_entry_t *
-libcfs_param_symlink(const char *name, libcfs_param_entry_t *parent,
-                     const char *dest);
-extern libcfs_param_entry_t *
-libcfs_param_lookup(const char *name, libcfs_param_entry_t *parent);
-extern void libcfs_param_remove(const char *name, libcfs_param_entry_t *parent);
+#define CFS_PARAM_DEBUG_MAGIC 0x01DE01EE
+typedef struct cfs_param_cb_data {
+        int             cb_magic;
+        int             cb_flag;  /* switch read cb function from proc to params_tree */
+        void           *cb_data;  /* the original callback data */
+} cfs_param_cb_data_t;
 
-extern libcfs_param_entry_t *libcfs_param_get(libcfs_param_entry_t *lpe);
-extern void libcfs_param_put(libcfs_param_entry_t *lpe);
+enum cfs_param_flags {
+        /* The dir object has been unlinked */
+        CFS_PARAM_ACCESS   = 1 << 0,
+};
 
-extern int libcfs_param_list(const char *parent_path, char *buf, int *buflen);
-extern int libcfs_param_read(const char *path, char *buf, int nbytes,
-                             loff_t *ppos, int *eof);
-extern int libcfs_param_write(const char *path, char *buf, int count);
+#define cfs_param_get_data(value, data, flagp)                          \
+{                                                                       \
+        int *cb_flag = (int *)flagp;                                    \
+        LASSERT(((cfs_param_cb_data_t *)data)->cb_magic ==              \
+                CFS_PARAM_DEBUG_MAGIC);                                 \
+        value = ((cfs_param_cb_data_t *)data)->cb_data;                 \
+        if (flagp != NULL)                                              \
+                *cb_flag = ((cfs_param_cb_data_t *)data)->cb_flag;      \
+}
 
-extern int libcfs_param_seq_release_common(libcfs_inode_t *inode,
-                                           libcfs_file_t *file);
-extern int libcfs_param_seq_print_common(libcfs_seq_file_t *seq,
-                                         const char *f, ...);
-extern int libcfs_param_seq_puts_common(libcfs_seq_file_t *seq, const char *s);
-extern int libcfs_param_seq_putc_common(libcfs_seq_file_t *seq, const char c);
+#define CFS_ALLOC_PROCDATA(data)  cfs_param_cb_data_alloc(data,0)
+#define CFS_ALLOC_PARAMDATA(data) cfs_param_cb_data_alloc(data,         \
+                                                CFS_PARAM_ACCESS)
+
+#define CFS_FREE_PROCDATA(data)  cfs_param_cb_data_free(data,0)
+#define CFS_FREE_PARAMDATA(data) cfs_param_cb_data_free(data,           \
+                                                CFS_PARAM_ACCESS)
+
+extern cfs_param_cb_data_t *cfs_param_cb_data_alloc(void *data, int flag);
+extern void cfs_param_cb_data_free(cfs_param_cb_data_t *cb_data, int flag);
+
+extern cfs_param_entry_t *cfs_param_lnet_root;
+extern int cfs_param_root_init(void);
+extern void cfs_param_root_fini(void);
+extern cfs_param_entry_t *cfs_param_get_root(void);
+
+extern cfs_param_entry_t *
+cfs_param_create(const char *name, mode_t mode, cfs_param_entry_t *parent);
+extern cfs_param_entry_t *
+cfs_param_mkdir(const char *name, cfs_param_entry_t *parent);
+extern cfs_param_entry_t *
+cfs_param_symlink(const char *name, cfs_param_entry_t *parent,
+                  const char *dest);
+extern cfs_param_entry_t *
+cfs_param_lookup(const char *name, cfs_param_entry_t *parent);
+extern void cfs_param_remove(const char *name, cfs_param_entry_t *parent);
+
+extern cfs_param_entry_t *cfs_param_get(cfs_param_entry_t *pe);
+extern void cfs_param_put(cfs_param_entry_t *pe);
+
+extern int cfs_param_seq_open(cfs_param_file_t *file, cfs_seq_ops_t *op);
+extern int cfs_param_seq_fopen(cfs_inode_t *inode, cfs_param_file_t *file,
+                               cfs_seq_ops_t *op);
+extern int cfs_param_seq_release(cfs_inode_t *inode, cfs_param_file_t *file);
+static inline int
+cfs_seq_release(cfs_inode_t *inode, cfs_param_file_t *file)
+{
+        return cfs_param_seq_release(inode, file);
+}
+
+extern int cfs_param_seq_printf(cfs_seq_file_t *seq, const char *f, ...);
+extern int cfs_param_seq_puts(cfs_seq_file_t *seq, const char *s);
+extern int cfs_param_seq_putc(cfs_seq_file_t *seq, const char c);
+
+extern int cfs_param_klist(const char *parent_path, char *buf, int *buflen);
+extern int cfs_param_kread(const char *path, char *buf, int nbytes,
+                           loff_t *ppos, int *eof);
+extern int cfs_param_kwrite(const char *path, char *buf, int count);
 
 /* APIs for sysctl table */
-typedef struct libcfs_param_sysctl_table {
+typedef struct cfs_param_sysctl_table {
         const char             *name;
         void                   *data;
         mode_t                  mode;
-        libcfs_param_read_t    *read;
-        libcfs_param_write_t   *write;
+        cfs_param_read_t       *read;
+        cfs_param_write_t      *write;
         int                     writeable_before_startup;
-} libcfs_param_sysctl_table_t;
-extern int libcfs_param_intvec_write(libcfs_file_t *filp, const char *buffer,
+} cfs_param_sysctl_table_t;
+extern int cfs_param_intvec_write(cfs_param_file_t *filp, const char *buffer,
+                                  unsigned long count, void *data);
+extern int cfs_param_intvec_read(char *page, char **start, off_t off,
+                                 int count, int *eof, void *data);
+extern int cfs_param_string_write(cfs_param_file_t *filp, const char *buffer,
                                      unsigned long count, void *data);
-extern int libcfs_param_intvec_read(char *page, char **start, off_t off,
-                                    int count, int *eof, void *data);
-extern int libcfs_param_string_write(libcfs_file_t *filp, const char *buffer,
-                                     unsigned long count, void *data);
-extern int libcfs_param_string_read(char *page, char **start, off_t off,
-                                    int count, int *eof, void *data);
+extern int cfs_param_string_read(char *page, char **start, off_t off,
+                                 int count, int *eof, void *data);
 
-extern void libcfs_param_sysctl_register(libcfs_param_sysctl_table_t *table,
-                                         libcfs_param_entry_t *parent);
-extern void libcfs_param_sysctl_init(char *mod_name,
-                                     libcfs_param_sysctl_table_t *table,
-                                     libcfs_param_entry_t *parent);
-extern void libcfs_param_sysctl_fini(char *mod_name,
-                                     libcfs_param_entry_t *parent);
-extern void libcfs_param_sysctl_change(char *mod_name,
-                                       libcfs_param_sysctl_table_t *table,
-                                       libcfs_param_entry_t *parent);
+extern void cfs_param_sysctl_register(cfs_param_sysctl_table_t *table,
+                                      cfs_param_entry_t *parent);
+extern void cfs_param_sysctl_init(char *mod_name,
+                                  cfs_param_sysctl_table_t *table,
+                                  cfs_param_entry_t *parent);
+extern void cfs_param_sysctl_fini(char *mod_name,
+                                  cfs_param_entry_t *parent);
+extern void cfs_param_sysctl_change_mode(char *mod_name,
+                                         cfs_param_sysctl_table_t *table,
+                                         cfs_param_entry_t *parent);
 
-#define LPE_NAME_MAXLEN         48
-typedef struct libcfs_param_info {
-        int lpi_name_len;
-        int lpi_mode;
-        char lpi_name[LPE_NAME_MAXLEN];
-} libcfs_param_info_t;
+#define PE_NAME_MAXLEN         48
+typedef struct cfs_param_info {
+        int  pi_name_len;
+        int  pi_mode;
+        char pi_name[PE_NAME_MAXLEN];
+} cfs_param_info_t;
 
-enum libcfs_param_value_type {
-        LP_S8           = 0,
-        LP_S16          = 1,
-        LP_S32          = 2,
-        LP_S64          = 3,
-        LP_U8           = 4,
-        LP_U16          = 5,
-        LP_U32          = 6,
-        LP_U64          = 7,
-        LP_STR          = 8,
-        LP_DB           = 9,    /* double:
-                                   timeval and lprocfs_read_frac_helper */
+enum cfs_param_value_type {
+        CFS_PARAM_S8           = 0,
+        CFS_PARAM_S16          = 1,
+        CFS_PARAM_S32          = 2,
+        CFS_PARAM_S64          = 3,
+        CFS_PARAM_U8           = 4,
+        CFS_PARAM_U16          = 5,
+        CFS_PARAM_U32          = 6,
+        CFS_PARAM_U64          = 7,
+        CFS_PARAM_STR          = 8,
+        CFS_PARAM_DB           = 9, /* double:
+                                       timeval and lprocfs_read_frac_helper */
 };
-typedef struct libcfs_param_data {
-        enum libcfs_param_value_type    param_type; /* LP_S16, LP_S32, ... */
-        char                           *param_name;
-        __u32                           param_name_len;
-        char                           *param_value;
-        __u32                           param_value_len;
-        char                           *param_unit;  /* some params have unit */
-        __u32                           param_unit_len;
-        char                            param_bulk[0];
-} libcfs_param_data_t;
+typedef struct cfs_param_data {
+        enum cfs_param_value_type    pd_type;  /* CFS_PARAM_S16, ... */
+        char                        *pd_name;
+        __u32                        pd_name_len;
+        char                        *pd_value;
+        __u32                        pd_value_len;
+        char                        *pd_unit;  /* some params have unit */
+        __u32                        pd_unit_len;
+        char                         pd_bulk[0];
+} cfs_param_data_t;
 
 extern int
-libcfs_param_snprintf_common(char *page, int count, void *cb_data,
-                             enum libcfs_param_value_type type,
-                             const char *name, const char *unit,
-                             const char *format, ...);
-extern int libcfs_param_copy(int flag, char *dest, const char *src, int count);
+cfs_param_snprintf_common(char *page, int count, void *cb_data,
+                          enum cfs_param_value_type type,
+                          const char *name, const char *unit,
+                          const char *format, ...);
+extern int cfs_param_copy(int flag, char *dest, const char *src, int count);
 /* in many cases, parameter has no name and unit */
-#define libcfs_param_snprintf(page, count, cb_data, type, format, ...)  \
-        libcfs_param_snprintf_common(page, count, cb_data, type,        \
-                                     NULL, NULL,                        \
-                                     format, ## __VA_ARGS__)
+#define cfs_param_snprintf(page, count, cb_data, type, format, ...)  \
+        cfs_param_snprintf_common(page, count, cb_data, type, NULL, NULL, \
+                                  format, ## __VA_ARGS__)
 
 #endif  /* __PARAMS_TREE_H__ */

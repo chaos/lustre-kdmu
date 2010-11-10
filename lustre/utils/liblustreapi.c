@@ -265,17 +265,17 @@ int llapi_stripe_limit_check(unsigned long long stripe_size, int stripe_offset,
 static int find_target_obdpath(char *fsname, char *path)
 {
         char pattern[PATH_MAX + 1];
-        struct params_entry_list *pel = NULL;
+        struct param_entry_list *pel = NULL;
         int rc;
 
         snprintf(pattern, PATH_MAX, "lov/%s-*/target_obd", fsname);
-        rc = params_list(pattern, &pel);
+        rc = cfs_param_ulist(pattern, &pel);
         if (rc < 0)
                 return rc;
         if (pel->pel_next == NULL)
                 return -ENOENT;
         strcpy(path, pel->pel_next->pel_name);
-        params_free_entrylist(pel);
+        cfs_param_free_entrylist(pel);
 
         return 0;
 }
@@ -283,12 +283,12 @@ static int find_target_obdpath(char *fsname, char *path)
 static int find_poolpath(char *fsname, char *poolname, char *poolpath)
 {
         char pattern[PATH_MAX + 1];
-        struct params_entry_list *pel = NULL;
+        struct param_entry_list *pel = NULL;
         int rc;
 
         snprintf(pattern, PATH_MAX, "lov/%s-*/pools/%s",
                  fsname, poolname);
-        rc = params_list(pattern, &pel);
+        rc = cfs_param_ulist(pattern, &pel);
         /* If no pools, make sure the lov is available */
         if ((pel->pel_next == NULL) &&
             (find_target_obdpath(fsname, poolpath) == -ENODEV))
@@ -296,7 +296,7 @@ static int find_poolpath(char *fsname, char *poolname, char *poolpath)
         if (rc < 0)
                 return -EINVAL;
         strcpy(poolpath, pel->pel_next->pel_name);
-        params_free_entrylist(pel);
+        cfs_param_free_entrylist(pel);
 
         return 0;
 }
@@ -327,18 +327,17 @@ int llapi_search_ost(char *fsname, char *poolname, char *ostname)
                 return rc;
 
         while (!eof) {
-                rc = params_read(buffer, strlen(buffer), inbuf,
+                rc = cfs_param_uread(buffer, strlen(buffer), inbuf,
                                  CFS_PAGE_SIZE, &offset, &eof);
                 if (rc == 0)
                         return rc;
-                        //return EEXIST;
                 if (rc < 0) {
                         llapi_err(LLAPI_MSG_ERROR, "error: access '%s'", buffer);
                         return rc;
                 }
                 offset = rc;
-                while ((rc = params_unpack(inbuf + pos, buffer,
-                                           sizeof(buffer)))) {
+                while ((rc = cfs_param_unpack(inbuf + pos, buffer,
+                                              sizeof(buffer)))) {
                         if (poolname == NULL) {
                                 char *ptr;
                                 /* Search for an ostname in the list of OSTs
@@ -631,16 +630,16 @@ int llapi_search_fsname(const char *pathname, char *fsname)
 /* return the first file matching this pattern */
 static int first_match(char *pattern, char *buffer)
 {
-        struct params_entry_list *pel = NULL;
+        struct param_entry_list *pel = NULL;
         int rc;
 
-        rc = params_list(pattern, &pel);
+        rc = cfs_param_ulist(pattern, &pel);
         if (rc < 0)
                return rc;
         if (pel->pel_next == NULL)
                 return -ENOENT;
         strcpy(buffer, pel->pel_next->pel_name);
-        params_free_entrylist(pel);
+        cfs_param_free_entrylist(pel);
 
         return 0;
 }
@@ -724,16 +723,17 @@ int llapi_get_poolmembers(const char *poolname, char **members,
         llapi_printf(LLAPI_MSG_NORMAL, "Pool: %s.%s\n", fsname, pool);
         sprintf(path, "%s/%s", pathname, pool);
         while (!eof) {
-                rc = params_read(path, strlen(path), inbuf,
+                rc = cfs_param_uread(path, strlen(path), inbuf,
                                  CFS_PAGE_SIZE, &offset, &eof);
                 if (rc == 0)
                         return rc;
                 if (rc < 0) {
-                        llapi_err(LLAPI_MSG_ERROR, "error: accessing '%s'", path);
+                        llapi_err(LLAPI_MSG_ERROR,
+                                  "error: accessing '%s'", path);
                         return rc;
                 }
                 offset = rc;
-                while ((rc = params_unpack(inbuf + pos, buf, sizeof(buf)))) {
+                while ((rc = cfs_param_unpack(inbuf + pos, buf, sizeof(buf)))) {
                         pos += rc;
                         if (nb_entries >= list_size) {
                                 rc = -EOVERFLOW;
@@ -779,7 +779,7 @@ int llapi_get_poollist(const char *name, char **poollist, int list_size,
         unsigned int nb_entries = 0;
         unsigned int used = 0;
         unsigned int i;
-        struct params_entry_list *pel = NULL, *pel_head = NULL;
+        struct param_entry_list *pel = NULL, *pel_head = NULL;
 
         /* initilize output array */
         for (i = 0; i < list_size; i++)
@@ -819,15 +819,15 @@ int llapi_get_poollist(const char *name, char **poollist, int list_size,
 
         llapi_printf(LLAPI_MSG_NORMAL, "Pools from %s:\n", fsname);
         /* open pool list */
-        if ((rc = params_list(pathname + strlen("lustre/"), &pel)) < 0) {
+        if ((rc = cfs_param_ulist(pathname + strlen("lustre/"), &pel)) < 0) {
                 llapi_err(LLAPI_MSG_ERROR, "Could not open pool list for '%s'",
                           name);
                 return rc;
         }
-        params_free_entrylist(pel);
+        cfs_param_free_entrylist(pel);
         /* check the pools in pool list */
         strcat(pathname, "/*");
-        if ((rc = params_list(pathname + strlen("lustre/"), &pel)) < 0)
+        if ((rc = cfs_param_ulist(pathname + strlen("lustre/"), &pel)) < 0)
                 return nb_entries;
 
         pel_head = pel;
@@ -847,7 +847,7 @@ int llapi_get_poollist(const char *name, char **poollist, int list_size,
                 nb_entries++;
                 pel = pel->pel_next;
         }
-        params_free_entrylist(pel_head);
+        cfs_param_free_entrylist(pel_head);
 
         return nb_entries;
 }
@@ -1166,14 +1166,14 @@ int llapi_lov_get_uuids(int fd, struct obd_uuid *uuidp, int *ost_count)
         snprintf(buf, sizeof(buf), "lustre/lov/%s/target_obd",
                  lov_name.uuid);
         while (!eof) {
-                rc = params_read(buf, strlen(buf), inbuf,
+                rc = cfs_param_uread(buf, strlen(buf), inbuf,
                                  CFS_PAGE_SIZE, &offset, &eof);
                 if (rc <= 0) {
                         llapi_err(LLAPI_MSG_ERROR, "error: accessing '%s'", buf);
                         return rc;
                 }
                 offset = rc;
-                while ((rc = params_unpack(inbuf + pos, buf, sizeof(buf)))) {
+                while ((rc = cfs_param_unpack(inbuf + pos, buf, sizeof(buf)))) {
                         if (uuidp && (index < *ost_count)) {
                                 if (sscanf(buf, "%d: %s", &index, uuidp[index].uuid) <2)
                                         break;
@@ -1264,7 +1264,7 @@ static int setup_obd_uuid(DIR *dir, char *dname, struct find_param *param)
         /* Now get the ost uuids */
         snprintf(buf, sizeof(buf), "lustre/lov/%s/target_obd", lov_uuid.uuid);
         while (!eof) {
-                rc = params_read(buf, strlen(buf), inbuf,
+                rc = cfs_param_uread(buf, strlen(buf), inbuf,
                                  CFS_PAGE_SIZE, &offset, &eof);
                 if (rc <= 0) {
                         llapi_err(LLAPI_MSG_ERROR, "error: accessing '%s'", buf);
@@ -1274,7 +1274,7 @@ static int setup_obd_uuid(DIR *dir, char *dname, struct find_param *param)
                         llapi_printf(LLAPI_MSG_NORMAL, "OBDS:\n");
 
                 offset = rc;
-                while ((rc = params_unpack(inbuf + pos, buf, sizeof(buf)))) {
+                while ((rc = cfs_param_unpack(inbuf + pos, buf, sizeof(buf)))) {
                         if (sscanf(buf, "%d: %s", &index, uuid) < 2)
                                 break;
 
@@ -2188,7 +2188,7 @@ int llapi_ping(char *obd_type, char *obd_name)
 
         snprintf(path, MAX_STRING_SIZE, "lustre/%s/%s/ping",
                  obd_type, obd_name);
-        rc = params_write(path, strlen(path), buf, 1);
+        rc = cfs_param_uwrite(path, strlen(path), buf, 1);
 
         if (rc == 1)
                 return 0;
@@ -2205,13 +2205,13 @@ int llapi_target_iterate(int type_num, char **obd_type,void *args,llapi_cb_t cb)
 
         while (!eof) {
                 memset(inbuf, 0, CFS_PAGE_SIZE);
-                rc = params_read(DEVICES_LIST, strlen(DEVICES_LIST),
+                rc = cfs_param_uread(DEVICES_LIST, strlen(DEVICES_LIST),
                                  inbuf, CFS_PAGE_SIZE, &offset, &eof);
                 if (rc <= 0)
                         return rc;
                 offset = rc;
                 memset(buf, 0, sizeof(buf));
-                while ((rc = params_unpack(inbuf + pos, buf, sizeof(buf)))) {
+                while ((rc = cfs_param_unpack(inbuf + pos, buf, sizeof(buf)))) {
                         char *obd_type_name;
                         char *obd_name;
                         char *obd_uuid;

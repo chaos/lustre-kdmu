@@ -87,39 +87,39 @@ CFS_MODULE_PARM(accept_backlog, "i", int, 0444,
 CFS_MODULE_PARM(accept_timeout, "i", int, 0644,
                 "Acceptor's timeout (seconds)");
 
-static libcfs_param_sysctl_table_t libcfs_param_acceptor_ctl_table[] = {
+static cfs_param_sysctl_table_t cfs_param_acceptor_ctl_table[] = {
         {
                 .name     = "accept",
                 .data     = accept,
                 .mode     = 0444,
-                .read     = libcfs_param_string_read
+                .read     = cfs_param_string_read
         },
         {
                 .name     = "accept_port",
                 .data     = &accept_port,
                 .mode     = 0444,
-                .read     = libcfs_param_intvec_read
+                .read     = cfs_param_intvec_read
         },
         {
                 .name     = "accept_backlog",
                 .data     = &accept_backlog,
                 .mode     = 0444,
-                .read     = libcfs_param_intvec_read
+                .read     = cfs_param_intvec_read
         },
         {
                 .name     = "accept_timeout",
                 .data     = &accept_timeout,
                 .mode     = 0644,
-                .read     = libcfs_param_intvec_read,
-                .write    = libcfs_param_intvec_write
+                .read     = cfs_param_intvec_read,
+                .write    = cfs_param_intvec_write
         },
         {0}
 };
 
 void lnet_acceptor_sysctl_init()
 {
-        libcfs_param_sysctl_init("lnet", libcfs_param_acceptor_ctl_table,
-                                 libcfs_param_lnet_root);
+        cfs_param_sysctl_init("lnet", cfs_param_acceptor_ctl_table,
+                              cfs_param_lnet_root);
 }
 
 static char *accept_type = NULL;

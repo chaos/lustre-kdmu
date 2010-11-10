@@ -55,29 +55,29 @@ extern char lnet_upcall[1024];
  */
 extern char lnet_debug_log_upcall[1024];
 
-static int libcfs_param_bitmasks_read(char *page, char **start, off_t off,
-                                      int count, int *eof, void *data)
+static int cfs_param_bitmasks_read(char *page, char **start, off_t off,
+                                   int count, int *eof, void *data)
 {
         const int     tmpstrlen = 512;
         int           rc;
-        unsigned int *mask = ((lparcb_t *)data)->cb_data;
+        unsigned int *mask = ((cfs_param_cb_data_t *)data)->cb_data;
         int           is_subsys = (mask == &libcfs_subsystem_debug) ? 1 : 0;
 
         libcfs_debug_mask2str(page, tmpstrlen, *mask, is_subsys);
         rc = strlen(page);
         if (rc > 0)
-                rc = libcfs_param_snprintf(page, count, data, LP_STR,
+                rc = cfs_param_snprintf(page, count, data, CFS_PARAM_STR,
                                            NULL, NULL);
 
         return rc;
 }
 
-static int libcfs_param_bitmasks_write(libcfs_file_t *filp,
-                                       const char *buffer,
-                                       unsigned long count, void *data)
+static int cfs_param_bitmasks_write(cfs_param_file_t *filp,
+                                    const char *buffer,
+                                    unsigned long count, void *data)
 {
         int           rc;
-        unsigned int *mask = ((lparcb_t *)data)->cb_data;
+        unsigned int *mask = ((cfs_param_cb_data_t *)data)->cb_data;
         int           is_subsys = (mask == &libcfs_subsystem_debug) ? 1 : 0;
         int           is_printk = (mask == &libcfs_printk) ? 1 : 0;
 
@@ -93,76 +93,78 @@ static int libcfs_param_bitmasks_write(libcfs_file_t *filp,
 static int min_watchdog_ratelimit = 0;          /* disable ratelimiting */
 static int max_watchdog_ratelimit = (24*60*60); /* limit to once per day */
 
-static int libcfs_param_dump_kernel_write(libcfs_file_t *filp,
-                                          const char *buffer,
-                                          unsigned long count, void *data)
+static int cfs_param_dump_kernel_write(cfs_param_file_t *filp,
+                                       const char *buffer,
+                                       unsigned long count, void *data)
 {
         int rc = cfs_trace_dump_debug_buffer_usrstr((void *)buffer, count,
-                                                ((lparcb_t *)data)->cb_flag);
+                                                ((cfs_param_cb_data_t *)data)->cb_flag);
         return (rc < 0 ? rc : count);
 }
 
-static int libcfs_param_daemon_file_read(char *page, char **start, off_t off,
-                                         int count, int *eof, void *data)
+static int cfs_param_daemon_file_read(char *page, char **start, off_t off,
+                                      int count, int *eof, void *data)
 {
         if (off >= strlen(cfs_tracefile))
                 return 0;
-        return libcfs_param_snprintf(page, count, data, LP_STR,
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_STR,
                                      "%s", cfs_tracefile + off);
 }
 
-static int libcfs_param_daemon_file_write(libcfs_file_t *filp,
-                                          const char *buffer,
-                                          unsigned long count, void *data)
+static int cfs_param_daemon_file_write(cfs_param_file_t *filp,
+                                       const char *buffer,
+                                       unsigned long count, void *data)
 {
-        struct libcfs_param_cb_data *cb_data = data;
+        struct cfs_param_cb_data *cb_data = data;
         int rc = cfs_trace_daemon_command_usrstr((void *)buffer, count,
                                              cb_data->cb_flag);
         return (rc < 0 ? rc : count);
 }
 
-static int libcfs_param_debug_mb_read(char *page, char **start, off_t off,
-                                      int count, int *eof, void *data)
+static int cfs_param_debug_mb_read(char *page, char **start, off_t off,
+                                   int count, int *eof, void *data)
 {
         int  temp;
 
         temp = cfs_trace_get_debug_mb();
 
-        return libcfs_param_snprintf(page, count, data, LP_S32, NULL, temp);
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_S32, NULL, temp);
 }
 
-static int libcfs_param_debug_mb_write(libcfs_file_t *filp,
-                                       const char *buffer,
-                                       unsigned long count, void *data)
+static int cfs_param_debug_mb_write(cfs_param_file_t *filp,
+                                    const char *buffer,
+                                    unsigned long count, void *data)
 {
         int rc = cfs_trace_set_debug_mb_usrstr((void *)buffer, count,
-                                           ((lparcb_t *)data)->cb_flag);
+                                           ((cfs_param_cb_data_t *)data)->cb_flag);
         return (rc < 0 ? rc : count);
 }
 
 static int
-libcfs_param_console_max_delay_cs_read(char *page, char **start, off_t off,
-                                       int count,int *eof, void *data)
+cfs_param_console_max_delay_cs_read(char *page, char **start, off_t off,
+                                    int count,int *eof, void *data)
 {
         int max_delay_cs;
 
         max_delay_cs = cfs_duration_sec(libcfs_console_max_delay * 100);
 
-        return libcfs_param_snprintf(page, count, data, LP_S32,
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_S32,
                                      NULL, max_delay_cs);
 }
 
 static int
-libcfs_param_console_max_delay_cs_write(libcfs_file_t *filp,
-                                        const char *buffer,
-                                        unsigned long count, void *data)
+cfs_param_console_max_delay_cs_write(cfs_param_file_t *filp,
+                                     const char *buffer,
+                                     unsigned long count, void *data)
 {
         int max_delay_cs;
         cfs_duration_t d;
-        void *cb_data = LIBCFS_ALLOC_PARAMDATA(&max_delay_cs);
+        void *cb_data = CFS_ALLOC_PARAMDATA(&max_delay_cs);
 
-        libcfs_param_intvec_write(filp, buffer, count, cb_data);
-        LIBCFS_FREE_PARAMDATA(cb_data);
+        if (cb_data == NULL)
+                return -ENOMEM;
+        cfs_param_intvec_write(filp, buffer, count, cb_data);
+        CFS_FREE_PARAMDATA(cb_data);
         if (max_delay_cs <= 0)
                 return -EINVAL;
         d = cfs_time_seconds(max_delay_cs) / 100;
@@ -174,28 +176,30 @@ libcfs_param_console_max_delay_cs_write(libcfs_file_t *filp,
 }
 
 static int
-libcfs_param_console_min_delay_cs_read(char *page, char **start, off_t off,
-                                       int count,int *eof, void *data)
+cfs_param_console_min_delay_cs_read(char *page, char **start, off_t off,
+                                    int count,int *eof, void *data)
 {
         int min_delay_cs;
 
         min_delay_cs = cfs_duration_sec(libcfs_console_min_delay * 100);
 
-        return libcfs_param_snprintf(page, count, data, LP_S32,
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_S32,
                                      NULL, min_delay_cs);
 }
 
 static int
-libcfs_param_console_min_delay_cs_write(libcfs_file_t *filp,
-                                        const char *buffer,
-                                        unsigned long count, void *data)
+cfs_param_console_min_delay_cs_write(cfs_param_file_t *filp,
+                                     const char *buffer,
+                                     unsigned long count, void *data)
 {
         int min_delay_cs;
         cfs_duration_t d;
-        void *cb_data = LIBCFS_ALLOC_PARAMDATA(&min_delay_cs);
+        void *cb_data = CFS_ALLOC_PARAMDATA(&min_delay_cs);
 
-        libcfs_param_intvec_write(filp, buffer, count, cb_data);
-        LIBCFS_FREE_PARAMDATA(cb_data);
+        if (cb_data == NULL)
+                return -ENOMEM;
+        cfs_param_intvec_write(filp, buffer, count, cb_data);
+        CFS_FREE_PARAMDATA(cb_data);
         if (min_delay_cs <= 0)
                 return -EINVAL;
         d = cfs_time_seconds(min_delay_cs) / 100;
@@ -206,22 +210,24 @@ libcfs_param_console_min_delay_cs_write(libcfs_file_t *filp,
         return count;
 }
 
-static int libcfs_param_console_backoff_read(char *page, char **start,off_t off,
-                                             int count,int *eof, void *data)
+static int cfs_param_console_backoff_read(char *page, char **start,off_t off,
+                                          int count,int *eof, void *data)
 {
-        return libcfs_param_snprintf(page, count, data, LP_U32,
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_U32,
                                      NULL, libcfs_console_backoff);
 }
 
 static int
-libcfs_param_console_backoff_write(libcfs_file_t *filp, const char *buffer,
-                                   unsigned long count, void *data)
+cfs_param_console_backoff_write(cfs_param_file_t *filp, const char *buffer,
+                                unsigned long count, void *data)
 {
         int backoff;
-        void *cb_data = LIBCFS_ALLOC_PARAMDATA(&backoff);
+        void *cb_data = CFS_ALLOC_PARAMDATA(&backoff);
 
-        libcfs_param_intvec_write(filp, buffer, count, cb_data);
-        LIBCFS_FREE_PARAMDATA(cb_data);
+        if (cb_data == NULL)
+                return -ENOMEM;
+        cfs_param_intvec_write(filp, buffer, count, cb_data);
+        CFS_FREE_PARAMDATA(cb_data);
         if (backoff <= 0)
                 return -EINVAL;
         libcfs_console_backoff = backoff;
@@ -229,172 +235,174 @@ libcfs_param_console_backoff_write(libcfs_file_t *filp, const char *buffer,
         return count;
 }
 
-static int libcfs_param_watchdog_write(libcfs_file_t *filp,
-                                       const char *buffer,
-                                       unsigned long count, void *data)
+static int cfs_param_watchdog_write(cfs_param_file_t *filp,
+                                    const char *buffer,
+                                    unsigned long count, void *data)
 {
         unsigned long temp;
-        void *cb_data = LIBCFS_ALLOC_PARAMDATA(&temp);
+        void *cb_data = CFS_ALLOC_PARAMDATA(&temp);
 
-        libcfs_param_intvec_write(filp, buffer, count, cb_data);
-        LIBCFS_FREE_PARAMDATA(cb_data);
+        if (cb_data == NULL)
+                return -ENOMEM;
+        cfs_param_intvec_write(filp, buffer, count, cb_data);
+        CFS_FREE_PARAMDATA(cb_data);
         if (temp < min_watchdog_ratelimit || temp > max_watchdog_ratelimit)
                 return -EINVAL;
 
-        return libcfs_param_intvec_write(filp, buffer, count, data);
+        return cfs_param_intvec_write(filp, buffer, count, data);
 }
 
-static int libcfs_param_memused_read(char *page, char **start, off_t off,
-                                     int count, int *eof, void *data)
+static int cfs_param_memused_read(char *page, char **start, off_t off,
+                                  int count, int *eof, void *data)
 {
         int temp;
-        cfs_atomic_t *memused = ((lparcb_t *)data)->cb_data;
+        cfs_atomic_t *memused = ((cfs_param_cb_data_t *)data)->cb_data;
 
         temp = cfs_atomic_read(memused);
 
-        return libcfs_param_snprintf(page, count, data, LP_S32, NULL, temp);
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_S32, NULL, temp);
 }
 
-static int libcfs_param_force_lbug_write(libcfs_file_t *filp,
-                                         const char *buffer,
-                                         unsigned long count, void *data)
+static int cfs_param_force_lbug_write(cfs_param_file_t *filp,
+                                      const char *buffer,
+                                      unsigned long count, void *data)
 {
 	LBUG();
 	return 0;
 }
 
-static libcfs_param_sysctl_table_t libcfs_param_lnet_table[] = {
+static cfs_param_sysctl_table_t cfs_param_lnet_table[] = {
         {
                 .name   = "debug",
                 .data   = &libcfs_debug,
                 .mode   = 0644,
-                .read   = libcfs_param_bitmasks_read,
-                .write  = libcfs_param_bitmasks_write
+                .read   = cfs_param_bitmasks_read,
+                .write  = cfs_param_bitmasks_write
         },
         {
                 .name   = "subsystem_debug",
                 .data   = &libcfs_subsystem_debug,
                 .mode   = 0644,
-                .read   = libcfs_param_bitmasks_read,
-                .write  = libcfs_param_bitmasks_write
+                .read   = cfs_param_bitmasks_read,
+                .write  = cfs_param_bitmasks_write
         },
         {
                 .name   = "printk",
                 .data   = &libcfs_printk,
                 .mode   = 0644,
-                .read   = libcfs_param_bitmasks_read,
-                .write  = libcfs_param_bitmasks_write
+                .read   = cfs_param_bitmasks_read,
+                .write  = cfs_param_bitmasks_write
         },
         {
                 .name   = "console_ratelimit",
                 .data   = &libcfs_console_ratelimit,
                 .mode   = 0644,
-                .read   = libcfs_param_intvec_read,
-                .write  = libcfs_param_intvec_write
+                .read   = cfs_param_intvec_read,
+                .write  = cfs_param_intvec_write
         },
         {
                 .name   = "console_max_delay_centisecs",
                 .mode   = 0644,
-                .read   = libcfs_param_console_max_delay_cs_read,
-                .write  = libcfs_param_console_max_delay_cs_write
+                .read   = cfs_param_console_max_delay_cs_read,
+                .write  = cfs_param_console_max_delay_cs_write
         },
         {
                 .name   = "console_min_delay_centisecs",
                 .mode   = 0644,
-                .read   = libcfs_param_console_min_delay_cs_read,
-                .write  = libcfs_param_console_min_delay_cs_write
+                .read   = cfs_param_console_min_delay_cs_read,
+                .write  = cfs_param_console_min_delay_cs_write
         },
         {
                 .name   = "console_backoff",
                 .mode   = 0644,
-                .read   = libcfs_param_console_backoff_read,
-                .write  = libcfs_param_console_backoff_write
+                .read   = cfs_param_console_backoff_read,
+                .write  = cfs_param_console_backoff_write
         },
         {
                 .name   = "debug_path",
                 .data   = libcfs_debug_file_path_arr,
                 .mode   = 0644,
-                .read   = libcfs_param_string_read,
-                .write  = libcfs_param_string_write
+                .read   = cfs_param_string_read,
+                .write  = cfs_param_string_write
         },
         {
                 .name   = "upcall",
                 .data   = lnet_upcall,
                 .mode   = 0644,
-                .read   = libcfs_param_string_read,
-                .write  = libcfs_param_string_write
+                .read   = cfs_param_string_read,
+                .write  = cfs_param_string_write
         },
         {
                 .name   = "debug_log_upcall",
                 .data   = lnet_debug_log_upcall,
                 .mode   = 0644,
-                .read   = libcfs_param_string_read,
-                .write  = libcfs_param_string_write
+                .read   = cfs_param_string_read,
+                .write  = cfs_param_string_write
         },
         {
                 .name   = "lnet_memused",
                 .data   = &libcfs_kmemory,
                 .mode   = 0444,
-                .read   = libcfs_param_memused_read,
+                .read   = cfs_param_memused_read,
         },
         {
                 .name   = "catastrophe",
                 .data   = &libcfs_catastrophe,
                 .mode   = 0444,
-                .read   = libcfs_param_intvec_read,
+                .read   = cfs_param_intvec_read,
         },
         {
                 .name   = "panic_on_lbug",
                 .data   = &libcfs_panic_on_lbug,
                 .mode   = 0644,
-                .read   = libcfs_param_intvec_read,
-                .write  = libcfs_param_intvec_write
+                .read   = cfs_param_intvec_read,
+                .write  = cfs_param_intvec_write
         },
         {
                 .name   = "dump_kernel",
                 .mode   = 0200,
-                .write  = libcfs_param_dump_kernel_write
+                .write  = cfs_param_dump_kernel_write
         },
         {
                 .name   = "daemon_file",
                 .mode   = 0644,
-                .read   = libcfs_param_daemon_file_read,
-                .write  = libcfs_param_daemon_file_write
+                .read   = cfs_param_daemon_file_read,
+                .write  = cfs_param_daemon_file_write
         },
         {
                 .name   = "debug_mb",
                 .mode   = 0644,
-                .read   = libcfs_param_debug_mb_read,
-                .write  = libcfs_param_debug_mb_write
+                .read   = cfs_param_debug_mb_read,
+                .write  = cfs_param_debug_mb_write
         },
         {
                 .name   = "watchdog_ratelimit",
                 .data   = &libcfs_watchdog_ratelimit,
                 .mode   = 0644,
-                .read   = libcfs_param_intvec_read,
-                .write  = libcfs_param_watchdog_write
+                .read   = cfs_param_intvec_read,
+                .write  = cfs_param_watchdog_write
         },
         {
                 .name   = "force_lbug",
                 .mode   = 0200,
-                .write  = libcfs_param_force_lbug_write
+                .write  = cfs_param_force_lbug_write
         },
         {0}
 };
 
 int insert_params(void)
 {
-        /* register sysctl_table into libcfs_param_tree */
-        /* we don't use libcfs_param_sysctl_init(),
-         * because we will get libcfs_param_lnet_root here.*/
-        if (libcfs_param_lnet_root == NULL) {
-                libcfs_param_lnet_root = libcfs_param_mkdir("lnet",
-                                                     libcfs_param_get_root());
+        /* register sysctl_table into cfs_param_tree */
+        /* we don't use cfs_param_sysctl_init(),
+         * because we will get cfs_param_lnet_root here.*/
+        if (cfs_param_lnet_root == NULL) {
+                cfs_param_lnet_root = cfs_param_mkdir("lnet",
+                                                      cfs_param_get_root());
         }
-        if (libcfs_param_lnet_root != NULL) {
-                libcfs_param_sysctl_register(libcfs_param_lnet_table,
-                                             libcfs_param_lnet_root);
-                libcfs_param_put(libcfs_param_lnet_root);
+        if (cfs_param_lnet_root != NULL) {
+                cfs_param_sysctl_register(cfs_param_lnet_table,
+                                          cfs_param_lnet_root);
+                cfs_param_put(cfs_param_lnet_root);
         } else
                 return -EINVAL;
         return 0;
@@ -402,5 +410,5 @@ int insert_params(void)
 
 void remove_params(void)
 {
-        libcfs_param_remove("lnet", libcfs_param_get_root());
+        cfs_param_remove("lnet", cfs_param_get_root());
 }

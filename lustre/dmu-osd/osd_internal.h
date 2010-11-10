@@ -115,8 +115,8 @@ struct osd_device {
         cfs_time_t                od_osfs_age;
         cfs_spinlock_t            od_osfs_lock;
 
-        struct libcfs_param_entry *od_proc_entry;
-        struct lprocfs_stats      *od_stats;
+        cfs_param_entry_t        *od_proc_entry;
+        struct lprocfs_stats     *od_stats;
 
         dmu_buf_t                *od_root_db;
         dmu_buf_t                *od_objdir_db;

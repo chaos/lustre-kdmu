@@ -193,7 +193,7 @@ int class_register_type(struct obd_ops *dt_ops, struct md_ops *md_ops,
                 type->typ_procroot = NULL;
                 GOTO (failed, rc);
         }
-        lprocfs_put_lperef(type->typ_procroot);
+        lprocfs_put_peref(type->typ_procroot);
 
         if (ldt != NULL) {
                 type->typ_lu = ldt;

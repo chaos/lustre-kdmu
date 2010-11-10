@@ -47,20 +47,20 @@ CFS_MODULE_PARM(local_nid_dist_zero, "i", int, 0444,
                 "Reserved");
 
 #ifdef __KERNEL__
-static libcfs_param_sysctl_table_t libcfs_param_libmove_ctl_table[] = {
+static cfs_param_sysctl_table_t cfs_param_libmove_ctl_table[] = {
         {
                 .name     = "local_nid_dist_zero",
                 .data     = &local_nid_dist_zero,
                 .mode     = 0444,
-                .read     = libcfs_param_intvec_read
+                .read     = cfs_param_intvec_read
         },
         {0}
 };
 
 void lnet_libmove_sysctl_init()
 {
-        libcfs_param_sysctl_init("lnet", libcfs_param_libmove_ctl_table,
-                                 libcfs_param_lnet_root);
+        cfs_param_sysctl_init("lnet", cfs_param_libmove_ctl_table,
+                              cfs_param_lnet_root);
 }
 #endif
 

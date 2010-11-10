@@ -60,14 +60,14 @@ CFS_LIST_HEAD(ldlm_srv_namespace_list);
 cfs_semaphore_t ldlm_cli_namespace_lock;
 CFS_LIST_HEAD(ldlm_cli_namespace_list);
 
-libcfs_param_entry_t *ldlm_type_proc_dir = NULL;
-libcfs_param_entry_t *ldlm_ns_proc_dir = NULL;
-libcfs_param_entry_t *ldlm_svc_proc_dir = NULL;
+cfs_param_entry_t *ldlm_type_proc_dir = NULL;
+cfs_param_entry_t *ldlm_ns_proc_dir = NULL;
+cfs_param_entry_t *ldlm_svc_proc_dir = NULL;
 
 extern unsigned int ldlm_cancel_unused_locks_before_replay;
 
 #ifdef __KERNEL__
-static int ldlm_proc_dump_ns(libcfs_file_t *file, const char *buffer,
+static int ldlm_proc_dump_ns(cfs_param_file_t *file, const char *buffer,
                              unsigned long count, void *data)
 {
         ldlm_dump_all_namespaces(LDLM_NAMESPACE_SERVER, D_DLMTRACE);
@@ -116,17 +116,17 @@ int ldlm_proc_setup(void)
 
         rc = lprocfs_add_vars(ldlm_type_proc_dir, list, NULL);
 
-        lprocfs_put_lperef(ldlm_type_proc_dir);
-        lprocfs_put_lperef(ldlm_ns_proc_dir);
-        lprocfs_put_lperef(ldlm_svc_proc_dir);
+        lprocfs_put_peref(ldlm_type_proc_dir);
+        lprocfs_put_peref(ldlm_ns_proc_dir);
+        lprocfs_put_peref(ldlm_svc_proc_dir);
 
         RETURN(0);
 
 err_ns:
-        lprocfs_put_lperef(ldlm_ns_proc_dir);
+        lprocfs_put_peref(ldlm_ns_proc_dir);
         lprocfs_remove(&ldlm_ns_proc_dir);
 err_type:
-        lprocfs_put_lperef(ldlm_type_proc_dir);
+        lprocfs_put_peref(ldlm_type_proc_dir);
         lprocfs_remove(&ldlm_type_proc_dir);
 err:
         ldlm_svc_proc_dir = NULL;
@@ -148,11 +148,11 @@ void ldlm_proc_cleanup(void)
 static int lprocfs_rd_lru_size(char *page, char **start, off_t off,
                                int count, int *eof, void *data)
 {
-        struct libcfs_param_cb_data tmp_data;
+        struct cfs_param_cb_data tmp_data;
         struct ldlm_namespace *ns;
         __u32 *nr;
 
-        LIBCFS_PARAM_GET_DATA(ns, data, NULL);
+        cfs_param_get_data(ns, data, NULL);
         nr = &ns->ns_max_unused;
 
         if (ns_connect_lru_resize(ns))
@@ -162,7 +162,7 @@ static int lprocfs_rd_lru_size(char *page, char **start, off_t off,
         return lprocfs_rd_uint(page, start, off, count, eof, &tmp_data);
 }
 
-static int lprocfs_wr_lru_size(libcfs_file_t *file, const char *buffer,
+static int lprocfs_wr_lru_size(cfs_param_file_t *file, const char *buffer,
                                unsigned long count, void *data)
 {
         struct ldlm_namespace *ns;
@@ -171,9 +171,9 @@ static int lprocfs_wr_lru_size(libcfs_file_t *file, const char *buffer,
         int lru_resize;
         int flag = 0;
 
-        LIBCFS_PARAM_GET_DATA(ns, data, &flag);
+        cfs_param_get_data(ns, data, &flag);
 
-        if (libcfs_param_copy(flag, dummy, buffer, MAX_STRING_SIZE))
+        if (cfs_param_copy(flag, dummy, buffer, MAX_STRING_SIZE))
                 return -EFAULT;
         dummy[MAX_STRING_SIZE] = '\0';
 
@@ -669,13 +669,13 @@ void ldlm_namespace_free_post(struct ldlm_namespace *ns)
 
 #ifdef  __KERNEL__
         {
-                libcfs_param_entry_t *dir;
+                cfs_param_entry_t *dir;
                 dir = lprocfs_srch(ldlm_ns_proc_dir, ns->ns_name);
                 if (dir == NULL) {
                         CERROR("ldlm namespace %s has no procfs dir?\n",
                                ns->ns_name);
                 } else {
-                        lprocfs_put_lperef(dir);
+                        lprocfs_put_peref(dir);
                         lprocfs_remove(&dir);
                 }
         }

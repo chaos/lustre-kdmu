@@ -59,33 +59,33 @@ static char routes[MAX_STRLEN];
 CFS_MODULE_PARM_STR(routes, routes, sizeof(routes), 0444,
                 "routes to non-local networks");
 
-libcfs_param_sysctl_table_t libcfs_param_apini_ctl_table[] = {
+cfs_param_sysctl_table_t cfs_param_apini_ctl_table[] = {
         {
                 .name     = "ip2nets",
                 .data     = ip2nets,
                 .mode     = 0444,
-                .read     = libcfs_param_string_read
+                .read     = cfs_param_string_read
         },
         {
                 .name     = "networks",
                 .data     = networks,
                 .mode     = 0444,
-                .read     = libcfs_param_string_read,
-                .write    = libcfs_param_string_write,
+                .read     = cfs_param_string_read,
+                .write    = cfs_param_string_write,
                 .writeable_before_startup = 1
         },
         {
                 .name     = "routes",
                 .data     = routes,
                 .mode     = 0444,
-                .read     = libcfs_param_string_read
+                .read     = cfs_param_string_read
         },
         {0}
 };
 void lnet_apini_sysctl_init()
 {
-        libcfs_param_sysctl_init("lnet", libcfs_param_apini_ctl_table,
-                                 libcfs_param_lnet_root);
+        cfs_param_sysctl_init("lnet", cfs_param_apini_ctl_table,
+                              cfs_param_lnet_root);
 }
 
 char *
@@ -1382,7 +1382,7 @@ LNetNIFini()
                 LASSERT (!the_lnet.ln_niinit_self);
 
 #ifdef __KERNEL__
-                libcfs_param_sysctl_fini("lnet", libcfs_param_lnet_root);
+                cfs_param_sysctl_fini("lnet", cfs_param_lnet_root);
 #endif
                 lnet_proc_fini();
                 lnet_params_fini();

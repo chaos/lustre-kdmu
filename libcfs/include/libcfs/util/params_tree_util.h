@@ -37,7 +37,7 @@
  *
  * params_tree userspace APIs.
  *
- * Author: LiuYing <emoly.liu@sun.com>
+ * Author: LiuYing <emoly.liu@oracle.com>
  *
  */
 
@@ -47,18 +47,17 @@
 #include <libcfs/params_tree.h>
 
 /* parameter entry list */
-struct params_entry_list {
-        int pel_name_len;
+struct param_entry_list {
+        int   pel_name_len;
         char *pel_name;  /* full pathname of the entry */
-        int pel_mode;    /* entry mode */
-        struct params_entry_list *pel_next;
+        int   pel_mode;    /* entry mode */
+        struct param_entry_list *pel_next;
 };
-int params_list(const char *pattern, struct params_entry_list **pel_ptr);
-int params_read(char *path, int path_len, char *read_buf, int buf_len,
+int cfs_param_ulist(const char *pattern, struct param_entry_list **pel_ptr);
+int cfs_param_uread(char *path, int path_len, char *read_buf, int buf_len,
                 long long *offset, int *eof);
-int params_write(char *path, int path_len, char *write_buf, int buf_len);
-int params_unpack(char *inbuf, char *outbuf, int outbuf_len);
-int params_value_output(struct libcfs_param_data *data, char *outbuf);
-void params_free_entrylist(struct params_entry_list *entry_list);
+int cfs_param_uwrite(char *path, int path_len, char *write_buf, int buf_len);
+int cfs_param_unpack(char *inbuf, char *outbuf, int outbuf_len);
+void cfs_param_free_entrylist(struct param_entry_list *entry_list);
 
 #endif

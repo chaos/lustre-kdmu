@@ -304,7 +304,7 @@ struct ldlm_pool {
         /**
          * Pool proc directory.
          */
-        libcfs_param_entry_t *pl_proc_dir;
+        cfs_param_entry_t *pl_proc_dir;
         /**
          * Pool name, should be long enough to contain compound proc entry name.
          */
