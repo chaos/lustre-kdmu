@@ -827,11 +827,11 @@ int ldlm_server_completion_ast(struct ldlm_lock *lock, int flags, void *data)
         if (req == NULL)
                 RETURN(-ENOMEM);
 
-        lock_res_and_lock(lock);
-        if (lock->l_resource->lr_lvb_len)
+        /* server namespace, doesn't need lock */
+        if (lock->l_resource->lr_lvb_len) {
                  req_capsule_set_size(&req->rq_pill, &RMF_DLM_LVB, RCL_CLIENT,
                                       lock->l_resource->lr_lvb_len);
-        unlock_res_and_lock(lock);
+        }
 
         rc = ptlrpc_request_pack(req, LUSTRE_DLM_VERSION, LDLM_CP_CALLBACK);
         if (rc) {
@@ -938,10 +938,9 @@ int ldlm_server_glimpse_ast(struct ldlm_lock *lock, void *data)
         body->lock_handle[0] = lock->l_remote_handle;
         ldlm_lock2desc(lock, &body->lock_desc);
 
-        lock_res_and_lock(lock);
+        /* server namespace, doesn't need lock */
         req_capsule_set_size(&req->rq_pill, &RMF_DLM_LVB, RCL_SERVER,
                              lock->l_resource->lr_lvb_len);
-        unlock_res_and_lock(lock);
         res = lock->l_resource;
         ptlrpc_request_set_replen(req);
 
@@ -2487,11 +2486,11 @@ static int ldlm_setup(void)
                         GOTO(out_thread, rc);
         }
 
-        rc = ptlrpc_start_threads(NULL, ldlm_state->ldlm_cancel_service);
+        rc = ptlrpc_start_threads(ldlm_state->ldlm_cancel_service);
         if (rc)
                 GOTO(out_thread, rc);
 
-        rc = ptlrpc_start_threads(NULL, ldlm_state->ldlm_cb_service);
+        rc = ptlrpc_start_threads(ldlm_state->ldlm_cb_service);
         if (rc)
                 GOTO(out_thread, rc);
 
