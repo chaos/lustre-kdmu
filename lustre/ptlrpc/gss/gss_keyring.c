@@ -1450,7 +1450,7 @@ static struct ptlrpc_sec_sops gss_sec_keyring_sops = {
 };
 
 static struct ptlrpc_sec_policy gss_policy_keyring = {
-        .sp_owner               = CFS_PARAM_MODULE,
+        .sp_owner               = THIS_MODULE,
         .sp_name                = "gss.keyring",
         .sp_policy              = SPTLRPC_POLICY_GSS,
         .sp_cops                = &gss_sec_keyring_cops,

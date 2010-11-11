@@ -1165,7 +1165,7 @@ struct lu_context_key {
 
 #define LU_CONTEXT_KEY_INIT(key)                        \
 do {                                                    \
-        (key)->lct_owner = CFS_PARAM_MODULE;                 \
+        (key)->lct_owner = THIS_MODULE;                 \
 } while (0)
 
 int   lu_context_key_register(struct lu_context_key *key);

@@ -4606,7 +4606,7 @@ static struct lvfs_callback_ops filter_lvfs_ops = {
 };
 
 static struct obd_ops filter_obd_ops = {
-        .o_owner          = CFS_PARAM_MODULE,
+        .o_owner          = THIS_MODULE,
         .o_get_info       = filter_get_info,
         .o_set_info_async = filter_set_info_async,
         .o_setup          = filter_setup,

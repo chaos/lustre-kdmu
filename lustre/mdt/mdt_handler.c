@@ -5619,7 +5619,7 @@ int mdt_hsm_copytool_send(struct obd_export *exp)
 }
 
 static struct obd_ops mdt_obd_device_ops = {
-        .o_owner          = CFS_PARAM_MODULE,
+        .o_owner          = THIS_MODULE,
         .o_set_info_async = mdt_obd_set_info_async,
         .o_connect        = mdt_obd_connect,
         .o_reconnect      = mdt_obd_reconnect,

@@ -148,6 +148,11 @@ char *cfs_strdup(const char *str, u_int32_t flags)
 }
 EXPORT_SYMBOL(cfs_strdup);
 
+/**
+ * cfs_{v}snprintf() are safe because they return the actual size
+ * that is printed rather than the size that would be printed
+ * in standard functions.
+ */
 /* safe vsnprintf */
 int cfs_vsnprintf(char *buf, size_t size, const char *fmt, va_list args)
 {
@@ -167,7 +172,7 @@ int cfs_snprintf(char *buf, size_t size, const char *fmt, ...)
         int i;
 
         va_start(args, fmt);
-        i=cfs_vsnprintf(buf,size,fmt,args);
+        i = cfs_vsnprintf(buf, size, fmt, args);
         va_end(args);
 
         return  i;

@@ -3045,7 +3045,7 @@ int lmv_revalidate_lock(struct obd_export *exp, struct lookup_intent *it,
 
 
 struct obd_ops lmv_obd_ops = {
-        .o_owner                = CFS_PARAM_MODULE,
+        .o_owner                = THIS_MODULE,
         .o_setup                = lmv_setup,
         .o_cleanup              = lmv_cleanup,
         .o_precleanup           = lmv_precleanup,

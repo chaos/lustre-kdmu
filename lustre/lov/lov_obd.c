@@ -2828,7 +2828,7 @@ EXPORT_SYMBOL(lov_stripe_unlock);
 
 
 struct obd_ops lov_obd_ops = {
-        .o_owner               = CFS_PARAM_MODULE,
+        .o_owner               = THIS_MODULE,
         .o_setup               = lov_setup,
         .o_precleanup          = lov_precleanup,
         .o_cleanup             = lov_cleanup,

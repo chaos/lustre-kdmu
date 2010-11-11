@@ -75,7 +75,7 @@ typedef struct poll_table_struct                cfs_poll_table_t;
 #define cfs_seq_printf(seq, format, ...)        seq_printf(seq, format,  \
                                                            ## __VA_ARGS__)
 #define cfs_seq_puts(seq, s)                    seq_puts(seq, s)
-#define cfs_seq_putc(seq, s)                    seq_putc(seq, s)
+#define cfs_seq_putc(seq, c)                    seq_putc(seq, c)
 
 /* in lprocfs_stat.c, to protect the private data for proc entries */
 extern cfs_rw_semaphore_t       _lprocfs_lock;
@@ -197,19 +197,19 @@ cfs_param_dentry_t *FAKE_PDE(cfs_inode_t *inode)
 
 #define CFS_PARAM_MODULE                     NULL
 #define CFS_PDE(value)                       FAKE_PDE(value)
-#define cfs_proci_inode(proc_inode)          (proc_inode->lp_inode)
-#define cfs_file_private(file)               (file->lp_private)
+#define cfs_proci_inode(proc_inode)          (proc_inode->param_inode)
+#define cfs_file_private(file)               (file->param_private)
 #define cfs_seq_private(seq)                 (seq->private)
-#define cfs_inode_private(inode)             (inode->lp_private)
-#define cfs_dentry_data(dentry)              (dentry->lp_data)
-#define cfs_proc_inode_pde(proc_inode)       (proc_inode->lp_pde)
+#define cfs_inode_private(inode)             (inode->param_private)
+#define cfs_dentry_data(dentry)              (dentry->param_data)
+#define cfs_proc_inode_pde(proc_inode)       (proc_inode->param_pde)
 #define cfs_seq_open(file, op)               cfs_param_seq_open(file, op)
 #define cfs_seq_read                         NULL
 #define cfs_seq_lseek                        NULL
 #define cfs_seq_printf(seq, format, ...)     cfs_param_seq_printf(seq, \
                                              format, ## __VA_ARGS__)
 #define cfs_seq_puts(seq, s)                 cfs_param_seq_puts(seq, s)
-#define cfs_seq_putc(seq, s)                 cfs_param_seq_putc(seq, s)
+#define cfs_seq_putc(seq, c)                 cfs_param_seq_putc(seq, c)
 
 #endif /* LPROCFS */
 

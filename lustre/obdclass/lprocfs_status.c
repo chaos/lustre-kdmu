@@ -172,8 +172,8 @@ static ssize_t lprocfs_fops_write(struct file *f, const char __user *buf,
         return rc;
 }
 
-static cfs_param_file_ops_t lprocfs_generic_fops = {
-        .owner = CFS_PARAM_MODULE,
+static struct file_operations lprocfs_generic_fops = {
+        .owner = THIS_MODULE,
         .read = lprocfs_fops_read,
         .write = lprocfs_fops_write,
 };
