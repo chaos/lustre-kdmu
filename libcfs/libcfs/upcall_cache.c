@@ -215,7 +215,7 @@ find_again:
          * wait it to complete */
         if (UC_CACHE_IS_ACQUIRING(entry)) {
                 long expiry = (entry == new) ?
-                              cfs_time_shift(cache->uc_acquire_expire) :
+                              cfs_time_seconds(cache->uc_acquire_expire) :
                               CFS_MAX_SCHEDULE_TIMEOUT;
                 long left;
 
