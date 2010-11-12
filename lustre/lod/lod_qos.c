@@ -1085,38 +1085,6 @@ out_nolock:
         RETURN(rc);
 }
 
-int lod_alloc_replay(const struct lu_env *env, struct lod_object *lo,
-                     struct lu_attr *attr, const struct lu_buf *buf,
-                     struct thandle *th)
-{
-        struct dt_object  *o;
-        int i, rc = 0;
-        ENTRY;
-
-        LASSERT(lo->mbo_stripe == NULL);
-        LASSERT(lo->mbo_stripenr == 0);
-        LASSERT(buf);
-
-        rc = lod_parse_striping(env, lo, buf);
-        if (rc)
-                GOTO(out, rc);
-
-        for (i = 0; i < lo->mbo_stripenr; i++) {
-
-                o = lo->mbo_stripe[i];
-                LASSERT(o);
-
-                rc = dt_declare_create(env, o, attr, NULL, NULL, th);
-                if (rc) {
-                        CERROR("can't declare create: %d\n", rc);
-                        break;
-                }
-        }
-
-out:
-        RETURN(rc);
-}
-
 /* Find the max stripecount we should use */
 static int lov_get_stripecnt(struct lov_obd *lov, __u32 stripe_count)
 {
@@ -1135,6 +1103,44 @@ static int lov_get_stripecnt(struct lov_obd *lov, __u32 stripe_count)
         return stripe_count;
 }
 
+static int lod_use_defined_striping(const struct lu_env *env, struct lod_object *mo,
+                                    const struct lu_buf *buf)
+{
+        struct lod_device      *d = lu2lod_dev(lod2lu_obj(mo)->lo_dev);
+        struct lov_mds_md_v1   *v1 = buf->lb_buf;
+        struct lov_mds_md_v3   *v3 = buf->lb_buf;
+        struct lov_ost_data_v1 *objs;
+        __u32                   magic;
+        int                     rc;
+        ENTRY;
+
+        magic = le32_to_cpu(v1->lmm_magic);
+        if (magic == LOV_MAGIC_V1_DEF) {
+                objs = &v1->lmm_objects[0];
+        } else if (magic == LOV_MAGIC_V3_DEF) {
+                objs = &v3->lmm_objects[0];
+                lod_object_set_pool(mo, v3->lmm_pool_name);
+        } else {
+                GOTO(out, rc = -EINVAL);
+        }
+
+        /*
+         * LOD shouldn't be aware of recovery at all,
+         * but this track recovery status (to some extent)
+         * to be do additional checks like this one
+         */
+        LASSERT(d->lod_recovery_completed == 0);
+
+        mo->mbo_stripe_size = le32_to_cpu(v1->lmm_stripe_size);
+        mo->mbo_stripenr = le32_to_cpu(v1->lmm_stripe_count);
+        LASSERT(buf->lb_len >= lov_mds_md_size(mo->mbo_stripenr, magic));
+
+        rc = lod_initialize_objects(env, mo, objs);
+
+out:
+        RETURN(rc);
+}
+
 static int lod_qos_parse_config(const struct lu_env *env, struct lod_object *lo,
                                 const struct lu_buf *buf)
 {
@@ -1143,6 +1149,7 @@ static int lod_qos_parse_config(const struct lu_env *env, struct lod_object *lo,
         struct lov_user_md_v1 *v1 = NULL;
         struct lov_user_md_v3 *v3 = NULL;
         struct pool_desc      *pool;
+        __u32                  magic;
         int                    rc;
         ENTRY;
 
@@ -1150,15 +1157,17 @@ static int lod_qos_parse_config(const struct lu_env *env, struct lod_object *lo,
                 RETURN(0);
 
         v1 = buf->lb_buf;
+        magic = v1->lmm_magic;
 
-        if (v1->lmm_magic == __swab32(LOV_USER_MAGIC_V1))
+        if (magic == __swab32(LOV_USER_MAGIC_V1))
                 lustre_swab_lov_user_md_v1(v1);
-        else if (v1->lmm_magic == __swab32(LOV_USER_MAGIC_V3))
+        else if (magic == __swab32(LOV_USER_MAGIC_V3))
                 lustre_swab_lov_user_md_v3(v3);
 
-        if (unlikely(v1->lmm_magic != LOV_MAGIC_V1 && v1->lmm_magic != LOV_MAGIC_V3)) {
-                CERROR("invalid magic: %x\n", v1->lmm_magic);
-                RETURN(-EINVAL);
+        if (unlikely(magic != LOV_MAGIC_V1 && magic != LOV_MAGIC_V3)) {
+                /* try to use as fully defined striping */
+                rc = lod_use_defined_striping(env, lo, buf);
+                RETURN(rc);
         }
 
         if (unlikely(buf->lb_len < sizeof(*v1))) {
@@ -1256,26 +1265,43 @@ int lod_qos_prep_create(const struct lu_env *env, struct lod_object *lo,
         if (rc)
                 GOTO(out, rc);
 
-        lo->mbo_stripenr = lov_get_stripecnt(lov, lo->mbo_stripenr);
-        LASSERT(lo->mbo_stripenr <= d->lod_ostnr);
+        if (likely(lo->mbo_stripe == NULL)) {
+                /*
+                 * no striping has been created so far
+                 */
+                LASSERT(lo->mbo_stripenr > 0);
+                lo->mbo_stripenr = lov_get_stripecnt(lov, lo->mbo_stripenr);
 
-        i = sizeof(struct dt_object *) * lo->mbo_stripenr;
-        OBD_ALLOC(lo->mbo_stripe, i);
-        if (lo->mbo_stripe == NULL)
-                GOTO(out, rc = -ENOMEM);
-        lo->mbo_stripes_allocated = lo->mbo_stripenr;
+                i = sizeof(struct dt_object *) * lo->mbo_stripenr;
+                OBD_ALLOC(lo->mbo_stripe, i);
+                if (lo->mbo_stripe == NULL)
+                        GOTO(out, rc = -ENOMEM);
+                lo->mbo_stripes_allocated = lo->mbo_stripenr;
 
-        /* XXX: support for non-0 files w/o objects */
-        if (lo->mbo_def_stripe_offset >= lov->desc.ld_tgt_count)
-                rc = lod_alloc_qos(env, lo, attr, flag, th);
-        else
-                rc = lod_alloc_specific(env, lo, attr, flag, th);
+                /* XXX: support for non-0 files w/o objects */
+                if (lo->mbo_def_stripe_offset >= lov->desc.ld_tgt_count)
+                        rc = lod_alloc_qos(env, lo, attr, flag, th);
+                else
+                        rc = lod_alloc_specific(env, lo, attr, flag, th);
+        } else {
+                /*
+                 * lod_qos_parse_config() found supplied buf as a predefined
+                 * striping (not a hint), so it allocated all the object
+                 * now we need to create them
+                 */
+                for (i = 0; i < lo->mbo_stripenr; i++) {
+                        struct dt_object  *o;
 
-        /* XXX ? */
-        /*if (OBD_FAIL_CHECK(OBD_FAIL_MDS_LOV_PREP_CREATE)) {
-                lod_qos_shrink_lsm(set);
-                rc = -EIO;
-        }*/
+                        o = lo->mbo_stripe[i];
+                        LASSERT(o);
+
+                        rc = dt_declare_create(env, o, attr, NULL, NULL, th);
+                        if (rc) {
+                                CERROR("can't declare create: %d\n", rc);
+                                break;
+                        }
+                }
+        }
 
 out:
         RETURN(rc);

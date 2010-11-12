@@ -755,7 +755,6 @@ int lod_declare_striped_object(const struct lu_env *env,
                                const struct lu_buf *lovea,
                                struct thandle      *th)
 {
-        struct lod_device  *d = lu2lod_dev(dt->do_lu.lo_dev);
         struct dt_object   *next = dt_object_child(dt);
         struct lod_object  *mo = lod_dt_obj(dt);
         struct lu_buf       buf;
@@ -770,12 +769,7 @@ int lod_declare_striped_object(const struct lu_env *env,
         }
 
         /* choose OST and generate appropriate objects */
-        if (unlikely(d->lod_recovery_completed == 0))
-                rc = lod_alloc_replay(env, mo, attr, lovea, th);
-        else {
-                LASSERT(mo->mbo_stripenr > 0);
-                rc = lod_qos_prep_create(env, mo, attr, lovea, th);
-        }
+        rc = lod_qos_prep_create(env, mo, attr, lovea, th);
         if (rc) {
                 /* failed to create striping, let's reset
                  * config so that others don't get confused */

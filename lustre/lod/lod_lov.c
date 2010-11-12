@@ -370,52 +370,30 @@ repeat:
 }
 
 /*
- * Parse striping information stored in lti_ea_store
+ * allocate array of objects pointers, find/create objects
+ * stripenr and other fields should be initialized by this moment
  */
-int lod_parse_striping(const struct lu_env *env, struct lod_object *mo,
-                       const struct lu_buf *buf)
+int lod_initialize_objects(const struct lu_env *env, struct lod_object *mo,
+                           struct lov_ost_data_v1 *objs)
 {
-        struct lod_device      *md = lu2lod_dev(mo->mbo_obj.do_lu.lo_dev);
-        struct lov_mds_md_v1   *lmm;
-        struct lov_ost_data_v1 *objs;
-        struct lu_device       *nd;
-        struct lu_object       *o, *n;
-        struct ost_id           ostid;
-        struct lu_fid           fid;
-        __u32                   magic;
-        int                     rc = 0, i, idx;
+        struct lod_device  *md = lu2lod_dev(mo->mbo_obj.do_lu.lo_dev);
+        struct lu_object   *o, *n;
+        struct lu_device   *nd;
+        struct ost_id       ostid;
+        struct lu_fid       fid;
+        int                 i, idx, rc = 0;
         ENTRY;
 
-        LASSERT(buf);
-        LASSERT(buf->lb_buf);
-        LASSERT(buf->lb_len);
-
-        lmm = (struct lov_mds_md_v1 *) buf->lb_buf;
-        magic = le32_to_cpu(lmm->lmm_magic);
-
-        if (magic != LOV_MAGIC_V1 && magic != LOV_MAGIC_V3)
-                GOTO(out, rc = -EINVAL);
-        if (le32_to_cpu(lmm->lmm_pattern) != LOV_PATTERN_RAID0)
-                GOTO(out, rc = -EINVAL);
-
-        mo->mbo_stripenr = le32_to_cpu(lmm->lmm_stripe_count);
-        LASSERT(buf->lb_len >= lov_mds_md_size(mo->mbo_stripenr, magic));
+        LASSERT(mo);
+        LASSERT(mo->mbo_stripe == NULL);
+        LASSERT(mo->mbo_stripenr > 0);
+        LASSERT(mo->mbo_stripe_size > 0);
 
         i = sizeof(struct dt_object *) * mo->mbo_stripenr;
         OBD_ALLOC(mo->mbo_stripe, i);
         if (mo->mbo_stripe == NULL)
                 GOTO(out, rc = -ENOMEM);
         mo->mbo_stripes_allocated = mo->mbo_stripenr;
-
-        mo->mbo_stripe_size = lmm->lmm_stripe_size;
-
-        if (magic == LOV_MAGIC_V3) {
-                struct lov_mds_md_v3 *v3 = (struct lov_mds_md_v3 *) lmm;
-                objs = &v3->lmm_objects[0];
-                lod_object_set_pool(mo, v3->lmm_pool_name);
-        } else {
-                objs = &lmm->lmm_objects[0];
-        }
 
         for (i = 0; i < mo->mbo_stripenr; i++) {
 
@@ -447,6 +425,48 @@ int lod_parse_striping(const struct lu_env *env, struct lod_object *mo,
 
                 mo->mbo_stripe[i] = container_of(n, struct dt_object, do_lu);
         }
+
+out:
+        RETURN(rc);
+}
+
+/*
+ * Parse striping information stored in lti_ea_store
+ */
+int lod_parse_striping(const struct lu_env *env, struct lod_object *mo,
+                       const struct lu_buf *buf)
+{
+        struct lov_mds_md_v1   *lmm;
+        struct lov_ost_data_v1 *objs;
+        __u32                   magic;
+        int                     rc = 0;
+        ENTRY;
+
+        LASSERT(buf);
+        LASSERT(buf->lb_buf);
+        LASSERT(buf->lb_len);
+
+        lmm = (struct lov_mds_md_v1 *) buf->lb_buf;
+        magic = le32_to_cpu(lmm->lmm_magic);
+
+        if (magic != LOV_MAGIC_V1 && magic != LOV_MAGIC_V3)
+                GOTO(out, rc = -EINVAL);
+        if (le32_to_cpu(lmm->lmm_pattern) != LOV_PATTERN_RAID0)
+                GOTO(out, rc = -EINVAL);
+
+        mo->mbo_stripe_size = le32_to_cpu(lmm->lmm_stripe_size);
+        mo->mbo_stripenr = le32_to_cpu(lmm->lmm_stripe_count);
+        LASSERT(buf->lb_len >= lov_mds_md_size(mo->mbo_stripenr, magic));
+
+        if (magic == LOV_MAGIC_V3) {
+                struct lov_mds_md_v3 *v3 = (struct lov_mds_md_v3 *) lmm;
+                objs = &v3->lmm_objects[0];
+                lod_object_set_pool(mo, v3->lmm_pool_name);
+        } else {
+                objs = &lmm->lmm_objects[0];
+        }
+
+        rc = lod_initialize_objects(env, mo, objs);
 
 out:
         RETURN(rc);
