@@ -1110,6 +1110,30 @@ static int mdt_rename_unpack(struct mdt_thread_info *info)
         RETURN(rc);
 }
 
+/*
+ * please see comment above LOV_MAGIC_V1_DEF
+ */
+static void mdt_fix_lov_magic(struct mdt_thread_info *info)
+{
+        struct md_op_spec       *sp   = &info->mti_spec;
+        struct lov_user_md_v1   *v1;
+
+        v1 = (void *) sp->u.sp_ea.eadata;
+        LASSERT(v1);
+
+        if (unlikely(req_is_replay(mdt_info_req(info)))) {
+                if (v1->lmm_magic == LOV_USER_MAGIC_V1) {
+                        v1->lmm_magic = LOV_MAGIC_V1_DEF;
+                } else if (v1->lmm_magic == __swab32(LOV_USER_MAGIC_V1)) {
+                        v1->lmm_magic = __swab32(LOV_MAGIC_V1_DEF);
+                } else if (v1->lmm_magic == LOV_USER_MAGIC_V3) {
+                        v1->lmm_magic = LOV_MAGIC_V3_DEF;
+                } else if (v1->lmm_magic == __swab32(LOV_USER_MAGIC_V3)) {
+                        v1->lmm_magic = __swab32(LOV_MAGIC_V3_DEF);
+                }
+        }
+}
+
 static int mdt_open_unpack(struct mdt_thread_info *info)
 {
         struct md_ucred         *uc = mdt_ucred(info);
@@ -1182,6 +1206,7 @@ static int mdt_open_unpack(struct mdt_thread_info *info)
         if (sp->u.sp_ea.eadatalen) {
                 sp->u.sp_ea.eadata = req_capsule_client_get(pill, &RMF_EADATA);
                 sp->no_create = !!req_is_replay(req);
+                mdt_fix_lov_magic(info);
         }
 
         RETURN(0);
