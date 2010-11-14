@@ -624,14 +624,6 @@ static void lod_ah_init(const struct lu_env *env,
         struct lov_desc   *desc;
         ENTRY;
 
-        if (unlikely(d->lod_recovery_completed == 0)) {
-                /*
-                 * no need in default striping during req. replay
-                 */
-                EXIT;
-                return;
-        }
-
         LASSERT(child);
         LASSERT(lod_mti_get(env));
 
@@ -807,7 +799,6 @@ static int lod_declare_object_create(const struct lu_env *env,
                                      struct thandle *th)
 {
         struct dt_object   *next = dt_object_child(dt);
-        struct lod_device  *d = lu2lod_dev(dt->do_lu.lo_dev);
         struct lod_object  *mo = lod_dt_obj(dt);
         int                 rc;
         ENTRY;
@@ -830,7 +821,7 @@ static int lod_declare_object_create(const struct lu_env *env,
         /*
          * it's lod_ah_init() who has decided the object will striped
          */
-        if (dof->dof_type == DFT_REGULAR && d->lod_recovery_completed) {
+        if (dof->dof_type == DFT_REGULAR) {
                 /* callers don't want stripes */
                 /* XXX: all tricky interactions with ->ah_make_hint() decided
                  * to use striping, then ->declare_create() behaving differently

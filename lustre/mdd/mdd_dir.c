@@ -1844,8 +1844,12 @@ mdd_start_and_declare_create(const struct lu_env *env,
                 dof->dof_type = DFT_INDEX;
         else {
                 dof->dof_type = dt_mode_to_dft(attr->la_mode);
-                if (dof->dof_type == DFT_REGULAR)
+                if (dof->dof_type == DFT_REGULAR) {
                         dof->u.dof_reg.striped = md_should_create(spec->sp_cr_flags);
+                        /* is this replay? */
+                        if (spec->no_create)
+                                dof->u.dof_reg.striped = 0;
+                }
         }
         rc = mdo_declare_create_obj(env, son, attr, NULL, dof, handle);
         if (rc)
