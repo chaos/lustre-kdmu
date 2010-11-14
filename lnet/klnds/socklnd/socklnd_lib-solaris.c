@@ -146,8 +146,77 @@ ksocknal_lib_zc_capable(ksock_conn_t *conn)
 #endif /* !sun4u */
 }
 
+static void
+ksocknal_lib_desbfree_noop(void *arg)
+{
+}
+
+static frtn_t ksock_frtn = { ksocknal_lib_desbfree_noop, 0 };
+
+static int
+ksocknal_lib_send_iov_zc (ksock_conn_t *conn, ksock_tx_t *tx)
+{
+        int           rc, i, len;
+        struct iovec *iov     = tx->tx_iov;
+        int           nob     = 0;
+        int           niov    = tx->tx_niov;
+        mblk_t       *mp      = NULL;
+        mblk_t       *tail_mp = NULL;
+
+        struct nmsghdr msg = {
+                .msg_name       = NULL,
+                .msg_namelen    = 0,
+                .msg_iov        = NULL,
+                .msg_iovlen     = 0,
+                .msg_control    = NULL,
+                .msg_controllen = 0,
+                .msg_flags      = 0
+        };
+
+        for (i = 0; i < niov; i++, iov++) {
+                mblk_t           *mp1;
+
+                mp1 = desballoca((uchar_t *)iov->iov_base,
+                                 iov->iov_len, BPRI_HI, &ksock_frtn);
+
+                if (mp1 == NULL) {
+                        if (mp != NULL)
+                                freemsg(mp);    
+                        return -ENOMEM;
+                }
+
+                nob                         += iov->iov_len;
+                mp1->b_wptr                 += iov->iov_len;
+                mp1->b_datap->db_struioflag |= STRUIO_ZC;
+
+                if (mp == NULL)
+                        mp = mp1;
+                else
+                        linkb(tail_mp, mp1);
+
+                tail_mp = mp1;
+        }
+
+        rc = ksocket_sendmblk(conn->ksnc_sock->csock_sock,
+                              &msg, FNONBLOCK, &mp, CRED());
+        LASSERT (rc >= 0);
+
+        len = mp != NULL ? msgdsize(mp) : 0;
+
+        LASSERT(rc != 0 || mp == NULL);
+
+        if (rc != 0 && mp != NULL)
+                freemsg(mp);
+                
+        if ((rc != 0 && rc != EAGAIN) ||  /* real error */
+            (rc == EAGAIN && len == nob)) /* nothing sent */
+                return -rc;
+
+        return nob - len;
+}
+
 int
-ksocknal_lib_send_iov (ksock_conn_t *conn, ksock_tx_t *tx)
+ksocknal_lib_send_iov_plain (ksock_conn_t *conn, ksock_tx_t *tx)
 {
         int    rc, i;
         size_t sent;
@@ -188,6 +257,15 @@ ksocknal_lib_send_iov (ksock_conn_t *conn, ksock_tx_t *tx)
 
         LASSERT (sent > 0);
         return sent;
+}
+
+int
+ksocknal_lib_send_iov (ksock_conn_t *conn, ksock_tx_t *tx)
+{
+        if (tx->tx_msg.ksm_zc_cookies[0] != 0) /* Zero copy is enabled */
+                return ksocknal_lib_send_iov_zc(conn, tx);
+
+        return ksocknal_lib_send_iov_plain(conn, tx);
 }
 
 typedef struct {

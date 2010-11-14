@@ -504,6 +504,31 @@ ksocknal_lib_zc_capable(ksock_conn_t *conn)
                 (caps & (NETIF_F_IP_CSUM | NETIF_F_NO_CSUM | NETIF_F_HW_CSUM)) != 0);
 }
 
+struct page *
+ksocknal_kvaddr_to_page (unsigned long vaddr)
+{
+        struct page *page;
+
+        if (vaddr >= VMALLOC_START &&
+            vaddr < VMALLOC_END) {
+                page = vmalloc_to_page ((void *)vaddr);
+                LASSERT (page != NULL);
+                return page;
+        }
+#ifdef CONFIG_HIGHMEM
+        if (vaddr >= PKMAP_BASE &&
+            vaddr < (PKMAP_BASE + LAST_PKMAP * PAGE_SIZE)) {
+                /* No highmem pages only used for bulk (kiov) I/O */
+                CERROR("find page for address in highmem\n");
+                LBUG();
+        }
+#endif
+        page = virt_to_page (vaddr);
+        LASSERT (page != NULL);
+        return page;
+}
+
+
 int
 ksocknal_lib_send_iov (ksock_conn_t *conn, ksock_tx_t *tx)
 {
@@ -519,8 +544,30 @@ ksocknal_lib_send_iov (ksock_conn_t *conn, ksock_tx_t *tx)
 
         /* NB we can't trust socket ops to either consume our iovs
          * or leave them alone. */
+        if (tx->tx_msg.ksm_zc_cookies[0] != 0) {
+                /* Zero copy is enabled */
+                struct sock   *sk = sock->sk;
+                struct iovec  *iov = tx->tx_iov;
+                unsigned long  vaddr = (unsigned long)iov->iov_base;
+                struct page   *page = ksocknal_kvaddr_to_page(vaddr);
+                int            offset = vaddr & (PAGE_SIZE - 1);
+                int            fragsize = min((int)iov->iov_len, (int)PAGE_SIZE - offset);
+                int            msgflg = MSG_DONTWAIT;
 
-        {
+                CDEBUG(D_NET, "page %p + offset %x for %ld\n",
+                               page, offset, iov->iov_len);
+
+                if (!cfs_list_empty(&conn->ksnc_tx_queue) ||
+                    fragsize < tx->tx_resid)
+                        msgflg |= MSG_MORE;
+
+                if (sk->sk_prot->sendpage != NULL) {
+                        rc = sk->sk_prot->sendpage(sk, page,
+                                                   offset, fragsize, msgflg);
+                } else {
+                        rc = tcp_sendpage(sock, page, offset, fragsize, msgflg);
+                }
+        } else {
 #if SOCKNAL_SINGLE_FRAG_TX
                 struct iovec    scratch;
                 struct iovec   *scratchiov = &scratch;

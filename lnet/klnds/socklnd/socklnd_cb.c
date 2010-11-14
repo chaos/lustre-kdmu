@@ -987,10 +987,10 @@ ksocknal_send(lnet_ni_t *ni, void *private, lnet_msg_t *lntmsg)
                 tx->tx_nkiov = lnet_extract_kiov(payload_niov, tx->tx_kiov,
                                                  payload_niov, payload_kiov,
                                                  payload_offset, payload_nob);
-
-                if (payload_nob >= *ksocknal_tunables.ksnd_zc_min_payload)
-                        tx->tx_zc_capable = 1;
         }
+
+        if (payload_nob >= *ksocknal_tunables.ksnd_zc_min_payload)
+                tx->tx_zc_capable = 1;
 
         socklnd_init_msg(&tx->tx_msg, KSOCK_MSG_LNET);
 
