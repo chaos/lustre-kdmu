@@ -190,7 +190,7 @@ static int osp_declare_object_create(const struct lu_env *env,
         fid = lu_object_fid(&dt->do_lu);
 
         if (unlikely((fid_oid(fid) || fid_seq(fid)))) {
-                LASSERT(d->opd_recovery_completed == 0);
+                /* replace case: caller knows fid */
                 /* XXX: for compatibility use common for all OSPs file */
                 rc = dt_declare_record_write(env, d->opd_last_used_file, 8, 0, th);
                 RETURN(rc);
