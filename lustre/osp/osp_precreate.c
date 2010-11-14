@@ -531,6 +531,8 @@ static int osp_precreate_thread(void *_arg)
                                 break;
                 }
 
+                osp_statfs_update(d);
+
                 /*
                  * wait for local recovery to finish, so we can cleanup orphans
                  * orphans are all objects since "last used" (assigned), but
