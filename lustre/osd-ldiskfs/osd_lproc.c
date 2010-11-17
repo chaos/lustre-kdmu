@@ -378,6 +378,17 @@ static int lprocfs_osd_wr_force_sync(struct file *file, const char *buffer,
         if (rc)
                 return rc;
         rc = dt_sync(&env, dt);
+#ifdef DMU_OSD_BUILD
+        /*
+         * force_sync interface is used by t-f to make sure all pending
+         * data is written and/or all space is released.
+         * release may take upto 3 txg in DMU, so we repeat sync
+         */
+        if (rc == 0)
+                rc = dt_sync(&env, dt);
+        if (rc == 0)
+                rc = dt_sync(&env, dt);
+#endif
         lu_env_fini(&env);
 
         return rc == 0 ? count : rc;
