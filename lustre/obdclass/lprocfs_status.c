@@ -2101,6 +2101,7 @@ int lprocfs_read_frac_helper(char *buffer, unsigned long count, long val,
                 }
                 prtn++;
         }
+        buffer[prtn++] = '\n';
         /* Due to the last while(), the following char might not be '\0' */
         buffer[prtn++] = '\0';
         return prtn;
