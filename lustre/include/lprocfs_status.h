@@ -696,7 +696,7 @@ extern int lprocfs_quota_wr_qs_factor(cfs_param_file_t *file, const char *buffer
 
 
 
-#else /* __KERNEL__ */
+#else /* __KERNEL__ is not defined */
 
 
 
@@ -790,8 +790,8 @@ static inline void lprocfs_remove(cfs_param_entry_t **root)
 static inline void lprocfs_remove_proc_entry(const char *name,
                                              cfs_param_entry_t *parent)
 { return; }
-static inline void *lprocfs_srch(cfs_param_entry_t *head,
-                                 const char *name)
+static inline cfs_param_entry_t *lprocfs_srch(cfs_param_entry_t *head,
+                                              const char *name)
 { return 0; }
 static inline int lprocfs_obd_setup(struct obd_device *dev,
                                     struct lprocfs_vars *list)
@@ -867,7 +867,7 @@ static inline int lprocfs_rd_filesfree(char *page, char **start, off_t off,
                                        int count, int *eof, void *data)
 { return 0; }
 static inline int lprocfs_rd_filegroups(char *page, char **start, off_t off,
-                                       int count, int *eof, void *data)
+                                        int count, int *eof, void *data)
 { return 0; }
 static inline void lprocfs_oh_tally(struct obd_histogram *oh, unsigned int value)
 { return; }

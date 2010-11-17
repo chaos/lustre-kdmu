@@ -248,7 +248,7 @@ typedef struct cfs_param_entry {
 #define CFS_PARAM_DEBUG_MAGIC 0x01DE01EE
 typedef struct cfs_param_cb_data {
         int             cb_magic;
-        int             cb_flag;  /* switch read cb function from proc to params_tree */
+        int             cb_flag;  /* distinguish from proc to params_tree */
         void           *cb_data;  /* the original callback data */
 } cfs_param_cb_data_t;
 

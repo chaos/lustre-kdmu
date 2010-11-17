@@ -62,8 +62,8 @@
 #include "gss_internal.h"
 #include "gss_api.h"
 
-static void *gss_proc_root = NULL;
-static void *gss_proc_lk = NULL;
+static cfs_param_entry_t *gss_proc_root = NULL;
+static cfs_param_entry_t *gss_proc_lk = NULL;
 
 /*
  * statistic of "out-of-sequence-window"

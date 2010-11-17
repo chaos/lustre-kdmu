@@ -57,8 +57,6 @@
 
 #define MAX_STRING_SIZE 128
 
-/* for bug 10866, global variable */
-
 #ifdef LPROCFS
 int lprocfs_seq_release(struct inode *inode, struct file *file)
 {
@@ -66,45 +64,26 @@ int lprocfs_seq_release(struct inode *inode, struct file *file)
         return seq_release(inode, file);
 }
 EXPORT_SYMBOL(lprocfs_seq_release);
-#endif
 
-/* lprocfs API calls */
-cfs_param_entry_t *
-lprocfs_srch(cfs_param_entry_t *head, const char *name)
+static struct proc_dir_entry *__lprocfs_srch(struct proc_dir_entry *head,
+                                             const char *name)
 {
-        cfs_param_entry_t *pe = NULL;
+        struct proc_dir_entry *temp;
 
         if (head == NULL)
                 return NULL;
-        cfs_param_get(head);
-        pe = cfs_param_lookup(name, head);
-        cfs_param_put(head);
 
-        return pe;
+        temp = head->subdir;
+        while (temp != NULL) {
+                if (strlen(name) == strlen(temp->name) &&
+                    strcmp(temp->name, name) == 0)
+                        return temp;
+
+                temp = temp->next;
+        }
+        return NULL;
 }
 
-/* Function that emulates snprintf but also has the side effect of advancing
-   the page pointer for the next write into the buffer, incrementing the total
-   length written to the buffer, and decrementing the size left in the
-   buffer. */
-static int lprocfs_obd_snprintf(char **page, int end, int *len,
-                                const char *format, ...)
-{
-        va_list list;
-        int n;
-
-        if (*len >= end)
-                return 0;
-
-        va_start(list, format);
-        n = vsnprintf(*page, end - *len, format, list);
-        va_end(list);
-
-        *page += n; *len += n;
-        return n;
-}
-
-#ifdef LPROCFS
 static ssize_t lprocfs_fops_read(struct file *f, char __user *buf,
                                  size_t size, loff_t *ppos)
 {
@@ -179,6 +158,21 @@ static struct file_operations lprocfs_generic_fops = {
 };
 #endif /* LPROCFS */
 
+/* lprocfs API calls */
+cfs_param_entry_t *
+lprocfs_srch(cfs_param_entry_t *head, const char *name)
+{
+        cfs_param_entry_t *pe;
+
+        if (head == NULL)
+                return NULL;
+        cfs_param_get(head);
+        pe = cfs_param_lookup(name, head);
+        cfs_param_put(head);
+
+        return pe;
+}
+
 cfs_param_entry_t *
 lprocfs_add_simple(cfs_param_entry_t *root, char *name,
                    cfs_param_read_t *read_proc,
@@ -188,6 +182,7 @@ lprocfs_add_simple(cfs_param_entry_t *root, char *name,
         cfs_param_entry_t *pe = NULL;
         cfs_param_cb_data_t *param_data = NULL;
         mode_t mode = 0;
+        int rc = 0;
 
         if (root == NULL || name == NULL)
                 return ERR_PTR(-EINVAL);
@@ -210,30 +205,36 @@ lprocfs_add_simple(cfs_param_entry_t *root, char *name,
                 } else {
                         param_data = CFS_ALLOC_PARAMDATA(data);
                         if (param_data == NULL)
-                                return ERR_PTR(-ENOMEM);
+                                GOTO(out, rc = -ENOMEM);
                         pe->pe_data = param_data;
                 }
 #ifdef  LPROCFS
                 if (root->pe_proc != NULL) {
-                        cfs_proc_dir_entry_t *proc = NULL;
+                        cfs_proc_dir_entry_t *proc;
+
                         proc = create_proc_entry(name, mode, root->pe_proc);
-                        if (proc != NULL) {
-                                if (fops != NULL) {
-                                        proc->data = data;
-                                        proc->proc_fops = fops;
-                                } else {
-                                        proc->proc_fops = &lprocfs_generic_fops;
-                                        param_data = CFS_ALLOC_PROCDATA(data);
-                                        if (param_data == NULL)
-                                                return ERR_PTR(-ENOMEM);
-                                        proc->data = param_data;
-                                }
-                                proc->read_proc = read_proc;
-                                proc->write_proc = write_proc;
-                                pe->pe_proc = proc;
+                        if (proc == NULL)
+                                GOTO(out, rc = -ENOMEM);
+                        if (fops != NULL) {
+                                proc->data = data;
+                                proc->proc_fops = fops;
+                        } else {
+                                proc->proc_fops = &lprocfs_generic_fops;
+                                param_data = CFS_ALLOC_PROCDATA(data);
+                                if (param_data == NULL)
+                                        GOTO(out, rc = -ENOMEM);
+                                proc->data = param_data;
                         }
+                        proc->read_proc = read_proc;
+                        proc->write_proc = write_proc;
+                        pe->pe_proc = proc;
                 }
 #endif
+out:
+                if (rc != 0) {
+                        lprocfs_remove_proc_entry(name, root);
+                        pe = NULL;
+                }
         }
         cfs_param_put(root);
 
@@ -263,8 +264,11 @@ lprocfs_add_symlink(const char *name, cfs_param_entry_t *parent,
         pe_sym = cfs_param_symlink(name, parent, dest);
 #ifdef LPROCFS
         if (pe_sym && parent->pe_proc) {
-                pe_sym->pe_proc = proc_symlink(name, parent->pe_proc,
-                                                 dest);
+                pe_sym->pe_proc = proc_symlink(name, parent->pe_proc, dest);
+                if (pe_sym->pe_proc == NULL) {
+                        lprocfs_remove_proc_entry(name, parent);
+                        pe_sym = NULL;
+                }
         }
 #endif
         if (pe_sym == NULL)
@@ -274,6 +278,29 @@ lprocfs_add_symlink(const char *name, cfs_param_entry_t *parent,
 
         OBD_FREE(dest, MAX_STRING_SIZE + 1);
         return pe_sym;
+}
+
+static cfs_param_entry_t *
+lprocfs_mkdir(const char *name, cfs_param_entry_t *parent)
+{
+        cfs_param_entry_t *pe;
+
+        if (parent == NULL || name == NULL)
+                return NULL;
+        cfs_param_get(parent);
+        pe = cfs_param_mkdir(name, parent);
+#ifdef LPROCFS
+        if (parent->pe_proc && pe) {
+                pe->pe_proc = proc_mkdir(name, parent->pe_proc);
+                if (pe->pe_proc == NULL) {
+                        lprocfs_remove_proc_entry(name, parent);
+                        pe = NULL;
+                }
+        }
+#endif
+        cfs_param_put(parent);
+
+        return pe;
 }
 
 /**
@@ -287,71 +314,61 @@ lprocfs_add_symlink(const char *name, cfs_param_entry_t *parent,
  * \retval 0   on success
  *         < 0 on error
  */
-int lprocfs_add_vars(cfs_param_entry_t *root,
-                     struct lprocfs_vars *list, void *data)
+int
+lprocfs_add_vars(cfs_param_entry_t *root, struct lprocfs_vars *list, void *data)
 {
         if (root == NULL || list == NULL)
                 return -EINVAL;
 
         while (list->name != NULL) {
-                cfs_param_entry_t *cur_pe, *pe = NULL;
-                char *pathcopy, *cur, *next, pathbuf[64];
+                cfs_param_entry_t *parent, *pe = NULL;
+                char *pathcopy, *name, *left, pathbuf[64];
                 int pathsize = strlen(list->name) + 1;
                 void *cb_data = list->data ? list->data : data;
 
-                cur_pe = cfs_param_get(root);
+                parent = cfs_param_get(root);
 
                 /* need copy of path for strsep */
                 if (strlen(list->name) > sizeof(pathbuf) - 1) {
                         OBD_ALLOC(pathcopy, pathsize);
                         if (pathcopy == NULL) {
-                                cfs_param_put(cur_pe);
+                                cfs_param_put(parent);
                                 return -ENOMEM;
                         }
                 } else {
                         pathcopy = pathbuf;
                 }
-                next = pathcopy;
+                left = pathcopy;
                 strcpy(pathcopy, list->name);
 
-                while ((cur_pe != NULL) && (cur = strsep(&next, "/"))) {
-                        if (*cur == '\0') /* skip double/trailing "/" */
+                while ((parent != NULL) && (name = strsep(&left, "/"))) {
+                        if (*name == '\0') /* skip double/trailing "/" */
                                 continue;
-                        pe = cfs_param_lookup(cur, cur_pe);
-                        CDEBUG(D_OTHER, "cur_pe=%s, cur=%s, next=%s, (%s)\n",
-                               cur_pe->pe_name, cur, next,
+                        pe = cfs_param_lookup(name, parent);
+                        CDEBUG(D_OTHER, "parent=%s, name=%s, left=%s, (%s)\n",
+                               parent->pe_name, name, left,
                                (pe ? "exists" : "new"));
-                        if (next != NULL) {
-                                if (pe == NULL) {
-                                        pe = cfs_param_mkdir(cur, cur_pe);
-#ifdef LPROCFS
-                                        if (cur_pe->pe_proc && pe)
-                                                pe->pe_proc = proc_mkdir(cur,
-                                                                cur_pe->pe_proc);
-#endif
-                                }
-                                if (pe != NULL) {
-                                        cfs_param_put(cur_pe);
-                                        cur_pe = pe;
-                                }
+                        if (left != NULL) {
+                                if (pe == NULL)
+                                        pe = lprocfs_mkdir(name, parent);
                         } else if (pe == NULL) {
                                 /* use lprocfs_add_simple here */
-                                pe = lprocfs_add_simple(cur_pe, cur,
-                                                list->read_fptr,
-                                                list->write_fptr,
-                                                cb_data, list->fops);
-                                if (pe == NULL)
-                                        break;
-                                cfs_param_put(pe);
+                                pe = lprocfs_add_simple(parent, name,
+                                                        list->read_fptr,
+                                                        list->write_fptr,
+                                                        cb_data, list->fops);
+                                if (pe != NULL && list->proc_mode != 0000)
+                                        pe->pe_mode = list->proc_mode;
                         }
+                        cfs_param_put(parent);
+                        parent = pe;
                 }
                 if (pathcopy != pathbuf)
                         OBD_FREE(pathcopy, pathsize);
-                if (cur_pe)
-                        cfs_param_put(cur_pe);
-                if (cur_pe == NULL || pe == NULL) {
-                        CERROR("LprocFS: No memory to create /proc entry %s\n",
-                               list->name);
+                if (parent)
+                        cfs_param_put(parent);
+                if (parent == NULL || pe == NULL) {
+                        CERROR("LprocFS: Can't create entry %s\n", list->name);
                         return -ENOMEM;
                 }
                 list++;
@@ -374,8 +391,7 @@ void lprocfs_remove(cfs_param_entry_t **rooth)
 
                 rm_entry = root->pe_proc;
                 parent = rm_entry->parent;
-                if (parent == NULL)
-                        goto out;
+                LASSERT(parent != NULL);
                 LPROCFS_WRITE_ENTRY(); /* search vs remove race */
                 while (1) {
                         while (temp->subdir != NULL)
@@ -403,7 +419,6 @@ void lprocfs_remove(cfs_param_entry_t **rooth)
                 }
                 LPROCFS_WRITE_EXIT();
         }
-out:
 #endif
         cfs_param_remove(NULL, root);
         *rooth = NULL;
@@ -411,24 +426,18 @@ out:
 
 void lprocfs_remove_proc_entry(const char *name, cfs_param_entry_t *parent)
 {
-        if (parent == NULL)
-                return;
+        LASSERT(parent != NULL);
         cfs_param_get(parent);
 #ifdef  LPROCFS
         if (parent->pe_proc) {
-                struct proc_dir_entry *temp = parent->pe_proc;
-                while (temp->subdir != NULL) {
-                        temp = temp->subdir;
-                        if (strlen(name) == strlen(temp->name) &&
-                            !strcmp(temp->name, name)) {
-                                if (S_ISREG(temp->mode) &&
-                                    temp->proc_fops == &lprocfs_generic_fops)
-                                        /* seq params use orig data */
-                                        CFS_FREE_PROCDATA(
-                                                  temp->data);
-                                temp->data = NULL;
-                                remove_proc_entry(temp->name, temp);
-                        }
+                struct proc_dir_entry *temp;
+
+                temp = __lprocfs_srch(parent->pe_proc, name);
+                if (temp != NULL) {
+                        if (S_ISREG(temp->mode) &&
+                            temp->proc_fops == &lprocfs_generic_fops)
+                                CFS_FREE_PROCDATA(temp->data);
+                        remove_proc_entry(name, parent->pe_proc);
                 }
         }
 #endif
@@ -448,17 +457,14 @@ lprocfs_register(const char *name, cfs_param_entry_t *parent,
 {
         cfs_param_entry_t *newchild;
 
-        /* we have done lookup in params_add_entry, so here we only
-         * check for proc
-         */
-        cfs_param_get(parent);
-        newchild = cfs_param_mkdir(name, parent);
-#ifdef LPROCFS
-        if (newchild && parent->pe_proc) {
-                newchild->pe_proc = proc_mkdir(name, parent->pe_proc);
+        newchild = lprocfs_srch(parent, name);
+        if (newchild != NULL) {
+                CERROR(" Lproc: Attempting to register %s more than once \n",
+                       name);
+                return ERR_PTR(-EALREADY);
         }
-#endif
-        cfs_param_put(parent);
+
+        newchild = lprocfs_mkdir(name, parent);
         if (newchild != NULL && list != NULL) {
                 int rc = lprocfs_add_vars(newchild, list, data);
                 if (rc) {
@@ -895,9 +901,8 @@ int lprocfs_rd_import(char *page, char **start, off_t off, int count,
         struct obd_import *imp;
         struct obd_import_conn *conn;
         int i, j, k, rw = 0;
-        int flag = 0;
 
-        cfs_param_get_data(obd, data, &flag);
+        cfs_param_get_data(obd, data, NULL);
         LASSERT(obd != NULL);
         LPROCFS_CLIMP_CHECK(obd);
         imp = obd->u.cli.cl_import;
@@ -1071,9 +1076,9 @@ int lprocfs_rd_timeouts(char *page, char **start, off_t off, int count,
         unsigned int cur, worst;
         time_t now, worstt;
         struct dhms ts;
-        int i, rc = 0, flag = 0;
+        int i, rc = 0;
 
-        cfs_param_get_data(obd, data, &flag);
+        cfs_param_get_data(obd, data, NULL);
         LASSERT(obd != NULL);
         LPROCFS_CLIMP_CHECK(obd);
         imp = obd->u.cli.cl_import;
@@ -1093,7 +1098,7 @@ int lprocfs_rd_timeouts(char *page, char **start, off_t off, int count,
         s2dhms(&ts, now - worstt);
 
         rc += snprintf(page + rc, count - rc,
-                "%-10s : cur %3u  worst %3u (at %ld, "DHMS_FMT" ago) ",
+                       "%-10s : cur %3u  worst %3u (at %ld, "DHMS_FMT" ago) ",
                        "network", cur, worst, worstt, DHMS_VARS(&ts));
         rc = lprocfs_at_hist_helper(page, count, rc,
                                     &imp->imp_at.iat_net_latency);
@@ -1947,7 +1952,6 @@ int lprocfs_exp_setup(struct obd_export *exp, lnet_nid_t *nid, int reconnect,
                                    lprocfs_exp_rd_uuid, NULL, new_stat, NULL);
         if (IS_ERR(entry)) {
                 CWARN("Error adding the NID stats file\n");
-                lprocfs_put_peref(new_stat->nid_proc);
                 rc = PTR_ERR(entry);
                 GOTO(destroy_new_ns, rc);
         }
@@ -2097,7 +2101,6 @@ int lprocfs_read_frac_helper(char *buffer, unsigned long count, long val,
                 }
                 prtn++;
         }
-        buffer[prtn++] = '\n';
         /* Due to the last while(), the following char might not be '\0' */
         buffer[prtn++] = '\0';
         return prtn;
@@ -2193,6 +2196,8 @@ int lprocfs_seq_create(cfs_param_entry_t *parent, char *name,
                                 proc->proc_fops = seq_fops;
                                 proc->data = data;
                                 pe->pe_proc = proc;
+                        } else {
+                                rc = -ENOMEM;
                         }
                 }
 #endif
@@ -2281,14 +2286,34 @@ int lprocfs_obd_rd_hash(char *page, char **start, off_t off,
 }
 EXPORT_SYMBOL(lprocfs_obd_rd_hash);
 
+/* Function that emulates snprintf but also has the side effect of advancing
+   the page pointer for the next write into the buffer, incrementing the total
+   length written to the buffer, and decrementing the size left in the
+   buffer. */
+static int lprocfs_obd_snprintf(char **page, int end, int *len,
+                                const char *format, ...)
+{
+        va_list list;
+        int n;
+
+        if (*len >= end)
+                return 0;
+
+        va_start(list, format);
+        n = vsnprintf(*page, end - *len, format, list);
+        va_end(list);
+
+        *page += n; *len += n;
+        return n;
+}
+
 int lprocfs_obd_rd_recovery_status(char *page, char **start, off_t off,
                                    int count, int *eof, void *data)
 {
         struct obd_device *obd;
         int len = 0, size;
-        int flag = 0;
 
-        cfs_param_get_data(obd, data, &flag);
+        cfs_param_get_data(obd, data, NULL);
         LASSERT(obd != NULL);
         LASSERT(count >= 0);
 

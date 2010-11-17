@@ -512,8 +512,7 @@ cfs_param_symlink(const char *name, cfs_param_entry_t *parent,
 {
         cfs_param_entry_t *pe;
 
-        pe = param_add(name, S_IFLNK | S_IRUGO | S_IWUGO | S_IXUGO,
-                               parent);
+        pe = param_add(name, S_IFLNK | S_IRUGO | S_IWUGO | S_IXUGO, parent);
         if (pe != NULL) {
                 LIBCFS_ALLOC(pe->pe_data, strlen(dest) + 1);
                 if (pe->pe_data != NULL) {
@@ -917,7 +916,6 @@ param_seq_read(char *ubuf, loff_t *loff, int count, int *eof,
         if (p == NULL || IS_ERR(p)) {
                 *eof = 1;
                 rc = PTR_ERR(p);
-                CWARN("seq start failed for %s rc %d \n", pe->pe_name, rc);
                 GOTO(out, rc);
         }
 
@@ -1251,7 +1249,7 @@ cfs_param_intvec_write(cfs_param_file_t *filp, const char *buffer,
         }
         memcpy(((cfs_param_cb_data_t *)data)->cb_data, &temp, sizeof(temp));
 
-        return 0;
+        return count;
 }
 EXPORT_SYMBOL(cfs_param_intvec_write);
 
@@ -1270,7 +1268,7 @@ cfs_param_string_write(cfs_param_file_t *filp, const char *buffer,
                        unsigned long count, void *data)
 {
         memcpy(((cfs_param_cb_data_t *)data)->cb_data, buffer, count);
-        return 0;
+        return count;
 }
 EXPORT_SYMBOL(cfs_param_string_write);
 
