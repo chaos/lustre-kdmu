@@ -1259,8 +1259,7 @@ wait_update_facet () {
 }
 
 sync_all_data () {
-    sync
-    # XXX: how to sync data on OST running DMU?
+    do_node $(osts_nodes) "lctl set_param -n osd*.*OS*.force_sync 1"
 }
 
 wait_delete_completed () {
