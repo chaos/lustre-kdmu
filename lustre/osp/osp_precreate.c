@@ -296,6 +296,8 @@ static int osp_precreate_send(struct osp_device *d)
         }
         d->opd_pre_last_created = body->oa.o_id;
         cfs_spin_unlock(&d->opd_pre_lock);
+        CDEBUG(D_OTHER, "current precreated pool: %Lu-%Lu\n",
+               d->opd_pre_next, d->opd_pre_last_created);
 
         /* now we can wakeup all users awaiting for objects */
         /* XXX: how do we do if rc != 0 ? */
