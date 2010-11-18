@@ -747,6 +747,12 @@ test_24a() {
 		do_facet $SINGLEMDS [ -b "$MDSDEV" ] && \
 		skip_env "mixed loopback and real device not working" && return
 	fi
+	
+	FSTYPE=`echo $FSTYPE | tr "[:upper:]" "[:lower:]"`
+	if [[ "$FSTYPE" = "zfs" ]];then
+	local fs2mds_DEV=""
+	local fs2ost_DEV=""
+	fi
 
 	local fs2mdsdev=${fs2mds_DEV:-${MDSDEV}_2}
 	local fs2ostdev=${fs2ost_DEV:-$(ostdevname 1)_2}
@@ -794,6 +800,11 @@ test_24b() {
 	if [ -z "$fs2mds_DEV" ]; then
 		do_facet $SINGLEMDS [ -b "$MDSDEV" ] && \
 		skip_env "mixed loopback and real device not working" && return
+	fi
+	
+	FSTYPE=`echo $FSTYPE | tr "[:upper:]" "[:lower:]"`
+	if [[ "$FSTYPE" = "zfs" ]];then
+	local fs2mds_DEV=""
 	fi
 
 	local fs2mdsdev=${fs2mds_DEV:-${MDSDEV}_2}
