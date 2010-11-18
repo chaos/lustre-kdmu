@@ -193,9 +193,26 @@ void udmu_wait_txg_synced(udmu_objset_t *uos, uint64_t txg)
 
 void udmu_wait_synced(udmu_objset_t *uos, dmu_tx_t *tx)
 {
+        dsl_pool_t *dp = dmu_objset_pool(uos->os);
+        tx_state_t *txs = &dp->dp_tx;
+        uint64_t txg = tx ? tx->tx_txg : 0;
+
+        if (txg == 0) {
+                /*
+                 * If no txg was specified, we wait until the open txg syncs.
+                 *
+                 * Note that we don't call txg_wait_synced() with txg 0 because
+                 * that would sync TXG_DEFER_SIZE additional txgs besides the
+                 * open one in order to make sure that most blocks freed in the
+                 * open txg have actually been released.
+                 */
+                mutex_lock(&txs->tx_sync_lock);
+                txg = txs->tx_open_txg;
+                mutex_unlock(&txs->tx_sync_lock);
+        }
+
         /* Wait for the pool to be synced */
-        txg_wait_synced(dmu_objset_pool(uos->os),
-                        tx ? tx->tx_txg : 0ULL);
+        txg_wait_synced(dp, txg);
 }
 
 void udmu_objset_close(udmu_objset_t *uos)
