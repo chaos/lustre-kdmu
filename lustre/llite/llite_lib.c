@@ -816,8 +816,11 @@ void ll_lli_init(struct ll_inode_info *lli)
         cfs_sema_init(&lli->lli_rmtperm_sem, 1);
         CFS_INIT_LIST_HEAD(&lli->lli_oss_capas);
         cfs_spin_lock_init(&lli->lli_sa_lock);
-        CFS_INIT_LIST_HEAD(&lli->lli_sa_dentry);
 }
+
+#ifdef HAVE_NEW_BACKING_DEV_INFO
+static atomic_t ll_bdi_num = ATOMIC_INIT(0);
+#endif
 
 int ll_fill_super(struct super_block *sb)
 {
@@ -845,6 +848,18 @@ int ll_fill_super(struct super_block *sb)
         err = ll_options(lsi->lsi_lmd->lmd_opts, &sbi->ll_flags);
         if (err)
                 GOTO(out_free, err);
+
+        err = ll_bdi_init(&lsi->bdi);
+        if (err)
+                GOTO(out_free, err);
+
+#ifdef HAVE_NEW_BACKING_DEV_INFO
+        lsi->bdi.name = "lustre";
+        lsi->bdi.capabilities = BDI_CAP_MAP_COPY;
+        err = bdi_register(&lsi->bdi, NULL, "lustre-%d",
+                           atomic_inc_return(&ll_bdi_num));
+        sb->s_bdi = &lsi->bdi;
+#endif
 
         /* Generate a string unique to this super, in case some joker tries
            to mount the same fs at two mount points.
@@ -950,6 +965,9 @@ void ll_put_super(struct super_block *sb)
         if (profilenm)
                 class_del_profile(profilenm);
 
+        if (ll_bdi_wb_cnt(lsi->bdi) > 0)
+                ll_bdi_destroy(&lsi->bdi);
+
         ll_free_sbi(sb);
         lsi->lsi_llsbi = NULL;
 
@@ -975,11 +993,10 @@ struct inode *ll_inode_from_lock(struct ldlm_lock *lock)
                         inode = igrab(lock->l_ast_data);
                 } else {
                         inode = lock->l_ast_data;
-                        ldlm_lock_debug(NULL, inode->i_state & I_FREEING ?
-                                                D_INFO : D_WARNING,
-                                        lock, __FILE__, __func__, __LINE__,
-                                        "l_ast_data %p is bogus: magic %08x",
-                                        lock->l_ast_data, lli->lli_inode_magic);
+                        LDLM_DEBUG_LIMIT(inode->i_state & I_FREEING ?  D_INFO :
+                                         D_WARNING, lock, "l_ast_data %p is "
+                                         "bogus: magic %08x", lock->l_ast_data,
+                                         lli->lli_inode_magic);
                         inode = NULL;
                 }
         }
@@ -1278,9 +1295,9 @@ int ll_setattr_raw(struct inode *inode, struct iattr *attr)
 
         if (ia_valid & ATTR_SIZE)
                 attr->ia_valid |= ATTR_SIZE;
-        if ((ia_valid & ATTR_SIZE) ||
-            (ia_valid | ATTR_ATIME | ATTR_ATIME_SET) ||
-            (ia_valid | ATTR_MTIME | ATTR_MTIME_SET))
+        if (ia_valid & (ATTR_SIZE |
+                        ATTR_ATIME | ATTR_ATIME_SET |
+                        ATTR_MTIME | ATTR_MTIME_SET))
                 /* on truncate and utimes send attributes to osts, setting
                  * mtime/atime to past will be performed under PW 0:EOF extent
                  * lock (new_size:EOF for truncate)
@@ -1619,15 +1636,6 @@ void ll_update_inode(struct inode *inode, struct lustre_md *md)
         }
 }
 
-static struct backing_dev_info ll_backing_dev_info = {
-        .ra_pages       = 0,    /* No readahead */
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,12))
-        .capabilities   = 0,    /* Does contribute to dirty memory */
-#else
-        .memory_backed  = 0,    /* Does contribute to dirty memory */
-#endif
-};
-
 void ll_read_inode2(struct inode *inode, void *opaque)
 {
         struct lustre_md *md = opaque;
@@ -1653,6 +1661,10 @@ void ll_read_inode2(struct inode *inode, void *opaque)
 
         /* OIDEBUG(inode); */
 
+        /* initializing backing dev info. */
+        inode->i_mapping->backing_dev_info = &(s2lsi(inode->i_sb)->bdi);
+
+
         if (S_ISREG(inode->i_mode)) {
                 struct ll_sb_info *sbi = ll_i2sbi(inode);
                 inode->i_op = &ll_file_inode_operations;
@@ -1672,9 +1684,6 @@ void ll_read_inode2(struct inode *inode, void *opaque)
 
                 init_special_inode(inode, inode->i_mode,
                                    kdev_t_to_nr(inode->i_rdev));
-
-                /* initializing backing dev info. */
-                inode->i_mapping->backing_dev_info = &ll_backing_dev_info;
 
                 EXIT;
         }
@@ -2110,17 +2119,4 @@ int ll_show_options(struct seq_file *seq, struct vfsmount *vfs)
                 seq_puts(seq, ",lazystatfs");
 
         RETURN(0);
-}
-
-int ll_sync_fs(struct super_block *sb, int wait)
-{
-        struct ll_sb_info *sbi = ll_s2sbi(sb);
-        int rc = 0;
-        ENTRY;
-
-        rc = obd_sync_fs(class_exp2obd(sbi->ll_dt_exp), NULL, wait);
-        if (rc)
-                CERROR("sync_fs fails: rc = %d\n", rc);
-
-        RETURN(rc);
 }

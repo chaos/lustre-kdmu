@@ -75,7 +75,7 @@ struct ptlrpc_connection *ptlrpc_uuid_to_connection(struct obd_uuid *uuid)
 
         err = ptlrpc_uuid_to_peer(uuid, &peer, &self);
         if (err != 0) {
-                CDEBUG(D_NETERROR, "cannot find peer %s!\n", uuid->uuid);
+                CNETERR("cannot find peer %s!\n", uuid->uuid);
                 return NULL;
         }
 
@@ -1444,12 +1444,6 @@ int ptlrpc_check_set(const struct lu_env *env, struct ptlrpc_request_set *set)
                 if (req->rq_phase == RQ_PHASE_UNREGISTERING) {
                         LASSERT(req->rq_next_phase != req->rq_phase);
                         LASSERT(req->rq_next_phase != RQ_PHASE_UNDEFINED);
-
-                        /* Abort the bulk, if the request itself has been
-                         * aborted, for instance, on a client eviction. */
-                        if (req->rq_err && req->rq_status == -EINTR &&
-                            req->rq_bulk != NULL)
-                                ptlrpc_abort_bulk(req->rq_bulk);
 
                         /*
                          * Skip processing until reply is unlinked. We

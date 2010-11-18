@@ -176,7 +176,7 @@ static int osd_oi_index_create(struct osd_thread_info *info,
                 oi_feat.dif_keysize_max = oi_descr[i].fid_size;
 
                 rc = osd_oi_index_create_one(info, osd, name, &oi_feat);
-                
+
                 if (rc == -ESTALE || rc != -EEXIST)
                         return(rc);
         }

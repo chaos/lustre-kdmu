@@ -69,7 +69,8 @@ const char fld_index_name[] = "fld";
 static const struct lu_seq_range IGIF_FLD_RANGE = {
         .lsr_start = 1,
         .lsr_end   = FID_SEQ_IDIF,
-        .lsr_mdt   = 0
+        .lsr_index   = 0,
+        .lsr_flags  = LU_SEQ_RANGE_MDT
 };
 
 const struct dt_index_features fld_index_features = {
@@ -239,13 +240,15 @@ int fld_index_delete(struct lu_server_fld *fld,
 }
 
 /**
- * lookup range for a seq passed
+ * lookup range for a seq passed. note here we only care about the start/end,
+ * caller should handle the attached location data (flags, index).
  *
- *      \param  seq     seq for lookup.
- *      \param  range   result of lookup.
+ * \param  seq     seq for lookup.
+ * \param  range   result of lookup.
  *
- *      \retval  0  success
- *      \retval  -ve error
+ * \retval  0           found, \a range is the matched range;
+ * \retval -ENOENT      not found, \a range is the left-side range;
+ * \retval  -ve         other error;
  */
 
 int fld_index_lookup(struct lu_server_fld *fld,
@@ -281,7 +284,8 @@ int fld_index_lookup(struct lu_server_fld *fld,
          * XXX: no CMD support */
         range->lsr_start = 0;
         range->lsr_end = ~0ULL;
-        range->lsr_mdt = 0;
+        range->lsr_index = 0;
+        range->lsr_flags = LU_SEQ_RANGE_MDT;
         rc = 0;
 
         CDEBUG(D_INFO, "%s: lookup seq = "LPX64" range : "DRANGE" rc = %d\n",
