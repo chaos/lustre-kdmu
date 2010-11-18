@@ -55,10 +55,10 @@ static cfs_param_sysctl_table_t cfs_param_module_ctl_table[] = {
         {0}
 };
 
-void lnet_module_sysctl_init()
+int lnet_module_param_init()
 {
-        cfs_param_sysctl_init("lnet", cfs_param_module_ctl_table,
-                              cfs_param_lnet_root);
+        return cfs_param_sysctl_init("lnet", cfs_param_module_ctl_table,
+                                     cfs_param_get_lnet_root());
 }
 
 
@@ -86,7 +86,7 @@ int
 lnet_unconfigure (void)
 {
         int   refcount;
-        
+
         LNET_MUTEX_DOWN(&lnet_config_mutex);
 
         if (the_lnet.ln_niinit_self) {
@@ -113,7 +113,7 @@ lnet_ioctl(unsigned int cmd, struct libcfs_ioctl_data *data)
 
         case IOC_LIBCFS_UNCONFIGURE:
                 return lnet_unconfigure();
-                
+
         default:
                 /* Passing LNET_PID_ANY only gives me a ref if the net is up
                  * already; I'll need it to ensure the net can't go down while
@@ -129,18 +129,42 @@ lnet_ioctl(unsigned int cmd, struct libcfs_ioctl_data *data)
 
 DECLARE_IOCTL_HANDLER(lnet_ioctl_handler, lnet_ioctl);
 
+static int
+lnet_modparam_init(void)
+{
+        int                  rc;
+
+        /* initialize lnet parameters exported with CFS_MODULE_PARAM */
+        rc = lnet_apini_param_init();
+        if (rc != 0)
+                return rc;
+        rc = lnet_module_param_init();
+        if (rc != 0)
+                return rc;
+        rc = lnet_router_param_init();
+        if (rc != 0)
+                return rc;
+        rc = lnet_libmove_param_init();
+        if (rc != 0)
+                return rc;
+        rc = lnet_acceptor_param_init();
+        if (rc != 0)
+                return rc;
+
+        return 0;
+}
+
 int
 init_lnet(void)
 {
         int                  rc;
         ENTRY;
 
-        /* initialize lnet parameters exported with CFS_MODULE_PARAM */
-        lnet_apini_sysctl_init();
-        lnet_module_sysctl_init();
-        lnet_router_sysctl_init();
-        lnet_libmove_sysctl_init();
-        lnet_acceptor_sysctl_init();
+        rc = lnet_modparam_init();
+        if (rc != 0) {
+                CERROR("lnet_modparam_init: error %d\n", rc);
+                RETURN(rc);
+        }
 
         cfs_init_mutex(&lnet_config_mutex);
 

@@ -54,8 +54,6 @@ EXPORT_SYMBOL(_lprocfs_lock);
 #endif /* LPROCFS */
 
 static cfs_rw_semaphore_t cfs_param_sem;
-cfs_param_entry_t *cfs_param_lnet_root;
-EXPORT_SYMBOL(cfs_param_lnet_root);
 
 static void
 param_free(cfs_param_entry_t *pe)
@@ -180,6 +178,14 @@ cfs_param_get_root(void)
 }
 EXPORT_SYMBOL(cfs_param_get_root);
 
+static cfs_param_entry_t *cfs_param_lnet_root;
+cfs_param_entry_t *
+cfs_param_get_lnet_root(void)
+{
+        return cfs_param_lnet_root;
+}
+EXPORT_SYMBOL(cfs_param_get_lnet_root);
+
 int
 cfs_param_root_init(void)
 {
@@ -197,7 +203,10 @@ cfs_param_root_init(void)
         cfs_init_rwsem(&cfs_param_sem);
         cfs_init_rwsem(&cfs_param_root.pe_rw_sem);
         cfs_atomic_set(&cfs_param_root.pe_refcount, 1);
-        cfs_param_lnet_root = NULL;
+        /* Since lnet_root is used in many places, so create it directly. */
+        cfs_param_lnet_root = cfs_param_mkdir("lnet", &cfs_param_root);
+        if (cfs_param_lnet_root == NULL)
+                return -ENOMEM;
 
         return 0;
 }
@@ -205,6 +214,7 @@ cfs_param_root_init(void)
 void
 cfs_param_root_fini(void)
 {
+        cfs_param_put(cfs_param_lnet_root);
         LASSERTF(cfs_atomic_read(&cfs_param_root.pe_hs->hs_count) == 0,
                  "params_root hash has %d hnodes\n",
                  cfs_atomic_read(&cfs_param_root.pe_hs->hs_count));
@@ -1035,7 +1045,7 @@ param_normal_read(char *buf, loff_t *ppos, int count, int *eof,
                 /* read the param value */
                 if (entry->pe_cb_read != NULL)
                         bytes = entry->pe_cb_read(page, &start, pos, count,
-                                                   eof, entry->pe_data);
+                                                  eof, entry->pe_data);
                 else
                         break;
 
@@ -1281,22 +1291,68 @@ cfs_param_string_read(char *page, char **start, off_t off, int count,
 }
 EXPORT_SYMBOL(cfs_param_string_read);
 
-void
+/**
+ * add params in sysctl table to params_tree
+ */
+static void
+param_sysctl_unregister(cfs_param_sysctl_table_t *table,
+                        cfs_param_entry_t *parent)
+{
+        if (parent == NULL)
+                return;
+        for (; table->name != NULL; table ++)
+                param_remove(table->name, parent);
+}
+
+static int
+param_sysctl_register(cfs_param_sysctl_table_t *table,
+                      cfs_param_entry_t *parent)
+{
+        cfs_param_entry_t *pe = NULL;
+        int                rc = 0;
+
+        if (parent == NULL)
+                return -EINVAL;
+        for (; table->name != NULL; table ++) {
+                pe = cfs_param_create(table->name, table->mode, parent);
+                if (pe == NULL)
+                        GOTO(out, rc = -ENOMEM);
+                pe->pe_data = CFS_ALLOC_PARAMDATA(table->data);
+                if (pe->pe_data == NULL)
+                        GOTO(out, rc = -ENOMEM);
+                pe->pe_cb_read = table->read;
+                pe->pe_cb_write = table->write;
+                /* for lnet write-once params */
+                if (table->writeable_before_startup == 1)
+                        pe->pe_mode |= S_IWUSR;
+                cfs_param_put(pe);
+        }
+out:
+        if (rc != 0)
+                param_sysctl_unregister(table, parent);
+        return 0;
+}
+
+int
 cfs_param_sysctl_init(char *mod_name, cfs_param_sysctl_table_t *table,
                       cfs_param_entry_t *parent)
 {
         cfs_param_entry_t *pe;
+        int                rc = 0;
 
         pe = cfs_param_lookup(mod_name, parent);
         if (pe == NULL)
                 pe = cfs_param_mkdir(mod_name, parent);
         if (pe != NULL) {
-                cfs_param_sysctl_register(table, pe);
+                rc = param_sysctl_register(table, pe);
                 cfs_param_put(pe);
         } else {
                 CERROR("failed to register ctl_table to %s/%s.\n",
                        parent->pe_name, mod_name);
+                rc = -ENOMEM;
         }
+
+        return rc;
 }
 EXPORT_SYMBOL(cfs_param_sysctl_init);
 
@@ -1306,40 +1362,6 @@ cfs_param_sysctl_fini(char *mod_name, cfs_param_entry_t *parent)
         cfs_param_remove(mod_name, parent);
 }
 EXPORT_SYMBOL(cfs_param_sysctl_fini);
-
-/**
- * add params in sysctl table to params_tree
- */
-void
-cfs_param_sysctl_register(cfs_param_sysctl_table_t *table,
-                          cfs_param_entry_t *parent)
-{
-        cfs_param_entry_t *pe = NULL;
-
-        if (parent == NULL)
-                return;
-        /* create sys subdir */
-        for (; table->name != NULL; table ++) {
-                pe = cfs_param_create(table->name, table->mode, parent);
-                if (pe == NULL) {
-                        CERROR("No memory to create %s/%s.",
-                               parent->pe_name, table->name);
-                        continue;
-                }
-                pe->pe_data = CFS_ALLOC_PARAMDATA(table->data);
-                if (pe->pe_data == NULL) {
-                        CERROR("No memory for param cb_data.");
-                        return;
-                }
-                pe->pe_cb_read = table->read;
-                pe->pe_cb_write = table->write;
-                /* for lnet write-once params */
-                if (table->writeable_before_startup == 1)
-                        pe->pe_mode |= S_IWUSR;
-                cfs_param_put(pe);
-        }
-}
-EXPORT_SYMBOL(cfs_param_sysctl_register);
 
 /**
  * For some parameters in lnet, although they're declared as read-only by

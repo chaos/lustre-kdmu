@@ -779,10 +779,10 @@ lnet_parse_int_tunable(int *value, char *name)
 }
 #endif
 
-#define MAX_STRLEN      256
-void lnet_apini_sysctl_init(void);
-void lnet_module_sysctl_init(void);
-void lnet_router_sysctl_init(void);
-void lnet_libmove_sysctl_init(void);
-void lnet_acceptor_sysctl_init(void);
+#define LNET_MAX_STRLEN      256
+int lnet_apini_param_init(void);
+int lnet_module_param_init(void);
+int lnet_router_param_init(void);
+int lnet_libmove_param_init(void);
+int lnet_acceptor_param_init(void);
 #endif

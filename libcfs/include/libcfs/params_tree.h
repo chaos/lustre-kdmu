@@ -278,10 +278,10 @@ enum cfs_param_flags {
 extern cfs_param_cb_data_t *cfs_param_cb_data_alloc(void *data, int flag);
 extern void cfs_param_cb_data_free(cfs_param_cb_data_t *cb_data, int flag);
 
-extern cfs_param_entry_t *cfs_param_lnet_root;
 extern int cfs_param_root_init(void);
 extern void cfs_param_root_fini(void);
 extern cfs_param_entry_t *cfs_param_get_root(void);
+extern cfs_param_entry_t *cfs_param_get_lnet_root(void);
 
 extern cfs_param_entry_t *
 cfs_param_create(const char *name, mode_t mode, cfs_param_entry_t *parent);
@@ -333,12 +333,9 @@ extern int cfs_param_string_write(cfs_param_file_t *filp, const char *buffer,
                                      unsigned long count, void *data);
 extern int cfs_param_string_read(char *page, char **start, off_t off,
                                  int count, int *eof, void *data);
-
-extern void cfs_param_sysctl_register(cfs_param_sysctl_table_t *table,
-                                      cfs_param_entry_t *parent);
-extern void cfs_param_sysctl_init(char *mod_name,
-                                  cfs_param_sysctl_table_t *table,
-                                  cfs_param_entry_t *parent);
+extern int cfs_param_sysctl_init(char *mod_name,
+                                 cfs_param_sysctl_table_t *table,
+                                 cfs_param_entry_t *parent);
 extern void cfs_param_sysctl_fini(char *mod_name,
                                   cfs_param_entry_t *parent);
 extern void cfs_param_sysctl_change_mode(char *mod_name,

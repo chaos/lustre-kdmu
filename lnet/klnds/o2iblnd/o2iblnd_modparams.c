@@ -517,7 +517,7 @@ kiblnd_sysctl_init (void)
                               sizeof(ipif_basename_space));
 
         cfs_param_sysctl_init("o2iblnd", cfs_param_kiblnd_ctl_table,
-                              cfs_param_lnet_root);
+                              cfs_param_get_lnet_root());
 
 #if defined(CONFIG_SYSCTL) && !CFS_SYSFS_MODULE_PARM
         kiblnd_tunables.kib_sysctl =
@@ -531,7 +531,7 @@ kiblnd_sysctl_init (void)
 void
 kiblnd_sysctl_fini (void)
 {
-        cfs_param_sysctl_fini("o2iblnd", cfs_param_lnet_root);
+        cfs_param_sysctl_fini("o2iblnd", cfs_param_get_lnet_root());
 #if defined(CONFIG_SYSCTL) && !CFS_SYSFS_MODULE_PARM
         if (kiblnd_tunables.kib_sysctl != NULL)
                 cfs_unregister_sysctl_table(kiblnd_tunables.kib_sysctl);

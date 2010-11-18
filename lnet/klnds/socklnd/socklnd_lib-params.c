@@ -353,7 +353,7 @@ ksocknal_lib_params_init ()
 
         cfs_param_ksocknal_ctl_table_init();
         cfs_param_sysctl_init("socknal", lp_ksocknal_ctl_table,
-                              cfs_param_lnet_root);
+                              cfs_param_get_lnet_root());
 
         return 0;
 }
@@ -361,5 +361,5 @@ ksocknal_lib_params_init ()
 void
 ksocknal_lib_params_fini ()
 {
-        cfs_param_sysctl_fini("socknal", cfs_param_lnet_root);
+        cfs_param_sysctl_fini("socknal", cfs_param_get_lnet_root());
 }

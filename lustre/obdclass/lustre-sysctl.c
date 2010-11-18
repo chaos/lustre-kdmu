@@ -43,8 +43,8 @@
 #include <lprocfs_status.h>
 
 static int cfs_param_fail_loc_write(cfs_param_file_t * filp,
-                                       const char *buffer,
-                                       unsigned long count, void *data)
+                                    const char *buffer,
+                                    unsigned long count, void *data)
 {
         int rc;
         long old_fail_loc = obd_fail_loc;
@@ -57,7 +57,7 @@ static int cfs_param_fail_loc_write(cfs_param_file_t * filp,
 }
 
 static int cfs_param_fail_loc_read(char *page, char **start, off_t off,
-                                      int count, int *eof, void *data)
+                                   int count, int *eof, void *data)
 {
         int rc;
         long old_fail_loc = obd_fail_loc;
@@ -70,7 +70,7 @@ static int cfs_param_fail_loc_read(char *page, char **start, off_t off,
 }
 
 static int cfs_param_timeout_write(cfs_param_file_t * filp, const char *buffer,
-                                      unsigned long count, void *data)
+                                   unsigned long count, void *data)
 {
         int rc;
 
@@ -82,7 +82,7 @@ static int cfs_param_timeout_write(cfs_param_file_t * filp, const char *buffer,
 }
 
 static int cfs_param_timeout_read(char *page, char **start, off_t off,
-                                     int count, int *eof, void *data)
+                                  int count, int *eof, void *data)
 {
         int rc;
 
@@ -94,36 +94,36 @@ static int cfs_param_timeout_read(char *page, char **start, off_t off,
 }
 
 static int cfs_param_memory_alloc_read(char *page, char **start, off_t off,
-                                    int count, int *eof, void *data)
-{
-        return cfs_param_snprintf(page, count, data, CFS_PARAM_U64,
-                                     LPU64"\n", obd_memory_sum());
-}
-
-static int cfs_param_pages_alloc_read(char *page, char **start, off_t off,
-                                         int count, int *eof, void *data)
-{
-        return cfs_param_snprintf(page, count, data, CFS_PARAM_U64,
-                                     LPU64"\n", obd_pages_sum());
-}
-
-static int cfs_param_mem_max_read(char *page, char **start, off_t off,
-                               int count, int *eof, void *data)
-{
-        return cfs_param_snprintf(page, count, data, CFS_PARAM_U64,
-                                     LPU64"\n", obd_memory_max());
-}
-
-static int cfs_param_pages_max_read(char *page, char **start, off_t off,
                                        int count, int *eof, void *data)
 {
         return cfs_param_snprintf(page, count, data, CFS_PARAM_U64,
-                                     LPU64"\n", obd_pages_max());
+                                  LPU64"\n", obd_memory_sum());
+}
+
+static int cfs_param_pages_alloc_read(char *page, char **start, off_t off,
+                                      int count, int *eof, void *data)
+{
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_U64,
+                                  LPU64"\n", obd_pages_sum());
+}
+
+static int cfs_param_mem_max_read(char *page, char **start, off_t off,
+                                  int count, int *eof, void *data)
+{
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_U64,
+                                  LPU64"\n", obd_memory_max());
+}
+
+static int cfs_param_pages_max_read(char *page, char **start, off_t off,
+                                    int count, int *eof, void *data)
+{
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_U64,
+                                  LPU64"\n", obd_pages_max());
 }
 
 static int
 cfs_param_max_dirty_pages_in_mb_read(char *page, char **start, off_t off,
-                                        int count, int *eof, void *data)
+                                     int count, int *eof, void *data)
 {
         unsigned int *value;
         int mult;
@@ -134,14 +134,14 @@ cfs_param_max_dirty_pages_in_mb_read(char *page, char **start, off_t off,
         rc = lprocfs_read_frac_helper(page, count, *value, mult);
         if (rc > 0)
                 rc = cfs_param_snprintf(page, count, data, CFS_PARAM_DB,
-                                           NULL, NULL);
+                                        NULL, NULL);
 
         return rc;
 }
 
 static int
 cfs_param_max_dirty_pages_in_mb_write(cfs_param_file_t * filp,
-                                         const char *buffer,
+                                      const char *buffer,
                                          unsigned long count, void *data)
 {
         unsigned int *value;
@@ -167,7 +167,7 @@ cfs_param_max_dirty_pages_in_mb_write(cfs_param_file_t * filp,
 #ifdef RANDOM_FAIL_ALLOC
 static int
 cfs_param_alloc_fail_rate_read(char *page, char **start, off_t off,
-                                  int count, int *eof, void *data)
+                               int count, int *eof, void *data)
 {
         unsigned int *value;
         int rc;
@@ -176,14 +176,14 @@ cfs_param_alloc_fail_rate_read(char *page, char **start, off_t off,
         rc = lprocfs_read_frac_helper(page, count, *value, OBD_ALLOC_FAIL_MULT);
         if (rc > 0)
                 rc = cfs_param_snprintf(page, count, data, CFS_PARAM_DB,
-                                           NULL, NULL);
+                                        NULL, NULL);
 
         return rc;
 }
 
 static int cfs_param_alloc_fail_rate_write(cfs_param_file_t * filp,
-                                              const char *buffer,
-                                              unsigned long count, void *data)
+                                           const char *buffer,
+                                           unsigned long count, void *data)
 {
         unsigned int *value;
         int flag = 0;

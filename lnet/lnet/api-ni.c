@@ -47,15 +47,15 @@ lnet_t      the_lnet;                           /* THE state of the network */
 
 #ifdef __KERNEL__
 
-static char ip2nets[MAX_STRLEN];
+static char ip2nets[LNET_MAX_STRLEN];
 CFS_MODULE_PARM_STR(ip2nets, ip2nets, sizeof(ip2nets), 0444,
                 "LNET network <- IP table");
 
-static char networks[MAX_STRLEN];
+static char networks[LNET_MAX_STRLEN];
 CFS_MODULE_PARM_STR(networks, networks, sizeof(networks), 0444,
                     "local networks");
 
-static char routes[MAX_STRLEN];
+static char routes[LNET_MAX_STRLEN];
 CFS_MODULE_PARM_STR(routes, routes, sizeof(routes), 0444,
                 "routes to non-local networks");
 
@@ -82,10 +82,10 @@ cfs_param_sysctl_table_t cfs_param_apini_ctl_table[] = {
         },
         {0}
 };
-void lnet_apini_sysctl_init()
+int lnet_apini_param_init()
 {
-        cfs_param_sysctl_init("lnet", cfs_param_apini_ctl_table,
-                              cfs_param_lnet_root);
+        return cfs_param_sysctl_init("lnet", cfs_param_apini_ctl_table,
+                                     cfs_param_get_lnet_root());
 }
 
 char *
@@ -1339,7 +1339,9 @@ LNetNIInit(lnet_pid_t requested_pid)
         rc = lnet_params_init();
         if (rc != 0)
                 goto failed5;
+
         goto out;
+
  failed5:
         lnet_params_fini();
  failed4:
@@ -1382,7 +1384,7 @@ LNetNIFini()
                 LASSERT (!the_lnet.ln_niinit_self);
 
 #ifdef __KERNEL__
-                cfs_param_sysctl_fini("lnet", cfs_param_lnet_root);
+                cfs_param_sysctl_fini("lnet", cfs_param_get_lnet_root());
 #endif
                 lnet_proc_fini();
                 lnet_params_fini();

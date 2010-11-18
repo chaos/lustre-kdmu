@@ -82,10 +82,14 @@ static cfs_param_sysctl_table_t cfs_param_sfw_ctl_table[] = {
         {0}
 };
 
-void lnet_sfw_sysctl_init()
+int lnet_sfw_param_init(void)
 {
-        cfs_param_sysctl_init("selftest", cfs_param_sfw_ctl_table,
-                              cfs_param_lnet_root);
+        return cfs_param_sysctl_init("selftest", cfs_param_sfw_ctl_table,
+                                     cfs_param_get_lnet_root());
+}
+void lnet_sfw_param_fini(void)
+{
+        cfs_param_sysctl_fini("selftest", cfs_param_get_lnet_root());
 }
 #endif
 

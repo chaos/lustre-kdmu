@@ -527,7 +527,7 @@ kptllnd_tunables_init ()
 #endif
 
         cfs_param_sysctl_init("ptllnd", cfs_param_kptllnd_ctl_table,
-                              cfs_param_lnet_root);
+                              cfs_param_get_lnet_root());
 
 #if defined(CONFIG_SYSCTL) && !CFS_SYSFS_MODULE_PARM
         kptllnd_tunables.kptl_sysctl =
@@ -543,7 +543,7 @@ kptllnd_tunables_init ()
 void
 kptllnd_tunables_fini ()
 {
-        cfs_param_sysctl_fini("ptllnd", cfs_param_lnet_root);
+        cfs_param_sysctl_fini("ptllnd", cfs_param_get_lnet_root());
 #if defined(CONFIG_SYSCTL) && !CFS_SYSFS_MODULE_PARM
         if (kptllnd_tunables.kptl_sysctl != NULL)
                 cfs_unregister_sysctl_table(kptllnd_tunables.kptl_sysctl);

@@ -26,7 +26,7 @@
 
 #if defined(__KERNEL__) && defined(LNET_ROUTER)
 
-static char forwarding[MAX_STRLEN];
+static char forwarding[LNET_MAX_STRLEN];
 CFS_MODULE_PARM_STR(forwarding, forwarding, sizeof(forwarding), 0444,
                 "Explicitly enable/disable forwarding between networks");
 
@@ -158,10 +158,10 @@ static cfs_param_sysctl_table_t cfs_param_router_ctl_table[] = {
         {0}
 };
 
-void lnet_router_sysctl_init()
+int lnet_router_param_init()
 {
-        cfs_param_sysctl_init("lnet", cfs_param_router_ctl_table,
-                              cfs_param_lnet_root);
+        return cfs_param_sysctl_init("lnet", cfs_param_router_ctl_table,
+                                     cfs_param_get_lnet_root());
 }
 #endif
 

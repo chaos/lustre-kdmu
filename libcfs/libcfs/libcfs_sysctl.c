@@ -67,7 +67,7 @@ static int cfs_param_bitmasks_read(char *page, char **start, off_t off,
         rc = strlen(page);
         if (rc > 0)
                 rc = cfs_param_snprintf(page, count, data, CFS_PARAM_STR,
-                                           NULL, NULL);
+                                        NULL, NULL);
 
         return rc;
 }
@@ -86,7 +86,7 @@ static int cfs_param_bitmasks_write(cfs_param_file_t *filp,
         if (is_printk)
                 *mask |= D_EMERG;
 
-        return count;
+        return (rc < 0 ? rc : count);
 
 }
 
@@ -108,7 +108,7 @@ static int cfs_param_daemon_file_read(char *page, char **start, off_t off,
         if (off >= strlen(cfs_tracefile))
                 return 0;
         return cfs_param_snprintf(page, count, data, CFS_PARAM_STR,
-                                     "%s", cfs_tracefile + off);
+                                  "%s", cfs_tracefile + off);
 }
 
 static int cfs_param_daemon_file_write(cfs_param_file_t *filp,
@@ -117,7 +117,7 @@ static int cfs_param_daemon_file_write(cfs_param_file_t *filp,
 {
         struct cfs_param_cb_data *cb_data = data;
         int rc = cfs_trace_daemon_command_usrstr((void *)buffer, count,
-                                             cb_data->cb_flag);
+                                                 cb_data->cb_flag);
         return (rc < 0 ? rc : count);
 }
 
@@ -149,7 +149,7 @@ cfs_param_console_max_delay_cs_read(char *page, char **start, off_t off,
         max_delay_cs = cfs_duration_sec(libcfs_console_max_delay * 100);
 
         return cfs_param_snprintf(page, count, data, CFS_PARAM_S32,
-                                     NULL, max_delay_cs);
+                                  NULL, max_delay_cs);
 }
 
 static int
@@ -184,7 +184,7 @@ cfs_param_console_min_delay_cs_read(char *page, char **start, off_t off,
         min_delay_cs = cfs_duration_sec(libcfs_console_min_delay * 100);
 
         return cfs_param_snprintf(page, count, data, CFS_PARAM_S32,
-                                     NULL, min_delay_cs);
+                                  NULL, min_delay_cs);
 }
 
 static int
@@ -214,7 +214,7 @@ static int cfs_param_console_backoff_read(char *page, char **start,off_t off,
                                           int count,int *eof, void *data)
 {
         return cfs_param_snprintf(page, count, data, CFS_PARAM_U32,
-                                     NULL, libcfs_console_backoff);
+                                  NULL, libcfs_console_backoff);
 }
 
 static int
@@ -392,20 +392,8 @@ static cfs_param_sysctl_table_t cfs_param_lnet_table[] = {
 
 int insert_params(void)
 {
-        /* register sysctl_table into cfs_param_tree */
-        /* we don't use cfs_param_sysctl_init(),
-         * because we will get cfs_param_lnet_root here.*/
-        if (cfs_param_lnet_root == NULL) {
-                cfs_param_lnet_root = cfs_param_mkdir("lnet",
-                                                      cfs_param_get_root());
-        }
-        if (cfs_param_lnet_root != NULL) {
-                cfs_param_sysctl_register(cfs_param_lnet_table,
-                                          cfs_param_lnet_root);
-                cfs_param_put(cfs_param_lnet_root);
-        } else
-                return -EINVAL;
-        return 0;
+        return cfs_param_sysctl_init("lnet", cfs_param_lnet_table,
+                                     cfs_param_get_root());
 }
 
 void remove_params(void)

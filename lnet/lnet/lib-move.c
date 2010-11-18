@@ -57,10 +57,10 @@ static cfs_param_sysctl_table_t cfs_param_libmove_ctl_table[] = {
         {0}
 };
 
-void lnet_libmove_sysctl_init()
+int lnet_libmove_param_init()
 {
-        cfs_param_sysctl_init("lnet", cfs_param_libmove_ctl_table,
-                              cfs_param_lnet_root);
+        return cfs_param_sysctl_init("lnet", cfs_param_libmove_ctl_table,
+                                     cfs_param_get_lnet_root());
 }
 #endif
 

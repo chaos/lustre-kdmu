@@ -76,7 +76,7 @@ lnet_accept_magic(__u32 magic, __u32 constant)
 
 EXPORT_SYMBOL(lnet_acceptor_port);
 
-static char accept[MAX_STRLEN] = "secure";
+static char accept[LNET_MAX_STRLEN] = "secure";
 
 CFS_MODULE_PARM_STR(accept, accept, sizeof(accept), 0444,
                 "Accept connections (secure|all|none)");
@@ -116,10 +116,10 @@ static cfs_param_sysctl_table_t cfs_param_acceptor_ctl_table[] = {
         {0}
 };
 
-void lnet_acceptor_sysctl_init()
+int lnet_acceptor_param_init()
 {
-        cfs_param_sysctl_init("lnet", cfs_param_acceptor_ctl_table,
-                              cfs_param_lnet_root);
+        return cfs_param_sysctl_init("lnet", cfs_param_acceptor_ctl_table,
+                                     cfs_param_get_lnet_root());
 }
 
 static char *accept_type = NULL;

@@ -1102,31 +1102,22 @@ lnet_params_init(void)
         cfs_param_entry_t *pe;
         int                rc = 0;
 
-        if (cfs_param_lnet_root == NULL) {
-                cfs_param_lnet_root = cfs_param_mkdir(LNET_PARAM_ROOT,
-                                                      cfs_param_get_root());
-                if (cfs_param_lnet_root == NULL) {
-                        CERROR("couldn't create "LNET_PARAM_ROOT"\n");
-                        return -EINVAL;
-                }
-        } else {
-                cfs_param_get(cfs_param_lnet_root);
-        }
-
         /* Initialize LNET_PARAM_STATS */
-        pe = cfs_param_create(LNET_PARAM_STATS, 0644, cfs_param_lnet_root);
+        pe = cfs_param_create(LNET_PARAM_STATS, 0644, cfs_param_get_lnet_root());
         if (pe == NULL) {
                 CERROR("couldn't create param entry %s\n", LNET_PARAM_STATS);
                 GOTO(out, rc = -EINVAL);
         }
 
         pe->pe_data = CFS_ALLOC_PARAMDATA(NULL);
+        if (pe->pe_data == NULL)
+                GOTO(out, rc = -ENOMEM);
         pe->pe_cb_read = lnet_router_proc_stats_read;
         pe->pe_cb_write = lnet_router_proc_stats_write;
         cfs_param_put(pe);
 
         /* Initialize LNET_PARAM_ROUTES */
-        pe = cfs_param_create(LNET_PARAM_ROUTES, 0444, cfs_param_lnet_root);
+        pe = cfs_param_create(LNET_PARAM_ROUTES, 0444, cfs_param_get_lnet_root());
         if (pe == NULL) {
                 CERROR("couldn't create param entry %s\n", LNET_PARAM_ROUTES);
                 GOTO(out, rc = -EINVAL);
@@ -1136,7 +1127,7 @@ lnet_params_init(void)
         cfs_param_put(pe);
 
         /* Initialize LNET_PARAM_ROUTERS */
-        pe = cfs_param_create(LNET_PARAM_ROUTERS, 0444, cfs_param_lnet_root);
+        pe = cfs_param_create(LNET_PARAM_ROUTERS, 0444, cfs_param_get_lnet_root());
         if (pe == NULL) {
                 CERROR("couldn't create param entry %s\n", LNET_PARAM_ROUTERS);
                 GOTO(out, rc = -EINVAL);
@@ -1146,7 +1137,7 @@ lnet_params_init(void)
         cfs_param_put(pe);
 
         /* Initialize LNET_PARAM_PEERS */
-        pe = cfs_param_create(LNET_PARAM_PEERS, 0444, cfs_param_lnet_root);
+        pe = cfs_param_create(LNET_PARAM_PEERS, 0444, cfs_param_get_lnet_root());
         if (pe == NULL) {
                 CERROR("couldn't create param entry %s\n", LNET_PARAM_PEERS);
                 GOTO(out, rc = -EINVAL);
@@ -1156,7 +1147,7 @@ lnet_params_init(void)
         cfs_param_put(pe);
 
         /* Initialize LNET_PARAM_BUFFERS */
-        pe = cfs_param_create(LNET_PARAM_BUFFERS, 0444, cfs_param_lnet_root);
+        pe = cfs_param_create(LNET_PARAM_BUFFERS, 0444, cfs_param_get_lnet_root());
         if (pe == NULL) {
                 CERROR("couldn't create param entry %s\n", LNET_PARAM_BUFFERS);
                 GOTO(out, rc = -EINVAL);
@@ -1166,7 +1157,7 @@ lnet_params_init(void)
         cfs_param_put(pe);
 
         /* Initialize LNET_PARAM_NIS */
-        pe = cfs_param_create(LNET_PARAM_NIS, 0444, cfs_param_lnet_root);
+        pe = cfs_param_create(LNET_PARAM_NIS, 0444, cfs_param_get_lnet_root());
         if (pe == NULL) {
                 CERROR("couldn't create param entry %s\n", LNET_PARAM_NIS);
                 GOTO(out, rc = -EINVAL);
@@ -1175,19 +1166,20 @@ lnet_params_init(void)
         pe->pe_cb_sfops = &lnet_ni_fops;
         cfs_param_put(pe);
 out:
-        cfs_param_put(cfs_param_lnet_root);
+        if (rc != 0)
+                lnet_params_fini();
         return rc;
 }
 
 void
 lnet_params_fini(void)
 {
-        cfs_param_remove(LNET_PARAM_STATS, cfs_param_lnet_root);
-        cfs_param_remove(LNET_PARAM_ROUTES, cfs_param_lnet_root);
-        cfs_param_remove(LNET_PARAM_ROUTERS, cfs_param_lnet_root);
-        cfs_param_remove(LNET_PARAM_PEERS, cfs_param_lnet_root);
-        cfs_param_remove(LNET_PARAM_BUFFERS, cfs_param_lnet_root);
-        cfs_param_remove(LNET_PARAM_NIS, cfs_param_lnet_root);
+        cfs_param_remove(LNET_PARAM_STATS, cfs_param_get_lnet_root());
+        cfs_param_remove(LNET_PARAM_ROUTES, cfs_param_get_lnet_root());
+        cfs_param_remove(LNET_PARAM_ROUTERS, cfs_param_get_lnet_root());
+        cfs_param_remove(LNET_PARAM_PEERS, cfs_param_get_lnet_root());
+        cfs_param_remove(LNET_PARAM_BUFFERS, cfs_param_get_lnet_root());
+        cfs_param_remove(LNET_PARAM_NIS, cfs_param_get_lnet_root());
 }
 #else
 
