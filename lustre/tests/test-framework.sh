@@ -795,7 +795,8 @@ zconf_mount() {
     do_node $client "lctl set_param debug=\\\"$PTLDEBUG\\\";
         lctl set_param subsystem_debug=\\\"${SUBSYSTEM# }\\\";
         lctl set_param debug_mb=${DEBUG_SIZE}"
-
+    do_node $client touch $mnt/force-seq-alloc
+    do_node $client rm $mnt/force-seq-alloc
     return 0
 }
 
