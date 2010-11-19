@@ -485,8 +485,13 @@ int lod_load_striping(const struct lu_env *env, struct lod_object *mo)
         ENTRY;
 
         /* already initialized? */
-        if (mo->mbo_stripe)
+        if (mo->mbo_stripe) {
+                int i;
+                /* check validity */
+                for (i = 0; i < mo->mbo_stripenr; i++)
+                        LASSERTF(mo->mbo_stripe[i], "stripe %d is NULL\n", i);
                 RETURN(0);
+        }
 
         if (!dt_object_exists(next))
                 RETURN(0);
