@@ -205,10 +205,13 @@ void udmu_wait_synced(udmu_objset_t *uos, dmu_tx_t *tx)
                  * that would sync TXG_DEFER_SIZE additional txgs besides the
                  * open one in order to make sure that most blocks freed in the
                  * open txg have actually been released.
+                 *
+                 * No need to acquire tx_state mutex as it doesn't protect
+                 * tx_open_txg. Accessing the DMU internal state is ugly, but we
+                 * will change this once the DMU supports syncing only the open
+                 * txg.
                  */
-                mutex_lock(&txs->tx_sync_lock);
                 txg = txs->tx_open_txg;
-                mutex_unlock(&txs->tx_sync_lock);
         }
 
         /* Wait for the pool to be synced */
