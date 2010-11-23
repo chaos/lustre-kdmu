@@ -627,7 +627,7 @@ cfs_param_file_ops_t name##_fops = {                                       \
 
 /* lproc_ptlrpc.c */
 struct ptlrpc_request;
-extern int target_print_req(void *data, int count, struct ptlrpc_request *req);
+extern void target_print_req(void *data, struct ptlrpc_request *req);
 
 /* lproc_status.c */
 int lprocfs_obd_rd_recovery_time_soft(char *page, char **start, off_t off,
@@ -891,7 +891,7 @@ static inline void lprocfs_put_peref(cfs_param_entry_t *entry)
 #define LPROC_SEQ_FOPS(name)
 
 /* lproc_ptlrpc.c */
-#define target_print_req 0
+#define target_print_req NULL
 
 #endif /* __KERNEL__ */
 

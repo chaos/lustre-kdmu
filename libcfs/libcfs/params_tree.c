@@ -1098,6 +1098,8 @@ cfs_param_kread(const char *path, char *buf, int nbytes, loff_t *ppos,
                         rc = param_normal_read(buf, ppos, count, eof, entry);
                 else
                         rc = -EINVAL;
+        } else {
+                rc = -EPERM;
         }
         cfs_up_read(&entry->pe_rw_sem);
 
@@ -1106,7 +1108,7 @@ cfs_param_kread(const char *path, char *buf, int nbytes, loff_t *ppos,
 }
 
 int
-cfs_param_kwrite(const char *path, char *buf, int count)
+cfs_param_kwrite(const char *path, char *buf, int count, int force_write)
 {
         cfs_param_entry_t *entry;
         int                rc = 0;
@@ -1120,7 +1122,7 @@ cfs_param_kwrite(const char *path, char *buf, int count)
                 return -ENOENT;
 
         cfs_down_write(&entry->pe_rw_sem);
-        if (entry->pe_mode & S_IWUSR) {
+        if (entry->pe_mode & S_IWUSR || force_write) {
                 if (IS_SEQ_LPE(entry))
                         rc = param_seq_write(buf, count, entry);
                 else if (entry->pe_cb_write != NULL)
@@ -1128,6 +1130,8 @@ cfs_param_kwrite(const char *path, char *buf, int count)
                                                 entry->pe_data);
                 else
                         rc = -EINVAL;
+        } else {
+                rc = -EPERM;
         }
         cfs_up_write(&entry->pe_rw_sem);
 
@@ -1322,9 +1326,6 @@ param_sysctl_register(cfs_param_sysctl_table_t *table,
                         GOTO(out, rc = -ENOMEM);
                 pe->pe_cb_read = table->read;
                 pe->pe_cb_write = table->write;
-                /* for lnet write-once params */
-                if (table->writeable_before_startup == 1)
-                        pe->pe_mode |= S_IWUSR;
                 cfs_param_put(pe);
         }
 out:
@@ -1362,53 +1363,6 @@ cfs_param_sysctl_fini(char *mod_name, cfs_param_entry_t *parent)
         cfs_param_remove(mod_name, parent);
 }
 EXPORT_SYMBOL(cfs_param_sysctl_fini);
-
-/**
- * For some parameters in lnet, although they're declared as read-only by
- * CFS_MODULE_PARM, they will be written during configuration.
- * So, we provide such a function to meet this requirement.
- */
-static void
-param_sysctl_change_mode(cfs_param_sysctl_table_t *table,
-                         cfs_param_entry_t *parent)
-{
-        cfs_param_entry_t *pe = NULL;
-
-        LASSERT(parent != NULL);
-        for (; table->name != NULL; table ++) {
-                pe = cfs_param_lookup(table->name, parent);
-                LASSERT(pe == NULL);
-                /* for lnet write-once params */
-                cfs_down_write(&pe->pe_rw_sem);
-                if (table->writeable_before_startup == 1 &&
-                    pe->pe_cb_write != NULL) {
-                        if (pe->pe_mode & S_IWUSR)
-                                pe->pe_mode &= ~S_IWUSR;
-                        else
-                                pe->pe_mode |= S_IWUSR;
-                }
-                cfs_up_write(&pe->pe_rw_sem);
-                cfs_param_put(pe);
-        }
-}
-
-void
-cfs_param_sysctl_change_mode(char *mod_name, cfs_param_sysctl_table_t *table,
-                             cfs_param_entry_t *parent)
-{
-        cfs_param_entry_t *pe;
-
-        pe = cfs_param_lookup(mod_name, parent);
-        if (pe != NULL) {
-                param_sysctl_change_mode(table, pe);
-                cfs_param_put(pe);
-        } else {
-                CERROR("Not found module %s under %s.\n",
-                       mod_name, parent->pe_name);
-        }
-
-}
-EXPORT_SYMBOL(cfs_param_sysctl_change_mode);
 
 /**
  * Since the usr buffer addr has been mapped to the kernel space through

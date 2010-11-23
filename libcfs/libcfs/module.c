@@ -317,7 +317,7 @@ static int libcfs_ioctl_int(struct cfs_psdev_file *pfile,unsigned long cmd,
 
         case IOC_LIBCFS_SET_PARAM: {
                 err = cfs_param_kwrite(data->ioc_inlbuf1, data->ioc_inlbuf2,
-                                       data->ioc_inllen2);
+                                       data->ioc_inllen2, data->ioc_flags);
                 data->ioc_u32[0] = err;
                 err = libcfs_ioctl_popdata(arg, data, sizeof(*data));
                 break;

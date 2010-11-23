@@ -314,7 +314,8 @@ extern int cfs_param_seq_putc(cfs_seq_file_t *seq, const char c);
 extern int cfs_param_klist(const char *parent_path, char *buf, int *buflen);
 extern int cfs_param_kread(const char *path, char *buf, int nbytes,
                            loff_t *ppos, int *eof);
-extern int cfs_param_kwrite(const char *path, char *buf, int count);
+extern int cfs_param_kwrite(const char *path, char *buf, int count,
+                            int force_write);
 
 /* APIs for sysctl table */
 typedef struct cfs_param_sysctl_table {
@@ -323,7 +324,6 @@ typedef struct cfs_param_sysctl_table {
         mode_t                  mode;
         cfs_param_read_t       *read;
         cfs_param_write_t      *write;
-        int                     writeable_before_startup;
 } cfs_param_sysctl_table_t;
 extern int cfs_param_intvec_write(cfs_param_file_t *filp, const char *buffer,
                                   unsigned long count, void *data);
@@ -338,9 +338,6 @@ extern int cfs_param_sysctl_init(char *mod_name,
                                  cfs_param_entry_t *parent);
 extern void cfs_param_sysctl_fini(char *mod_name,
                                   cfs_param_entry_t *parent);
-extern void cfs_param_sysctl_change_mode(char *mod_name,
-                                         cfs_param_sysctl_table_t *table,
-                                         cfs_param_entry_t *parent);
 
 #define PE_NAME_MAXLEN         48
 typedef struct cfs_param_info {

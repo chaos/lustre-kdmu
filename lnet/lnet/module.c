@@ -45,7 +45,7 @@ CFS_MODULE_PARM(config_on_load, "i", int, 0444,
                 "configure network at module load");
 
 static cfs_semaphore_t lnet_config_mutex;
-static cfs_param_sysctl_table_t cfs_param_module_ctl_table[] = {
+static cfs_param_sysctl_table_t module_ctl_table[] = {
         {
                 .name     = "config_on_load",
                 .data     = &config_on_load,
@@ -57,7 +57,7 @@ static cfs_param_sysctl_table_t cfs_param_module_ctl_table[] = {
 
 int lnet_module_param_init()
 {
-        return cfs_param_sysctl_init("lnet", cfs_param_module_ctl_table,
+        return cfs_param_sysctl_init("lnet", module_ctl_table,
                                      cfs_param_get_lnet_root());
 }
 

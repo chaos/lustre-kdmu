@@ -58,7 +58,7 @@ CFS_MODULE_PARM(rpc_timeout, "i", int, 0644,
                 "rpc timeout in seconds (64 by default, 0 == never)");
 
 #ifdef __KERNEL__
-static cfs_param_sysctl_table_t cfs_param_sfw_ctl_table[] = {
+static cfs_param_sysctl_table_t sfw_ctl_table[] = {
         {
                 .name     = "brw_inject_errors",
                 .data     = &brw_inject_errors,
@@ -84,7 +84,7 @@ static cfs_param_sysctl_table_t cfs_param_sfw_ctl_table[] = {
 
 int lnet_sfw_param_init(void)
 {
-        return cfs_param_sysctl_init("selftest", cfs_param_sfw_ctl_table,
+        return cfs_param_sysctl_init("selftest", sfw_ctl_table,
                                      cfs_param_get_lnet_root());
 }
 void lnet_sfw_param_fini(void)

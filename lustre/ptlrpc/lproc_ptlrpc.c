@@ -499,53 +499,34 @@ ptlrpc_lprocfs_svc_req_history_next(cfs_seq_file_t *s,
 }
 
 /* common ost/mdt srv_request_history_print_fn */
-int target_print_req(void *data, int count, struct ptlrpc_request *req)
+void target_print_req(void *data, struct ptlrpc_request *req)
 {
         /* Called holding srv_lock with irqs disabled.
          * Print specific req contents and a newline.
          * CAVEAT EMPTOR: check request message length before printing!!!
          * You might have received any old crap so you must be just as
          * careful here as the service's request parser!!! */
-        int rc = 0;
+        /* this is a seq file pointer */
+        cfs_seq_file_t *sf = data;
 
-        if (count == 0) {
-                /* this is a seq file pointer */
-                cfs_seq_file_t *sf = data;
-
-                switch (req->rq_phase) {
-                case RQ_PHASE_NEW:
-                        /* still awaiting a service thread's attention, or rejected
-                         * because the generic request message didn't unpack */
-                        cfs_seq_printf(sf, "<not swabbed>\n");
-                        break;
-                case RQ_PHASE_INTERPRET:
-                        /* being handled, so basic msg swabbed, and opc is valid
-                         * but racing with mds_handle() */
-                case RQ_PHASE_COMPLETE:
-                        /* been handled by mds_handle() reply state possibly still
-                         * volatile */
-                        cfs_seq_printf(sf, "opc %d\n",
-                                   lustre_msg_get_opc(req->rq_reqmsg));
-                        break;
-                default:
-                        DEBUG_REQ(D_ERROR, req, "bad phase %d", req->rq_phase);
-                }
-        } else {
-                char *page = data;
-                switch (req->rq_phase) {
-                case RQ_PHASE_NEW:
-                        rc = snprintf(page, count, "<not swabbed>");
-                        break;
-                case RQ_PHASE_INTERPRET:
-                case RQ_PHASE_COMPLETE:
-                        rc = snprintf(page, count, "opc %d",
-                                      lustre_msg_get_opc(req->rq_reqmsg));
-                        break;
-                default:
-                        DEBUG_REQ(D_ERROR, req, "bad phase %d", req->rq_phase);
-                }
+        switch (req->rq_phase) {
+        case RQ_PHASE_NEW:
+                /* still awaiting a service thread's attention, or rejected
+                 * because the generic request message didn't unpack */
+                cfs_seq_printf(sf, "<not swabbed>\n");
+                break;
+        case RQ_PHASE_INTERPRET:
+                /* being handled, so basic msg swabbed, and opc is valid
+                 * but racing with mds_handle() */
+        case RQ_PHASE_COMPLETE:
+                /* been handled by mds_handle() reply state possibly still
+                 * volatile */
+                cfs_seq_printf(sf, "opc %d\n",
+                           lustre_msg_get_opc(req->rq_reqmsg));
+                break;
+        default:
+                DEBUG_REQ(D_ERROR, req, "bad phase %d", req->rq_phase);
         }
-        return rc;
 }
 EXPORT_SYMBOL(target_print_req);
 
@@ -579,7 +560,7 @@ static int ptlrpc_lprocfs_svc_req_history_show(cfs_seq_file_t *s, void *iter)
                 if (svc->srv_request_history_print_fn == NULL)
                         cfs_seq_printf(s, "\n");
                 else
-                        svc->srv_request_history_print_fn(s, 0, srhi->srhi_req);
+                        svc->srv_request_history_print_fn(s, srhi->srhi_req);
         }
 
         cfs_spin_unlock(&svc->srv_lock);

@@ -517,7 +517,8 @@ out:
  * Set value in @write_buf to params_tree parameters.
  * Lookup the corresponding parameters according to @path by ioctl.
  */
-int cfs_param_uwrite(char *path, int path_len, char *write_buf, int buf_len)
+int cfs_param_uwrite(char *path, int path_len, char *write_buf, int buf_len,
+                     int force_write)
 {
         struct libcfs_ioctl_data data = { 0 };
         struct libcfs_ioctl_data *data_ptr;
@@ -532,7 +533,6 @@ int cfs_param_uwrite(char *path, int path_len, char *write_buf, int buf_len)
         }
 
         /* pack the parameters to data first */
-        data.ioc_inllen1 = path_len + 1;
         pathname = malloc(path_len + 1);
         if (!pathname) {
                 fprintf(stderr,
@@ -543,8 +543,10 @@ int cfs_param_uwrite(char *path, int path_len, char *write_buf, int buf_len)
         strncpy(pathname, path, path_len);
         pathname[path_len] = '\0';
         data.ioc_inlbuf1 = pathname;
+        data.ioc_inllen1 = path_len + 1;
         data.ioc_inlbuf2 = write_buf;
         data.ioc_inllen2 = buf_len + 1;
+        data.ioc_flags = force_write;
         rc = param_ioctl(&data, &buf, IOC_LIBCFS_SET_PARAM);
         if (buf != NULL) {
                 data_ptr = (struct libcfs_ioctl_data *)buf;

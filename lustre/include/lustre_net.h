@@ -1005,7 +1005,7 @@ struct ptlrpc_request_buffer_desc {
 };
 
 typedef int (*svc_handler_t)(struct ptlrpc_request *req);
-typedef int (*svcreq_printfn_t)(void *, int, struct ptlrpc_request *);
+typedef void (*svcreq_printfn_t)(void *, struct ptlrpc_request *);
 typedef int (*svc_hpreq_handler_t)(struct ptlrpc_request *);
 
 /**

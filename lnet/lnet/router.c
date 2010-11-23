@@ -94,7 +94,7 @@ CFS_MODULE_PARM(router_ping_timeout, "i", int, 0444,
                 "Seconds to wait for the reply to a router health query");
 
 #ifdef __KERNEL__
-static cfs_param_sysctl_table_t cfs_param_router_ctl_table[] = {
+static cfs_param_sysctl_table_t router_ctl_table[] = {
         {
                 .name     = "forwarding",
                 .data     = forwarding,
@@ -160,7 +160,7 @@ static cfs_param_sysctl_table_t cfs_param_router_ctl_table[] = {
 
 int lnet_router_param_init()
 {
-        return cfs_param_sysctl_init("lnet", cfs_param_router_ctl_table,
+        return cfs_param_sysctl_init("lnet", router_ctl_table,
                                      cfs_param_get_lnet_root());
 }
 #endif

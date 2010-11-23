@@ -87,7 +87,7 @@ CFS_MODULE_PARM(accept_backlog, "i", int, 0444,
 CFS_MODULE_PARM(accept_timeout, "i", int, 0644,
                 "Acceptor's timeout (seconds)");
 
-static cfs_param_sysctl_table_t cfs_param_acceptor_ctl_table[] = {
+static cfs_param_sysctl_table_t acceptor_ctl_table[] = {
         {
                 .name     = "accept",
                 .data     = accept,
@@ -118,7 +118,7 @@ static cfs_param_sysctl_table_t cfs_param_acceptor_ctl_table[] = {
 
 int lnet_acceptor_param_init()
 {
-        return cfs_param_sysctl_init("lnet", cfs_param_acceptor_ctl_table,
+        return cfs_param_sysctl_init("lnet", acceptor_ctl_table,
                                      cfs_param_get_lnet_root());
 }
 

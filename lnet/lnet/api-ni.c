@@ -59,7 +59,7 @@ static char routes[LNET_MAX_STRLEN];
 CFS_MODULE_PARM_STR(routes, routes, sizeof(routes), 0444,
                 "routes to non-local networks");
 
-cfs_param_sysctl_table_t cfs_param_apini_ctl_table[] = {
+cfs_param_sysctl_table_t apini_ctl_table[] = {
         {
                 .name     = "ip2nets",
                 .data     = ip2nets,
@@ -72,7 +72,6 @@ cfs_param_sysctl_table_t cfs_param_apini_ctl_table[] = {
                 .mode     = 0444,
                 .read     = cfs_param_string_read,
                 .write    = cfs_param_string_write,
-                .writeable_before_startup = 1
         },
         {
                 .name     = "routes",
@@ -84,7 +83,7 @@ cfs_param_sysctl_table_t cfs_param_apini_ctl_table[] = {
 };
 int lnet_apini_param_init()
 {
-        return cfs_param_sysctl_init("lnet", cfs_param_apini_ctl_table,
+        return cfs_param_sysctl_init("lnet", apini_ctl_table,
                                      cfs_param_get_lnet_root());
 }
 
