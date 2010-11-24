@@ -179,7 +179,7 @@ static int lprocfs_wr_identity_expire(cfs_param_file_t *file, const char *buffer
         if (rc)
                 return rc;
 
-        mdt->mdt_identity_cache->uc_entry_expire = val * CFS_HZ;
+        mdt->mdt_identity_cache->uc_entry_expire = val;
         return count;
 }
 
@@ -215,7 +215,7 @@ static int lprocfs_wr_identity_acquire_expire(cfs_param_file_t *file,
         if (rc)
                 return rc;
 
-        mdt->mdt_identity_cache->uc_acquire_expire = val * CFS_HZ;
+        mdt->mdt_identity_cache->uc_acquire_expire = val;
         return count;
 }
 

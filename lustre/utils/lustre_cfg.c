@@ -730,8 +730,10 @@ static int getparam_display(struct param_opts *popt, char *pattern)
                                 "parameter '%s' is a directory.\n", valuename);
                         goto next;
                 }
-                eof = 0;
+                /* usually, offset is set only in seq_read,
+                 * but not in common read cb. */
                 offset = 0;
+                eof = 0;
                 if (popt->show_path)
                         printf("%s=", valuename);
                 while (!eof) {
@@ -741,15 +743,14 @@ static int getparam_display(struct param_opts *popt, char *pattern)
                                                       &offset, &eof);
                         if (param_count > 0) {
                                 param_show(popt->show_path, buf);
-                                /* usually, offset is set only in seq_read,
-                                 * but not in common read cb. */
-                        } else if (param_count == 0) {
+                        } else if (param_count <= 0) {
                                 if (popt->show_path)
                                         printf("\n");
-                                break;
-                        } else if (param_count < 0){
-                                fprintf(stderr, "error: get_param: read value"
-                                        "failed (%d).\n", param_count);
+                                if (param_count < 0)
+                                        fprintf(stderr,
+                                                "error: get_param: read('%s') "
+                                                "failed (%s).\n", valuename,
+                                                strerror(-param_count));
                                 break;
                         }
                 }
@@ -791,6 +792,9 @@ static int setparam_display(struct param_opts *popt, char *pattern,
                                       value, strlen(value));
                 if (rc >= 0 && popt->show_path)
                         printf("%s=%s\n", valuename, value);
+                else if (rc < 0)
+                        fprintf(stderr, "error: set_param: write('%s') "
+                                "failed (%s).\n", valuename, strerror(-rc));
 next:
                 pel = pel->pel_next;
         }
