@@ -471,7 +471,8 @@ static int ll_rd_checksum(char *page, char **start, off_t off,
         sbi = ll_s2sbi(sb);
         temp = (sbi->ll_flags & LL_SBI_CHECKSUM) ? 1 : 0;
 
-        return cfs_param_snprintf(page, count, data, CFS_PARAM_U32, "%d\n", temp);
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_U32,
+                                  "%d\n", temp);
 }
 
 static int ll_wr_checksum(cfs_param_file_t *file, const char *buffer,
@@ -536,7 +537,8 @@ static int ll_rd_track_id(char *page, int count, void *data,
 
         cfs_param_get_data(sb, data, NULL);
         if (ll_s2sbi(sb)->ll_stats_track_type == type)
-                return cfs_param_snprintf(page, count, data, CFS_PARAM_S32, "%d\n",
+                return cfs_param_snprintf(page, count, data,
+                                          CFS_PARAM_S32, "%d\n",
                                           ll_s2sbi(sb)->ll_stats_track_id);
         if (ll_s2sbi(sb)->ll_stats_track_type == STATS_TRACK_ALL)
                 return cfs_param_snprintf(page, count, data, CFS_PARAM_STR,
@@ -646,8 +648,8 @@ static int ll_rd_statahead_stats(char *page, char **start, off_t off,
         return cfs_param_snprintf(page, count, data, CFS_PARAM_STR,
                                   "statahead total: %u\n"
                                   "statahead wrong: %u\n",
-                                  atomic_read(&sbi->ll_sa_total),
-                                  atomic_read(&sbi->ll_sa_wrong));
+                                  cfs_atomic_read(&sbi->ll_sa_total),
+                                  cfs_atomic_read(&sbi->ll_sa_wrong));
 }
 
 static int ll_rd_lazystatfs(char *page, char **start, off_t off,
@@ -661,7 +663,8 @@ static int ll_rd_lazystatfs(char *page, char **start, off_t off,
         sbi = ll_s2sbi(sb);
         temp = (sbi->ll_flags & LL_SBI_LAZYSTATFS) ? 1 : 0;
 
-        return cfs_param_snprintf(page, count, data, CFS_PARAM_S32, "%d\n", temp);
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_S32,
+                                  "%d\n", temp);
 }
 
 static int ll_wr_lazystatfs(cfs_param_file_t *file, const char *buffer,
