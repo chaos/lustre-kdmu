@@ -864,13 +864,14 @@ static int llog_osd_next_block(const struct lu_env *env, struct llog_handle *log
         while (*cur_offset < attr->la_size) {
                 struct llog_rec_hdr *rec;
                 struct llog_rec_tail *tail;
-                loff_t ppos;
+                loff_t ppos, toread;
 
                 llog_skip_over(cur_offset, *cur_idx, next_idx);
 
                 ppos = *cur_offset;
-                
-                rc = llog_osd_record_read(env, o, buf, len, &ppos);
+                /* read up to next LLOG_CHUNK_SIZE block */
+                toread = ((ppos & ~(LLOG_CHUNK_SIZE-1)) + LLOG_CHUNK_SIZE) - p
+                rc = llog_osd_record_read(env, o, buf, toread, &ppos);
                 if (rc) {
                         CERROR("Cant read llog block at log id "LPU64
                                "/%u offset "LPU64"\n",
