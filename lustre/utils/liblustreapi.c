@@ -2188,7 +2188,7 @@ int llapi_ping(char *obd_type, char *obd_name)
 
         snprintf(path, MAX_STRING_SIZE, "lustre/%s/%s/ping",
                  obd_type, obd_name);
-        rc = cfs_param_uwrite(path, strlen(path), buf, 1, 0);
+        rc = cfs_param_uwrite(path, strlen(path), buf, 1);
 
         if (rc == 1)
                 return 0;

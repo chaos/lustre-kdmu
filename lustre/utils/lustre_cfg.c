@@ -788,7 +788,7 @@ static int setparam_display(struct param_opts *popt, char *pattern,
                         goto next;
                 }
                 rc = cfs_param_uwrite(pel->pel_name, pel->pel_name_len,
-                                      value, strlen(value), 0);
+                                      value, strlen(value));
                 if (rc >= 0 && popt->show_path)
                         printf("%s=%s\n", valuename, value);
 next:

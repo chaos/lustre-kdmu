@@ -186,7 +186,7 @@ dbg_write_cmd(int fd, char *str, int len)
         if (fd < 0 || fd >= PARAMS_NUM)
                 return 1;
         rc = cfs_param_uwrite(params_name[fd], strlen(params_name[fd]),
-                              str, len, 0);
+                              str, len);
 
         return (rc == (len + 1) ? 0 : 1);
 }
