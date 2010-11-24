@@ -148,7 +148,7 @@ void ldlm_proc_cleanup(void)
 static int lprocfs_rd_lru_size(char *page, char **start, off_t off,
                                int count, int *eof, void *data)
 {
-        struct cfs_param_cb_data tmp_data;
+        cfs_param_cb_data_t tmp_data;
         struct ldlm_namespace *ns;
         __u32 *nr;
 
@@ -157,7 +157,7 @@ static int lprocfs_rd_lru_size(char *page, char **start, off_t off,
 
         if (ns_connect_lru_resize(ns))
                 nr = &ns->ns_nr_unused;
-        memcpy(&tmp_data, data, sizeof tmp_data);
+        memcpy(&tmp_data, data, sizeof(tmp_data));
         tmp_data.cb_data = nr;
         return lprocfs_rd_uint(page, start, off, count, eof, &tmp_data);
 }

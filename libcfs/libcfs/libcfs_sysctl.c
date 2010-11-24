@@ -60,9 +60,11 @@ static int cfs_param_bitmasks_read(char *page, char **start, off_t off,
 {
         const int     tmpstrlen = 512;
         int           rc;
-        unsigned int *mask = ((cfs_param_cb_data_t *)data)->cb_data;
-        int           is_subsys = (mask == &libcfs_subsystem_debug) ? 1 : 0;
+        unsigned int *mask;
+        int           is_subsys;
 
+        cfs_param_get_data(mask, data, NULL);
+        is_subsys = (mask == &libcfs_subsystem_debug) ? 1 : 0;
         libcfs_debug_mask2str(page, tmpstrlen, *mask, is_subsys);
         rc = strlen(page);
         if (rc > 0)
@@ -77,10 +79,13 @@ static int cfs_param_bitmasks_write(cfs_param_file_t *filp,
                                     unsigned long count, void *data)
 {
         int           rc;
-        unsigned int *mask = ((cfs_param_cb_data_t *)data)->cb_data;
-        int           is_subsys = (mask == &libcfs_subsystem_debug) ? 1 : 0;
-        int           is_printk = (mask == &libcfs_printk) ? 1 : 0;
+        unsigned int *mask;
+        int           is_subsys;
+        int           is_printk;
 
+        cfs_param_get_data(mask, data, NULL);
+        is_subsys = (mask == &libcfs_subsystem_debug) ? 1 : 0;
+        is_printk = (mask == &libcfs_printk) ? 1 : 0;
         rc = libcfs_debug_str2mask(mask, buffer, is_subsys);
         /* Always print LBUG/LASSERT to console, so keep this mask */
         if (is_printk)
@@ -97,8 +102,12 @@ static int cfs_param_dump_kernel_write(cfs_param_file_t *filp,
                                        const char *buffer,
                                        unsigned long count, void *data)
 {
-        int rc = cfs_trace_dump_debug_buffer_usrstr((void *)buffer, count,
-                                                ((cfs_param_cb_data_t *)data)->cb_flag);
+        void *value;
+        int flag = 0;
+        int rc;
+
+        cfs_param_get_data(value, data, &flag);
+        rc = cfs_trace_dump_debug_buffer_usrstr((void *)buffer, count, flag);
         return (rc < 0 ? rc : count);
 }
 
@@ -115,9 +124,12 @@ static int cfs_param_daemon_file_write(cfs_param_file_t *filp,
                                        const char *buffer,
                                        unsigned long count, void *data)
 {
-        struct cfs_param_cb_data *cb_data = data;
-        int rc = cfs_trace_daemon_command_usrstr((void *)buffer, count,
-                                                 cb_data->cb_flag);
+        void *value;
+        int flag = 0;
+        int rc;
+
+        cfs_param_get_data(value, data, &flag);
+        rc = cfs_trace_daemon_command_usrstr((void *)buffer, count, flag);
         return (rc < 0 ? rc : count);
 }
 
@@ -135,8 +147,12 @@ static int cfs_param_debug_mb_write(cfs_param_file_t *filp,
                                     const char *buffer,
                                     unsigned long count, void *data)
 {
-        int rc = cfs_trace_set_debug_mb_usrstr((void *)buffer, count,
-                                           ((cfs_param_cb_data_t *)data)->cb_flag);
+        void *value;
+        int flag = 0;
+        int rc;
+
+        cfs_param_get_data(value, data, &flag);
+        rc = cfs_trace_set_debug_mb_usrstr((void *)buffer, count, flag);
         return (rc < 0 ? rc : count);
 }
 
@@ -256,8 +272,9 @@ static int cfs_param_memused_read(char *page, char **start, off_t off,
                                   int count, int *eof, void *data)
 {
         int temp;
-        cfs_atomic_t *memused = ((cfs_param_cb_data_t *)data)->cb_data;
+        cfs_atomic_t *memused;
 
+        cfs_param_get_data(memused, data, NULL);
         temp = cfs_atomic_read(memused);
 
         return cfs_param_snprintf(page, count, data, CFS_PARAM_S32, NULL, temp);

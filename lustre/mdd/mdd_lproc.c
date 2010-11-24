@@ -273,24 +273,23 @@ static int lprocfs_rd_changelog_users(char *page, char **start, off_t off,
 static int mdd_lprocfs_quota_rd_type(char *page, char **start, off_t off,
                                      int count, int *eof, void *data)
 {
-        struct cfs_param_cb_data tmp_data;
+        cfs_param_cb_data_t tmp_data;
         struct mdd_device *mdd;
 
         cfs_param_get_data(mdd, data, NULL);
-        memcpy(&tmp_data, data, sizeof tmp_data);
+        memcpy(&tmp_data, data, sizeof(tmp_data));
         tmp_data.cb_data = mdd->mdd_obd_dev;
-        return lprocfs_quota_rd_type(page, start, off, count, eof,
-                                     &tmp_data);
+        return lprocfs_quota_rd_type(page, start, off, count, eof, &tmp_data);
 }
 
 static int mdd_lprocfs_quota_wr_type(cfs_param_file_t *file, const char *buffer,
                                      unsigned long count, void *data)
 {
-        struct cfs_param_cb_data tmp_data;
+        cfs_param_cb_data_t tmp_data;
         struct mdd_device *mdd;
 
         cfs_param_get_data(mdd, data, NULL);
-        memcpy(&tmp_data, data, sizeof tmp_data);
+        memcpy(&tmp_data, data, sizeof(tmp_data));
         tmp_data.cb_data = mdd->mdd_obd_dev;
         return lprocfs_quota_wr_type(file, buffer, count, &tmp_data);
 }

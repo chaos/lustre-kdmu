@@ -212,7 +212,7 @@ typedef enum ldlm_policy_res ldlm_policy_res_t;
         static int lprocfs_rd_##var(char *page, char **start, off_t off,    \
                                     int count, int *eof, void *data)        \
         {                                                                   \
-                struct cfs_param_cb_data tmp_data;                          \
+                cfs_param_cb_data_t tmp_data;                               \
                 struct ldlm_pool *pl;                                       \
                 type tmp;                                                   \
                                                                             \
@@ -231,7 +231,7 @@ typedef enum ldlm_policy_res ldlm_policy_res_t;
         int lprocfs_wr_##var(cfs_param_file_t *file, const char *buffer,    \
                              unsigned long count, void *data)               \
         {                                                                   \
-                struct cfs_param_cb_data tmp_data;                          \
+                cfs_param_cb_data_t tmp_data;                               \
                 struct ldlm_pool *pl;                                       \
                 type tmp;                                                   \
                 int rc;                                                     \
