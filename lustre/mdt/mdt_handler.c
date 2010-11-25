@@ -5023,12 +5023,9 @@ static int mdt_obd_connect(const struct lu_env *env,
 
         rc = mdt_connect_internal(lexp, mdt, data);
         if (rc == 0) {
-                struct mdt_thread_info *mti;
                 struct lsd_client_data *lcd = lexp->exp_target_data.ted_lcd;
                 LASSERT(lcd);
-                mti = lu_context_key_get(&env->le_ctx, &mdt_thread_key);
-                LASSERT(mti != NULL);
-                mti->mti_exp = lexp;
+                info->mti_exp = lexp;
                 memcpy(lcd->lcd_uuid, cluuid, sizeof lcd->lcd_uuid);
                 rc = mdt_client_new(env, mdt);
                 if (rc == 0)

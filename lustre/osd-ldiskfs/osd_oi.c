@@ -137,7 +137,7 @@ static int osd_oi_index_create_one(struct osd_thread_info *info,
         LASSERT(!IS_ERR(jh));
 
         inode = ldiskfs_create_inode(jh, osd_sb(osd)->s_root->d_inode,
-                                    (S_IFMT | S_IRWXUGO | S_ISVTX)); 
+                                    (S_IFREG | S_IRUGO | S_IWUSR));
         LASSERT(!IS_ERR(inode));
 
         if (feat->dif_flags & DT_IND_VARKEY)

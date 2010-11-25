@@ -82,6 +82,6 @@ int mdt_export_stats_init(struct obd_device *obd,
                         GOTO(clean, rc);
         }
         RETURN(0);
- clean:
+clean:
         return rc;
 }
