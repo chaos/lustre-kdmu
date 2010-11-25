@@ -214,6 +214,7 @@ int client_obd_setup(struct obd_device *obddev, struct lustre_cfg *lcfg)
         struct obd_uuid server_uuid;
         int rq_portal, rp_portal, connect_op;
         char *name = obddev->obd_type->typ_name;
+        ldlm_ns_type_t ns_type = LDLM_NS_TYPE_UNKNOWN;
         int rc;
         ENTRY;
 
@@ -225,12 +226,16 @@ int client_obd_setup(struct obd_device *obddev, struct lustre_cfg *lcfg)
                 connect_op = OST_CONNECT;
                 cli->cl_sp_me = LUSTRE_SP_CLI;
                 cli->cl_sp_to = LUSTRE_SP_OST;
+                ns_type = LDLM_NS_TYPE_OSC;
+
         } else if (!strcmp(name, LUSTRE_MDC_NAME)) {
                 rq_portal = MDS_REQUEST_PORTAL;
                 rp_portal = MDC_REPLY_PORTAL;
                 connect_op = MDS_CONNECT;
                 cli->cl_sp_me = LUSTRE_SP_CLI;
                 cli->cl_sp_to = LUSTRE_SP_MDT;
+                ns_type = LDLM_NS_TYPE_MDC;
+
         } else if (!strcmp(name, LUSTRE_MGC_NAME)) {
                 rq_portal = MGS_REQUEST_PORTAL;
                 rp_portal = MGC_REPLY_PORTAL;
@@ -238,6 +243,8 @@ int client_obd_setup(struct obd_device *obddev, struct lustre_cfg *lcfg)
                 cli->cl_sp_me = LUSTRE_SP_MGC;
                 cli->cl_sp_to = LUSTRE_SP_MGS;
                 cli->cl_flvr_mgc.sf_rpc = SPTLRPC_FLVR_INVALID;
+                ns_type = LDLM_NS_TYPE_MGC;
+
         } else {
                 CERROR("unknown client OBD type \"%s\", can't setup\n",
                        name);
@@ -366,7 +373,8 @@ int client_obd_setup(struct obd_device *obddev, struct lustre_cfg *lcfg)
 
         obddev->obd_namespace = ldlm_namespace_new(obddev, obddev->obd_name,
                                                    LDLM_NAMESPACE_CLIENT,
-                                                   LDLM_NAMESPACE_GREEDY);
+                                                   LDLM_NAMESPACE_GREEDY,
+                                                   ns_type);
         if (obddev->obd_namespace == NULL) {
                 CERROR("Unable to create client namespace - %s\n",
                        obddev->obd_name);
@@ -568,12 +576,12 @@ int server_disconnect_export(struct obd_export *exp)
                                        struct ptlrpc_reply_state, rs_exp_list);
                 struct ptlrpc_service *svc = rs->rs_service;
 
-                cfs_spin_lock(&svc->srv_lock);
+                cfs_spin_lock(&svc->srv_rs_lock);
                 cfs_list_del_init(&rs->rs_exp_list);
                 cfs_spin_lock(&rs->rs_lock);
                 ptlrpc_schedule_difficult_reply(rs);
                 cfs_spin_unlock(&rs->rs_lock);
-                cfs_spin_unlock(&svc->srv_lock);
+                cfs_spin_unlock(&svc->srv_rs_lock);
         }
         cfs_spin_unlock(&exp->exp_lock);
 
@@ -2184,7 +2192,7 @@ void target_send_reply(struct ptlrpc_request *req, int rc, int fail_id)
 
         netrc = target_send_reply_msg (req, rc, fail_id);
 
-        cfs_spin_lock(&svc->srv_lock);
+        cfs_spin_lock(&svc->srv_rs_lock);
 
         cfs_atomic_inc(&svc->srv_n_difficult_replies);
 
@@ -2196,7 +2204,6 @@ void target_send_reply(struct ptlrpc_request *req, int rc, int fail_id)
                  * reply_out_callback leaves alone) */
                 rs->rs_on_net = 0;
                 ptlrpc_rs_addref(rs);
-                cfs_atomic_inc (&svc->srv_outstanding_replies);
         }
 
         cfs_spin_lock(&rs->rs_lock);
@@ -2211,7 +2218,7 @@ void target_send_reply(struct ptlrpc_request *req, int rc, int fail_id)
                 rs->rs_scheduled = 0;           /* allow notifier to schedule */
         }
         cfs_spin_unlock(&rs->rs_lock);
-        cfs_spin_unlock(&svc->srv_lock);
+        cfs_spin_unlock(&svc->srv_rs_lock);
         EXIT;
 }
 
