@@ -1476,6 +1476,16 @@ static int mdd_attr_set(const struct lu_env *env, struct md_object *obj,
 #endif
         ENTRY;
 
+        *la_copy = ma->ma_attr;
+        rc = mdd_fix_attr(env, mdd_obj, la_copy, ma);
+        if (rc != 0)
+                RETURN(rc);
+
+        /* setattr on "close" only change atime, or do nothing */
+        if (ma->ma_valid == MA_INODE &&
+            ma->ma_attr.la_valid == LA_ATIME && la_copy->la_valid == 0)
+                RETURN(0);
+
         /*TODO: add lock here*/
         /* start a log jounal handle if needed */
         if (S_ISREG(mdd_object_type(mdd_obj)) &&
@@ -1504,11 +1514,6 @@ static int mdd_attr_set(const struct lu_env *env, struct md_object *obj,
         if (ma->ma_attr.la_valid & (LA_MTIME | LA_CTIME))
                 CDEBUG(D_INODE, "setting mtime "LPU64", ctime "LPU64"\n",
                        ma->ma_attr.la_mtime, ma->ma_attr.la_ctime);
-
-        *la_copy = ma->ma_attr;
-        rc = mdd_fix_attr(env, mdd_obj, la_copy, ma);
-        if (rc)
-                GOTO(cleanup, rc);
 
 #ifdef HAVE_QUOTA_SUPPORT
         if (mds->mds_quota && la_copy->la_valid & (LA_UID | LA_GID)) {
@@ -2150,7 +2155,7 @@ static int mdd_close(const struct lu_env *env, struct md_object *obj,
 {
         struct mdd_object *mdd_obj = md2mdd_obj(obj);
         struct mdd_device *mdd = mdo2mdd(obj);
-        struct thandle    *handle;
+        struct thandle    *handle = NULL;
         int rc;
         int reset = 1;
 
@@ -2162,20 +2167,32 @@ static int mdd_close(const struct lu_env *env, struct md_object *obj,
 #endif
         ENTRY;
 
-        handle = mdd_trans_create(env, mdo2mdd(obj));
-        if (IS_ERR(handle))
-                RETURN(PTR_ERR(handle));
-        rc = mdd_declare_finish_unlink(env, mdd_obj, ma, handle);
-        if (rc)
-                GOTO(cleanup, rc);
-        rc = __mdd_declare_orphan_del(env, mdd_obj, handle);
-        if (rc)
-                GOTO(cleanup, rc);
-        rc = mdd_trans_start(env, mdo2mdd(obj), handle);
-        if (rc)
-                GOTO(cleanup, rc);
+        /* check without any lock */
+        if (mdd_obj->mod_count == 1 &&
+            (mdd_obj->mod_flags & (ORPHAN_OBJ | DEAD_OBJ)) != 0) {
+again:
+                handle = mdd_trans_create(env, mdo2mdd(obj));
+                if (IS_ERR(handle))
+                        RETURN(PTR_ERR(handle));
+                rc = mdd_declare_finish_unlink(env, mdd_obj, ma, handle);
+                if (rc)
+                        GOTO(cleanup, rc);
+                rc = __mdd_declare_orphan_del(env, mdd_obj, handle);
+                if (rc)
+                        GOTO(cleanup, rc);
+                rc = mdd_trans_start(env, mdo2mdd(obj), handle);
+                if (rc)
+                        GOTO(cleanup, rc);
+        }
 
         mdd_write_lock(env, mdd_obj, MOR_TGT_CHILD);
+        if (handle == NULL &&
+            mdd_obj->mod_count == 1 &&
+            (mdd_obj->mod_flags & ORPHAN_OBJ) != 0) {
+                mdd_write_unlock(env, mdd_obj);
+                goto again;
+        }
+
         /* release open count */
         mdd_obj->mod_count --;
 
@@ -2233,7 +2250,8 @@ out:
         mdd_write_unlock(env, mdd_obj);
 
 cleanup:
-        mdd_trans_stop(env, mdo2mdd(obj), rc, handle);
+        if (handle != NULL)
+                mdd_trans_stop(env, mdo2mdd(obj), rc, handle);
 #ifdef HAVE_QUOTA_SUPPORT
         if (quota_opc)
                 /* Trigger dqrel on the owner of child. If failed,

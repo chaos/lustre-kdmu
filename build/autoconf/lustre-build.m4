@@ -87,8 +87,7 @@ if git branch >/dev/null 2>&1; then
 
 
 	# only do this test for lustre (not ldiskfs)
-	# XXX: the first check for $ver is fast fix for kdmu branch
-	if test $ver && test "$PACKAGE" = "lustre" -a "$ver" != "$VERSION"; then
+	if test "$PACKAGE" = "lustre" -a "$ver" != "$VERSION"; then
 		AC_MSG_ERROR([most recent tag found: $ver does not match current version $VERSION.])
 	fi
 
