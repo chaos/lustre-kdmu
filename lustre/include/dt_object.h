@@ -849,6 +849,12 @@ static inline void dt_write_unlock(const struct lu_env *env,
         dt->do_ops->do_write_unlock(env, dt);
 }
 
+static inline int dt_write_locked(const struct lu_env *env,
+                                  struct dt_object *dt)
+{
+        return dt->do_ops->do_write_locked(env, dt);
+}
+
 static inline int dt_attr_get(const struct lu_env *env, struct dt_object *dt,
                               struct lu_attr *la, void *arg)
 {
@@ -874,6 +880,20 @@ static inline int dt_attr_set(const struct lu_env *env, struct dt_object *dt,
         LASSERT(dt->do_ops);
         LASSERT(dt->do_ops->do_attr_set);
         return dt->do_ops->do_attr_set(env, dt, la, th, capa);
+}
+
+static inline void dt_declare_ref_add(const struct lu_env *env,
+                                      struct dt_object *dt, struct thandle *th)
+{
+        dt->do_ops->do_declare_ref_add(env, dt, th);
+        return;
+}
+
+static inline void dt_ref_add(const struct lu_env *env,
+                              struct dt_object *dt, struct thandle *th)
+{
+        dt->do_ops->do_ref_add(env, dt, th);
+        return;
 }
 
 static inline void dt_declare_ref_del(const struct lu_env *env,
@@ -1002,6 +1022,22 @@ static inline int dt_insert(const struct lu_env *env,
                                     int noquota)
 {
         return dt->do_index_ops->dio_insert(env, dt, rec, key, th, capa, noquota);
+}
+
+static inline int dt_declare_xattr_del(const struct lu_env *env,
+                                       struct dt_object *dt,
+                                       const char *name,
+                                       struct thandle *th)
+{
+        return dt->do_ops->do_declare_xattr_del(env, dt, name, th);
+}
+
+static inline int dt_xattr_del(const struct lu_env *env,
+                               struct dt_object *dt, const char *name,
+                               struct thandle *th,
+                               struct lustre_capa *capa)
+{
+        return dt->do_ops->do_xattr_del(env, dt, name, th, capa);
 }
 
 static inline int dt_declare_xattr_set(const struct lu_env *env,
