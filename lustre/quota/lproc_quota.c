@@ -55,7 +55,7 @@ int lprocfs_quota_rd_bunit(char *page, char **start, off_t off, int count,
         LASSERT(obd != NULL);
 
         return cfs_param_snprintf(page, count, data, CFS_PARAM_U32, "%lu\n",
-                            obd->u.obt.obt_qctxt.lqc_bunit_sz);
+                                  obd->u.obt.obt_qctxt.lqc_bunit_sz);
 }
 EXPORT_SYMBOL(lprocfs_quota_rd_bunit);
 
@@ -91,7 +91,7 @@ int lprocfs_quota_rd_btune(char *page, char **start, off_t off, int count,
         LASSERT(obd != NULL);
 
         return cfs_param_snprintf(page, count, data, CFS_PARAM_U32, "%lu\n",
-                            obd->u.obt.obt_qctxt.lqc_btune_sz);
+                                  obd->u.obt.obt_qctxt.lqc_btune_sz);
 }
 EXPORT_SYMBOL(lprocfs_quota_rd_btune);
 
@@ -126,7 +126,7 @@ int lprocfs_quota_rd_iunit(char *page, char **start, off_t off, int count,
         LASSERT(obd != NULL);
 
         return cfs_param_snprintf(page, count, data, CFS_PARAM_U32, "%lu\n",
-                            obd->u.obt.obt_qctxt.lqc_iunit_sz);
+                                  obd->u.obt.obt_qctxt.lqc_iunit_sz);
 }
 EXPORT_SYMBOL(lprocfs_quota_rd_iunit);
 
@@ -160,7 +160,7 @@ int lprocfs_quota_rd_itune(char *page, char **start, off_t off, int count,
         LASSERT(obd != NULL);
 
         return cfs_param_snprintf(page, count, data, CFS_PARAM_U32, "%lu\n",
-                            obd->u.obt.obt_qctxt.lqc_itune_sz);
+                                  obd->u.obt.obt_qctxt.lqc_itune_sz);
 }
 EXPORT_SYMBOL(lprocfs_quota_rd_itune);
 
@@ -214,7 +214,8 @@ int lprocfs_quota_rd_type(char *page, char **start, off_t off, int count,
 
         strcat(stype, "3");
 
-        return cfs_param_snprintf(page, count, data, CFS_PARAM_STR, "%s\n", stype);
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_STR,
+                                  "%s\n", stype);
 }
 EXPORT_SYMBOL(lprocfs_quota_rd_type);
 
@@ -360,7 +361,7 @@ int lprocfs_quota_rd_switch_seconds(char *page, char **start, off_t off,
         LASSERT(obd != NULL);
 
         return cfs_param_snprintf(page, count, data, CFS_PARAM_D32, "%d\n",
-                            obd->u.obt.obt_qctxt.lqc_switch_seconds);
+                                  obd->u.obt.obt_qctxt.lqc_switch_seconds);
 }
 EXPORT_SYMBOL(lprocfs_quota_rd_switch_seconds);
 
@@ -393,7 +394,7 @@ int lprocfs_quota_rd_sync_blk(char *page, char **start, off_t off,
         LASSERT(obd != NULL);
 
         return cfs_param_snprintf(page, count, data, CFS_PARAM_D32, "%d\n",
-                            obd->u.obt.obt_qctxt.lqc_sync_blk);
+                                  obd->u.obt.obt_qctxt.lqc_sync_blk);
 }
 EXPORT_SYMBOL(lprocfs_quota_rd_sync_blk);
 
@@ -425,9 +426,9 @@ int lprocfs_quota_rd_switch_qs(char *page, char **start, off_t off,
         cfs_param_get_data(obd, data, NULL);
         LASSERT(obd != NULL);
         return cfs_param_snprintf(page, count, data, CFS_PARAM_STR,
-                      "changing qunit size is %s\n",
-                      obd->u.obt.obt_qctxt.lqc_switch_qs ?
-                      "enabled" : "disabled");
+                                  "changing qunit size is %s\n",
+                                  obd->u.obt.obt_qctxt.lqc_switch_qs ?
+                                  "enabled" : "disabled");
 }
 EXPORT_SYMBOL(lprocfs_quota_rd_switch_qs);
 
@@ -462,7 +463,7 @@ int lprocfs_quota_rd_boundary_factor(char *page, char **start, off_t off,
         LASSERT(obd != NULL);
 
         return cfs_param_snprintf(page, count, data, CFS_PARAM_U32, "%lu\n",
-                            obd->u.obt.obt_qctxt.lqc_cqs_boundary_factor);
+                                  obd->u.obt.obt_qctxt.lqc_cqs_boundary_factor);
 }
 EXPORT_SYMBOL(lprocfs_quota_rd_boundary_factor);
 
@@ -495,7 +496,7 @@ int lprocfs_quota_rd_least_bunit(char *page, char **start, off_t off,
         LASSERT(obd != NULL);
 
         return cfs_param_snprintf(page, count, data, CFS_PARAM_U32, "%lu\n",
-                            obd->u.obt.obt_qctxt.lqc_cqs_least_bunit);
+                                  obd->u.obt.obt_qctxt.lqc_cqs_least_bunit);
 }
 EXPORT_SYMBOL(lprocfs_quota_rd_least_bunit);
 
@@ -529,7 +530,7 @@ int lprocfs_quota_rd_least_iunit(char *page, char **start, off_t off,
         LASSERT(obd != NULL);
 
         return cfs_param_snprintf(page, count, data, CFS_PARAM_U32, "%lu\n",
-                            obd->u.obt.obt_qctxt.lqc_cqs_least_iunit);
+                                  obd->u.obt.obt_qctxt.lqc_cqs_least_iunit);
 }
 EXPORT_SYMBOL(lprocfs_quota_rd_least_iunit);
 
@@ -562,7 +563,7 @@ int lprocfs_quota_rd_qs_factor(char *page, char **start, off_t off,
         LASSERT(obd != NULL);
 
         return cfs_param_snprintf(page, count, data, CFS_PARAM_U32, "%lu\n",
-                            obd->u.obt.obt_qctxt.lqc_cqs_qs_factor);
+                                  obd->u.obt.obt_qctxt.lqc_cqs_qs_factor);
 }
 EXPORT_SYMBOL(lprocfs_quota_rd_qs_factor);
 

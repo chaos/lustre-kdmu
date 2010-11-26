@@ -47,9 +47,9 @@ static int cfs_param_fail_loc_write(cfs_param_file_t * filp,
                                     unsigned long count, void *data)
 {
         int rc;
-        long old_fail_loc = obd_fail_loc;
+        unsigned long old_fail_loc = obd_fail_loc;
 
-        rc = cfs_param_intvec_write(filp, buffer, count, data);
+        rc = cfs_param_longvec_write(filp, buffer, count, data);
         if (old_fail_loc != obd_fail_loc)
                 cfs_waitq_signal(&obd_race_waitq);
 
@@ -60,9 +60,9 @@ static int cfs_param_fail_loc_read(char *page, char **start, off_t off,
                                    int count, int *eof, void *data)
 {
         int rc;
-        long old_fail_loc = obd_fail_loc;
+        unsigned long old_fail_loc = obd_fail_loc;
 
-        rc = cfs_param_intvec_read(page, start, off, count, eof, data);
+        rc = cfs_param_longvec_read(page, start, off, count, eof, data);
         if (old_fail_loc != obd_fail_loc)
                 cfs_waitq_signal(&obd_race_waitq);
 

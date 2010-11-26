@@ -329,6 +329,10 @@ extern int cfs_param_intvec_write(cfs_param_file_t *filp, const char *buffer,
                                   unsigned long count, void *data);
 extern int cfs_param_intvec_read(char *page, char **start, off_t off,
                                  int count, int *eof, void *data);
+extern int cfs_param_longvec_write(cfs_param_file_t *filp, const char *buffer,
+                                   unsigned long count, void *data);
+extern int cfs_param_longvec_read(char *page, char **start, off_t off,
+                                  int count, int *eof, void *data);
 extern int cfs_param_string_write(cfs_param_file_t *filp, const char *buffer,
                                      unsigned long count, void *data);
 extern int cfs_param_string_read(char *page, char **start, off_t off,

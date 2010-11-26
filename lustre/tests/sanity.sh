@@ -7742,7 +7742,8 @@ test_217() { # bug 22430
 run_test 217 "check lctl ping for hostnames with hiphen ('-')"
 
 test_218() { # bug 15384
-    #compare parameters between /proc and params_tree
+    #1.compare parameters between /proc and params_tree, and
+    #2.write value back to parameter
     difflog=$TMP/diff_$tfile
     for node in $(nodes_list); do
         echo "node=$node"
@@ -7752,13 +7753,13 @@ test_218() { # bug 15384
     done
 
     if [ `grep "total" $DIR/$tfile | wc -l` -gt 0 ]; then
-            error "Different parameters found"
+            error "Failed parameters found"
     else
-            echo "No different parameters found"
+            echo "No failed parameters found"
     fi
     rm -f $DIR/$tfile
 }
-run_test 218 "compare parameters from /proc and params_tree"
+run_test 218 "compare parameters from /proc and params_tree, and write value back"
 
 #
 # tests that do cleanup/setup should be run at the end

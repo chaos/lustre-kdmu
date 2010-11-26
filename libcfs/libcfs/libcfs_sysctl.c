@@ -175,12 +175,11 @@ cfs_param_console_max_delay_cs_write(cfs_param_file_t *filp,
 {
         int max_delay_cs;
         cfs_duration_t d;
-        void *cb_data = CFS_ALLOC_PARAMDATA(&max_delay_cs);
+        cfs_param_cb_data_t cb_data;
 
-        if (cb_data == NULL)
-                return -ENOMEM;
-        cfs_param_intvec_write(filp, buffer, count, cb_data);
-        CFS_FREE_PARAMDATA(cb_data);
+        memcpy(&cb_data, data, sizeof(cb_data));
+        cb_data.cb_data = &max_delay_cs;
+        cfs_param_intvec_write(filp, buffer, count, &cb_data);
         if (max_delay_cs <= 0)
                 return -EINVAL;
         d = cfs_time_seconds(max_delay_cs) / 100;
@@ -210,12 +209,11 @@ cfs_param_console_min_delay_cs_write(cfs_param_file_t *filp,
 {
         int min_delay_cs;
         cfs_duration_t d;
-        void *cb_data = CFS_ALLOC_PARAMDATA(&min_delay_cs);
+        cfs_param_cb_data_t cb_data;
 
-        if (cb_data == NULL)
-                return -ENOMEM;
-        cfs_param_intvec_write(filp, buffer, count, cb_data);
-        CFS_FREE_PARAMDATA(cb_data);
+        memcpy(&cb_data, data, sizeof(cb_data));
+        cb_data.cb_data = &min_delay_cs;
+        cfs_param_intvec_write(filp, buffer, count, &cb_data);
         if (min_delay_cs <= 0)
                 return -EINVAL;
         d = cfs_time_seconds(min_delay_cs) / 100;
@@ -229,7 +227,7 @@ cfs_param_console_min_delay_cs_write(cfs_param_file_t *filp,
 static int cfs_param_console_backoff_read(char *page, char **start,off_t off,
                                           int count,int *eof, void *data)
 {
-        return cfs_param_snprintf(page, count, data, CFS_PARAM_U32,
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_S32,
                                   NULL, libcfs_console_backoff);
 }
 
@@ -237,13 +235,12 @@ static int
 cfs_param_console_backoff_write(cfs_param_file_t *filp, const char *buffer,
                                 unsigned long count, void *data)
 {
-        int backoff;
-        void *cb_data = CFS_ALLOC_PARAMDATA(&backoff);
+        int backoff = 0;
+        cfs_param_cb_data_t cb_data;
 
-        if (cb_data == NULL)
-                return -ENOMEM;
-        cfs_param_intvec_write(filp, buffer, count, cb_data);
-        CFS_FREE_PARAMDATA(cb_data);
+        memcpy(&cb_data, data, sizeof(cb_data));
+        cb_data.cb_data = &backoff;
+        cfs_param_intvec_write(filp, buffer, count, &cb_data);
         if (backoff <= 0)
                 return -EINVAL;
         libcfs_console_backoff = backoff;
@@ -255,13 +252,12 @@ static int cfs_param_watchdog_write(cfs_param_file_t *filp,
                                     const char *buffer,
                                     unsigned long count, void *data)
 {
-        unsigned long temp;
-        void *cb_data = CFS_ALLOC_PARAMDATA(&temp);
+        int temp;
+        cfs_param_cb_data_t cb_data;
 
-        if (cb_data == NULL)
-                return -ENOMEM;
-        cfs_param_intvec_write(filp, buffer, count, cb_data);
-        CFS_FREE_PARAMDATA(cb_data);
+        memcpy(&cb_data, data, sizeof(cb_data));
+        cb_data.cb_data = &temp;
+        cfs_param_intvec_write(filp, buffer, count, &cb_data);
         if (temp < min_watchdog_ratelimit || temp > max_watchdog_ratelimit)
                 return -EINVAL;
 

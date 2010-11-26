@@ -1250,7 +1250,7 @@ int
 cfs_param_intvec_write(cfs_param_file_t *filp, const char *buffer,
                        unsigned long count, void *data)
 {
-        unsigned long temp;
+        unsigned int  temp;
         const char   *pbuf = buffer;
 
         if (*pbuf == '-') {
@@ -1271,11 +1271,43 @@ int
 cfs_param_intvec_read(char *page, char **start, off_t off, int count,
                       int *eof, void *data)
 {
-        unsigned long *temp = ((cfs_param_cb_data_t *)data)->cb_data;
+        unsigned int *temp = ((cfs_param_cb_data_t *)data)->cb_data;
 
         return cfs_param_snprintf(page, count, data, CFS_PARAM_S32, NULL, *temp);
 }
 EXPORT_SYMBOL(cfs_param_intvec_read);
+
+int
+cfs_param_longvec_write(cfs_param_file_t *filp, const char *buffer,
+                        unsigned long count, void *data)
+{
+        unsigned long temp;
+        const char   *pbuf = buffer;
+
+        if (*pbuf == '-') {
+                pbuf ++;
+                temp = -simple_strtoul(pbuf, NULL, 10);
+        } else if (pbuf[0] == '0' && toupper(pbuf[1]) == 'X') {
+                temp = simple_strtoul(pbuf, NULL, 16);
+        } else {
+                temp = simple_strtoul(pbuf, NULL, 10);
+        }
+        memcpy(((cfs_param_cb_data_t *)data)->cb_data, &temp, sizeof(temp));
+
+        return count;
+}
+EXPORT_SYMBOL(cfs_param_longvec_write);
+
+int
+cfs_param_longvec_read(char *page, char **start, off_t off, int count,
+                       int *eof, void *data)
+{
+        unsigned long *temp = ((cfs_param_cb_data_t *)data)->cb_data;
+
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_S64,
+                                  NULL, *temp);
+}
+EXPORT_SYMBOL(cfs_param_longvec_read);
 
 int
 cfs_param_string_write(cfs_param_file_t *filp, const char *buffer,

@@ -133,7 +133,7 @@ int lprocfs_filter_rd_readcache(char *page, char **start, off_t off, int count,
         cfs_param_get_data(obd, data, NULL);
 
         return cfs_param_snprintf(page, count, data, CFS_PARAM_U64, LPU64"\n",
-                            obd->u.filter.fo_readcache_max_filesize);
+                                  obd->u.filter.fo_readcache_max_filesize);
 }
 
 int lprocfs_filter_wr_readcache(cfs_param_file_t *file, const char *buffer,
