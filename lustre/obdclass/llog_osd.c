@@ -870,7 +870,7 @@ static int llog_osd_next_block(const struct lu_env *env, struct llog_handle *log
 
                 ppos = *cur_offset;
                 /* read up to next LLOG_CHUNK_SIZE block */
-                toread = ((ppos & ~(LLOG_CHUNK_SIZE-1)) + LLOG_CHUNK_SIZE) - p
+                toread = ((ppos & ~(LLOG_CHUNK_SIZE-1)) + LLOG_CHUNK_SIZE) - ppos;
                 rc = llog_osd_record_read(env, o, buf, toread, &ppos);
                 if (rc) {
                         CERROR("Cant read llog block at log id "LPU64
