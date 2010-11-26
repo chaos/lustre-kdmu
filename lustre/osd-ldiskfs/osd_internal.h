@@ -122,7 +122,6 @@ struct osd_thandle {
         int                     ot_declare_attr_set;
         int                     ot_declare_punch;
         int                     ot_declare_xattr_set;
-        int                     ot_declare_xattr_del;
         int                     ot_declare_create;
         int                     ot_declare_destroy;
         int                     ot_declare_ref_add;

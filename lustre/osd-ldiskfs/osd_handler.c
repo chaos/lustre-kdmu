@@ -631,9 +631,9 @@ int osd_trans_start(const struct lu_env *env,
                 /* XXX */
                 oh->ot_credits = osd_journal(dev)->j_max_transaction_buffers;
 #ifdef OSD_TRACK_DECLARES
-                CERROR("  attr_set: %d, punch: %d, xattr_set: %d, xattr_del: %d\n",
+                CERROR("  attr_set: %d, punch: %d, xattr_set: %d, \n",
                        oh->ot_declare_attr_set, oh->ot_declare_punch,
-                       oh->ot_declare_xattr_set, oh->ot_declare_xattr_del);
+                       oh->ot_declare_xattr_set);
                 CERROR("  create: %d, ref_add: %d, ref_del: %d, write: %d\n",
                        oh->ot_declare_create, oh->ot_declare_ref_add,
                        oh->ot_declare_ref_del, oh->ot_declare_write);
@@ -2182,7 +2182,7 @@ static int osd_declare_object_ref_add(const struct lu_env *env,
 {
         struct osd_thandle *oh;
 
-        LASSERT(dt_object_exists(dt));
+        /* it's possible that object doesn't exist yet */
         LASSERT(handle != NULL);
 
         oh = container_of0(handle, struct osd_thandle, ot_super);
@@ -2358,7 +2358,7 @@ static int osd_declare_xattr_del(const struct lu_env *env,
         oh = container_of0(handle, struct osd_thandle, ot_super);
         LASSERT(oh->ot_handle == NULL);
 
-        OSD_DECLARE_OP(oh, xattr_del);
+        OSD_DECLARE_OP(oh, xattr_set);
         oh->ot_credits += osd_dto_credits_noquota[DTO_XATTR_SET];
 
         return 0;
@@ -2388,7 +2388,7 @@ static int osd_xattr_del(const struct lu_env *env,
         if (osd_object_auth(env, dt, capa, CAPA_OPC_META_WRITE))
                 return -EACCES;
 
-        OSD_EXEC_OP(handle, xattr_del);
+        OSD_EXEC_OP(handle, xattr_set);
 
         dentry->d_inode = inode;
         *t = inode->i_ctime;
