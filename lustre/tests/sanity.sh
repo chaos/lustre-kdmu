@@ -70,7 +70,6 @@ MCREATE=${MCREATE:-mcreate}
 OPENFILE=${OPENFILE:-openfile}
 OPENUNLINK=${OPENUNLINK:-openunlink}
 READS=${READS:-"reads"}
-TRUNCATE=${TRUNCATE:-truncate}
 MUNLINK=${MUNLINK:-munlink}
 SOCKETSERVER=${SOCKETSERVER:-socketserver}
 SOCKETCLIENT=${SOCKETCLIENT:-socketclient}
@@ -2691,7 +2690,7 @@ test_43b() {
 	cp -p `which multiop` $DIR/d43/multiop || cp -p multiop $DIR/d43/multiop
         MULTIOP_PROG=$DIR/d43/multiop multiop_bg_pause $TMP/test43.junk O_c || return 1
         MULTIOP_PID=$!
-        truncate $DIR/d43/multiop 0 && error "expected error, got success"
+        $TRUNCATE $DIR/d43/multiop 0 && error "expected error, got success"
         kill -USR1 $MULTIOP_PID || return 2
         wait $MULTIOP_PID || return 3
         rm $TMP/test43.junk
@@ -3942,7 +3941,7 @@ test_69() {
 	$DIRECTIO write ${f}.2 0 1 || error "directio write error"
 
 	do_facet ost1 lctl set_param fail_loc=0x217
-	truncate $f 1 # vmtruncate() will ignore truncate() error.
+	$TRUNCATE $f 1 # vmtruncate() will ignore truncate() error.
 	$DIRECTIO write $f 0 2 && error "write succeeded, expect -ENOENT"
 
 	do_facet ost1 lctl set_param fail_loc=0
@@ -7137,42 +7136,47 @@ check_path() {
       	err17935 "path looked up \"${path}\" instead of \"${expected}\""
  	return 2
     fi
-    echo "fid $fid resolves to path $path"
+    echo "fid $fid resolves to path $path (expected $expected)"
 }
 
 test_162() {
-    # Make changes to filesystem
-    mkdir -p $DIR/$tdir/d2
-    touch $DIR/$tdir/d2/$tfile
-    touch $DIR/$tdir/d2/x1
-    touch $DIR/$tdir/d2/x2
-    mkdir -p $DIR/$tdir/d2/a/b/c
-    mkdir -p $DIR/$tdir/d2/p/q/r
+	# Make changes to filesystem
+	mkdir -p $DIR/$tdir/d2
+	touch $DIR/$tdir/d2/$tfile
+	touch $DIR/$tdir/d2/x1
+	touch $DIR/$tdir/d2/x2
+	mkdir -p $DIR/$tdir/d2/a/b/c
+	mkdir -p $DIR/$tdir/d2/p/q/r
 	# regular file
-    FID=$($LFS path2fid $DIR/$tdir/d2/$tfile | tr -d '[')
-    check_path "$tdir/d2/$tfile" $FSNAME $FID --link 0
+	FID=$($LFS path2fid $DIR/$tdir/d2/$tfile | tr -d '[]')
+	check_path "$tdir/d2/$tfile" $FSNAME $FID --link 0
 
 	# softlink
-    ln -s $DIR/$tdir/d2/$tfile $DIR/$tdir/d2/p/q/r/slink
-    FID=$($LFS path2fid $DIR/$tdir/d2/p/q/r/slink | tr -d '[')
-    check_path "$tdir/d2/p/q/r/slink" $FSNAME $FID --link 0
+	ln -s $DIR/$tdir/d2/$tfile $DIR/$tdir/d2/p/q/r/slink
+	FID=$($LFS path2fid $DIR/$tdir/d2/p/q/r/slink | tr -d '[]')
+	check_path "$tdir/d2/p/q/r/slink" $FSNAME $FID --link 0
+
+	# softlink to wrong file
+	ln -s /this/is/garbage $DIR/$tdir/d2/p/q/r/slink.wrong
+	FID=$($LFS path2fid $DIR/$tdir/d2/p/q/r/slink.wrong | tr -d '[]')
+	check_path "$tdir/d2/p/q/r/slink.wrong" $FSNAME $FID --link 0
 
 	# hardlink
-    ln $DIR/$tdir/d2/$tfile $DIR/$tdir/d2/p/q/r/hlink
-    mv $DIR/$tdir/d2/$tfile $DIR/$tdir/d2/a/b/c/new_file
-    FID=$($LFS path2fid $DIR/$tdir/d2/a/b/c/new_file | tr -d '[')
-    # fid2path dir/fsname should both work
-    check_path "$tdir/d2/a/b/c/new_file" $FSNAME $FID --link 1
-    check_path "$DIR/$tdir/d2/p/q/r/hlink" $DIR $FID --link 0
+	ln $DIR/$tdir/d2/$tfile $DIR/$tdir/d2/p/q/r/hlink
+	mv $DIR/$tdir/d2/$tfile $DIR/$tdir/d2/a/b/c/new_file
+	FID=$($LFS path2fid $DIR/$tdir/d2/a/b/c/new_file | tr -d '[]')
+	# fid2path dir/fsname should both work
+	check_path "$tdir/d2/a/b/c/new_file" $FSNAME $FID --link 1
+	check_path "$DIR/$tdir/d2/p/q/r/hlink" $DIR $FID --link 0
 
-    # hardlink count: check that there are 2 links
-    # Doesnt work with CMD yet: 17935
+	# hardlink count: check that there are 2 links
+	# Doesnt work with CMD yet: 17935
 	${LFS} fid2path $DIR $FID | wc -l | grep -q 2 || \
 		err17935 "expected 2 links"
 
 	# hardlink indexing: remove the first link
-    rm $DIR/$tdir/d2/p/q/r/hlink
-    check_path "$tdir/d2/a/b/c/new_file" $FSNAME $FID --link 0
+	rm $DIR/$tdir/d2/p/q/r/hlink
+	check_path "$tdir/d2/a/b/c/new_file" $FSNAME $FID --link 0
 
 	return 0
 }
@@ -7429,8 +7433,8 @@ run_test 200c "Set pool on a directory ================================="
 
 test_200d() {
 	remote_mgs_nodsh && skip "remote MGS with nodsh" && return
-	res=$($GETSTRIPE --pool $POOL_DIR | awk '/^pool:/ {print $2}')
-	[ "$res" = $POOL ] || error "Pool on $POOL_DIR is $res, not $POOL"
+	res=$($GETSTRIPE --pool $POOL_DIR)
+	[ $res = $POOL ] || error "Pool on $POOL_DIR is $res, not $POOL"
 }
 run_test 200d "Check pool on a directory ==============================="
 

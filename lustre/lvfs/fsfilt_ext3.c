@@ -60,6 +60,11 @@
 #ifdef HAVE_QUOTAIO_V1_H
 # include <linux/quotaio_v1.h>
 # include <linux/quotaio_v2.h>
+#elif defined(HAVE_FS_QUOTA_QUOTAIO_V1_H)
+# include <quota/quotaio_v1.h>
+# include <quota/quotaio_v2.h>
+# include <quota/quota_tree.h>
+# define V2_DQTREEOFF    QT_TREEOFF
 #else
 # include <quotaio_v1.h>
 # include <quotaio_v2.h>
@@ -865,6 +870,14 @@ static int fsfilt_ext3_sync(struct super_block *sb)
 #define ext3_ext_base2inode(tree)       (tree->inode)
 #define fsfilt_ext3_ext_walk_space(tree, block, num, cb, cbdata) \
                         ext3_ext_walk_space(tree, block, num, cb);
+#endif
+
+#ifdef EXT_INSERT_EXTENT_WITH_5ARGS
+#define fsfilt_ext3_ext_insert_extent(handle, inode, path, newext, flag) \
+               ext3_ext_insert_extent(handle, inode, path, newext, flag)
+#else
+#define fsfilt_ext3_ext_insert_extent(handle, inode, path, newext, flag) \
+               ext3_ext_insert_extent(handle, inode, path, newext)
 #endif
 
 #include <linux/lustre_version.h>

@@ -781,10 +781,7 @@ void lprocfs_stats_collect(struct lprocfs_stats *stats, int idx,
 
         cnt->lc_min = LC_MIN_INIT;
 
-        if (stats->ls_flags & LPROCFS_STATS_FLAG_NOPERCPU)
-                num_cpu = 1;
-        else
-                num_cpu = cfs_num_possible_cpus();
+        num_cpu = lprocfs_stats_lock(stats, LPROCFS_GET_NUM_CPU);
 
         for (i = 0; i < num_cpu; i++) {
                 percpu_cntr = &(stats->ls_percpu[i])->lp_cntr[idx];
@@ -811,6 +808,7 @@ void lprocfs_stats_collect(struct lprocfs_stats *stats, int idx,
         }
 
         cnt->lc_units = stats->ls_percpu[0]->lp_cntr[idx].lc_units;
+        lprocfs_stats_unlock(stats, LPROCFS_GET_NUM_CPU);
 }
 
 /**
@@ -1348,7 +1346,7 @@ void lprocfs_clear_stats(struct lprocfs_stats *stats)
                 }
         }
 
-        lprocfs_stats_unlock(stats);
+        lprocfs_stats_unlock(stats, LPROCFS_GET_NUM_CPU);
 }
 
 static ssize_t lprocfs_stats_seq_write(cfs_param_file_t *file, const char *buf,
@@ -1491,7 +1489,7 @@ void lprocfs_counter_init(struct lprocfs_stats *stats, int index,
                 c->lc_units = units;
         }
 
-        lprocfs_stats_unlock(stats);
+        lprocfs_stats_unlock(stats, LPROCFS_GET_NUM_CPU);
 }
 EXPORT_SYMBOL(lprocfs_counter_init);
 
@@ -1570,7 +1568,6 @@ void lprocfs_init_ops_stats(int num_private_stats, struct lprocfs_stats *stats)
         LPROCFS_OBD_OP_INIT(num_private_stats, stats, pool_del);
         LPROCFS_OBD_OP_INIT(num_private_stats, stats, getref);
         LPROCFS_OBD_OP_INIT(num_private_stats, stats, putref);
-        LPROCFS_OBD_OP_INIT(num_private_stats, stats, sync_fs);
 }
 
 int lprocfs_alloc_obd_stats(struct obd_device *obd, unsigned num_private_stats)
@@ -1624,23 +1621,8 @@ do {                                                                    \
         lprocfs_counter_init(stats, coffset, 0, #op, "reqs");           \
 } while (0)
 
-int lprocfs_alloc_md_stats(struct obd_device *obd,
-                           unsigned num_private_stats)
+void lprocfs_init_mps_stats(int num_private_stats, struct lprocfs_stats *stats)
 {
-        struct lprocfs_stats *stats;
-        unsigned int num_stats;
-        int rc, i;
-
-        LASSERT(obd->md_stats == NULL);
-        LASSERT(obd->obd_proc_entry != NULL);
-        LASSERT(obd->md_cntr_base == 0);
-
-        num_stats = 1 + MD_COUNTER_OFFSET(revalidate_lock) +
-                    num_private_stats;
-        stats = lprocfs_alloc_stats(num_stats, 0);
-        if (stats == NULL)
-                return -ENOMEM;
-
         LPROCFS_MD_OP_INIT(num_private_stats, stats, getstatus);
         LPROCFS_MD_OP_INIT(num_private_stats, stats, change_cbdata);
         LPROCFS_MD_OP_INIT(num_private_stats, stats, find_cbdata);
@@ -1673,6 +1655,26 @@ int lprocfs_alloc_md_stats(struct obd_device *obd,
         LPROCFS_MD_OP_INIT(num_private_stats, stats, get_remote_perm);
         LPROCFS_MD_OP_INIT(num_private_stats, stats, intent_getattr_async);
         LPROCFS_MD_OP_INIT(num_private_stats, stats, revalidate_lock);
+}
+
+int lprocfs_alloc_md_stats(struct obd_device *obd,
+                           unsigned num_private_stats)
+{
+        struct lprocfs_stats *stats;
+        unsigned int num_stats;
+        int rc, i;
+
+        LASSERT(obd->md_stats == NULL);
+        LASSERT(obd->obd_proc_entry != NULL);
+        LASSERT(obd->md_cntr_base == 0);
+
+        num_stats = 1 + MD_COUNTER_OFFSET(revalidate_lock) +
+                    num_private_stats;
+        stats = lprocfs_alloc_stats(num_stats, 0);
+        if (stats == NULL)
+                return -ENOMEM;
+
+        lprocfs_init_mps_stats(num_private_stats, stats);
 
         for (i = num_private_stats; i < num_stats; i++) {
                 if (stats->ls_percpu[0]->lp_cntr[i].lc_name == NULL) {
@@ -1801,6 +1803,7 @@ int lprocfs_exp_print_hash(cfs_hash_t *hs, cfs_hash_bd_t *bd,
                 *data->len += cfs_hash_debug_str(hs, data->page + *data->len,
                                                  data->count);
         }
+
         return 0;
 }
 
@@ -1836,10 +1839,10 @@ int lprocfs_nid_stats_clear_write_cb(void *obj, void *data)
         struct nid_stat *stat = obj;
         int i;
         ENTRY;
-        /* object has only hash + iterate_all references.
-         * add/delete blocked by hash bucket lock */
+
         CDEBUG(D_INFO,"refcnt %d\n", cfs_atomic_read(&stat->nid_exp_ref_count));
-        if (cfs_atomic_read(&stat->nid_exp_ref_count) == 2) {
+        if (cfs_atomic_read(&stat->nid_exp_ref_count) == 1) {
+                /* object has only hash references. */
                 cfs_spin_lock(&stat->nid_obd->obd_nid_lock);
                 cfs_list_move(&stat->nid_list, data);
                 cfs_spin_unlock(&stat->nid_obd->obd_nid_lock);
@@ -2515,6 +2518,7 @@ EXPORT_SYMBOL(lprocfs_free_stats);
 EXPORT_SYMBOL(lprocfs_clear_stats);
 EXPORT_SYMBOL(lprocfs_register_stats);
 EXPORT_SYMBOL(lprocfs_init_ops_stats);
+EXPORT_SYMBOL(lprocfs_init_mps_stats);
 EXPORT_SYMBOL(lprocfs_init_ldlm_stats);
 EXPORT_SYMBOL(lprocfs_alloc_obd_stats);
 EXPORT_SYMBOL(lprocfs_alloc_md_stats);

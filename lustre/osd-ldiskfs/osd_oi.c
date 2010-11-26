@@ -137,7 +137,7 @@ static int osd_oi_index_create_one(struct osd_thread_info *info,
         LASSERT(!IS_ERR(jh));
 
         inode = ldiskfs_create_inode(jh, osd_sb(osd)->s_root->d_inode,
-                                    (S_IFMT | S_IRWXUGO | S_ISVTX)); 
+                                    (S_IFREG | S_IRUGO | S_IWUSR));
         LASSERT(!IS_ERR(inode));
 
         if (feat->dif_flags & DT_IND_VARKEY)
@@ -176,7 +176,7 @@ static int osd_oi_index_create(struct osd_thread_info *info,
                 oi_feat.dif_keysize_max = oi_descr[i].fid_size;
 
                 rc = osd_oi_index_create_one(info, osd, name, &oi_feat);
-                
+
                 if (rc == -ESTALE || rc != -EEXIST)
                         return(rc);
         }

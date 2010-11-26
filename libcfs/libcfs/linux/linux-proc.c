@@ -76,7 +76,9 @@
 #include <asm/div64.h>
 #include "tracefile.h"
 
+#ifdef CONFIG_SYSCTL
 static cfs_sysctl_table_header_t *lnet_table_header = NULL;
+#endif
 extern char lnet_upcall[1024];
 /**
  * The path of debug log dump upcall script.
@@ -489,6 +491,7 @@ static cfs_sysctl_table_t lnet_table[] = {
         {0}
 };
 
+#ifdef CONFIG_SYSCTL
 static cfs_sysctl_table_t top_table[] = {
         {
                 .ctl_name = CTL_LNET,
@@ -505,7 +508,6 @@ static cfs_sysctl_table_t top_table[] = {
 
 int insert_proc(void)
 {
-#ifdef CONFIG_SYSCTL
         if (lnet_table_header == NULL)
                 lnet_table_header = cfs_register_sysctl_table(top_table, 0);
 #endif

@@ -94,8 +94,8 @@ seq_proc_read_common(char *page, char **start, off_t off,
 	ENTRY;
 
         rc = cfs_param_snprintf(page, count, data, CFS_PARAM_STR,
-                                "["LPX64" - "LPX64"]:%x\n", PRANGE(range));
-
+                                "["LPX64" - "LPX64"]:%x:%x\n",
+                                PRANGE(range));
 	RETURN(rc);
 }
 

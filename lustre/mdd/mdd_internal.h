@@ -65,6 +65,10 @@ static inline void mdd_quota_wrapper(struct lu_attr *la, unsigned int *qids)
 }
 #endif
 
+/* PDO lock is unnecessary for current MDT stack because operations
+ * are already protected by ldlm lock */
+#define MDD_DISABLE_PDO_LOCK    1
+
 enum mdd_txn_op {
         MDD_TXN_OBJECT_DESTROY_OP = 0,
         MDD_TXN_OBJECT_CREATE_OP,
@@ -101,7 +105,6 @@ struct mdd_txn_op_descr {
 
 struct mdd_changelog {
         cfs_spinlock_t                   mc_lock;    /* for index */
-        cfs_waitq_t                      mc_waitq;
         int                              mc_flags;
         int                              mc_mask;
         __u64                            mc_index;
@@ -222,6 +225,11 @@ void mdd_lov_objid_update(struct mdd_device *mdd, struct lov_mds_md *lmm,
 void mdd_lov_create_finish(const struct lu_env *env, struct mdd_device *mdd,
                            struct lov_mds_md *lmm, int lmm_size,
                            const struct md_op_spec *spec);
+int mdd_file_lock(const struct lu_env *env, struct md_object *obj,
+                  struct lov_mds_md *lmm, struct ldlm_extent *extent,
+                  struct lustre_handle *lockh);
+int mdd_file_unlock(const struct lu_env *env, struct md_object *obj,
+                    struct lov_mds_md *lmm, struct lustre_handle *lockh);
 int mdd_get_md(const struct lu_env *env, struct mdd_object *obj,
                void *md, int *md_size, const char *name);
 int mdd_get_md_locked(const struct lu_env *env, struct mdd_object *obj,
@@ -243,6 +251,8 @@ int mdd_object_kill(const struct lu_env *env, struct mdd_object *obj,
                     struct md_attr *ma, struct thandle *th);
 int mdd_iattr_get(const struct lu_env *env, struct mdd_object *mdd_obj,
                   struct md_attr *ma);
+int mdd_attr_get_internal(const struct lu_env *env, struct mdd_object *mdd_obj,
+                          struct md_attr *ma);
 int mdd_attr_get_internal_locked(const struct lu_env *env,
                                  struct mdd_object *mdd_obj,
                                  struct md_attr *ma);
@@ -383,7 +393,8 @@ struct mdd_object *mdd_object_find(const struct lu_env *env,
 int mdd_get_default_md(struct mdd_object *mdd_obj, struct lov_mds_md *lmm);
 int mdd_readpage(const struct lu_env *env, struct md_object *obj,
                  const struct lu_rdpg *rdpg);
-
+int mdd_changelog(const struct lu_env *env, enum changelog_rec_type type,
+                  int flags, struct md_object *obj);
 /* mdd_quota.c*/
 int mdd_quota_setup(const struct lu_env *env, struct md_device *m,
                     void *data);

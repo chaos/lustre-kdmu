@@ -441,6 +441,7 @@ struct lustre_sb_info {
         struct dt_device         *lsi_dt_dev;  /* dt device to access disk fs*/
         void                     *lsi_vfsp;    /* ptr to OS specific vfs data*/
         cfs_atomic_t              lsi_mounts;  /* references to the srv_mnt */
+        struct backing_dev_info   bdi;         /* Each client mountpoint needs own backing_dev_info */
 };
 
 #define LSI_SERVER                       0x00000001

@@ -74,9 +74,24 @@ int mgs_export_stats_init(struct obd_device *obd, struct obd_export *exp,
                         rc = 0;
                 RETURN(rc);
         }
-
         if (newnid) {
-                rc = lprocfs_nid_ldlm_stats_init(exp->exp_nid_stats);
+                struct nid_stat *tmp = exp->exp_nid_stats;
+                int num_stats = 0;
+
+                num_stats = (sizeof(*obd->obd_type->typ_dt_ops) / sizeof(void *)) +
+                            LPROC_MGS_LAST - 1;
+                tmp->nid_stats = lprocfs_alloc_stats(num_stats,
+                                                     LPROCFS_STATS_FLAG_NOPERCPU);
+                if (tmp->nid_stats == NULL)
+                        return -ENOMEM;
+                lprocfs_init_ops_stats(LPROC_MGS_LAST, tmp->nid_stats);
+                mgs_stats_counter_init(tmp->nid_stats);
+                rc = lprocfs_register_stats(tmp->nid_proc, "stats",
+                                            tmp->nid_stats);
+                if (rc)
+                        GOTO(clean, rc);
+
+                rc = lprocfs_nid_ldlm_stats_init(tmp);
                 if (rc)
                         GOTO(clean, rc);
         }
@@ -206,7 +221,7 @@ int mgs_fs_setup(struct obd_device *obd, struct vfsmount *mnt)
 
         /* Need the iopen dir for fid2dentry, required by
            LLOG_ORIGIN_HANDLE_READ_HEADER */
-        dentry = lookup_one_len("__iopen__", current->fs->pwd,
+        dentry = ll_lookup_one_len("__iopen__", current->fs->pwd,
                                 strlen("__iopen__"));
         if (IS_ERR(dentry)) {
                 rc = PTR_ERR(dentry);
