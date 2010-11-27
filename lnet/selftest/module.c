@@ -40,10 +40,10 @@
 
 
 #define LST_INIT_NONE           0
-#define LST_INIT_RPC            1
-#define LST_INIT_FW             2
-#define LST_INIT_CONSOLE        3
-#define LST_INIT_PARAM          4
+#define LST_INIT_PARAM          1
+#define LST_INIT_RPC            2
+#define LST_INIT_FW             3
+#define LST_INIT_CONSOLE        4
 
 extern int lstcon_console_init(void);
 extern int lstcon_console_fini(void);
@@ -59,13 +59,15 @@ lnet_selftest_fini (void)
 #ifdef __KERNEL__
                 case LST_INIT_CONSOLE:
                         lstcon_console_fini();
-                case LST_INIT_PARAM:
-                        lnet_sfw_param_fini();
 #endif
                 case LST_INIT_FW:
                         sfw_shutdown();
                 case LST_INIT_RPC:
                         srpc_shutdown();
+#ifdef __KERNEL__
+                case LST_INIT_PARAM:
+                        lnet_sfw_param_fini();
+#endif
                 case LST_INIT_NONE:
                         break;
                 default:
@@ -91,6 +93,15 @@ lnet_selftest_init (void)
 {
         int	rc;
 
+#ifdef __KERNEL__
+        rc = lnet_sfw_param_init();
+        if (rc != 0) {
+                CERROR("LST can't startup parameters\n");
+                goto error;
+        }
+        lst_init_step = LST_INIT_PARAM;
+#endif
+
         rc = srpc_startup();
         if (rc != 0) {
                 CERROR("LST can't startup rpc\n");
@@ -112,13 +123,6 @@ lnet_selftest_init (void)
                 goto error;
         }
         lst_init_step = LST_INIT_CONSOLE;
-
-        rc = lnet_sfw_param_init();
-        if (rc != 0) {
-                CERROR("LST can't startup parameters\n");
-                goto error;
-        }
-        lst_init_step = LST_INIT_PARAM;
 #endif
 
         return 0;
