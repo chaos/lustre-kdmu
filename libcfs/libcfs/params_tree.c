@@ -763,8 +763,6 @@ param_seq_open(cfs_param_entry_t *pe, struct param_seq_args *args,
 
         seqf = cfs_file_private(args->psa_file);
         LASSERT(seqf != NULL);
-        /* This seqf might be init already in linux system */
-        cfs_mutex_init(&seqf->lock);
         seqf->buf = args->psa_buf;
         if (buf)
                 memcpy(seqf->buf, buf, count);
@@ -934,13 +932,11 @@ param_seq_read(char *ubuf, loff_t *loff, int count, int *eof,
         if (bytes < 0)
                 GOTO(out, rc = bytes);
         if (bytes > left_bytes)
-                GOTO(out, rc = left_bytes - bytes);
-        if (left_bytes >= bytes) {
-                if (cfs_copy_to_user(ubuf, output, bytes))
-                        GOTO(out, rc = -EFAULT);
-                left_bytes -= bytes;
-                ubuf += bytes;
-        }
+                GOTO(out, rc = -ENOSPC);
+        if (cfs_copy_to_user(ubuf, output, bytes))
+                GOTO(out, rc = -EFAULT);
+        left_bytes -= bytes;
+        ubuf += bytes;
 
         /* get more */
         while((left_bytes > 0)) {
@@ -975,7 +971,7 @@ param_seq_read(char *ubuf, loff_t *loff, int count, int *eof,
                 ubuf += bytes;
         }
 out:
-        rc = (left_bytes < count) ? (count - left_bytes) : rc;
+        rc = (rc < 0) ? rc : (count - left_bytes);
         param_seq_stop(pe, &args);
         param_seq_release(pe, &args);
 free:
