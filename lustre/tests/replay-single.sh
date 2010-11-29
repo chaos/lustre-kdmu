@@ -27,7 +27,8 @@ ALWAYS_EXCEPT="65a   61d   33a 33b $REPLAY_SINGLE_EXCEPT"
 # 20b -- FAIL: after 74332 > before 34288 
 # 65b -- HEAD doesn't pass it either
 # 85a -- HEAD doesn't pass it either
-ALWAYS_EXCEPT="$ALWAYS_EXCEPT 20b 65b 85a"
+# 0c -- invalid test, to be fixed in master, bug 18857, 24078
+ALWAYS_EXCEPT="$ALWAYS_EXCEPT 0c 20b 65b 85a"
 
 #                                                  63 min  7 min  AT AT AT AT"
 [ "$SLOW" = "no" ] && EXCEPT_SLOW="1 2 3 4 6 12 16 44a      44b    65 66 67 68"
