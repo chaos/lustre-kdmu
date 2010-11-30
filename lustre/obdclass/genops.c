@@ -1412,8 +1412,8 @@ static void print_export_data(struct obd_export *exp, const char *status,
                 nreplies++;
         }
         cfs_spin_unlock(&exp->exp_lock);
-
-        CDEBUG(D_HA, "%s: %s %p %s %s %d (%d %d %d) %d %d %d %d: %p %s "LPU64"\n",
+        /* XXX: for debugging purposes this is ERROR level now */
+        CDEBUG(D_ERROR, "%s: %s %p %s %s %d (%d %d %d) %d %d %d %d: %p %s "LPU64"\n",
                exp->exp_obd->obd_name, status, exp, exp->exp_client_uuid.uuid,
                obd_export_nid2str(exp), cfs_atomic_read(&exp->exp_refcount),
                cfs_atomic_read(&exp->exp_rpc_count),
