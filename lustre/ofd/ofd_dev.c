@@ -163,7 +163,7 @@ static int filter_intent_policy(struct ldlm_namespace *ns,
         if (rc == LDLM_ITER_CONTINUE) {
                 /* do not grant locks to the liblustre clients: they cannot
                  * handle ASTs robustly.  We need to do this while still
-                 * holding ns_lock to avoid the lock remaining on the res_link
+                 * holding lr_lock to avoid the lock remaining on the res_link
                  * list (and potentially being added to l_pending_list by an
                  * AST) when we are going to drop this lock ASAP. */
                 if (lock->l_export->exp_libclient ||
@@ -186,7 +186,7 @@ static int filter_intent_policy(struct ldlm_namespace *ns,
         *reply_lvb = *res_lvb;
 
         /*
-         * ->ns_lock guarantees that no new locks are granted, and,
+         * ->lr_lock guarantees that no new locks are granted, and,
          * therefore, that res->lr_lvb_data cannot increase beyond the
          * end of already granted lock. As a result, it is safe to
          * check against "stale" reply_lvb->lvb_size value without
@@ -696,7 +696,8 @@ static int filter_init0(const struct lu_env *env, struct filter_device *m,
         snprintf(info->fti_u.ns_name, sizeof(info->fti_u.ns_name), "filter-%p", m);
         m->ofd_namespace = ldlm_namespace_new(obd, info->fti_u.ns_name,
                                               LDLM_NAMESPACE_SERVER,
-                                              LDLM_NAMESPACE_GREEDY);
+                                              LDLM_NAMESPACE_GREEDY,
+                                              LDLM_NS_TYPE_OST);
         if (m->ofd_namespace == NULL)
                 GOTO(err_stack_fini, rc = -ENOMEM);
 
