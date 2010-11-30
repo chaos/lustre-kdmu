@@ -583,6 +583,7 @@ static struct thandle *osd_trans_create(const struct lu_env *env,
         oh->ot_tx = tx;
         th = &oh->ot_super;
         th->th_result = 0;
+        th->th_tags = LCT_TX_HANDLE;
         th->th_dev = dt;
         RETURN(th);
 }
@@ -614,7 +615,7 @@ static int osd_trans_start(const struct lu_env *env, struct dt_device *d,
                 /* add commit callback */
                 udmu_tx_cb_register(oh->ot_tx, osd_trans_commit_cb, (void *)oh);
                 oh->ot_assigned = 1;
-                lu_context_init(&th->th_ctx, LCT_TX_HANDLE);
+                lu_context_init(&th->th_ctx, th->th_tags);
                 lu_context_enter(&th->th_ctx);
                 lu_device_get(&d->dd_lu_dev);
         }

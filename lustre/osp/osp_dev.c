@@ -745,7 +745,7 @@ LU_CONTEXT_KEY_DEFINE(osp, LCT_MD_THREAD);
 LU_KEY_INIT_FINI(osp_txn, struct osp_txn_info);
 
 struct lu_context_key osp_txn_key = {
-        .lct_tags = LCT_TX_HANDLE,
+        .lct_tags = LCT_OSP_THREAD,
         .lct_init = osp_txn_key_init,
         .lct_fini = osp_txn_key_fini
 };
