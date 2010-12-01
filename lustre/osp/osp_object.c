@@ -355,9 +355,10 @@ static int osp_object_init(const struct lu_env *env, struct lu_object *o,
 static void osp_object_free(const struct lu_env *env, struct lu_object *o)
 {
         struct osp_object *obj = lu2osp_obj(o);
+        struct lu_object_header *h = o->lo_header;
 
         dt_object_fini(&obj->opo_obj);
-
+        lu_object_header_fini(h);
         OBD_FREE_PTR(obj);
 }
 
