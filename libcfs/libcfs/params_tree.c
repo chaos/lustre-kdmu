@@ -95,25 +95,22 @@ cfs_param_put(cfs_param_entry_t *pe)
 }
 EXPORT_SYMBOL(cfs_param_put);
 
-static void *
-pe_hash_get(cfs_hlist_node_t *hnode)
+static void
+pe_hash_get(cfs_hash_t *hs, cfs_hlist_node_t *hnode)
 {
         cfs_param_entry_t *pe;
 
         pe = cfs_hlist_entry(hnode, cfs_param_entry_t, pe_hnode);
-
-        return cfs_param_get(pe);
+        cfs_param_get(pe);
 }
 
-static void *
-pe_hash_put(cfs_hlist_node_t *hnode)
+static void
+pe_hash_put(cfs_hash_t *hs, cfs_hlist_node_t *hnode)
 {
         cfs_param_entry_t *pe;
 
         pe = cfs_hlist_entry(hnode, cfs_param_entry_t, pe_hnode);
         cfs_param_put(pe);
-
-        return pe;
 }
 
 static unsigned
@@ -543,7 +540,8 @@ static int
 find_firsthnode_cb(cfs_hash_t *hs, cfs_hash_bd_t *bd, cfs_hlist_node_t *hnode,
                    void *data)
 {
-        *(cfs_param_entry_t **)data = cfs_hash_get(hs, hnode);
+        cfs_param_entry_t *pe = cfs_hash_object(hs, hnode);
+        *(cfs_param_entry_t **)data = cfs_param_get(pe);
 
         /* return and break the loop */
         return 1;

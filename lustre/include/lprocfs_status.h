@@ -75,8 +75,8 @@ struct lprocfs_static_vars {
 /* if we find more consumers this could be generalized */
 #define OBD_HIST_MAX 32
 struct obd_histogram {
-        cfs_spinlock_t      oh_lock;
-        unsigned long   oh_buckets[OBD_HIST_MAX];
+        cfs_spinlock_t oh_lock;
+        unsigned long  oh_buckets[OBD_HIST_MAX];
 };
 
 enum {
@@ -320,7 +320,6 @@ enum {
 extern cfs_param_entry_t *proc_lustre_root;
 
 struct obd_device;
-
 struct obd_histogram;
 
 /* Days / hours / mins / seconds format */
@@ -570,7 +569,6 @@ unsigned long lprocfs_oh_sum(struct obd_histogram *oh);
 void lprocfs_stats_collect(struct lprocfs_stats *stats, int idx,
                            struct lprocfs_counter *cnt);
 
-
 /* lprocfs_status.c: recovery status */
 int lprocfs_obd_rd_recovery_status(char *page, char **start, off_t off,
                                    int count, int *eof, void *data);
@@ -656,19 +654,23 @@ int lprocfs_obd_wr_recovery_time_hard(cfs_param_file_t *file, const char *buffer
 int lprocfs_obd_rd_mntdev(char *page, char **start, off_t off,
                           int count, int *eof, void *data);
 /* all quota proc functions */
-extern int lprocfs_quota_rd_bunit(char *page, char **start, off_t off, int count,
+extern int lprocfs_quota_rd_bunit(char *page, char **start,
+                                  off_t off, int count,
                                   int *eof, void *data);
 extern int lprocfs_quota_wr_bunit(cfs_param_file_t *file, const char *buffer,
                                   unsigned long count, void *data);
-extern int lprocfs_quota_rd_btune(char *page, char **start, off_t off, int count,
+extern int lprocfs_quota_rd_btune(char *page, char **start,
+                                  off_t off, int count,
                                   int *eof, void *data);
 extern int lprocfs_quota_wr_btune(cfs_param_file_t *file, const char *buffer,
                                   unsigned long count, void *data);
-extern int lprocfs_quota_rd_iunit(char *page, char **start, off_t off, int count,
+extern int lprocfs_quota_rd_iunit(char *page, char **start,
+                                  off_t off, int count,
                                   int *eof, void *data);
 extern int lprocfs_quota_wr_iunit(cfs_param_file_t *file, const char *buffer,
                                   unsigned long count, void *data);
-extern int lprocfs_quota_rd_itune(char *page, char **start, off_t off, int count,
+extern int lprocfs_quota_rd_itune(char *page, char **start,
+                                  off_t off, int count,
                                   int *eof, void *data);
 extern int lprocfs_quota_wr_itune(cfs_param_file_t *file, const char *buffer,
                                   unsigned long count, void *data);
@@ -719,7 +721,8 @@ static inline void lprocfs_counter_add(struct lprocfs_stats *stats,
                                        int index, long amount)
 { return; }
 static inline void lprocfs_counter_incr(struct lprocfs_stats *stats,
-                                        int index) { return; }
+                                        int index)
+{ return; }
 static inline void lprocfs_counter_sub(struct lprocfs_stats *stats,
                                        int index, long amount)
 { return; }
@@ -735,9 +738,10 @@ static inline __u64 lc_read_helper(struct lprocfs_counter *lc,
                                    enum lprocfs_fields_flags field)
 { return 0; }
 
+/* NB: we return !NULL to satisfy error checker */
 static inline struct lprocfs_stats *
 lprocfs_alloc_stats(unsigned int num, enum lprocfs_stats_flags flags)
-{ return NULL; }
+{ return (struct lprocfs_stats *)1; }
 static inline void lprocfs_clear_stats(struct lprocfs_stats *stats)
 { return; }
 static inline void lprocfs_free_stats(struct lprocfs_stats **stats)
@@ -865,41 +869,53 @@ static inline int lprocfs_wr_ping(cfs_param_file_t *file, const char *buffer,
 
 
 /* Statfs helpers */
-static inline int lprocfs_rd_blksize(char *page, char **start, off_t off,
-                                     int count, int *eof, void *data)
+static inline
+int lprocfs_rd_blksize(char *page, char **start, off_t off,
+                       int count, int *eof, void *data)
 { return 0; }
-static inline int lprocfs_rd_kbytestotal(char *page, char **start, off_t off,
-                                         int count, int *eof, void *data)
+static inline
+int lprocfs_rd_kbytestotal(char *page, char **start, off_t off,
+                           int count, int *eof, void *data)
 { return 0; }
-static inline int lprocfs_rd_kbytesfree(char *page, char **start, off_t off,
-                                        int count, int *eof, void *data)
+static inline
+int lprocfs_rd_kbytesfree(char *page, char **start, off_t off,
+                          int count, int *eof, void *data)
 { return 0; }
-static inline int lprocfs_rd_kbytesavail(char *page, char **start, off_t off,
-                                         int count, int *eof, void *data)
+static inline
+int lprocfs_rd_kbytesavail(char *page, char **start, off_t off,
+                           int count, int *eof, void *data)
 { return 0; }
-static inline int lprocfs_rd_filestotal(char *page, char **start, off_t off,
-                                        int count, int *eof, void *data)
+static inline
+int lprocfs_rd_filestotal(char *page, char **start, off_t off,
+                          int count, int *eof, void *data)
 { return 0; }
-static inline int lprocfs_rd_filesfree(char *page, char **start, off_t off,
-                                       int count, int *eof, void *data)
+static inline
+int lprocfs_rd_filesfree(char *page, char **start, off_t off,
+                         int count, int *eof, void *data)
 { return 0; }
-static inline int lprocfs_rd_filegroups(char *page, char **start, off_t off,
-                                        int count, int *eof, void *data)
+static inline
+int lprocfs_rd_filegroups(char *page, char **start, off_t off,
+                          int count, int *eof, void *data)
 { return 0; }
-static inline void lprocfs_oh_tally(struct obd_histogram *oh, unsigned int value)
+static inline
+void lprocfs_oh_tally(struct obd_histogram *oh, unsigned int value)
 { return; }
-static inline void lprocfs_oh_tally_log2(struct obd_histogram *oh,
-                                         unsigned int value)
+static inline
+void lprocfs_oh_tally_log2(struct obd_histogram *oh, unsigned int value)
 { return; }
-static inline void lprocfs_oh_clear(struct obd_histogram *oh)
+static inline
+void lprocfs_oh_clear(struct obd_histogram *oh)
 { return; }
-static inline unsigned long lprocfs_oh_sum(struct obd_histogram *oh)
+static inline
+unsigned long lprocfs_oh_sum(struct obd_histogram *oh)
 { return 0; }
-static inline void lprocfs_stats_collect(struct lprocfs_stats *stats, int idx,
-                                         struct lprocfs_counter *cnt)
+static inline
+void lprocfs_stats_collect(struct lprocfs_stats *stats, int idx,
+                           struct lprocfs_counter *cnt)
 { return; }
-static inline __u64 lprocfs_stats_collector(struct lprocfs_stats *stats, int idx,
-                                            enum lprocfs_fields_flags field)
+static inline
+__u64 lprocfs_stats_collector(struct lprocfs_stats *stats, int idx,
+                               enum lprocfs_fields_flags field)
 { return (__u64)0; }
 static inline void lprocfs_put_peref(cfs_param_entry_t *entry)
 { return; }

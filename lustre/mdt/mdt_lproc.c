@@ -119,6 +119,8 @@ int mdt_procfs_init(struct mdt_device *mdt, const char *name)
                 lprocfs_put_peref(temp);
         }
         rc = lprocfs_alloc_md_stats(obd, LPROC_MDT_LAST);
+        if (rc == 0)
+                mdt_stats_counter_init(obd->md_stats);
 
         RETURN(rc);
 }
@@ -917,8 +919,8 @@ void lprocfs_mdt_init_vars(struct lprocfs_static_vars *lvars)
 
 void mdt_counter_incr(struct obd_export *exp, int opcode)
 {
-        if (exp->exp_obd && exp->exp_obd->obd_stats)
-                lprocfs_counter_incr(exp->exp_obd->obd_stats, opcode);
+        if (exp->exp_obd && exp->exp_obd->md_stats)
+                lprocfs_counter_incr(exp->exp_obd->md_stats, opcode);
         if (exp->exp_nid_stats && exp->exp_nid_stats->nid_stats != NULL)
                 lprocfs_counter_incr(exp->exp_nid_stats->nid_stats, opcode);
 

@@ -355,7 +355,7 @@ ptlrpc_lprocfs_rd_threads_started(char *page, char **start, off_t off,
         cfs_param_get_data(svc, data, NULL);
 
         return cfs_param_snprintf(page, count, data, CFS_PARAM_S32, "%d\n",
-                                     svc->srv_threads_started);
+                                     svc->srv_threads_running);
 }
 
 static int
@@ -498,8 +498,8 @@ ptlrpc_lprocfs_svc_req_history_next(cfs_seq_file_t *s,
         return srhi;
 }
 
-/* common ost/mdt srv_request_history_print_fn */
-void target_print_req(void *data, struct ptlrpc_request *req)
+/* common ost/mdt srv_req_printfn */
+void target_print_req(void *seq_file, struct ptlrpc_request *req)
 {
         /* Called holding srv_lock with irqs disabled.
          * Print specific req contents and a newline.
@@ -507,7 +507,7 @@ void target_print_req(void *data, struct ptlrpc_request *req)
          * You might have received any old crap so you must be just as
          * careful here as the service's request parser!!! */
         /* this is a seq file pointer */
-        cfs_seq_file_t *sf = data;
+        cfs_seq_file_t *sf = seq_file;
 
         switch (req->rq_phase) {
         case RQ_PHASE_NEW:
@@ -557,10 +557,10 @@ static int ptlrpc_lprocfs_svc_req_history_show(cfs_seq_file_t *s, void *iter)
                            req->rq_arrival_time.tv_sec,
                            req->rq_sent - req->rq_arrival_time.tv_sec,
                            req->rq_sent - req->rq_deadline);
-                if (svc->srv_request_history_print_fn == NULL)
+                if (svc->srv_req_printfn == NULL)
                         cfs_seq_printf(s, "\n");
                 else
-                        svc->srv_request_history_print_fn(s, srhi->srhi_req);
+                        svc->srv_req_printfn(s, srhi->srhi_req);
         }
 
         cfs_spin_unlock(&svc->srv_lock);

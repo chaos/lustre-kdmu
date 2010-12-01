@@ -27,10 +27,8 @@
 
 #if defined(__KERNEL__) && defined(LNET_ROUTER)
 
-#ifdef CONFIG_PROC_FS
-#if defined(__linux__)
-#include <linux/seq_file.h>
-#endif
+/* This is really lnet_proc.c. You might need to update sanity test 215
+ * if any file format is changed. */
 
 /* this is really lnet_proc.c */
 #define LNET_PROC_ROOT    "sys/lnet"
@@ -40,7 +38,6 @@
 #define LNET_PROC_PEERS   LNET_PROC_ROOT"/peers"
 #define LNET_PROC_BUFFERS LNET_PROC_ROOT"/buffers"
 #define LNET_PROC_NIS     LNET_PROC_ROOT"/nis"
-#endif
 
 #define LNET_PARAM_STATS   "stats"
 #define LNET_PARAM_ROUTES  "routes"
@@ -534,6 +531,7 @@ lnet_peer_seq_show (cfs_seq_file_t *s, void *iter)
         char                     *aliveness = "NA";
         lnet_peer_t              *lp;
         lnet_nid_t                nid;
+        int                       lastalive = -1;
         int                       maxcr;
         int                       mintxcr;
         int                       txcr;
@@ -543,9 +541,10 @@ lnet_peer_seq_show (cfs_seq_file_t *s, void *iter)
         int                       nrefs;
 
         if (lpsi->lpsi_off == 0) {
-                cfs_seq_printf(s, "%-24s %4s %5s %5s %5s %5s %5s %5s %s\n",
-                               "nid", "refs", "state", "max",
-                               "rtr", "min", "tx", "min", "queue");
+                cfs_seq_printf(s,
+                              "%-24s %4s %5s %5s %5s %5s %5s %5s %5s %s\n",
+                              "nid", "refs", "state", "last", "max",
+                              "rtr", "min", "tx", "min", "queue");
                 return 0;
         }
 
@@ -572,11 +571,28 @@ lnet_peer_seq_show (cfs_seq_file_t *s, void *iter)
         if (lnet_isrouter(lp) || lnet_peer_aliveness_enabled(lp))
                 aliveness = lp->lp_alive ? "up" : "down";
 
+        if (lnet_peer_aliveness_enabled(lp)) {
+                cfs_time_t     now = cfs_time_current();
+                cfs_duration_t delta;
+
+                delta = cfs_time_sub(now, lp->lp_last_alive);
+                lastalive = cfs_duration_sec(delta);
+
+                /* No need to mess up peers contents with
+                 * arbitrarily long integers - it suffices to
+                 * know that lastalive is more than 10000s old
+                 */
+                if (lastalive >= 10000)
+                        lastalive = 9999;
+        }
+
         LNET_UNLOCK();
 
-        cfs_seq_printf(s, "%-24s %4d %5s %5d %5d %5d %5d %5d %d\n",
+        cfs_seq_printf(s,
+                       "%-24s %4d %5s %5d %5d %5d %5d %5d %5d %d\n",
                        libcfs_nid2str(nid), nrefs, aliveness,
-                       maxcr, rtrcr, minrtrcr, txcr, mintxcr, txqnob);
+                       lastalive, maxcr, rtrcr, minrtrcr, txcr,
+                       mintxcr, txqnob);
         return 0;
 }
 
@@ -814,8 +830,7 @@ lnet_ni_seq_show (cfs_seq_file_t *s, void *iter)
 }
 
 LNET_SEQ_OPS(lnet_ni);
-
-#endif /* __KERNEL__ && LNET_ROUTER */
+#endif /* defined(__KERNEL__) && defined(LNET_ROUTER) */
 
 #if defined(LPROCFS) && defined(LNET_ROUTER)
 void

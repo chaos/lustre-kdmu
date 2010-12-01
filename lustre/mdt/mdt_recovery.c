@@ -1089,7 +1089,7 @@ static void mdt_steal_ack_locks(struct ptlrpc_request *req)
                                 oldrep->rs_opc);
 
                 svc = oldrep->rs_service;
-                cfs_spin_lock (&svc->srv_lock);
+                cfs_spin_lock (&svc->srv_rs_lock);
 
                 cfs_list_del_init (&oldrep->rs_exp_list);
 
@@ -1109,7 +1109,7 @@ static void mdt_steal_ack_locks(struct ptlrpc_request *req)
                 ptlrpc_schedule_difficult_reply (oldrep);
                 cfs_spin_unlock(&oldrep->rs_lock);
 
-                cfs_spin_unlock (&svc->srv_lock);
+                cfs_spin_unlock (&svc->srv_rs_lock);
                 break;
         }
         cfs_spin_unlock(&exp->exp_lock);
