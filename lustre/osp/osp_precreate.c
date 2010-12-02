@@ -607,12 +607,17 @@ int osp_precreate_reserve(struct osp_device *d)
 {
         struct l_wait_info lwi = { 0 };
         int                precreated, rc;
+        int                count = 0;
         ENTRY;
 
         LASSERT(d->opd_pre_last_created >= d->opd_pre_next);
 
         while ((rc = d->opd_pre_status) == 0 || rc == -ENOSPC) {
 
+                LASSERTF(count++ < 100,
+                         "status %d, rc %d, last %Lu, next %Lu\n",
+                         d->opd_pre_status, rc, d->opd_pre_last_created,
+                         d->opd_pre_next);
                 /*
                  * increase number of precreations
                  */
@@ -655,8 +660,9 @@ int osp_precreate_reserve(struct osp_device *d)
                 cfs_waitq_signal(&d->opd_pre_waitq);
 
                 l_wait_event(d->opd_pre_user_waitq,
-                             (d->opd_pre_last_created > d->opd_pre_next) ||
-                              d->opd_pre_status != 0,
+                             (d->opd_pre_last_created > d->opd_pre_next &&
+                              (d->opd_pre_last_created - d->opd_pre_next > d->opd_pre_reserved))
+                             || d->opd_pre_status != 0,
                               &lwi);
         }
 
