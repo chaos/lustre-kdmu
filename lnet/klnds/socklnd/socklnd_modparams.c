@@ -165,6 +165,7 @@ ksock_tunables_t ksocknal_tunables;
 
 int ksocknal_tunables_init(void)
 {
+        int rc;
 
         /* initialize ksocknal_tunables structure */
         ksocknal_tunables.ksnd_timeout            = &sock_timeout;
@@ -213,9 +214,27 @@ int ksocknal_tunables_init(void)
         if (*ksocknal_tunables.ksnd_zc_min_payload < (2 << 10))
                 *ksocknal_tunables.ksnd_zc_min_payload = (2 << 10);
 
+        if (!*ksocknal_tunables.ksnd_typed_conns) {
+                int rc = -EINVAL;
+#if SOCKNAL_VERSION_DEBUG
+                if (*ksocknal_tunables.ksnd_protocol < 3)
+                        rc = 0;
+#endif
+                if (rc != 0) {
+                        CERROR("Protocol V3.x MUST have typed connections\n");
+                        return rc;
+                }
+        }
+
         /* initialize platform-sepcific tunables */
-        ksocknal_lib_params_init();
-        return ksocknal_lib_tunables_init();
+        rc = ksocknal_lib_params_init();
+        if (rc != 0)
+                return rc;
+        rc = ksocknal_lib_tunables_init();
+        if (rc != 0)
+                ksocknal_lib_params_fini();
+
+        return rc;
 };
 
 void ksocknal_tunables_fini(void)

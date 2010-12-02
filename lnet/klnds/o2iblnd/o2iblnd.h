@@ -111,7 +111,7 @@ typedef struct
         int              *kib_peerrtrcredits;   /* # per-peer router buffer credits */
         int              *kib_peercredits_hiw;  /* # when eagerly to return credits */
         int              *kib_peertimeout;      /* seconds to consider peer dead */
-        char            **kib_default_ipif;     /* default IPoIB interface */
+        char             *kib_default_ipif;     /* default IPoIB interface */
         int              *kib_retry_count;
         int              *kib_rnr_retry_count;
         int              *kib_concurrent_sends; /* send work queue sizing */

@@ -119,7 +119,7 @@ typedef struct
 #ifdef CRAY_XT3
         int             *kptl_ptltrace_on_timeout; /* dump pltrace on timeout? */
         int             *kptl_ptltrace_on_fail;    /* dump pltrace on PTL_NAL_FAILED? */
-        char           **kptl_ptltrace_basename;  /* ptltrace dump file basename */
+        char            *kptl_ptltrace_basename;  /* ptltrace dump file basename */
 #endif
 #ifdef PJK_DEBUGGING
         int             *kptl_simulation_bitmap;/* simulation bitmap */

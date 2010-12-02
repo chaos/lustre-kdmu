@@ -115,9 +115,10 @@ static int ptltrace_on_fail = 1;
 CFS_MODULE_PARM(ptltrace_on_fail, "i", int, 0644,
                 "dump ptltrace on Portals failure");
 
-static char *ptltrace_basename = "/tmp/lnet-ptltrace";
-CFS_MODULE_PARM(ptltrace_basename, "s", charp, 0644,
-                "ptltrace dump file basename");
+static char ptltrace_basename[1024] = "/tmp/lnet-ptltrace";
+CFS_MODULE_PARM_STR(ptltrace_basename, ptltrace_basename,
+                    sizeof(ptltrace_basename), 0644,
+                    "ptltrace dump file basename");
 #endif
 #ifdef PJK_DEBUGGING
 static int simulation_bitmap = 0;
@@ -146,7 +147,7 @@ kptl_tunables_t kptllnd_tunables = {
 #ifdef CRAY_XT3
         .kptl_ptltrace_on_timeout    = &ptltrace_on_timeout,
         .kptl_ptltrace_on_fail       = &ptltrace_on_fail,
-        .kptl_ptltrace_basename      = &ptltrace_basename,
+        .kptl_ptltrace_basename      = ptltrace_basename,
 #endif
 #ifdef PJK_DEBUGGING
         .kptl_simulation_bitmap      = &simulation_bitmap,
@@ -154,8 +155,6 @@ kptl_tunables_t kptllnd_tunables = {
 };
 
 #ifdef CRAY_XT3
-static char ptltrace_basename_space[1024];
-
 static void
 kptllnd_init_strtunable(char **str_param, char *space, int size)
 {
@@ -354,8 +353,8 @@ static cfs_sysctl_table_t kptllnd_ctl_table[] = {
         {
                 .ctl_name = KPTLLND_TRACEBASENAME,
                 .procname = "ptltrace_basename",
-                .data     = ptltrace_basename_space,
-                .maxlen   = sizeof(ptltrace_basename_space),
+                .data     = ptltrace_basename,
+                .maxlen   = sizeof(ptltrace_basename),
                 .mode     = 0644,
                 .proc_handler = &proc_dostring,
                 .strategy = &sysctl_string
@@ -520,12 +519,6 @@ static cfs_param_sysctl_table_t cfs_param_kptllnd_ctl_table[] = {
 int
 kptllnd_tunables_init ()
 {
-#ifdef CRAY_XT3
-        kptllnd_init_strtunable(&ptltrace_basename,
-                                ptltrace_basename_space,
-                                sizeof(ptltrace_basename_space));
-#endif
-
         cfs_param_sysctl_init("ptllnd", cfs_param_kptllnd_ctl_table,
                               cfs_param_get_lnet_root());
 

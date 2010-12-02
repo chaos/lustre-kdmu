@@ -76,9 +76,9 @@ static int peer_timeout = 180;
 CFS_MODULE_PARM(peer_timeout, "i", int, 0444,
                 "Seconds without aliveness news to declare peer dead (<=0 to disable)");
 
-static char *ipif_name = "ib0";
-CFS_MODULE_PARM(ipif_name, "s", charp, 0444,
-                "IPoIB interface name");
+static char ipif_name[32] = "ib0";
+CFS_MODULE_PARM_STR(ipif_name, ipif_name, sizeof(ipif_name), 0444,
+                    "IPoIB interface name");
 
 static int retry_count = 5;
 CFS_MODULE_PARM(retry_count, "i", int, 0644,
@@ -141,7 +141,7 @@ kib_tunables_t kiblnd_tunables = {
         .kib_peercredits_hiw        = &peer_credits_hiw,
         .kib_peerrtrcredits         = &peer_buffer_credits,
         .kib_peertimeout            = &peer_timeout,
-        .kib_default_ipif           = &ipif_name,
+        .kib_default_ipif           = ipif_name,
         .kib_retry_count            = &retry_count,
         .kib_rnr_retry_count        = &rnr_retry_count,
         .kib_concurrent_sends       = &concurrent_sends,
@@ -152,8 +152,6 @@ kib_tunables_t kiblnd_tunables = {
         .kib_fmr_cache              = &fmr_cache,
         .kib_pmr_pool_size          = &pmr_pool_size,
 };
-
-static char ipif_basename_space[32];
 
 #if defined(CONFIG_SYSCTL) && !CFS_SYSFS_MODULE_PARM
 
@@ -284,8 +282,8 @@ static cfs_sysctl_table_t kiblnd_ctl_table[] = {
         {
                 .ctl_name = O2IBLND_IPIF_BASENAME,
                 .procname = "ipif_name",
-                .data     = ipif_basename_space,
-                .maxlen   = sizeof(ipif_basename_space),
+                .data     = ipif_name,
+                .maxlen   = sizeof(ipif_name),
                 .mode     = 0444,
                 .proc_handler = &proc_dostring
         },
@@ -453,7 +451,7 @@ static cfs_param_sysctl_table_t cfs_param_kiblnd_ctl_table[] = {
         },
         {
                 .name     = "ipif_name",
-                .data     = ipif_basename_space,
+                .data     = ipif_name,
                 .mode     = 0444,
                 .read     = cfs_param_string_read
         },
@@ -520,22 +518,18 @@ static cfs_param_sysctl_table_t cfs_param_kiblnd_ctl_table[] = {
                 .mode     = 0444,
                 .read     = cfs_param_intvec_read
         },
+        {
+                .name     = "dev_failover",
+                .data     = &dev_failover,
+                .mode     = 0444,
+                .read     = cfs_param_intvec_read
+        },
         {0}
 };
 
 void
-kiblnd_initstrtunable(char *space, char *str, int size)
-{
-        strncpy(space, str, size);
-        space[size-1] = 0;
-}
-
-void
 kiblnd_sysctl_init (void)
 {
-        kiblnd_initstrtunable(ipif_basename_space, ipif_name,
-                              sizeof(ipif_basename_space));
-
         cfs_param_sysctl_init("o2iblnd", cfs_param_kiblnd_ctl_table,
                               cfs_param_get_lnet_root());
 

@@ -41,7 +41,7 @@
  * we use a function to initialize these elements.
  */
 static cfs_param_sysctl_table_t lp_ksocknal_ctl_table[30];
-static void cfs_param_ksocknal_ctl_table_init(void)
+static void ksocknal_ctl_table_init(void)
 {
         int i = 0;
 
@@ -334,28 +334,9 @@ static void cfs_param_ksocknal_ctl_table_init(void)
 int
 ksocknal_lib_params_init ()
 {
-        if (!*ksocknal_tunables.ksnd_typed_conns) {
-                int rc = -EINVAL;
-#if SOCKNAL_VERSION_DEBUG
-                if (*ksocknal_tunables.ksnd_protocol < 3)
-                        rc = 0;
-#endif
-                if (rc != 0) {
-                        CERROR("Protocol V3.x MUST have typed connections\n");
-                        return rc;
-                }
-        }
-
-        if (*ksocknal_tunables.ksnd_zc_recv_min_nfrags < 2)
-                *ksocknal_tunables.ksnd_zc_recv_min_nfrags = 2;
-        if (*ksocknal_tunables.ksnd_zc_recv_min_nfrags > LNET_MAX_IOV)
-                *ksocknal_tunables.ksnd_zc_recv_min_nfrags = LNET_MAX_IOV;
-
-        cfs_param_ksocknal_ctl_table_init();
-        cfs_param_sysctl_init("socknal", lp_ksocknal_ctl_table,
-                              cfs_param_get_lnet_root());
-
-        return 0;
+        ksocknal_ctl_table_init();
+        return cfs_param_sysctl_init("socknal", lp_ksocknal_ctl_table,
+                                     cfs_param_get_lnet_root());
 }
 
 void

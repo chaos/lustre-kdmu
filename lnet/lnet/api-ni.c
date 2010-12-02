@@ -49,7 +49,7 @@ lnet_t      the_lnet;                           /* THE state of the network */
 
 static char ip2nets[LNET_MAX_STRLEN];
 CFS_MODULE_PARM_STR(ip2nets, ip2nets, sizeof(ip2nets), 0444,
-                "LNET network <- IP table");
+                    "LNET network <- IP table");
 
 static char networks[LNET_MAX_STRLEN];
 CFS_MODULE_PARM_STR(networks, networks, sizeof(networks), 0444,
@@ -57,7 +57,7 @@ CFS_MODULE_PARM_STR(networks, networks, sizeof(networks), 0444,
 
 static char routes[LNET_MAX_STRLEN];
 CFS_MODULE_PARM_STR(routes, routes, sizeof(routes), 0444,
-                "routes to non-local networks");
+                    "routes to non-local networks");
 
 cfs_param_sysctl_table_t apini_ctl_table[] = {
         {

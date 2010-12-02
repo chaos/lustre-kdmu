@@ -2862,7 +2862,7 @@ kiblnd_startup (lnet_ni_t *ni)
 
                 ifname = ni->ni_interfaces[0];
         } else {
-                ifname = *kiblnd_tunables.kib_default_ipif;
+                ifname = kiblnd_tunables.kib_default_ipif;
         }
 
         if (strlen(ifname) >= sizeof(ibdev->ibd_ifname)) {
