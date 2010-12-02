@@ -32,6 +32,7 @@ ALWAYS_EXCEPT="$ALWAYS_EXCEPT 0c 20b 65b 85a"
 
 #                                                  63 min  7 min  AT AT AT AT"
 [ "$SLOW" = "no" ] && EXCEPT_SLOW="1 2 3 4 6 12 16 44a      44b    65 66 67 68"
+FAIL_ON_ERROR=false
 
 build_test_filter
 
