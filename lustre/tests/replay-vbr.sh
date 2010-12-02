@@ -21,6 +21,7 @@ remote_mds_nodsh && log "SKIP: remote MDS with nodsh" && exit 0
 
 [ "$FSTYPE" != "ldiskfs" ] && log "SKIP: FSTYPE=$FSTYPE (bug 14865)" && exit 0
 [ "$MDSFSTYPE" != "ldiskfs" ] && log "SKIP: MDSFSTYPE=$MDSFSTYPE (bug 14865)" && exit 0
+FAIL_ON_ERROR=false
 
 build_test_filter
 

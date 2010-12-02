@@ -27,6 +27,7 @@ ALWAYS_EXCEPT="6     7     $REPLAY_OST_SINGLE_EXCEPT"
 
 #					
 [ "$SLOW" = "no" ] && EXCEPT_SLOW="5"
+FAIL_ON_ERROR=false
 
 build_test_filter
 

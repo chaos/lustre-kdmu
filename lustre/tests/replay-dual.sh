@@ -23,6 +23,7 @@ init_logging
 remote_mds_nodsh && skip "remote MDS with nodsh" && exit 0
 
 [ "$SLOW" = "no" ] && EXCEPT_SLOW="21b"
+FAIL_ON_ERROR=false
 
 build_test_filter
 

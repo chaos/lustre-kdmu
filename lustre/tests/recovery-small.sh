@@ -17,6 +17,7 @@ require_dsh_mds || exit 0
 # also long tests: 19, 21a, 21e, 21f, 23, 27
 #                                   1  2.5  2.5    4    4          (min)"
 [ "$SLOW" = "no" ] && EXCEPT_SLOW="17  26a  26b    50   51     57"
+FAIL_ON_ERROR=false
 
 build_test_filter
 
