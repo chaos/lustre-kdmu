@@ -1225,7 +1225,8 @@ static int lod_qos_parse_config(const struct lu_env *env, struct lod_object *lo,
 
                         lod_pool_putref(pool);
                 }
-        }
+        } else
+                lod_object_set_pool(lo, NULL);
 
         RETURN(0);
 

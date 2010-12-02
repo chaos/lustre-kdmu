@@ -198,6 +198,8 @@ int lod_parse_striping(const struct lu_env *env, struct lod_object *mo,
                        const struct lu_buf *buf);
 int lod_initialize_objects(const struct lu_env *env, struct lod_object *mo,
                            struct lov_ost_data_v1 *objs);
+int lod_store_def_striping(const struct lu_env *env, struct dt_object *dt,
+                           struct thandle *th);
 
 /* lod_pool.c */
 int lov_ost_pool_add(struct ost_pool *op, __u32 idx, unsigned int min_count);

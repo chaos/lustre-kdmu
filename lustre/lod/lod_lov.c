@@ -274,6 +274,7 @@ int lod_generate_and_set_lovea(const struct lu_env *env,
         buf.lb_vmalloc = 0;
         buf.lb_len = lov_mds_md_size(mo->mbo_stripenr, magic);
 
+        /* XXX: use thread info to save on allocation? */
         OBD_ALLOC(lmm, buf.lb_len);
         if (lmm == NULL)
                 RETURN(-ENOMEM);
@@ -516,6 +517,54 @@ int lod_load_striping(const struct lu_env *env, struct lod_object *mo)
         rc = lod_parse_striping(env, mo, &buf);
 
 out:
+        RETURN(rc);
+}
+
+int lod_store_def_striping(const struct lu_env *env, struct dt_object *dt,
+                           struct thandle *th)
+{
+        struct lod_object     *mo = lod_dt_obj(dt);
+        struct dt_object      *next = dt_object_child(dt);
+        struct lov_user_md_v3 *v3;
+        struct lu_buf          buf;
+        int                    rc;
+        ENTRY;
+
+        LASSERT(S_ISDIR(dt->do_lu.lo_header->loh_attr));
+
+        /*
+         * store striping defaults into new directory
+         * used to implement defaults inheritance
+         */
+
+        /* probably nothing to inherite */
+        if (mo->mbo_striping_cached == 0)
+                RETURN(0);
+
+        if (LOVEA_DELETE_VALUES(mo->mbo_def_stripe_size, mo->mbo_def_stripenr,
+                                mo->mbo_def_stripe_offset))
+                RETURN(0);
+
+        OBD_ALLOC(v3, sizeof(*v3));
+        if (v3 == NULL)
+                RETURN(-ENOMEM);
+
+        v3->lmm_magic = cpu_to_le32(LOV_MAGIC_V3);
+        v3->lmm_pattern = cpu_to_le32(LOV_PATTERN_RAID0);
+        v3->lmm_object_id = 0;
+        v3->lmm_object_seq = 0;
+        v3->lmm_stripe_size = cpu_to_le32(mo->mbo_def_stripe_size);
+        v3->lmm_stripe_count = cpu_to_le32(mo->mbo_def_stripenr);
+        v3->lmm_stripe_offset = cpu_to_le16(mo->mbo_def_stripe_offset);
+        if (mo->mbo_pool)
+                strncpy(v3->lmm_pool_name, mo->mbo_pool, LOV_MAXPOOLNAME);
+
+        buf.lb_buf = v3;
+        buf.lb_len = sizeof(*v3);
+        rc = dt_xattr_set(env, next, &buf, XATTR_NAME_LOV, 0, th, BYPASS_CAPA);
+
+        OBD_FREE(v3, sizeof(*v3));
+
         RETURN(rc);
 }
 
