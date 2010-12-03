@@ -89,11 +89,14 @@ unsigned int
 ksocknal_lib_sock_irq (cfs_socket_t *csockp)
 {
 #ifdef CPU_AFFINITY
-/*
- * There is no way on Solaris to query sock about its irq.
- * But we can use cpu_id as irq assuming a ksocket callback
- * has already set it:
- */        
+        if (!*ksocknal_tunables.ksnd_irq_affinity)
+                return 0;
+
+        /*
+         * There is no way on Solaris to query sock about its irq.
+         * But we can use cpu_id as irq assuming a ksocket callback
+         * has already set it:
+         */
         return csockp->csock_cpu_id;
 #endif
         return 0;

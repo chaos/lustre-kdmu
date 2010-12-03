@@ -76,6 +76,8 @@ CFS_MODULE_PARM(min_bulk, "i", int, 0644,
 # else
 #  define DEFAULT_BUFFER_SIZE (1152 * 1024)
 # endif
+#elif defined(__sun__)
+# define DEFAULT_BUFFER_SIZE (1024 * 1024)
 #else
 # define DEFAULT_BUFFER_SIZE 0
 #endif
