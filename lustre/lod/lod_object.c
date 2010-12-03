@@ -565,15 +565,14 @@ static inline int lod_object_will_be_striped(int is_reg, const struct lu_fid *fi
 static int lod_cache_parent_striping(const struct lu_env *env,
                                       struct lod_object *lp)
 {
-        struct dt_object      *next = dt_object_child(&lp->mbo_obj);
         struct lov_user_md_v1 *v1 = NULL;
         struct lov_user_md_v3 *v3 = NULL;
         int                    rc;
         ENTRY;
 
-        dt_read_lock(env, next, 0);
+        LASSERT(dt_write_locked(env,  dt_object_child(&lp->mbo_obj)));
+
         rc = lod_get_lov_ea(env, lp);
-        dt_read_unlock(env, next);
         if (rc < 0)
                 RETURN(rc);
 
@@ -636,6 +635,7 @@ static void lod_ah_init(const struct lu_env *env,
 
         LASSERT(child);
         LASSERT(lod_mti_get(env));
+        LASSERT(dt_write_locked(env, child));
 
         if (likely(parent)) {
                 nextp = dt_object_child(parent);

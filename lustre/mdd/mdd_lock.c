@@ -144,6 +144,7 @@ struct dynlock_handle *mdd_pdo_write_lock(const struct lu_env *env,
         handle = dynlock_lock(&obj->mod_pdlock, value, DLT_WRITE, GFP_NOFS);
         if (handle != NULL)
                 mdd_lockdep_pd_acquire(obj, role);
+        mdd_write_lock(env, obj, role);
         return handle;
 }
 
@@ -163,6 +164,7 @@ struct dynlock_handle *mdd_pdo_read_lock(const struct lu_env *env,
 void mdd_pdo_write_unlock(const struct lu_env *env, struct mdd_object *obj,
                           struct dynlock_handle *dlh)
 {
+        mdd_write_unlock(env, obj);
         mdd_lockdep_pd_release(obj);
         return dynlock_unlock(&obj->mod_pdlock, dlh);
 }

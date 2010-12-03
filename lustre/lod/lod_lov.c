@@ -389,6 +389,7 @@ int lod_initialize_objects(const struct lu_env *env, struct lod_object *mo,
         LASSERT(mo->mbo_stripe == NULL);
         LASSERT(mo->mbo_stripenr > 0);
         LASSERT(mo->mbo_stripe_size > 0);
+        LASSERT(dt_write_locked(env, dt_object_child(&mo->mbo_obj)));
 
         i = sizeof(struct dt_object *) * mo->mbo_stripenr;
         OBD_ALLOC(mo->mbo_stripe, i);
@@ -502,9 +503,12 @@ int lod_load_striping(const struct lu_env *env, struct lod_object *mo)
                 GOTO(out, rc = 0);
 
         LASSERT(mo->mbo_stripenr == 0);
-        dt_read_lock(env, next, 0);
+
+        /*
+         * currently this code is supposed to be called from declaration
+         * phase only, thus the object is expected to be locked by caller
+         */
         rc = lod_get_lov_ea(env, mo);
-        dt_read_unlock(env, next);
         if (rc <= 0)
                 GOTO(out, rc);
 
