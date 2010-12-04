@@ -908,7 +908,6 @@ static int lod_object_create(const struct lu_env *env,
                              struct thandle *th)
 {
         struct dt_object   *next = dt_object_child(dt);
-        struct lod_device  *d = lu2lod_dev(dt->do_lu.lo_dev);
         struct lod_object  *mo = lod_dt_obj(dt);
         int                 rc;
         ENTRY;
@@ -919,7 +918,7 @@ static int lod_object_create(const struct lu_env *env,
         if (rc == 0) {
                 if (S_ISDIR(dt->do_lu.lo_header->loh_attr))
                         rc = lod_store_def_striping(env, dt, th);
-                else if (mo->mbo_stripe && d->lod_recovery_completed)
+                else if (mo->mbo_stripe)
                         rc = lod_striping_create(env, dt, attr, dof, th);
         }
 
