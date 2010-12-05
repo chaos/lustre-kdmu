@@ -735,9 +735,9 @@ struct mdd_thandle *mdd_tx_start(const struct lu_env *env, struct mdd_device *md
 
         th->mtx_handle = mdd_trans_create(env, mdd);
         if (IS_ERR(th->mtx_handle)) {
-                th->mtx_err = PTR_ERR(th->mtx_handle);
-                th->mtx_handle = NULL;
-                CERROR("can't create transaction: %d\n", th->mtx_err);
+                CERROR("can't create transaction: %d\n",
+                       (int) PTR_ERR(th->mtx_handle));
+                th = (void *) th->mtx_handle;
         }
         return th;
 }
