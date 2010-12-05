@@ -1633,7 +1633,7 @@ static int mdd_create(const struct lu_env *env,
 
                 rc = mdd_def_acl_get(env, mdd_pobj, ma_acl);
                 if (rc)
-                        GOTO(out_unlock, rc);
+                        GOTO(out_free, rc);
                 else if (ma_acl->ma_valid & MA_ACL_DEF)
                         got_def_acl = 1;
         }
@@ -1642,7 +1642,7 @@ static int mdd_create(const struct lu_env *env,
 
         handle = mdd_tx_start(env, mdd);
         if (IS_ERR(handle))
-                GOTO(out_free, rc = PTR_ERR(handle));
+                GOTO(out_unlock, rc = PTR_ERR(handle));
 
         mdd_object_create_internal(env, mdd_pobj, son, ma, handle, spec);
 
@@ -1674,7 +1674,6 @@ static int mdd_create(const struct lu_env *env,
         la->la_valid = LA_CTIME | LA_MTIME;
         mdd_attr_check_set_internal_locked(env, mdd_pobj, la, handle, 0);
 
-        EXIT;
 
         mdd_changelog_ns_store(env, mdd,
                                S_ISDIR(attr->la_mode) ? CL_MKDIR :
@@ -1683,6 +1682,8 @@ static int mdd_create(const struct lu_env *env,
                                son, mdd_pobj, NULL, lname, handle);
 
         rc = mdd_tx_end(env, handle);
+
+        EXIT;
 
 out_unlock:
         mdd_pdo_write_unlock(env, mdd_pobj, dlh);
