@@ -266,7 +266,7 @@ void udmu_tx_commit(dmu_tx_t *tx);
 /* Commit callbacks */
 typedef void udmu_tx_callback_func_t(void *dcb_data, int error);
 void udmu_tx_cb_register(dmu_tx_t *tx, udmu_tx_callback_func_t *func, void *data);
-
+void udmu_wait_callbacks(udmu_objset_t *uos);
 
 int udmu_object_is_zap(dmu_buf_t *);
 
