@@ -468,8 +468,9 @@ int mdd_tx_xattr_set_exec(const struct lu_env *env, struct thandle *th,
                 rc = 0;
         }
 
-        CDEBUG(D_OTHER, "set xattr %s from %p/%u on "DFID": %d\n", arg->u.xattr_set.name,
-               b->lb_buf, b->lb_len, PFID(mdd_object_fid(arg->object)), rc);
+        CDEBUG(D_OTHER, "set xattr %s from %p/%u on "DFID": %d\n",
+               arg->u.xattr_set.name, b->lb_buf, (unsigned) b->lb_len,
+               PFID(mdd_object_fid(arg->object)), rc);
 
         return rc;
 }
