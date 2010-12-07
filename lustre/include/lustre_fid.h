@@ -108,6 +108,7 @@ enum local_oid {
         MDT_LAST_RECV_OID       = 11UL,
         /** \see osd_mod_init */
         OSD_REM_OBJ_DIR_OID     = 12UL,
+        OSD_FS_ROOT_OID         = 13UL,
         /** \see mds_quota_setup(TODO) */
         QUOTA_SLAVE_UID_OID     = 15UL,
         QUOTA_SLAVE_GID_OID     = 16UL,
@@ -371,11 +372,11 @@ static inline __u32 fid_flatten32(const struct lu_fid *fid)
 
         seq = fid_seq(fid) - FID_SEQ_START;
 
-	/*
+        /*
           map the high bits of the OID into higher bits of the inode number so that
           inodes generated at about the same time have a reduced chance of collisions.
           This will give a period of 1024 clients and 128 k = 128M inodes without collisions.
-	*/
+        */
 
         ino = ((seq & 0x000fffffULL) << 12) + ((seq >> 8) & 0xfffff000) +
                (seq >> (64 - (40-8)) & 0xffffff00) +
