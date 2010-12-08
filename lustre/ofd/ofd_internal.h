@@ -390,6 +390,8 @@ int filter_commitrw(int cmd, struct obd_export *exp,
                     struct obdo *oa, int objcount, struct obd_ioobj *obj,
                     struct niobuf_remote *nb, int npages, struct niobuf_local *res,
                     struct obd_trans_info *oti, int rc);
+int filter_brw(int cmd, struct obd_export *, struct obd_info *oinfo,
+               obd_count oa_bufs, struct brw_page *pga, struct obd_trans_info *);
 void flip_into_page_cache(struct inode *inode, struct page *new_page);
 
 /* filter_io_*.c */

@@ -169,7 +169,6 @@ int filter_group_load(const struct lu_env *env,
         LASSERT(!IS_ERR(fo));
         dob = filter_object_child(fo);
         ofd->ofd_lastid_obj[group] = dob;
-        cfs_sema_init(&ofd->ofd_create_locks[group], 1);
 
         rc = dt_attr_get(env, dob, &attr, BYPASS_CAPA);
         if (rc)
@@ -178,9 +177,8 @@ int filter_group_load(const struct lu_env *env,
         if (attr.la_size == 0) {
                 /* object is just created, initialize last id */
                 ofd->ofd_last_objids[group] = FILTER_INIT_OBJID;
-                filter_last_id_set(ofd, FILTER_INIT_OBJID, group);
-                filter_last_id_write(env, ofd, group, NULL);
-                filter_last_group_write(env, ofd);
+                filter_last_id_write(env, ofd, group, 0);
+
         } else if (attr.la_size == sizeof(lastid)) {
                 off = 0;
                 buf.lb_buf = &lastid;

@@ -123,7 +123,7 @@ int osd_ost_init(struct osd_device *dev)
         LASSERT(dev->od_fsops);
 
         osd_push_ctxt(dev, &new, &save);
-
+       
         d = simple_mkdir(rootd, dev->od_mnt, "O", 0755, 1);
         if (IS_ERR(d))
                 GOTO(cleanup, rc = PTR_ERR(d));
@@ -211,11 +211,11 @@ int osd_compat_del_entry(struct osd_thread_info *info,
         child->d_inode = NULL;
 
         LOCK_INODE_MUTEX(dir);
-        rc = -ENOENT;
-        bh = ll_ldiskfs_find_entry(dir, child, &de);
-        if (bh) {
-                rc = ldiskfs_delete_entry(oh->ot_handle, dir, de, bh);
-                brelse(bh);
+	rc = -ENOENT;
+	bh = ll_ldiskfs_find_entry(dir, child, &de);
+	if (bh) {
+	        rc = ldiskfs_delete_entry(oh->ot_handle, dir, de, bh);
+	        brelse(bh);
         }
         UNLOCK_INODE_MUTEX(dir);
 

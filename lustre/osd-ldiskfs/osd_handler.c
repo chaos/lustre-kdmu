@@ -214,7 +214,10 @@ static int osd_write_locked(const struct lu_env *env, struct osd_object *o)
 static int osd_root_get(const struct lu_env *env,
                         struct dt_device *dev, struct lu_fid *f)
 {
-        lu_local_obj_fid(f, OSD_FS_ROOT_OID);
+        struct inode *inode;
+
+        inode = osd_sb(osd_dt_dev(dev))->s_root->d_inode;
+        LU_IGIF_BUILD(f, inode->i_ino, inode->i_generation);
         return 0;
 }
 
@@ -303,7 +306,7 @@ static int osd_fid_lookup(const struct lu_env *env,
 
         LINVRNT(osd_invariant(obj));
         LASSERT(obj->oo_inode == NULL);
-        LASSERT(fid_is_sane(fid) || fid_is_idif(fid));
+        LASSERT(fid_is_sane(fid) || osd_fid_is_root(fid) || fid_is_idif(fid));
         /*
          * This assertion checks that osd layer sees only local
          * fids. Unfortunately it is somewhat expensive (does a

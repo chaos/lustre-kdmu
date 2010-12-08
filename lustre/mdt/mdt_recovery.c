@@ -974,9 +974,9 @@ static int mdt_txn_commit_cb(const struct lu_env *env,
         struct mdt_device *mdt = cookie;
         struct mdt_txn_info *txi;
         int i;
-        LASSERT(mdt);
+
         txi = lu_context_key_get(&txn->th_ctx, &mdt_txn_key);
-        LASSERT(txi);
+
         /* iterate through all additional callbacks */
         for (i = 0; i < txi->txi_cb_count; i++) {
                 txi->txi_cb[i].lut_cb_func(&mdt->mdt_lut, txi->txi_transno,
