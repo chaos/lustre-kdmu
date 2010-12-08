@@ -303,7 +303,7 @@ static int seq_client_proc_init(struct lu_client_seq *seq)
 
         rc = lprocfs_add_vars(seq->lcs_proc_dir,
                               seq_client_proc_list, seq);
-        lprocfs_put_lperef(seq->lcs_proc_dir);
+        lprocfs_put_peref(seq->lcs_proc_dir);
         if (rc) {
                 CERROR("%s: Can't init sequence manager "
                        "proc, rc %d\n", seq->lcs_name, rc);

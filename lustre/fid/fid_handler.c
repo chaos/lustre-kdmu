@@ -438,7 +438,7 @@ static int seq_server_proc_init(struct lu_server_seq *seq)
 
         rc = lprocfs_add_vars(seq->lss_proc_dir,
                               seq_server_proc_list, seq);
-        lprocfs_put_lperef(seq->lss_proc_dir);
+        lprocfs_put_peref(seq->lss_proc_dir);
         if (rc) {
                 CERROR("%s: Can't init sequence manager "
                        "proc, rc %d\n", seq->lss_name, rc);
@@ -553,7 +553,7 @@ void seq_server_fini(struct lu_server_seq *seq,
 }
 EXPORT_SYMBOL(seq_server_fini);
 
-libcfs_param_entry_t *seq_type_proc_dir = NULL;
+cfs_param_entry_t *seq_type_proc_dir = NULL;
 
 static struct lu_local_obj_desc llod_seq_srv = {
         .llod_name      = LUSTRE_SEQ_SRV_NAME,
@@ -574,7 +574,7 @@ static int __init fid_mod_init(void)
                                              NULL, NULL);
         if (IS_ERR(seq_type_proc_dir))
                 return PTR_ERR(seq_type_proc_dir);
-        lprocfs_put_lperef(seq_type_proc_dir);
+        lprocfs_put_peref(seq_type_proc_dir);
 
         llo_local_obj_register(&llod_seq_srv);
         llo_local_obj_register(&llod_seq_ctl);

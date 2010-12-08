@@ -339,13 +339,13 @@ lnet_msg_alloc(void)
 
         LIBCFS_ALLOC(msg, sizeof(*msg));
 
-        if (msg != NULL) {
-                /* NULL pointers, clear flags etc */
-                memset (msg, 0, sizeof (*msg));
+        /* no need to zero, LIBCFS_ALLOC does for us */
+
 #ifdef CRAY_XT3
+        if (msg != NULL) {
                 msg->msg_ev.uid = LNET_UID_ANY;
-#endif
         }
+#endif
         return (msg);
 }
 
@@ -781,10 +781,9 @@ lnet_parse_int_tunable(int *value, char *name)
 }
 #endif
 
-#define MAX_STRLEN      256
-void lnet_apini_sysctl_init(void);
-void lnet_module_sysctl_init(void);
-void lnet_router_sysctl_init(void);
-void lnet_libmove_sysctl_init(void);
-void lnet_acceptor_sysctl_init(void);
+#define LNET_MAX_STRLEN      256
+int lnet_apini_param_init(void);
+int lnet_router_param_init(void);
+int lnet_libmove_param_init(void);
+int lnet_acceptor_param_init(void);
 #endif

@@ -364,10 +364,32 @@ int jt_lcfg_del_mount_option(int argc, char **argv)
 
 int jt_lcfg_set_timeout(int argc, char **argv)
 {
+        int rc;
+        struct lustre_cfg_bufs bufs;
+        struct lustre_cfg *lcfg;
+
         fprintf(stderr, "%s has been deprecated. Use conf_param instead.\n"
-                "e.g. conf_param sys.testfs.obd_timeout=50\n",
+                "e.g. conf_param lustre-MDT0000 obd_timeout=50\n",
                 jt_cmdname(argv[0]));
         return CMD_HELP;
+
+
+        if (argc != 2)
+                return CMD_HELP;
+
+        lustre_cfg_bufs_reset(&bufs, lcfg_devname);
+        lcfg = lustre_cfg_new(LCFG_SET_TIMEOUT, &bufs);
+        lcfg->lcfg_num = atoi(argv[1]);
+
+        rc = lcfg_ioctl(argv[0], OBD_DEV_ID, lcfg);
+        //rc = lcfg_mgs_ioctl(argv[0], OBD_DEV_ID, lcfg);
+
+        lustre_cfg_free(lcfg);
+        if (rc < 0) {
+                fprintf(stderr, "error: %s: %s\n", jt_cmdname(argv[0]),
+                        strerror(rc = errno));
+        }
+        return rc;
 }
 
 int jt_lcfg_add_conn(int argc, char **argv)
@@ -468,151 +490,9 @@ int jt_lcfg_param(int argc, char **argv)
         return rc;
 }
 
-/* Could this element of a parameter be an obd type?
- * returns boolean
- */
-static int element_could_be_obd(char *el)
-{
-        char *ptr = el;
-
-        /* Rather than try to enumerate known obd types and risk
-         * becoming stale, I'm just going to check for no wacky chars */
-        while ((*ptr != '\0') && (*ptr != '.')) {
-                if (!isalpha(*ptr++))
-                        return 0;
-        }
-        return 1;
-}
-
-/* Convert set_param into conf_param format.  Examples of differences:
- * conf_param testfs.sys.at_max=1200
- * set_param at_max=1200   -- no fsname, but conf_param needs a valid one
- * conf_param lustre.llite.max_read_ahead_mb=16
- * set_param llite.lustre-ffff81003f157000.max_read_ahead_mb=16
- * conf_param lustre-MDT0000.lov.stripesize=2M
- * set_param lov.lustre-MDT0000-mdtlov.stripesize=2M
- * set_param lov.lustre-clilov-ffff81003f157000.stripesize=2M  --  clilov
- * conf_param lustre-OST0001.osc.active=0
- * set_param osc.lustre-OST0000-osc-ffff81003f157000.active=0
- * conf_param lustre-OST0000.osc.max_dirty_mb=29.15
- * set_param osc.lustre-OST0000-osc-ffff81003f157000.max_dirty_mb=16
- * conf_param lustre-OST0001.ost.client_cache_seconds=15
- * set_param obdfilter.lustre-OST0001.client_cache_seconds=15  --  obdfilter/ost
- * conf_param testfs-OST0000.failover.node=1.2.3.4@tcp1
- * no proc, but osc.testfs-OST0000.failover.node -- would be appropriate
- */
-static int rearrange_setparam_syntax(char *in)
-{
-        char buf[MGS_PARAM_MAXLEN];
-        char *element[3];
-        int elements = 0;
-        int dev, obd;
-        char *ptr, *value;
-        __u32 index;
-        int type;
-        int rc;
-
-        value = strchr(in, '=');
-        if (!value)
-                return -EINVAL;
-        *value = '\0';
-
-        /* Separate elements 0.1.all_the_rest */
-        element[elements++] = in;
-        for (ptr = in; *ptr != '\0' && (elements < 3); ptr++) {
-                if (*ptr == '.') {
-                        *ptr = '\0';
-                        element[elements++] = ++ptr;
-                }
-        }
-        if (elements != 3) {
-                fprintf(stderr, "error: Parameter format is "
-                        "<obd>.<fsname|devname>.<param>.\n"
-                        "Wildcards are not supported. Examples:\n"
-                        "sys.testfs.at_max=1200\n"
-                        "llite.testfs.max_read_ahead_mb=16\n"
-                        "lov.testfs-MDT0000.qos_threshold_rr=30\n"
-                        "mdc.testfs-MDT0000.max_rpcs_in_flight=6\n"
-                        "osc.testfs-OST0000.active=0\n"
-                        "osc.testfs-OST0000.max_dirty_mb=16\n"
-                        "obdfilter.testfs-OST0001.client_cache_seconds=15\n"
-                        "osc.testfs-OST0000.failover.node=1.2.3.4@tcp\n\n"
-                        );
-                return -EINVAL;
-        }
-
-        /* e.g. testfs-OST003f-junk.ost.param */
-        rc = libcfs_str2server(element[0], &type, &index, &ptr);
-        if (rc == 0) {
-                *ptr = '\0'; /* trunc the junk */
-                goto out0;
-        }
-        /* e.g. ost.testfs-OST003f-junk.param */
-        rc = libcfs_str2server(element[1], &type, &index, &ptr);
-        if (rc == 0) {
-                *ptr = '\0';
-                goto out1;
-        }
-
-        /* llite.fsname.param or fsname.obd.param */
-        if (!element_could_be_obd(element[0]) &&
-            element_could_be_obd(element[1]))
-                /* fsname-junk.obd.param */
-                goto out0;
-        if (element_could_be_obd(element[0]) &&
-            !element_could_be_obd(element[1]))
-                /* obd.fsname-junk.param */
-                goto out1;
-        if (!element_could_be_obd(element[0]) &&
-            !element_could_be_obd(element[1])) {
-                fprintf(stderr, "error: Parameter format is "
-                        "<obd>.<fsname|devname>.<param>\n");
-                return -EINVAL;
-        }
-        /* Either element could be obd.  Assume set_param syntax
-         * (obd.fsname.param) */
-        goto out1;
-
-out0:
-        dev = 0;
-        obd = 1;
-        goto out;
-out1:
-        dev = 1;
-        obd = 0;
-out:
-        /* Don't worry Mom, we'll check it out */
-        if (strncmp(element[2], "failover", 8) != 0) { /* no proc for this */
-                char *argt[3];
-
-                if (strcmp(element[obd], "sys") == 0)
-                        sprintf(buf, "%s", element[2]);
-                else
-                        sprintf(buf, "%s.%s*.%s", element[obd], element[dev],
-                                element[2]);
-                argt[1] = "-q";
-                argt[2] = buf;
-                rc = jt_lcfg_listparam(3, argt);
-                if (rc)
-                        fprintf(stderr, "warning: can't find local param '%s'\n"
-                                "(but that service may not be running locally)."
-                                "\n", buf);
-        }
-
-        /* s/obdfilter/ost/ */
-        if (strcmp(element[obd], "obdfilter") == 0)
-                sprintf(element[obd], "ost");
-
-        sprintf(buf, "%s.%s.%s=%s", element[dev], element[obd],
-                element[2], value + 1);
-        strcpy(in, buf);
-
-        return 0;
-}
-
 /* Param set in config log on MGS */
 /* conf_param key=value */
-/* Note we can actually send mgc conf_params from clients, but currently
+/* Note we can actually send mgc conf_param from clients, but currently
  * that's only done for default file striping (see ll_send_mgc_param),
  * and not here. */
 /* After removal of a parameter (-d) Lustre will use the default
@@ -623,7 +503,7 @@ int jt_lcfg_mgsparam(int argc, char **argv)
         int del = 0;
         struct lustre_cfg_bufs bufs;
         struct lustre_cfg *lcfg;
-        char buf[MGS_PARAM_MAXLEN];
+        char *buf = NULL;
 
         /* mgs_setparam processes only lctl buf #1 */
         if ((argc > 3) || (argc <= 1))
@@ -639,65 +519,97 @@ int jt_lcfg_mgsparam(int argc, char **argv)
                 }
         }
 
+        lustre_cfg_bufs_reset(&bufs, NULL);
         if (del) {
                 char *ptr;
 
                 /* for delete, make it "<param>=\0" */
+                buf = malloc(strlen(argv[optind]) + 2);
                 /* put an '=' on the end in case it doesn't have one */
                 sprintf(buf, "%s=", argv[optind]);
                 /* then truncate after the first '=' */
                 ptr = strchr(buf, '=');
                 *(++ptr) = '\0';
+                lustre_cfg_bufs_set_string(&bufs, 1, buf);
         } else {
-                sprintf(buf, "%s", argv[optind]);
+                lustre_cfg_bufs_set_string(&bufs, 1, argv[optind]);
         }
-
-        rc = rearrange_setparam_syntax(buf);
-        if (rc)
-                return CMD_HELP;
-
-        lustre_cfg_bufs_reset(&bufs, NULL);
-        lustre_cfg_bufs_set_string(&bufs, 1, buf);
 
         /* We could put other opcodes here. */
         lcfg = lustre_cfg_new(LCFG_PARAM, &bufs);
 
         rc = lcfg_mgs_ioctl(argv[0], OBD_DEV_ID, lcfg);
         lustre_cfg_free(lcfg);
+        if (buf)
+                free(buf);
         if (rc < 0) {
                 fprintf(stderr, "error: %s: %s\n", jt_cmdname(argv[0]),
                         strerror(rc = errno));
-                if (rc == ENOENT) {
-                        char *argt[3];
-                        fprintf(stderr, "Does this filesystem/target exist on "
-                                "the MGS?\n");
-                        printf("Known targets:\n");
-                        sprintf(buf, "mgs.MGS.live.*");
-                        argt[1] = "-n";
-                        argt[2] = buf;
-                        jt_lcfg_getparam(3, argt);
-                }
         }
 
         return rc;
 }
 
-struct params_opts{
+/* {list/set/get}_param -RFNn param_patterns
+ * In param_patterns, '.' is a speciall character. It can be
+ * -a component separator to split the path. For this, we translate it into '/',
+ *  e.g. from "obdfilter.lustre-OST000?.read*" to "obdfilter/lustre-OST000?/read*"
+ * -part of param name in IP address. In this case, we add escape character '\\'
+ *  e.g. from "ldlm.*.MGC10.10.121.1@tcp" to "ldlm.*.MGC10\.10\.121\.1@tcp"
+ */
+struct param_opts{
         int show_path:1;
         int only_path:1;
         int show_type:1;
         int recursive:1;
 };
 
-static void strrpl(char *str, char src, char dst)
+static char *strrpl(char *str, char src, char dst)
 {
+        char *head;
+
         if (str == NULL)
-                return;
-        while (*str != '\0') {
-                if (*str == src)
-                        *str = dst;
-                str ++;
+                return NULL;
+        if (!strchr(str, src))
+                return str;
+
+        if (dst == '\\') {
+                char *tmp = NULL;
+
+                /* that means we should add escape char '\' */
+                tmp = (char *)malloc(2 * strlen(str) + 1);
+                if (tmp == NULL)
+                        return NULL;
+                head = tmp;
+                while (*str != '\0') {
+                        *tmp = *str;
+                        if (*str == src) {
+                                *tmp = '\\';
+                                tmp++;
+                                *tmp = src;
+                        }
+                        str++;
+                        tmp++;
+                }
+                *tmp = '\0';
+        } else {
+                head = str;
+                while (*str != '\0') {
+                        if ((*str == src) &&
+                            (head != str) && (*(str - 1) != '\\')) {
+                                *str = dst;
+                        }
+                        str++;
+                }
         }
+
+        return head;
+}
+
+static void get_pattern(char *path, char *pattern)
+{
+        path = strrpl(path, '.', '/');
+        strcpy(pattern, path);
 }
 
 static void append_filetype(char *filename, mode_t mode)
@@ -708,11 +620,11 @@ static void append_filetype(char *filename, mode_t mode)
          * =: writable file
          */
         if (S_ISDIR(mode))
-                filename[strlen(filename)] = '/';
+                strcat(filename, "/");
         else if (S_ISLNK(mode))
-                filename[strlen(filename)] = '@';
+                strcat(filename, "@");
         else if (mode & S_IWUSR)
-                filename[strlen(filename)] = '=';
+                strcat(filename, "=");
 }
 
 
@@ -720,19 +632,15 @@ static void append_filetype(char *filename, mode_t mode)
  * For eg. obdfilter.lustre-OST0000.stats */
 static char *display_name(char *filename, mode_t mode, int show_type)
 {
-        char *tmp;
-
-        if (strncmp(filename, PTREE_PREFIX, PTREE_PRELEN) == 0) {
-                filename += PTREE_PRELEN;
-        }
         if (strncmp(filename, "lustre/", strlen("lustre/")) == 0)
                 filename += strlen("lustre/");
         else if (strncmp(filename, "lnet/", strlen("lnet/")) == 0)
                 filename += strlen("lnet/");
 
+        /* add escape '\' before '.' to avoid treating that as a separator */
+        filename = strrpl(filename, '.', '\\');
         /* replace '/' with '.' to match conf_param and sysctl */
-        tmp = filename;
-        strrpl(tmp, '/', '.');
+        filename = strrpl(filename, '/', '.');
 
         if (show_type)
                 append_filetype(filename, mode);
@@ -740,13 +648,12 @@ static char *display_name(char *filename, mode_t mode, int show_type)
         return filename;
 }
 
-static void params_show(int show_path, char *buf)
+static void param_show(int show_path, char *buf)
 {
         char outbuf[CFS_PAGE_SIZE];
         int rc = 0, pos = 0;
 
-        memset(outbuf, 0, CFS_PAGE_SIZE);
-        while ((rc = params_unpack(buf + pos, outbuf, sizeof(outbuf)))) {
+        while ((rc = cfs_param_unpack(buf + pos, outbuf, sizeof(outbuf)))) {
                 /* start from a new line if there are multi-lines */
                 if (show_path &&
                     strstr(outbuf, "\n") != (outbuf + strlen(outbuf) - 1))
@@ -757,37 +664,25 @@ static void params_show(int show_path, char *buf)
         }
 }
 
-static int listparam_display(struct params_opts *popt, char *pattern)
+static int listparam_display(struct param_opts *popt, char *pattern)
 {
         int rc = 0;
         char filename[PATH_MAX + 1];    /* extra 1 byte for file type */
-        struct params_entry_list *pel = NULL;
-        struct params_entry_list *pel_head = NULL;
+        struct param_entry_list *pel = NULL;
+        struct param_entry_list *pel_head = NULL;
 
-        if ((rc = params_list(pattern, &pel)) < 0)
-                goto out;
+        if ((rc = cfs_param_ulist(pattern, &pel)) < 0)
+                return rc;
         pel_head = pel;
         pel = pel_head->pel_next;
         while (pel) {
                 char *valuename = NULL;
 
-                memset(filename, 0, PATH_MAX + 1);
                 strcpy(filename, pel->pel_name);
                 if ((valuename = display_name(filename, pel->pel_mode,
                                               popt->show_type))) {
                         printf("%s\n", valuename);
                         if (popt->recursive && S_ISDIR(pel->pel_mode)) {
-                                /* Here, we have to convert '.' to '/' again,
-                                 * same as what we did in get_patter().
-                                 * Because, to list param recursively,
-                                 * the matched params will be added "/ *",
-                                 * and then passed again.
-                                 * For example,
-                                 * $lctl list_param -R ost.*
-                                 * Round1. get ost.num_refs and ost.OSS;
-                                 * Round2. try to list ost.OSS/ *, but this '.'
-                                 * will be treated as a wildcard, not a separator.
-                                 */
                                 strrpl(valuename, '.', '/');
                                 strcat(valuename, "/*");
                                 listparam_display(popt, valuename);
@@ -795,26 +690,24 @@ static int listparam_display(struct params_opts *popt, char *pattern)
                 }
                 pel = pel->pel_next;
         }
-out:
-        if (pel_head)
-                params_free_entrylist(pel_head);
+        cfs_param_free_entrylist(pel_head);
 
         return rc;
 }
 
-static int getparam_display(struct params_opts *popt, char *pattern)
+static int getparam_display(struct param_opts *popt, char *pattern)
 {
         int rc = 0;
         char *buf = NULL;
         char filename[PATH_MAX + 1];    /* extra 1 byte for file type */
         long long offset = 0;
         int eof = 0;
-        int params_count = 0;
-        struct params_entry_list *pel = NULL;
-        struct params_entry_list *pel_head = NULL;
+        int param_count = 0;
+        struct param_entry_list *pel = NULL;
+        struct param_entry_list *pel_head = NULL;
 
-        if ((rc = params_list(pattern, &pel)) < 0)
-                goto out;
+        if ((rc = cfs_param_ulist(pattern, &pel)) < 0)
+                return rc;
         pel_head = pel;
         pel = pel_head->pel_next;
         buf = malloc(CFS_PAGE_SIZE);
@@ -822,17 +715,12 @@ static int getparam_display(struct params_opts *popt, char *pattern)
                 char *valuename = NULL;
                 mode_t mode = pel->pel_mode;
 
-                memset(filename, 0, PATH_MAX + 1);
                 strcpy(filename, pel->pel_name);
                 if (popt->only_path) {
                         valuename = display_name(filename, mode,
                                                  popt->show_type);
                         if (valuename)
                                 printf("%s\n", valuename);
-                        goto next;
-                }
-                if (!(mode & S_IRUSR)) {
-                        fprintf(stderr, "No read permission.\n");
                         goto next;
                 }
                 if (!(valuename = display_name(filename, mode, 0)))
@@ -842,59 +730,55 @@ static int getparam_display(struct params_opts *popt, char *pattern)
                                 "parameter '%s' is a directory.\n", valuename);
                         goto next;
                 }
-                eof = 0;
+                /* usually, offset is set only in seq_read,
+                 * but not in common read cb. */
                 offset = 0;
+                eof = 0;
                 if (popt->show_path)
                         printf("%s=", valuename);
                 while (!eof) {
-                        memset(buf, 0, CFS_PAGE_SIZE);
-                        params_count =
-                                params_read(pel->pel_name + PTREE_PRELEN,
-                                            pel->pel_name_len - PTREE_PRELEN,
-                                            buf, CFS_PAGE_SIZE, &offset, &eof);
-                        if (params_count > 0) {
-                                params_show(popt->show_path, buf);
-                                /* usually, offset is set only in seq_read,
-                                 * but not in common read cb. */
-                        } else if (params_count == 0) {
+                        param_count = cfs_param_uread(pel->pel_name,
+                                                      pel->pel_name_len,
+                                                      buf, CFS_PAGE_SIZE,
+                                                      &offset, &eof);
+                        if (param_count > 0) {
+                                param_show(popt->show_path, buf);
+                        } else if (param_count <= 0) {
                                 if (popt->show_path)
                                         printf("\n");
-                                break;
-                        } else if (params_count < 0){
-                                fprintf(stderr, "error: get_param: read value"
-                                        "failed (%d).\n", params_count);
+                                if (param_count < 0)
+                                        fprintf(stderr,
+                                                "error: get_param: read('%s') "
+                                                "failed (%s).\n", valuename,
+                                                strerror(-param_count));
                                 break;
                         }
                 }
 next:
                 pel = pel->pel_next;
         }
-out:
         if (buf)
                 free(buf);
-        if (pel_head)
-                params_free_entrylist(pel_head);
+        cfs_param_free_entrylist(pel_head);
         return rc;
 }
 
-static int setparam_display(struct params_opts *popt, char *pattern,
+static int setparam_display(struct param_opts *popt, char *pattern,
                             char *value)
 {
         int rc = 0;
         char filename[PATH_MAX + 1];    /* extra 1 byte for file type */
-        int offset = 0;
-        struct params_entry_list *pel = NULL;
-        struct params_entry_list *pel_head = NULL;
+        struct param_entry_list *pel = NULL;
+        struct param_entry_list *pel_head = NULL;
 
-        if ((rc = params_list(pattern, &pel)) < 0)
-                goto out;
+        if ((rc = cfs_param_ulist(pattern, &pel)) < 0)
+                return rc;
         pel_head = pel;
         pel = pel_head->pel_next;
         while (pel) {
                 char *valuename = NULL;
                 mode_t mode = pel->pel_mode;
 
-                memset(filename, 0, PATH_MAX + 1);
                 strcpy(filename, pel->pel_name);
                 valuename = display_name(filename, mode, 0);
                 if (valuename == NULL)
@@ -904,29 +788,24 @@ static int setparam_display(struct params_opts *popt, char *pattern,
                                 "parameter '%s' is a directory.\n", valuename);
                         goto next;
                 }
-                if (!(mode & S_IWUSR)) {
-                        fprintf(stderr, "No write permission.\n");
-                        goto next;
-                }
-                offset = 0;
-                rc = params_write(pel->pel_name + PTREE_PRELEN,
-                                  pel->pel_name_len - PTREE_PRELEN,
-                                  value, strlen(value), offset);
+                rc = cfs_param_uwrite(pel->pel_name, pel->pel_name_len,
+                                      value, strlen(value));
                 if (rc >= 0 && popt->show_path)
                         printf("%s=%s\n", valuename, value);
+                else if (rc < 0)
+                        fprintf(stderr, "error: set_param: write('%s') "
+                                "failed (%s).\n", valuename, strerror(-rc));
 next:
                 pel = pel->pel_next;
         }
-out:
         rc = rc > 0 ? 0 : rc;
-        if (pel_head)
-                params_free_entrylist(pel_head);
+        cfs_param_free_entrylist(pel_head);
 
         return rc;
 }
 
-static int params_cmdline(int argc, char **argv, char *options,
-                         struct params_opts *popt)
+static int param_cmdline(int argc, char **argv, char *options,
+                         struct param_opts *popt)
 {
         int ch;
 
@@ -956,39 +835,18 @@ static int params_cmdline(int argc, char **argv, char *options,
         return optind;
 }
 
-static void get_pattern(char *path, char *pattern)
-{
-        char *tmp;
-
-        /* If the input is in form Eg. obdfilter.*.stats */
-        /* We use '.' as the directory separator.
-         * But sometimes '.' is part of the parameter name, e.g.
-         * "ldlm.*.MGC10.10.121.1@tcp", which will cause error.
-         * XXX: can we use other separator, or avoid '.' as part of the name?
-         */
-        if (strchr(path, '.')) {
-                tmp = path;
-                strrpl(tmp, '.', '/');
-        }
-        if (strchr(path, '#')) {
-                tmp = path;
-                strrpl(tmp, '#', '.');
-        }
-        strcpy(pattern, path);
-}
-
 int jt_lcfg_listparam(int argc, char **argv)
 {
         int rc = 0, i;
-        struct params_opts popt;
+        struct param_opts popt;
         char pattern[PATH_MAX];
 
-        rc = params_cmdline(argc, argv, "FR", &popt);
+        rc = param_cmdline(argc, argv, "FR", &popt);
         if (rc == argc && popt.recursive) {
                 /* if '-R' is given without a path, list all params.
                  * Let's overwrite  the last param with '*' and
                  * use that for a path. */
-                rc --;  /* we know at least "-R" is a parameter */
+                rc--;  /* we know at least "-R" is a parameter */
                 argv[rc] = "*";
         } else if (rc < 0 || rc >= argc) {
                 return CMD_HELP;
@@ -1007,10 +865,10 @@ int jt_lcfg_listparam(int argc, char **argv)
 int jt_lcfg_getparam(int argc, char **argv)
 {
         int rc = 0, i;
-        struct params_opts popt;
+        struct param_opts popt;
         char pattern[PATH_MAX];
 
-        rc = params_cmdline(argc, argv, "nNF", &popt);
+        rc = param_cmdline(argc, argv, "nNF", &popt);
         if (rc < 0 || rc >= argc)
                 return CMD_HELP;
 
@@ -1027,11 +885,11 @@ int jt_lcfg_getparam(int argc, char **argv)
 int jt_lcfg_setparam(int argc, char **argv)
 {
         int rc = 0, i;
-        struct params_opts popt;
+        struct param_opts popt;
         char pattern[PATH_MAX];
         char *path = NULL, *value = NULL;
 
-        rc = params_cmdline(argc, argv, "n", &popt);
+        rc = param_cmdline(argc, argv, "n", &popt);
         if (rc < 0 || rc >= argc)
                 return CMD_HELP;
 

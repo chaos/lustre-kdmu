@@ -90,11 +90,10 @@ static void errlog(const char *fmt, ...)
 {
         va_list args;
 
-        openlog(progname, LOG_PERROR, LOG_AUTHPRIV);
+        openlog(progname, LOG_PERROR | LOG_PID, LOG_AUTHPRIV);
 
         va_start(args, fmt);
         vsyslog(LOG_NOTICE, fmt, args);
-        fprintf(stderr, fmt, args);
         va_end(args);
 
         closelog();
@@ -441,8 +440,8 @@ downcall:
 
         snprintf(pathname, sizeof(pathname),
                  "lustre/mdt/%s/identity_info", argv[1]);
-        rc = params_write(pathname, strlen(pathname),
-                          (void *)data, sizeof(*data) - 1, 0);
+        rc = cfs_param_uwrite(pathname, strlen(pathname),
+                              (void *)data, sizeof(*data) - 1);
         if (rc != sizeof(*data)) {
                 errlog("partial write ret %d: %s\n", rc, strerror(errno));
                 return 1;

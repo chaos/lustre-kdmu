@@ -401,14 +401,14 @@ static loff_t vvp_pgcache_find(const struct lu_env *env,
 }
 
 #define seq_page_flag(seq, page, flag, has_flags) do {                         \
-        if (cfs_test_bit(PG_##flag, &(page)->flags)) {                             \
-                LIBCFS_SEQ_PRINTF(seq, "%s"#flag, has_flags ? "|" : "");       \
+        if (cfs_test_bit(PG_##flag, &(page)->flags)) {                         \
+                cfs_seq_printf(seq, "%s"#flag, has_flags ? "|" : "");          \
                 has_flags = 1;                                                 \
         }                                                                      \
 } while(0)
 
 static void vvp_pgcache_page_show(const struct lu_env *env,
-                                  libcfs_seq_file_t *seq, struct cl_page *page)
+                                  cfs_seq_file_t *seq, struct cl_page *page)
 {
         struct ccc_page *cpg;
         cfs_page_t      *vmpage;
@@ -416,17 +416,17 @@ static void vvp_pgcache_page_show(const struct lu_env *env,
 
         cpg = cl2ccc_page(cl_page_at(page, &vvp_device_type));
         vmpage = cpg->cpg_page;
-        LIBCFS_SEQ_PRINTF(seq," %5i | %p %p %s %s %s %s | %p %lu/%u(%p) %lu %u [",
-                   0 /* gen */,
-                   cpg, page,
-                   "none",
-                   cpg->cpg_write_queued ? "wq" : "- ",
-                   cpg->cpg_defer_uptodate ? "du" : "- ",
-                   PageWriteback(vmpage) ? "wb" : "-",
-                   vmpage, vmpage->mapping->host->i_ino,
-                   vmpage->mapping->host->i_generation,
-                   vmpage->mapping->host, vmpage->index,
-                   page_count(vmpage));
+        cfs_seq_printf(seq," %5i | %p %p %s %s %s %s | %p %lu/%u(%p) %lu %u [",
+                       0 /* gen */,
+                       cpg, page,
+                       "none",
+                       cpg->cpg_write_queued ? "wq" : "- ",
+                       cpg->cpg_defer_uptodate ? "du" : "- ",
+                       PageWriteback(vmpage) ? "wb" : "-",
+                       vmpage, vmpage->mapping->host->i_ino,
+                       vmpage->mapping->host->i_generation,
+                       vmpage->mapping->host, vmpage->index,
+                       page_count(vmpage));
         has_flags = 0;
         seq_page_flag(seq, vmpage, locked, has_flags);
         seq_page_flag(seq, vmpage, error, has_flags);
@@ -437,10 +437,10 @@ static void vvp_pgcache_page_show(const struct lu_env *env,
         seq_page_flag(seq, vmpage, highmem, has_flags);
 #endif
         seq_page_flag(seq, vmpage, writeback, has_flags);
-        LIBCFS_SEQ_PRINTF(seq, "%s]\n", has_flags ? "" : "-");
+        cfs_seq_printf(seq, "%s]\n", has_flags ? "" : "-");
 }
 
-static int vvp_pgcache_show(libcfs_seq_file_t *f, void *v)
+static int vvp_pgcache_show(cfs_seq_file_t *f, void *v)
 {
         loff_t                   pos;
         struct ll_sb_info       *sbi;
@@ -456,7 +456,7 @@ static int vvp_pgcache_show(libcfs_seq_file_t *f, void *v)
         if (!IS_ERR(env)) {
                 pos = *(loff_t *) v;
                 vvp_pgcache_id_unpack(pos, &id);
-                sbi = LIBCFS_SEQ_PRIVATE(f);
+                sbi = cfs_seq_private(f);
                 clob = vvp_pgcache_obj(env, &sbi->ll_cl->cd_lu_dev, &id);
                 if (clob != NULL) {
                         hdr = cl_object_header(clob);
@@ -465,17 +465,17 @@ static int vvp_pgcache_show(libcfs_seq_file_t *f, void *v)
                         page = cl_page_lookup(hdr, id.vpi_index);
                         cfs_spin_unlock(&hdr->coh_page_guard);
 
-                        LIBCFS_SEQ_PRINTF(f, "%8x@"DFID": ",
-                                   id.vpi_index, PFID(&hdr->coh_lu.loh_fid));
+                        cfs_seq_printf(f, "%8x@"DFID": ",
+                                       id.vpi_index, PFID(&hdr->coh_lu.loh_fid));
                         if (page != NULL) {
                                 vvp_pgcache_page_show(env, f, page);
                                 cl_page_put(env, page);
                         } else
-                                LIBCFS_SEQ_PUTS(f, "missing\n");
+                                cfs_seq_puts(f, "missing\n");
                         lu_object_ref_del(&clob->co_lu, "dump", cfs_current());
                         cl_object_put(env, clob);
                 } else
-                        LIBCFS_SEQ_PRINTF(f, "%llx missing\n", pos);
+                        cfs_seq_printf(f, "%llx missing\n", pos);
                 cl_env_put(env, &refcheck);
                 result = 0;
         } else
@@ -483,7 +483,7 @@ static int vvp_pgcache_show(libcfs_seq_file_t *f, void *v)
         return result;
 }
 
-static void *vvp_pgcache_start(libcfs_seq_file_t *f, loff_t *pos)
+static void *vvp_pgcache_start(cfs_seq_file_t *f, loff_t *pos)
 {
         struct ll_sb_info *sbi;
         struct lu_env     *env;
@@ -491,7 +491,7 @@ static void *vvp_pgcache_start(libcfs_seq_file_t *f, loff_t *pos)
 
         env = cl_env_get(&refcheck);
         if (!IS_ERR(env)) {
-                sbi = LIBCFS_SEQ_PRIVATE(f);
+                sbi = cfs_seq_private(f);
                 if (sbi->ll_site->ls_hash_bits > 64 - PGC_OBJ_SHIFT) {
                         pos = ERR_PTR(-EFBIG);
                 } else {
@@ -505,7 +505,7 @@ static void *vvp_pgcache_start(libcfs_seq_file_t *f, loff_t *pos)
         return pos;
 }
 
-static void *vvp_pgcache_next(libcfs_seq_file_t *f, void *v, loff_t *pos)
+static void *vvp_pgcache_next(cfs_seq_file_t *f, void *v, loff_t *pos)
 {
         struct ll_sb_info *sbi;
         struct lu_env     *env;
@@ -513,7 +513,7 @@ static void *vvp_pgcache_next(libcfs_seq_file_t *f, void *v, loff_t *pos)
 
         env = cl_env_get(&refcheck);
         if (!IS_ERR(env)) {
-                sbi = LIBCFS_SEQ_PRIVATE(f);
+                sbi = cfs_seq_private(f);
                 *pos = vvp_pgcache_find(env, &sbi->ll_cl->cd_lu_dev, *pos + 1);
                 if (*pos == ~0ULL)
                         pos = NULL;
@@ -522,38 +522,27 @@ static void *vvp_pgcache_next(libcfs_seq_file_t *f, void *v, loff_t *pos)
         return pos;
 }
 
-static void vvp_pgcache_stop(libcfs_seq_file_t *f, void *v)
+static void vvp_pgcache_stop(cfs_seq_file_t *f, void *v)
 {
         /* Nothing to do */
 }
 
-static libcfs_seq_ops_t vvp_pgcache_ops = {
+static cfs_seq_ops_t vvp_pgcache_ops = {
         .start = vvp_pgcache_start,
         .next  = vvp_pgcache_next,
         .stop  = vvp_pgcache_stop,
         .show  = vvp_pgcache_show
 };
 
-static int vvp_dump_pgcache_seq_open(libcfs_inode_t *inode, libcfs_file_t *filp)
+static int vvp_dump_pgcache_seq_open(cfs_inode_t *inode, cfs_param_file_t *filp)
 {
-        libcfs_param_dentry_t    *dp  = LIBCFS_PDE(inode);
-        libcfs_seq_file_t       *seq;
-        int                      result;
-
-        LPROCFS_ENTRY_AND_CHECK(dp);
-        LIBCFS_SEQ_OPEN(filp, &vvp_pgcache_ops, result);
-        if (result == 0) {
-                seq = LIBCFS_FILE_PRIVATE(filp);
-                LIBCFS_SEQ_PRIVATE(seq) = LIBCFS_DENTRY_DATA(dp);
-        }
-
-        return result;
+        return cfs_param_seq_fopen(inode, filp, &vvp_pgcache_ops);
 }
 
-libcfs_file_ops_t vvp_dump_pgcache_file_ops = {
-        .owner   = THIS_MODULE,
+cfs_param_file_ops_t vvp_dump_pgcache_file_ops = {
+        .owner   = CFS_PARAM_MODULE,
         .open    = vvp_dump_pgcache_seq_open,
-        .read    = LIBCFS_SEQ_READ_COMMON,
-        .llseek  = LIBCFS_SEQ_LSEEK_COMMON,
-        .release = libcfs_param_seq_release_common,
+        .read    = cfs_seq_read,
+        .llseek  = cfs_seq_lseek,
+        .release = cfs_seq_release,
 };

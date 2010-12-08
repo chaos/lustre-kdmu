@@ -309,25 +309,25 @@ static int libcfs_ioctl_int(struct cfs_psdev_file *pfile,unsigned long cmd,
         }
 
         case IOC_LIBCFS_GET_PARAM: {
-                err = libcfs_param_read(data->ioc_inlbuf1, data->ioc_pbuf1,
-                                        data->ioc_plen1, &data->ioc_u64[0],
-                                        &data->ioc_u32[1]);
+                err = cfs_param_kread(data->ioc_inlbuf1, data->ioc_pbuf1,
+                                      data->ioc_plen1, &data->ioc_u64[0],
+                                      &data->ioc_u32[1]);
                 data->ioc_u32[0] = err;
                 err = libcfs_ioctl_popdata(arg, data, sizeof(*data));
                 break;
         }
 
         case IOC_LIBCFS_SET_PARAM: {
-                err = libcfs_param_write(data->ioc_inlbuf1, data->ioc_inlbuf2,
-                                         data->ioc_inllen2);
+                err = cfs_param_kwrite(data->ioc_inlbuf1, data->ioc_inlbuf2,
+                                       data->ioc_inllen2, 0);
                 data->ioc_u32[0] = err;
                 err = libcfs_ioctl_popdata(arg, data, sizeof(*data));
                 break;
         }
 
         case IOC_LIBCFS_LIST_PARAM: {
-                err = libcfs_param_list(data->ioc_inlbuf1, data->ioc_pbuf1,
-                                        &data->ioc_plen1);
+                err = cfs_param_klist(data->ioc_inlbuf1, data->ioc_pbuf1,
+                                      &data->ioc_plen1);
                 data->ioc_u32[0] = err;
                 err = libcfs_ioctl_popdata(arg, data, sizeof(*data));
                 break;
@@ -359,29 +359,21 @@ static int libcfs_ioctl(struct cfs_psdev_file *pfile, unsigned long cmd, void *a
 {
         char *buf = NULL;
         struct libcfs_ioctl_data *data;
-        int err = 0, len = 0;
+        int err, len;
         ENTRY;
 
         /* 'cmd' and permissions get checked in our arch-specific caller */
         if (libcfs_ioctl_getdata(&buf, &len, (void *)arg)) {
                 CERROR("PORTALS ioctl: data error cmd %lx \n", cmd);
-                GOTO(out, err = -EINVAL);
+                RETURN(-EINVAL);
         }
         data = (struct libcfs_ioctl_data *)buf;
 
-        if (!data) {
-                CERROR("PORTALS ioctl: data error cmd %lx \n", cmd);
-                GOTO(out, err = -EINVAL);
-        }
-
         err = libcfs_ioctl_int(pfile, cmd, arg, data);
 
-out:
-        if (buf)
-                libcfs_ioctl_freedata(buf, len);
+        libcfs_ioctl_freedata(buf, len);
         RETURN(err);
 }
-
 
 struct cfs_psdev_ops libcfs_psdev_ops = {
         libcfs_psdev_open,
@@ -395,6 +387,36 @@ extern int insert_proc(void);
 extern void remove_proc(void);
 extern int insert_params(void);
 extern void remove_params(void);
+
+static int params_init(void)
+{
+        int rc = 0;
+
+        rc = insert_params();
+        if (rc) {
+                CERROR("insert_params: error %d\n", rc);
+                return rc;
+        }
+#ifdef LPROCFS
+        rc = insert_proc();
+        if (rc) {
+                CERROR("insert_proc: error %d\n", rc);
+                return rc;
+        }
+#endif
+
+        return rc;
+}
+
+static void params_fini(void)
+{
+#ifdef LPROCFS
+        remove_proc();
+#endif
+        remove_params();
+        cfs_param_root_fini();
+}
+
 MODULE_AUTHOR("Peter J. Braam <braam@clusterfs.com>");
 MODULE_DESCRIPTION("Portals v3.1");
 MODULE_LICENSE("GPL");
@@ -402,7 +424,9 @@ MODULE_LICENSE("GPL");
 extern cfs_psdev_t libcfs_dev;
 extern cfs_rw_semaphore_t cfs_tracefile_sem;
 extern cfs_semaphore_t cfs_trace_thread_sem;
+#ifdef LPROCFS
 extern cfs_rw_semaphore_t _lprocfs_lock;
+#endif
 extern cfs_rw_semaphore_t kg_sem;
 
 extern void libcfs_init_nidstrings(void);
@@ -423,10 +447,18 @@ static int init_libcfs_module(void)
         cfs_init_rwsem(&cfs_tracefile_sem);
         cfs_init_mutex(&cfs_trace_thread_sem);
         cfs_init_rwsem(&ioctl_list_sem);
+#ifdef LPROCFS
         cfs_init_rwsem(&_lprocfs_lock);
+#endif
         cfs_init_rwsem(&kg_sem);
         CFS_INIT_LIST_HEAD(&ioctl_list);
-        libcfs_param_root_init();
+
+        rc = cfs_param_root_init();
+        if (rc < 0) {
+                printk(CFS_KERN_ERR "LustreError: cfs_param_root_init: %d\n",
+                       rc);
+                return rc;
+        }
 
         rc = libcfs_debug_init(5 * 1024 * 1024);
         if (rc < 0) {
@@ -447,22 +479,22 @@ static int init_libcfs_module(void)
                 goto cleanup_lwt;
         }
 
-        rc = insert_params();
+        rc = cfs_wi_startup();
         if (rc) {
-                CERROR("insert_params: error %d\n", rc);
+                CERROR("startup workitem: error %d\n", rc);
                 goto cleanup_deregister;
         }
-#ifdef LPROCFS
-        rc = insert_proc();
-        if (rc) {
-                CERROR("insert_proc: error %d\n", rc);
-                goto cleanup_deregister;
-        }
-#endif
+
+        rc = params_init();
+        if (rc)
+                goto cleanup_wi;
 
         CDEBUG (D_OTHER, "portals setup OK\n");
         return (0);
 
+ cleanup_wi:
+        remove_params();
+        cfs_wi_shutdown();
  cleanup_deregister:
         cfs_psdev_deregister(&libcfs_dev);
  cleanup_lwt:
@@ -471,6 +503,7 @@ static int init_libcfs_module(void)
  cleanup_debug:
 #endif
         libcfs_debug_cleanup();
+        cfs_param_root_fini();
         return rc;
 }
 
@@ -478,15 +511,11 @@ static void exit_libcfs_module(void)
 {
         int rc;
 
-#ifdef LPROCFS
-        remove_proc();
-#endif
-        remove_params();
-        libcfs_param_root_fini();
-
+        params_fini();
         CDEBUG(D_MALLOC, "before Portals cleanup: kmem %d\n",
                cfs_atomic_read(&libcfs_kmemory));
 
+        cfs_wi_shutdown();
         rc = cfs_psdev_deregister(&libcfs_dev);
         if (rc)
                 CERROR("misc_deregister error %d\n", rc);
@@ -506,7 +535,9 @@ static void exit_libcfs_module(void)
 
         cfs_fini_rwsem(&ioctl_list_sem);
         cfs_fini_rwsem(&cfs_tracefile_sem);
+#ifdef LPROCFS
         cfs_fini_rwsem(&_lprocfs_lock);
+#endif
         cfs_fini_rwsem(&kg_sem);
 
         lc_watchdog_fini();

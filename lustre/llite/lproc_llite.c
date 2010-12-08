@@ -43,14 +43,14 @@
 
 #include "llite_internal.h"
 
-libcfs_param_entry_t *proc_lustre_fs_root;
+cfs_param_entry_t *proc_lustre_fs_root;
 
 #ifdef __KERNEL__
 /* /proc/lustre/llite mount point registration */
-extern libcfs_file_ops_t vvp_dump_pgcache_file_ops;
-libcfs_file_ops_t ll_rw_extents_stats_fops;
-libcfs_file_ops_t ll_rw_extents_stats_pp_fops;
-libcfs_file_ops_t ll_rw_offset_stats_fops;
+extern cfs_param_file_ops_t vvp_dump_pgcache_file_ops;
+cfs_param_file_ops_t ll_rw_extents_stats_fops;
+cfs_param_file_ops_t ll_rw_extents_stats_pp_fops;
+cfs_param_file_ops_t ll_rw_offset_stats_fops;
 
 static int ll_rd_blksize(char *page, char **start, off_t off, int count,
                          int *eof, void *data)
@@ -59,14 +59,14 @@ static int ll_rd_blksize(char *page, char **start, off_t off, int count,
         struct obd_statfs osfs;
         int rc;
 
-        LIBCFS_PARAM_GET_DATA(sb, data, NULL);
+        cfs_param_get_data(sb, data, NULL);
         LASSERT(sb != NULL);
         rc = ll_statfs_internal(sb, &osfs,
                                 cfs_time_shift_64(-OBD_STATFS_CACHE_SECONDS),
                                 OBD_STATFS_NODELAY);
         if (!rc)
-              rc = libcfs_param_snprintf(page, count, data, LP_U32,
-                                         "%u\n", osfs.os_bsize);
+              rc = cfs_param_snprintf(page, count, data, CFS_PARAM_U32,
+                                      "%u\n", osfs.os_bsize);
 
         return rc;
 }
@@ -78,7 +78,7 @@ static int ll_rd_kbytestotal(char *page, char **start, off_t off, int count,
         struct obd_statfs osfs;
         int rc;
 
-        LIBCFS_PARAM_GET_DATA(sb, data, NULL);
+        cfs_param_get_data(sb, data, NULL);
         LASSERT(sb != NULL);
         rc = ll_statfs_internal(sb, &osfs,
                                 cfs_time_shift_64(-OBD_STATFS_CACHE_SECONDS),
@@ -90,8 +90,8 @@ static int ll_rd_kbytestotal(char *page, char **start, off_t off, int count,
                 while (blk_size >>= 1)
                         result <<= 1;
 
-                rc = libcfs_param_snprintf(page, count, data, LP_U64,
-                                           LPU64"\n", result);
+                rc = cfs_param_snprintf(page, count, data, CFS_PARAM_U64,
+                                        LPU64"\n", result);
         }
         return rc;
 
@@ -104,7 +104,7 @@ static int ll_rd_kbytesfree(char *page, char **start, off_t off, int count,
         struct obd_statfs osfs;
         int rc;
 
-        LIBCFS_PARAM_GET_DATA(sb, data, NULL);
+        cfs_param_get_data(sb, data, NULL);
         LASSERT(sb != NULL);
         rc = ll_statfs_internal(sb, &osfs,
                                 cfs_time_shift_64(-OBD_STATFS_CACHE_SECONDS),
@@ -116,8 +116,8 @@ static int ll_rd_kbytesfree(char *page, char **start, off_t off, int count,
                 while (blk_size >>= 1)
                         result <<= 1;
 
-                rc = libcfs_param_snprintf(page, count, data, LP_U64,
-                                           LPU64"\n", result);
+                rc = cfs_param_snprintf(page, count, data, CFS_PARAM_U64,
+                                        LPU64"\n", result);
         }
         return rc;
 }
@@ -129,7 +129,7 @@ static int ll_rd_kbytesavail(char *page, char **start, off_t off, int count,
         struct obd_statfs osfs;
         int rc;
 
-        LIBCFS_PARAM_GET_DATA(sb, data, NULL);
+        cfs_param_get_data(sb, data, NULL);
         LASSERT(sb != NULL);
         rc = ll_statfs_internal(sb, &osfs,
                                 cfs_time_shift_64(-OBD_STATFS_CACHE_SECONDS),
@@ -141,8 +141,8 @@ static int ll_rd_kbytesavail(char *page, char **start, off_t off, int count,
                 while (blk_size >>= 1)
                         result <<= 1;
 
-                rc = libcfs_param_snprintf(page, count, data, LP_U64,
-                                           LPU64"\n", result);
+                rc = cfs_param_snprintf(page, count, data, CFS_PARAM_U64,
+                                        LPU64"\n", result);
         }
         return rc;
 }
@@ -154,14 +154,14 @@ static int ll_rd_filestotal(char *page, char **start, off_t off, int count,
         struct obd_statfs osfs;
         int rc;
 
-        LIBCFS_PARAM_GET_DATA(sb, data, NULL);
+        cfs_param_get_data(sb, data, NULL);
         LASSERT(sb != NULL);
         rc = ll_statfs_internal(sb, &osfs,
                                 cfs_time_shift_64(-OBD_STATFS_CACHE_SECONDS),
                                 OBD_STATFS_NODELAY);
         if (!rc)
-                rc = libcfs_param_snprintf(page, count, data, LP_U64,
-                                           LPU64"\n", osfs.os_files);
+                rc = cfs_param_snprintf(page, count, data, CFS_PARAM_U64,
+                                        LPU64"\n", osfs.os_files);
         return rc;
 }
 
@@ -172,14 +172,14 @@ static int ll_rd_filesfree(char *page, char **start, off_t off, int count,
         struct obd_statfs osfs;
         int rc;
 
-        LIBCFS_PARAM_GET_DATA(sb, data, NULL);
+        cfs_param_get_data(sb, data, NULL);
         LASSERT(sb != NULL);
         rc = ll_statfs_internal(sb, &osfs,
                                 cfs_time_shift_64(-OBD_STATFS_CACHE_SECONDS),
                                 OBD_STATFS_NODELAY);
         if (!rc)
-                rc = libcfs_param_snprintf(page, count, data, LP_U64,
-                                           LPU64"\n", osfs.os_ffree);
+                rc = cfs_param_snprintf(page, count, data, CFS_PARAM_U64,
+                                        LPU64"\n", osfs.os_ffree);
         return rc;
 
 }
@@ -190,14 +190,14 @@ static int ll_rd_client_type(char *page, char **start, off_t off, int count,
         struct ll_sb_info *sbi;
         int rc;
 
-        LIBCFS_PARAM_GET_DATA(sbi, data, NULL);
+        cfs_param_get_data(sbi, data, NULL);
         LASSERT(sbi != NULL);
         if (sbi->ll_flags & LL_SBI_RMT_CLIENT)
-                rc = libcfs_param_snprintf(page, count, data, LP_STR,
-                                           "%s", "remote client\n");
+                rc = cfs_param_snprintf(page, count, data, CFS_PARAM_STR,
+                                        "%s", "remote client\n");
         else
-                rc = libcfs_param_snprintf(page, count, data, LP_STR,
-                                           "%s", "local client\n");
+                rc = cfs_param_snprintf(page, count, data, CFS_PARAM_STR,
+                                        "%s", "local client\n");
 
         return rc;
 }
@@ -207,11 +207,11 @@ static int ll_rd_fstype(char *page, char **start, off_t off, int count,
 {
         struct super_block *sb;
 
-        LIBCFS_PARAM_GET_DATA(sb, data, NULL);
+        cfs_param_get_data(sb, data, NULL);
         LASSERT(sb != NULL);
 
-        return libcfs_param_snprintf(page, count, data, LP_STR,
-                                     "%s\n", sb->s_type->name);
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_STR,
+                                  "%s\n", sb->s_type->name);
 }
 
 static int ll_rd_sb_uuid(char *page, char **start, off_t off, int count,
@@ -219,11 +219,11 @@ static int ll_rd_sb_uuid(char *page, char **start, off_t off, int count,
 {
         struct super_block *sb;
 
-        LIBCFS_PARAM_GET_DATA(sb, data, NULL);
+        cfs_param_get_data(sb, data, NULL);
         LASSERT(sb != NULL);
 
-        return libcfs_param_snprintf(page, count, data, LP_STR, "%s\n",
-                                     ll_s2sbi(sb)->ll_sb_uuid.uuid);
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_STR, "%s\n",
+                                  ll_s2sbi(sb)->ll_sb_uuid.uuid);
 }
 
 static int ll_rd_site_stats(char *page, char **start, off_t off,
@@ -232,14 +232,14 @@ static int ll_rd_site_stats(char *page, char **start, off_t off,
         struct super_block *sb;
         int rc;
 
-        LIBCFS_PARAM_GET_DATA(sb, data, NULL);
+        cfs_param_get_data(sb, data, NULL);
         /*
          * See description of statistical counters in struct cl_site, and
          * struct lu_site.
          */
         rc = cl_site_stats_print(lu2cl_site(ll_s2sbi(sb)->ll_site),
                                  page, count);
-        rc = libcfs_param_snprintf(page, count, data, LP_STR, NULL, NULL);
+        rc = cfs_param_snprintf(page, count, data, CFS_PARAM_STR, NULL, NULL);
 
         return rc;
 }
@@ -253,7 +253,7 @@ static int ll_rd_max_readahead_mb(char *page, char **start, off_t off,
         int mult;
         int rc;
 
-        LIBCFS_PARAM_GET_DATA(sb, data, NULL);
+        cfs_param_get_data(sb, data, NULL);
         sbi = ll_s2sbi(sb);
         cfs_spin_lock(&sbi->ll_lock);
         pages_number = sbi->ll_ra_info.ra_max_pages;
@@ -262,20 +262,20 @@ static int ll_rd_max_readahead_mb(char *page, char **start, off_t off,
         mult = 1 << (20 - PAGE_CACHE_SHIFT);
         rc = lprocfs_read_frac_helper(page, count, pages_number, mult);
         if (rc > 0)
-                rc = libcfs_param_snprintf(page, count, data, LP_DB,
-                                           NULL, NULL);
+                rc = cfs_param_snprintf(page, count, data, CFS_PARAM_DB,
+                                        NULL, NULL);
 
         return rc;
 }
 
-static int ll_wr_max_readahead_mb(libcfs_file_t *file, const char *buffer,
+static int ll_wr_max_readahead_mb(cfs_param_file_t *file, const char *buffer,
                                    unsigned long count, void *data)
 {
         struct super_block *sb;
         struct ll_sb_info *sbi;
         int mult, rc, pages_number, flag = 0;
 
-        LIBCFS_PARAM_GET_DATA(sb, data, &flag);
+        cfs_param_get_data(sb, data, &flag);
         sbi = ll_s2sbi(sb);
         mult = 1 << (20 - CFS_PAGE_SHIFT);
         rc = lprocfs_write_frac_helper(buffer, count, &pages_number, mult, flag);
@@ -304,7 +304,7 @@ static int ll_rd_max_readahead_per_file_mb(char *page, char **start, off_t off,
         int mult;
         int rc;
 
-        LIBCFS_PARAM_GET_DATA(sb, data, NULL);
+        cfs_param_get_data(sb, data, NULL);
         sbi = ll_s2sbi(sb);
         cfs_spin_lock(&sbi->ll_lock);
         pages_number = sbi->ll_ra_info.ra_max_pages_per_file;
@@ -313,20 +313,20 @@ static int ll_rd_max_readahead_per_file_mb(char *page, char **start, off_t off,
         mult = 1 << (20 - CFS_PAGE_SHIFT);
         rc = lprocfs_read_frac_helper(page, count, pages_number, mult);
         if (rc > 0)
-                rc = libcfs_param_snprintf(page, count, data, LP_DB,
-                                           NULL, NULL);
+                rc = cfs_param_snprintf(page, count, data, CFS_PARAM_DB,
+                                        NULL, NULL);
 
         return rc;
 }
 
-static int ll_wr_max_readahead_per_file_mb(libcfs_file_t *file, const char *buffer,
+static int ll_wr_max_readahead_per_file_mb(cfs_param_file_t *file, const char *buffer,
                                           unsigned long count, void *data)
 {
         struct super_block *sb;
         struct ll_sb_info *sbi;
         int mult, rc, pages_number, flag = 0;
 
-        LIBCFS_PARAM_GET_DATA(sb, data, &flag);
+        cfs_param_get_data(sb, data, &flag);
         sbi = ll_s2sbi(sb);
         mult = 1 << (20 - CFS_PAGE_SHIFT);
         rc = lprocfs_write_frac_helper(buffer, count, &pages_number, mult, flag);
@@ -357,7 +357,7 @@ static int ll_rd_max_read_ahead_whole_mb(char *page, char **start, off_t off,
         int mult;
         int rc;
 
-        LIBCFS_PARAM_GET_DATA(sb, data, NULL);
+        cfs_param_get_data(sb, data, NULL);
         sbi = ll_s2sbi(sb);
         cfs_spin_lock(&sbi->ll_lock);
         pages_number = sbi->ll_ra_info.ra_max_read_ahead_whole_pages;
@@ -366,13 +366,13 @@ static int ll_rd_max_read_ahead_whole_mb(char *page, char **start, off_t off,
         mult = 1 << (20 - CFS_PAGE_SHIFT);
         rc = lprocfs_read_frac_helper(page, count, pages_number, mult);
         if (rc > 0)
-                rc = libcfs_param_snprintf(page, count, data, LP_DB,
-                                           NULL, NULL);
+                rc = cfs_param_snprintf(page, count, data, CFS_PARAM_DB,
+                                        NULL, NULL);
 
         return rc;
 }
 
-static int ll_wr_max_read_ahead_whole_mb(libcfs_file_t *file,
+static int ll_wr_max_read_ahead_whole_mb(cfs_param_file_t *file,
                                          const char *buffer,
                                          unsigned long count, void *data)
 {
@@ -380,7 +380,7 @@ static int ll_wr_max_read_ahead_whole_mb(libcfs_file_t *file,
         struct ll_sb_info *sbi;
         int mult, rc, pages_number, flag = 0;
 
-        LIBCFS_PARAM_GET_DATA(sb, data, &flag);
+        cfs_param_get_data(sb, data, &flag);
         sbi = ll_s2sbi(sb);
         mult = 1 << (20 - CFS_PAGE_SHIFT);
         rc = lprocfs_write_frac_helper(buffer, count, &pages_number, mult,
@@ -414,7 +414,7 @@ static int ll_rd_max_cached_mb(char *page, char **start, off_t off,
         int mult;
         int rc;
 
-        LIBCFS_PARAM_GET_DATA(sb, data, NULL);
+        cfs_param_get_data(sb, data, NULL);
         sbi = ll_s2sbi(sb);
         cfs_spin_lock(&sbi->ll_lock);
         pages_number = sbi->ll_async_page_max;
@@ -423,20 +423,20 @@ static int ll_rd_max_cached_mb(char *page, char **start, off_t off,
         mult = 1 << (20 - CFS_PAGE_SHIFT);
         rc = lprocfs_read_frac_helper(page, count, pages_number, mult);
         if (rc > 0)
-                rc = libcfs_param_snprintf(page, count, data, LP_DB,
-                                           NULL, NULL);
+                rc = cfs_param_snprintf(page, count, data, CFS_PARAM_DB,
+                                        NULL, NULL);
 
         return rc;
 }
 
-static int ll_wr_max_cached_mb(libcfs_file_t *file, const char *buffer,
+static int ll_wr_max_cached_mb(cfs_param_file_t *file, const char *buffer,
                                unsigned long count, void *data)
 {
         struct super_block *sb;
         struct ll_sb_info *sbi;
         int mult, rc, pages_number, flag = 0;
 
-        LIBCFS_PARAM_GET_DATA(sb, data, &flag);
+        cfs_param_get_data(sb, data, &flag);
         sbi = ll_s2sbi(sb);
         mult = 1 << (20 - CFS_PAGE_SHIFT);
         rc = lprocfs_write_frac_helper(buffer, count, &pages_number, mult,flag);
@@ -467,21 +467,22 @@ static int ll_rd_checksum(char *page, char **start, off_t off,
         struct ll_sb_info *sbi;
         int temp;
 
-        LIBCFS_PARAM_GET_DATA(sb, data, NULL);
+        cfs_param_get_data(sb, data, NULL);
         sbi = ll_s2sbi(sb);
         temp = (sbi->ll_flags & LL_SBI_CHECKSUM) ? 1 : 0;
 
-        return libcfs_param_snprintf(page, count, data, LP_U32, "%d\n", temp);
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_U32,
+                                  "%d\n", temp);
 }
 
-static int ll_wr_checksum(libcfs_file_t *file, const char *buffer,
+static int ll_wr_checksum(cfs_param_file_t *file, const char *buffer,
                           unsigned long count, void *data)
 {
         struct super_block *sb;
         struct ll_sb_info *sbi;
         int val, rc, flag = 0;
 
-        LIBCFS_PARAM_GET_DATA(sb, data, &flag);
+        cfs_param_get_data(sb, data, &flag);
         sbi = ll_s2sbi(sb);
         if (!sbi->ll_dt_exp)
                 /* Not set up yet */
@@ -508,20 +509,20 @@ static int ll_rd_max_rw_chunk(char *page, char **start, off_t off,
 {
         struct super_block *sb;
 
-        LIBCFS_PARAM_GET_DATA(sb, data, NULL);
+        cfs_param_get_data(sb, data, NULL);
 
-        return libcfs_param_snprintf(page, count, data, LP_U32, "%lu\n",
-                                     ll_s2sbi(sb)->ll_max_rw_chunk);
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_U32, "%lu\n",
+                                  ll_s2sbi(sb)->ll_max_rw_chunk);
 }
 
-static int ll_wr_max_rw_chunk(libcfs_file_t *file, const char *buffer,
+static int ll_wr_max_rw_chunk(cfs_param_file_t *file, const char *buffer,
                           unsigned long count, void *data)
 {
         struct super_block *sb;
         int rc, val;
         int flag = 0;
 
-        LIBCFS_PARAM_GET_DATA(sb, data, &flag);
+        cfs_param_get_data(sb, data, &flag);
         rc = lprocfs_write_helper(buffer, count, &val, flag);
         if (rc)
                 return rc;
@@ -534,15 +535,16 @@ static int ll_rd_track_id(char *page, int count, void *data,
 {
         struct super_block *sb;
 
-        LIBCFS_PARAM_GET_DATA(sb, data, NULL);
+        cfs_param_get_data(sb, data, NULL);
         if (ll_s2sbi(sb)->ll_stats_track_type == type)
-                return libcfs_param_snprintf(page, count, data, LP_D32, "%d\n",
-                                             ll_s2sbi(sb)->ll_stats_track_id);
+                return cfs_param_snprintf(page, count, data,
+                                          CFS_PARAM_S32, "%d\n",
+                                          ll_s2sbi(sb)->ll_stats_track_id);
         if (ll_s2sbi(sb)->ll_stats_track_type == STATS_TRACK_ALL)
-                return libcfs_param_snprintf(page, count, data, LP_STR,
-                                             "%s\n", "0 (all)");
-        return libcfs_param_snprintf(page, count, data, LP_STR,
-                                     "%s\n", "untracked");
+                return cfs_param_snprintf(page, count, data, CFS_PARAM_STR,
+                                          "%s\n", "0 (all)");
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_STR,
+                                  "%s\n", "untracked");
 }
 
 static int ll_wr_track_id(const char *buffer, unsigned long count, void *data,
@@ -551,7 +553,7 @@ static int ll_wr_track_id(const char *buffer, unsigned long count, void *data,
         struct super_block *sb;
         int rc, pid, flag = 0;
 
-        LIBCFS_PARAM_GET_DATA(sb, data, &flag);
+        cfs_param_get_data(sb, data, &flag);
         rc = lprocfs_write_helper(buffer, count, &pid, flag);
         if (rc)
                 return rc;
@@ -570,7 +572,7 @@ static int ll_rd_track_pid(char *page, char **start, off_t off,
         return (ll_rd_track_id(page, count, data, STATS_TRACK_PID));
 }
 
-static int ll_wr_track_pid(libcfs_file_t *file, const char *buffer,
+static int ll_wr_track_pid(cfs_param_file_t *file, const char *buffer,
                           unsigned long count, void *data)
 {
         return (ll_wr_track_id(buffer, count, data, STATS_TRACK_PID));
@@ -582,7 +584,7 @@ static int ll_rd_track_ppid(char *page, char **start, off_t off,
         return (ll_rd_track_id(page, count, data, STATS_TRACK_PPID));
 }
 
-static int ll_wr_track_ppid(libcfs_file_t *file, const char *buffer,
+static int ll_wr_track_ppid(cfs_param_file_t *file, const char *buffer,
                           unsigned long count, void *data)
 {
         return (ll_wr_track_id(buffer, count, data, STATS_TRACK_PPID));
@@ -594,7 +596,7 @@ static int ll_rd_track_gid(char *page, char **start, off_t off,
         return (ll_rd_track_id(page, count, data, STATS_TRACK_GID));
 }
 
-static int ll_wr_track_gid(libcfs_file_t *file, const char *buffer,
+static int ll_wr_track_gid(cfs_param_file_t *file, const char *buffer,
                           unsigned long count, void *data)
 {
         return (ll_wr_track_id(buffer, count, data, STATS_TRACK_GID));
@@ -606,21 +608,21 @@ static int ll_rd_statahead_max(char *page, char **start, off_t off,
         struct super_block *sb;
         struct ll_sb_info *sbi;
 
-        LIBCFS_PARAM_GET_DATA(sb, data, NULL);
+        cfs_param_get_data(sb, data, NULL);
         sbi = ll_s2sbi(sb);
 
-        return libcfs_param_snprintf(page, count, data, LP_U32,
-                                     "%u\n", sbi->ll_sa_max);
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_U32,
+                                  "%u\n", sbi->ll_sa_max);
 }
 
-static int ll_wr_statahead_max(libcfs_file_t *file, const char *buffer,
+static int ll_wr_statahead_max(cfs_param_file_t *file, const char *buffer,
                                unsigned long count, void *data)
 {
         struct super_block *sb;
         struct ll_sb_info *sbi;
         int val, rc, flag = 0;
 
-        LIBCFS_PARAM_GET_DATA(sb, data, &flag);
+        cfs_param_get_data(sb, data, &flag);
         sbi = ll_s2sbi(sb);
         rc = lprocfs_write_helper(buffer, count, &val, flag);
         if (rc)
@@ -641,13 +643,13 @@ static int ll_rd_statahead_stats(char *page, char **start, off_t off,
         struct super_block *sb;
         struct ll_sb_info *sbi;
 
-        LIBCFS_PARAM_GET_DATA(sb, data, NULL);
+        cfs_param_get_data(sb, data, NULL);
         sbi = ll_s2sbi(sb);
-        return libcfs_param_snprintf(page, count, data, LP_STR,
-                                     "statahead total: %u\n"
-                                     "statahead wrong: %u\n",
-                                     atomic_read(&sbi->ll_sa_total),
-                                     atomic_read(&sbi->ll_sa_wrong));
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_STR,
+                                  "statahead total: %u\n"
+                                  "statahead wrong: %u\n",
+                                  cfs_atomic_read(&sbi->ll_sa_total),
+                                  cfs_atomic_read(&sbi->ll_sa_wrong));
 }
 
 static int ll_rd_lazystatfs(char *page, char **start, off_t off,
@@ -657,21 +659,22 @@ static int ll_rd_lazystatfs(char *page, char **start, off_t off,
         struct ll_sb_info *sbi;
         int temp;
 
-        LIBCFS_PARAM_GET_DATA(sb, data, NULL);
+        cfs_param_get_data(sb, data, NULL);
         sbi = ll_s2sbi(sb);
         temp = (sbi->ll_flags & LL_SBI_LAZYSTATFS) ? 1 : 0;
 
-        return libcfs_param_snprintf(page, count, data, LP_D32, "%d\n", temp);
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_S32,
+                                  "%d\n", temp);
 }
 
-static int ll_wr_lazystatfs(libcfs_file_t *file, const char *buffer,
+static int ll_wr_lazystatfs(cfs_param_file_t *file, const char *buffer,
                             unsigned long count, void *data)
 {
         struct super_block *sb;
         struct ll_sb_info *sbi;
         int val, rc, flag = 0;
 
-        LIBCFS_PARAM_GET_DATA(sb, data, &flag);
+        cfs_param_get_data(sb, data, &flag);
         sbi = ll_s2sbi(sb);
 
         rc = lprocfs_write_helper(buffer, count, &val, flag);
@@ -945,7 +948,7 @@ int lprocfs_register_mountpoint(void *parent,
         lvars[0].read_fptr = lprocfs_rd_uuid;
         err = lprocfs_add_vars(sbi->ll_proc_root, lvars, obd);
 out:
-        lprocfs_put_lperef(sbi->ll_proc_root);
+        lprocfs_put_peref(sbi->ll_proc_root);
         if (err) {
                 lprocfs_remove(&sbi->ll_proc_root);
                 lprocfs_free_stats(&sbi->ll_ra_stats);
@@ -967,7 +970,7 @@ void lprocfs_unregister_mountpoint(struct ll_sb_info *sbi)
 #define pct(a,b) (b ? a * 100 / b : 0)
 
 static void ll_display_extents_info(struct ll_rw_extents_info *io_extents,
-                                   libcfs_seq_file_t *seq, int which)
+                                   cfs_seq_file_t *seq, int which)
 {
         unsigned long read_tot = 0, write_tot = 0, read_cum, write_cum;
         unsigned long start, end, r, w;
@@ -990,11 +993,11 @@ static void ll_display_extents_info(struct ll_rw_extents_info *io_extents,
                 read_cum += r;
                 write_cum += w;
                 end = 1 << (i + LL_HIST_START - units);
-                LIBCFS_SEQ_PRINTF(seq, "%4lu%c - %4lu%c%c: %14lu %4lu %4lu  | "
-                           "%14lu %4lu %4lu\n", start, *unitp, end, *unitp,
-                           (i == LL_HIST_MAX - 1) ? '+' : ' ',
-                           r, pct(r, read_tot), pct(read_cum, read_tot),
-                           w, pct(w, write_tot), pct(write_cum, write_tot));
+                cfs_seq_printf(seq, "%4lu%c - %4lu%c%c: %14lu %4lu %4lu  | "
+                               "%14lu %4lu %4lu\n", start, *unitp, end, *unitp,
+                               (i == LL_HIST_MAX - 1) ? '+' : ' ',
+                               r, pct(r, read_tot), pct(read_cum, read_tot),
+                               w, pct(w, write_tot), pct(write_cum, write_tot));
                 start = end;
                 if (start == 1<<10) {
                         start = 1;
@@ -1006,32 +1009,32 @@ static void ll_display_extents_info(struct ll_rw_extents_info *io_extents,
         }
 }
 
-static int ll_rw_extents_stats_pp_seq_show(libcfs_seq_file_t *seq, void *v)
+static int ll_rw_extents_stats_pp_seq_show(cfs_seq_file_t *seq, void *v)
 {
         struct timeval now;
-        struct ll_sb_info *sbi = LIBCFS_SEQ_PRIVATE(seq);
+        struct ll_sb_info *sbi = cfs_seq_private(seq);
         struct ll_rw_extents_info *io_extents = &sbi->ll_rw_extents_info;
         int k;
 
         cfs_gettimeofday(&now);
 
         if (!sbi->ll_rw_stats_on) {
-                LIBCFS_SEQ_PRINTF(seq, "disabled\n"
-                                "write anything in this file to activate, "
-                                "then 0 or \"[D/d]isabled\" to deactivate\n");
+                cfs_seq_printf(seq, "disabled\n"
+                               "write anything in this file to activate, "
+                               "then 0 or \"[D/d]isabled\" to deactivate\n");
                 return 0;
         }
-        LIBCFS_SEQ_PRINTF(seq, "snapshot_time:         %lu.%lu (secs.usecs)\n",
-                   now.tv_sec, now.tv_usec);
-        LIBCFS_SEQ_PRINTF(seq, "%15s %19s       | %20s\n", " ", "read", "write");
-        LIBCFS_SEQ_PRINTF(seq, "%13s   %14s %4s %4s  | %14s %4s %4s\n",
-                   "extents", "calls", "%", "cum%",
-                   "calls", "%", "cum%");
+        cfs_seq_printf(seq, "snapshot_time:         %lu.%lu (secs.usecs)\n",
+                       now.tv_sec, now.tv_usec);
+        cfs_seq_printf(seq, "%15s %19s       | %20s\n", " ", "read", "write");
+        cfs_seq_printf(seq, "%13s   %14s %4s %4s  | %14s %4s %4s\n",
+                       "extents", "calls", "%", "cum%",
+                       "calls", "%", "cum%");
         cfs_spin_lock(&sbi->ll_pp_extent_lock);
         for(k = 0; k < LL_PROCESS_HIST_MAX; k++) {
                 if(io_extents->pp_extents[k].pid != 0) {
-                        LIBCFS_SEQ_PRINTF(seq, "\nPID: %d\n",
-                                   io_extents->pp_extents[k].pid);
+                        cfs_seq_printf(seq, "\nPID: %d\n",
+                                       io_extents->pp_extents[k].pid);
                         ll_display_extents_info(io_extents, seq, k);
                 }
         }
@@ -1039,11 +1042,11 @@ static int ll_rw_extents_stats_pp_seq_show(libcfs_seq_file_t *seq, void *v)
         return 0;
 }
 static ssize_t
-ll_rw_extents_stats_pp_seq_write(libcfs_file_t *file, const char *buf,
+ll_rw_extents_stats_pp_seq_write(cfs_param_file_t *file, const char *buf,
                                  size_t len, loff_t *off)
 {
-        libcfs_seq_file_t *seq = LIBCFS_FILE_PRIVATE(file);
-        struct ll_sb_info *sbi = LIBCFS_SEQ_PRIVATE(seq);
+        cfs_seq_file_t *seq = cfs_file_private(file);
+        struct ll_sb_info *sbi = cfs_seq_private(seq);
         struct ll_rw_extents_info *io_extents = &sbi->ll_rw_extents_info;
         int i;
         int value = 1, rc = 0;
@@ -1069,26 +1072,26 @@ ll_rw_extents_stats_pp_seq_write(libcfs_file_t *file, const char *buf,
 }
 LPROC_SEQ_FOPS(ll_rw_extents_stats_pp);
 
-static int ll_rw_extents_stats_seq_show(libcfs_seq_file_t *seq, void *v)
+static int ll_rw_extents_stats_seq_show(cfs_seq_file_t *seq, void *v)
 {
-        struct ll_sb_info *sbi = LIBCFS_SEQ_PRIVATE(seq);
+        struct ll_sb_info *sbi = cfs_seq_private(seq);
         struct ll_rw_extents_info *io_extents = &sbi->ll_rw_extents_info;
         struct timeval now;
 
         cfs_gettimeofday(&now);
 
         if (!sbi->ll_rw_stats_on) {
-                LIBCFS_SEQ_PRINTF(seq, "disabled\n"
-                                "write anything in this file to activate, "
-                                "then 0 or \"[D/d]isabled\" to deactivate\n");
+                cfs_seq_printf(seq, "disabled\n"
+                               "write anything in this file to activate, "
+                               "then 0 or \"[D/d]isabled\" to deactivate\n");
                 return 0;
         }
-        LIBCFS_SEQ_PRINTF(seq, "snapshot_time:         %lu.%lu (secs.usecs)\n",
-                   now.tv_sec, now.tv_usec);
-        LIBCFS_SEQ_PRINTF(seq, "%15s %19s       | %20s\n", " ", "read", "write");
-        LIBCFS_SEQ_PRINTF(seq, "%13s   %14s %4s %4s  | %14s %4s %4s\n",
-                   "extents", "calls", "%", "cum%",
-                   "calls", "%", "cum%");
+        cfs_seq_printf(seq, "snapshot_time:         %lu.%lu (secs.usecs)\n",
+                       now.tv_sec, now.tv_usec);
+        cfs_seq_printf(seq, "%15s %19s       | %20s\n", " ", "read", "write");
+        cfs_seq_printf(seq, "%13s   %14s %4s %4s  | %14s %4s %4s\n",
+                       "extents", "calls", "%", "cum%",
+                       "calls", "%", "cum%");
         cfs_spin_lock(&sbi->ll_lock);
         ll_display_extents_info(io_extents, seq, LL_PROCESS_HIST_MAX);
         cfs_spin_unlock(&sbi->ll_lock);
@@ -1097,11 +1100,11 @@ static int ll_rw_extents_stats_seq_show(libcfs_seq_file_t *seq, void *v)
 }
 
 static ssize_t
-ll_rw_extents_stats_seq_write(libcfs_file_t *file, const char *buf,
+ll_rw_extents_stats_seq_write(cfs_param_file_t *file, const char *buf,
                               size_t len, loff_t *off)
 {
-        libcfs_seq_file_t *seq = LIBCFS_FILE_PRIVATE(file);
-        struct ll_sb_info *sbi = LIBCFS_SEQ_PRIVATE(seq);
+        cfs_seq_file_t *seq = cfs_file_private(file);
+        struct ll_sb_info *sbi = cfs_seq_private(seq);
         struct ll_rw_extents_info *io_extents = &sbi->ll_rw_extents_info;
         int i;
         int value = 1, rc = 0;
@@ -1231,10 +1234,10 @@ void ll_rw_stats_tally(struct ll_sb_info *sbi, pid_t pid,
         cfs_spin_unlock(&sbi->ll_process_lock);
 }
 
-static int ll_rw_offset_stats_seq_show(libcfs_seq_file_t *seq, void *v)
+static int ll_rw_offset_stats_seq_show(cfs_seq_file_t *seq, void *v)
 {
         struct timeval now;
-        struct ll_sb_info *sbi = LIBCFS_SEQ_PRIVATE(seq);
+        struct ll_sb_info *sbi = cfs_seq_private(seq);
         struct ll_rw_process_info *offset = sbi->ll_rw_offset_info;
         struct ll_rw_process_info *process = sbi->ll_rw_process_info;
         int i;
@@ -1242,22 +1245,22 @@ static int ll_rw_offset_stats_seq_show(libcfs_seq_file_t *seq, void *v)
         cfs_gettimeofday(&now);
 
         if (!sbi->ll_rw_stats_on) {
-                LIBCFS_SEQ_PRINTF(seq, "disabled\n"
-                                "write anything in this file to activate, "
-                                "then 0 or \"[D/d]isabled\" to deactivate\n");
+                cfs_seq_printf(seq, "disabled\n"
+                               "write anything in this file to activate, "
+                               "then 0 or \"[D/d]isabled\" to deactivate\n");
                 return 0;
         }
         cfs_spin_lock(&sbi->ll_process_lock);
 
-        LIBCFS_SEQ_PRINTF(seq, "snapshot_time:         %lu.%lu (secs.usecs)\n",
-                   now.tv_sec, now.tv_usec);
-        LIBCFS_SEQ_PRINTF(seq, "%3s %10s %14s %14s %17s %17s %14s\n",
-                   "R/W", "PID", "RANGE START", "RANGE END",
-                   "SMALLEST EXTENT", "LARGEST EXTENT", "OFFSET");
+        cfs_seq_printf(seq, "snapshot_time:         %lu.%lu (secs.usecs)\n",
+                       now.tv_sec, now.tv_usec);
+        cfs_seq_printf(seq, "%3s %10s %14s %14s %17s %17s %14s\n",
+                       "R/W", "PID", "RANGE START", "RANGE END",
+                       "SMALLEST EXTENT", "LARGEST EXTENT", "OFFSET");
         /* We stored the discontiguous offsets here; print them first */
         for(i = 0; i < LL_OFFSET_HIST_MAX; i++) {
                 if (offset[i].rw_pid != 0)
-                        LIBCFS_SEQ_PRINTF(seq,
+                        cfs_seq_printf(seq,
                                    "%3c %10d %14Lu %14Lu %17lu %17lu %14Lu",
                                    offset[i].rw_op ? 'W' : 'R',
                                    offset[i].rw_pid,
@@ -1270,7 +1273,7 @@ static int ll_rw_offset_stats_seq_show(libcfs_seq_file_t *seq, void *v)
         /* Then print the current offsets for each process */
         for(i = 0; i < LL_PROCESS_HIST_MAX; i++) {
                 if (process[i].rw_pid != 0)
-                        LIBCFS_SEQ_PRINTF(seq,
+                        cfs_seq_printf(seq,
                                    "%3c %10d %14Lu %14Lu %17lu %17lu %14Lu",
                                    process[i].rw_op ? 'W' : 'R',
                                    process[i].rw_pid,
@@ -1286,11 +1289,11 @@ static int ll_rw_offset_stats_seq_show(libcfs_seq_file_t *seq, void *v)
 }
 
 static ssize_t
-ll_rw_offset_stats_seq_write(libcfs_file_t *file, const char *buf,
+ll_rw_offset_stats_seq_write(cfs_param_file_t *file, const char *buf,
                              size_t len, loff_t *off)
 {
-        libcfs_seq_file_t *seq = LIBCFS_FILE_PRIVATE(file);
-        struct ll_sb_info *sbi = LIBCFS_SEQ_PRIVATE(seq);
+        cfs_seq_file_t *seq = cfs_file_private(file);
+        struct ll_sb_info *sbi = cfs_seq_private(seq);
         struct ll_rw_process_info *process_info = sbi->ll_rw_process_info;
         struct ll_rw_process_info *offset_info = sbi->ll_rw_offset_info;
         int value = 1, rc = 0;

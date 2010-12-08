@@ -235,7 +235,7 @@ struct lov_mds_md *mdd_max_lmm_get(const struct lu_env *env,
         }
         if (unlikely(mti->mti_max_lmm == NULL)) {
                 OBD_ALLOC(mti->mti_max_lmm, max_lmm_size);
-                if (unlikely(mti->mti_max_lmm != NULL))
+                if (likely(mti->mti_max_lmm != NULL))
                         mti->mti_max_lmm_size = max_lmm_size;
         }
         return mti->mti_max_lmm;
@@ -1047,8 +1047,9 @@ static int mdd_fix_attr(const struct lu_env *env, struct mdd_object *obj,
 
         if (la->la_valid == LA_ATIME) {
                 /* This is atime only set for read atime update on close. */
-                if (la->la_atime <= tmp_la->la_atime +
-                                    mdd_obj2mdd_dev(obj)->mdd_atime_diff)
+                if (la->la_atime > tmp_la->la_atime &&
+                    la->la_atime <= (tmp_la->la_atime +
+                                     mdd_obj2mdd_dev(obj)->mdd_atime_diff))
                         la->la_valid &= ~LA_ATIME;
                 RETURN(0);
         }

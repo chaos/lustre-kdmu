@@ -925,8 +925,7 @@ void flush_spec_ctx_cache_kr(struct ptlrpc_sec *sec,
 
 static
 int gss_sec_flush_ctx_cache_kr(struct ptlrpc_sec *sec,
-                               uid_t uid,
-                               int grace, int force)
+                               uid_t uid, int grace, int force)
 {
         ENTRY;
 
@@ -977,7 +976,7 @@ void gss_sec_gc_ctx_kr(struct ptlrpc_sec *sec)
 }
 
 static
-int gss_sec_display_kr(struct ptlrpc_sec *sec, libcfs_seq_file_t *seq)
+int gss_sec_display_kr(struct ptlrpc_sec *sec, cfs_seq_file_t *seq)
 {
         struct gss_sec_keyring *gsec_kr = sec2gsec_keyring(sec);
         cfs_hlist_node_t       *pos, *next;
@@ -1005,7 +1004,7 @@ int gss_sec_display_kr(struct ptlrpc_sec *sec, libcfs_seq_file_t *seq)
                         snprintf(mech, sizeof(mech), "N/A");
                 mech[sizeof(mech) - 1] = '\0';
 
-                LIBCFS_SEQ_PRINTF(seq,
+                cfs_seq_printf(seq,
                            "%p: uid %u, ref %d, expire %ld(%+ld), fl %s, "
                            "seq %d, win %u, key %08x(ref %d), "
                            "hdl "LPX64":"LPX64", mech: %s\n",

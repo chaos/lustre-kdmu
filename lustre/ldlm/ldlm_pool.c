@@ -150,7 +150,7 @@
 #define LDLM_POOL_SLV_SHIFT (10)
 
 #ifdef __KERNEL__
-extern libcfs_param_entry_t *ldlm_ns_proc_dir;
+extern cfs_param_entry_t *ldlm_ns_proc_dir;
 #endif
 
 static inline __u64 dru(__u64 val, __u32 shift, int round_up)
@@ -240,6 +240,9 @@ static inline void ldlm_pool_recalc_grant_plan(struct ldlm_pool *pl)
         grant_step = ldlm_pool_t2gsp(pl->pl_recalc_period);
         grant_step = ((limit - granted) * grant_step) / 100;
         pl->pl_grant_plan = granted + grant_step;
+        limit = (limit * 5) >> 2;
+        if (pl->pl_grant_plan > limit)
+                pl->pl_grant_plan = limit;
 }
 
 /**
@@ -275,10 +278,6 @@ static inline void ldlm_pool_recalc_slv(struct ldlm_pool *pl)
          */
         slv_factor = (grant_usage << LDLM_POOL_SLV_SHIFT);
         do_div(slv_factor, limit);
-        if (2 * abs(granted - limit) > limit) {
-                slv_factor *= slv_factor;
-                slv_factor = dru(slv_factor, LDLM_POOL_SLV_SHIFT, round_up);
-        }
         slv = slv * slv_factor;
         slv = dru(slv, LDLM_POOL_SLV_SHIFT, round_up);
 
@@ -658,7 +657,7 @@ static int lprocfs_rd_pool_state(char *page, char **start, off_t off,
         __u64 slv, clv;
         __u32 limit;
 
-        LIBCFS_PARAM_GET_DATA(pl, data, NULL);
+        cfs_param_get_data(pl, data, NULL);
         cfs_spin_lock(&pl->pl_lock);
         slv = pl->pl_server_lock_volume;
         clv = pl->pl_client_lock_volume;
@@ -695,7 +694,7 @@ static int lprocfs_rd_pool_state(char *page, char **start, off_t off,
         nr += snprintf(page + nr, count - nr, "  L:   %d\n",
                        limit);
 
-        return libcfs_param_snprintf(page, count, data, LP_STR, NULL, NULL);
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_STR, NULL, NULL);
 }
 
 LDLM_POOL_PROC_READER(grant_plan, int);
@@ -705,7 +704,7 @@ LDLM_POOL_PROC_WRITER(recalc_period, int);
 static int ldlm_pool_proc_init(struct ldlm_pool *pl)
 {
         struct ldlm_namespace *ns = ldlm_pl2ns(pl);
-        libcfs_param_entry_t *parent_ns_proc;
+        cfs_param_entry_t *parent_ns_proc;
         struct lprocfs_vars pool_vars[2];
         char *var_name = NULL;
         int rc = 0;
@@ -832,12 +831,12 @@ static int ldlm_pool_proc_init(struct ldlm_pool *pl)
                              LPROCFS_CNTR_AVGMINMAX | LPROCFS_CNTR_STDDEV,
                              "recalc_timing", "sec");
         lprocfs_register_stats(pl->pl_proc_dir, "stats", pl->pl_stats);
-        lprocfs_put_lperef(pl->pl_proc_dir);
+        lprocfs_put_peref(pl->pl_proc_dir);
 
         EXIT;
 out_free_name:
         if (parent_ns_proc)
-                lprocfs_put_lperef(parent_ns_proc);
+                lprocfs_put_peref(parent_ns_proc);
         OBD_FREE(var_name, MAX_STRING_SIZE + 1);
         return rc;
 }
@@ -1089,7 +1088,8 @@ static int ldlm_pools_shrink(ldlm_side_t client, int nr,
         struct ldlm_namespace *ns;
         void *cookie;
 
-        if (nr != 0 && !(gfp_mask & __GFP_FS))
+        if (client == LDLM_NAMESPACE_CLIENT && nr != 0 &&
+            !(gfp_mask & __GFP_FS))
                 return -1;
 
         CDEBUG(D_DLMTRACE, "Request to shrink %d %s locks from all pools\n",

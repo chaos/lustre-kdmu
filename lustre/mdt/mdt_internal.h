@@ -167,7 +167,7 @@ struct mdt_device {
         int                        mdt_nosquash_strlen;
         cfs_rw_semaphore_t         mdt_squash_sem;
 
-        libcfs_param_entry_t      *mdt_proc_entry;
+        cfs_param_entry_t         *mdt_proc_entry;
         struct lprocfs_stats      *mdt_stats;
         int                        mdt_sec_level;
 };

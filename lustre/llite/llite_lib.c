@@ -116,7 +116,7 @@ static struct ll_sb_info *ll_init_sbi(void)
         cfs_list_add_tail(&sbi->ll_list, &ll_super_blocks);
         cfs_spin_unlock(&ll_sb_lock);
 
-#ifdef ENABLE_LLITE_CHECKSUM
+#ifdef ENABLE_CHECKSUM
         sbi->ll_flags |= LL_SBI_CHECKSUM;
 #endif
 
@@ -1278,13 +1278,15 @@ int ll_setattr_raw(struct inode *inode, struct iattr *attr)
 
         if (ia_valid & ATTR_SIZE)
                 attr->ia_valid |= ATTR_SIZE;
-        if ((ia_valid & ATTR_SIZE) | 
-            ((ia_valid | ATTR_ATIME | ATTR_ATIME_SET) &&
-             LTIME_S(attr->ia_atime) < LTIME_S(attr->ia_ctime)) ||
-            ((ia_valid | ATTR_MTIME | ATTR_MTIME_SET) &&
-             LTIME_S(attr->ia_mtime) < LTIME_S(attr->ia_ctime)))
-                /* perform truncate and setting mtime/atime to past under PW
-                 * 0:EOF extent lock (new_size:EOF for truncate) */
+        if ((ia_valid & ATTR_SIZE) ||
+            (ia_valid | ATTR_ATIME | ATTR_ATIME_SET) ||
+            (ia_valid | ATTR_MTIME | ATTR_MTIME_SET))
+                /* on truncate and utimes send attributes to osts, setting
+                 * mtime/atime to past will be performed under PW 0:EOF extent
+                 * lock (new_size:EOF for truncate)
+                 * it may seem excessive to send mtime/atime updates to osts
+                 * when not setting times to past, but it is necessary due to
+                 * possible time de-synchronization */
                 rc = ll_setattr_ost(inode, attr);
         EXIT;
 out:
@@ -2108,4 +2110,17 @@ int ll_show_options(struct seq_file *seq, struct vfsmount *vfs)
                 seq_puts(seq, ",lazystatfs");
 
         RETURN(0);
+}
+
+int ll_sync_fs(struct super_block *sb, int wait)
+{
+        struct ll_sb_info *sbi = ll_s2sbi(sb);
+        int rc = 0;
+        ENTRY;
+
+        rc = obd_sync_fs(class_exp2obd(sbi->ll_dt_exp), NULL, wait);
+        if (rc)
+                CERROR("sync_fs fails: rc = %d\n", rc);
+
+        RETURN(rc);
 }

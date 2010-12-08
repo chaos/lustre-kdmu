@@ -193,7 +193,7 @@ int class_register_type(struct obd_ops *dt_ops, struct md_ops *md_ops,
                 type->typ_procroot = NULL;
                 GOTO (failed, rc);
         }
-        lprocfs_put_lperef(type->typ_procroot);
+        lprocfs_put_peref(type->typ_procroot);
 
         if (ldt != NULL) {
                 type->typ_lu = ldt;
@@ -763,6 +763,10 @@ void class_export_put(struct obd_export *exp)
                 LASSERT(!cfs_list_empty(&exp->exp_obd_chain));
                 CDEBUG(D_IOCTL, "final put %p/%s\n",
                        exp, exp->exp_client_uuid.uuid);
+
+                /* release nid stat refererence */
+                lprocfs_exp_cleanup(exp);
+
                 obd_zombie_export_add(exp);
         }
 }

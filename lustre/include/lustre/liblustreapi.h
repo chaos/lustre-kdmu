@@ -132,7 +132,12 @@ struct find_param {
                         check_gid:1,
                         check_uid:1,
                         check_pool:1,
+                        check_size:1,
                         exclude_pool:1,
+                        exclude_size:1,
+                        exclude_atime:1,
+                        exclude_mtime:1,
+                        exclude_ctime:1,
                         get_mdt_index:1;
 
         int     verbose;
@@ -169,7 +174,6 @@ extern int llapi_obd_statfs(char *path, __u32 type, __u32 index,
                      struct obd_statfs *stat_buf,
                      struct obd_uuid *uuid_buf);
 extern int llapi_ping(char *obd_type, char *obd_name);
-extern int llapi_target_check(int num_types, char **obd_types, char *dir);
 extern int llapi_catinfo(char *dir, char *keyword, char *node_name);
 extern int llapi_file_get_lov_uuid(const char *path, struct obd_uuid *lov_uuid);
 extern int llapi_file_fget_lov_uuid(int fd, struct obd_uuid *lov_uuid);

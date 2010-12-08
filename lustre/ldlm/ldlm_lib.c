@@ -282,6 +282,7 @@ int client_obd_setup(struct obd_device *obddev, struct lustre_cfg *lcfg)
         CFS_INIT_LIST_HEAD(&cli->cl_loi_hp_ready_list);
         CFS_INIT_LIST_HEAD(&cli->cl_loi_write_list);
         CFS_INIT_LIST_HEAD(&cli->cl_loi_read_list);
+        CFS_INIT_LIST_HEAD(&cli->cl_loi_sync_fs_list);
         client_obd_list_lock_init(&cli->cl_loi_list_lock);
         cli->cl_r_in_flight = 0;
         cli->cl_w_in_flight = 0;
@@ -576,9 +577,6 @@ int server_disconnect_export(struct obd_export *exp)
                 cfs_spin_unlock(&svc->srv_lock);
         }
         cfs_spin_unlock(&exp->exp_lock);
-
-        /* release nid stat refererence */
-        lprocfs_exp_cleanup(exp);
 
         RETURN(rc);
 }
@@ -1910,25 +1908,27 @@ static int target_process_req_flags(struct obd_device *obd,
         LASSERT(exp != NULL);
         if (lustre_msg_get_flags(req->rq_reqmsg) & MSG_REQ_REPLAY_DONE) {
                 /* client declares he's ready to replay locks */
+                cfs_spin_lock(&exp->exp_lock);
                 if (exp->exp_req_replay_needed) {
-                        LASSERT(cfs_atomic_read(&obd->obd_req_replay_clients) >
-                                0);
-                        cfs_spin_lock(&exp->exp_lock);
                         exp->exp_req_replay_needed = 0;
                         cfs_spin_unlock(&exp->exp_lock);
+                        LASSERT(cfs_atomic_read(&obd->obd_req_replay_clients));
                         cfs_atomic_dec(&obd->obd_req_replay_clients);
+                } else {
+                        cfs_spin_unlock(&exp->exp_lock);
                 }
         }
         if (lustre_msg_get_flags(req->rq_reqmsg) & MSG_LOCK_REPLAY_DONE) {
                 /* client declares he's ready to complete recovery
                  * so, we put the request on th final queue */
+                cfs_spin_lock(&exp->exp_lock);
                 if (exp->exp_lock_replay_needed) {
-                        LASSERT(cfs_atomic_read(&obd->obd_lock_replay_clients) >
-                                0);
-                        cfs_spin_lock(&exp->exp_lock);
                         exp->exp_lock_replay_needed = 0;
                         cfs_spin_unlock(&exp->exp_lock);
+                        LASSERT(cfs_atomic_read(&obd->obd_lock_replay_clients));
                         cfs_atomic_dec(&obd->obd_lock_replay_clients);
+                } else {
+                        cfs_spin_unlock(&exp->exp_lock);
                 }
         }
         return 0;

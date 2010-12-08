@@ -356,7 +356,7 @@ struct ll_sb_info {
         struct obd_uuid           ll_sb_uuid;
         struct obd_export        *ll_md_exp;
         struct obd_export        *ll_dt_exp;
-        libcfs_param_entry_t *ll_proc_root;
+        cfs_param_entry_t        *ll_proc_root;
         struct lu_fid             ll_root_fid; /* root object fid */
 
         int                       ll_flags;
@@ -520,7 +520,7 @@ struct lov_stripe_md;
 
 extern cfs_spinlock_t inode_lock;
 
-extern libcfs_param_entry_t *proc_lustre_fs_root;
+extern cfs_param_entry_t *proc_lustre_fs_root;
 
 static inline struct inode *ll_info2i(struct ll_inode_info *lli)
 {
@@ -612,7 +612,7 @@ extern struct file_operations ll_file_operations_flock;
 extern struct file_operations ll_file_operations_noflock;
 extern struct inode_operations ll_file_inode_operations;
 extern int ll_inode_revalidate_it(struct dentry *, struct lookup_intent *);
-extern int ll_have_md_lock(struct inode *inode, __u64 bits);
+extern int ll_have_md_lock(struct inode *inode, __u64 bits, ldlm_mode_t l_req_mode);
 extern ldlm_mode_t ll_take_md_lock(struct inode *inode, __u64 bits,
                                    struct lustre_handle *lockh);
 int __ll_inode_revalidate_it(struct dentry *, struct lookup_intent *,  __u64 bits);
@@ -721,6 +721,7 @@ void ll_umount_begin(struct super_block *sb);
 #endif
 int ll_remount_fs(struct super_block *sb, int *flags, char *data);
 int ll_show_options(struct seq_file *seq, struct vfsmount *vfs);
+int ll_sync_fs(struct super_block *sb, int wait);
 int ll_prep_inode(struct inode **inode, struct ptlrpc_request *req,
                   struct super_block *);
 void lustre_dump_dentry(struct dentry *, int recur);
@@ -949,12 +950,6 @@ void policy_from_vma(ldlm_policy_data_t *policy,
 struct vm_area_struct *our_vma(unsigned long addr, size_t count);
 
 #define    ll_s2sbi(sb)        (s2lsi(sb)->lsi_llsbi)
-
-static inline __u64 ll_ts2u64(struct timespec *time)
-{
-        __u64 t = time->tv_sec;
-        return t;
-}
 
 /* don't need an addref as the sb_info should be holding one */
 static inline struct obd_export *ll_s2dtexp(struct super_block *sb)

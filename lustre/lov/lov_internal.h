@@ -258,6 +258,10 @@ int lov_fini_statfs(struct obd_device *obd, struct obd_statfs *osfs,
 int lov_fini_statfs_set(struct lov_request_set *set);
 int lov_statfs_interpret(struct ptlrpc_request_set *rqset, void *data, int rc);
 
+int cb_sync_fs_update(void *cookie, int rc);
+int lov_fini_sync_fs_set(struct lov_request_set *set);
+int lov_prep_sync_fs_set(struct obd_device *obd, struct obd_info *oinfo,
+                         struct lov_request_set **reqset);
 /* lov_obd.c */
 void lov_fix_desc(struct lov_desc *desc);
 void lov_fix_desc_stripe_size(__u64 *val);
@@ -311,7 +315,7 @@ static inline void lprocfs_lov_init_vars(struct lprocfs_static_vars *lvars)
         memset(lvars, 0, sizeof(*lvars));
 }
 #endif
-extern libcfs_file_ops_t lov_proc_target_fops;
+extern cfs_param_file_ops_t lov_proc_target_fops;
 
 /* lov_cl.c */
 extern struct lu_device_type lov_device_type;

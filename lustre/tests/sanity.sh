@@ -503,7 +503,7 @@ test_17h() { #bug 17378
         mkdir -p $DIR/$tdir
         $SETSTRIPE $DIR/$tdir -c -1
 #define OBD_FAIL_MDS_LOV_PREP_CREATE 0x141
-        do_facet mds lctl set_param fail_loc=0x80000141
+        do_facet $SINGLEMDS lctl set_param fail_loc=0x80000141
         touch $DIR/$tdir/$tfile || true
 }
 run_test 17h "create objects: lov_free_memmd() doesn't lbug"
@@ -513,7 +513,7 @@ test_17i() { #bug 20018
 	local foo=$DIR/$tdir/$tfile
 	ln -s $foo $foo || error "create symlink failed"
 #define OBD_FAIL_MDS_READLINK_EPROTO     0x143
-	do_facet mds lctl set_param fail_loc=0x80000143
+	do_facet $SINGLEMDS lctl set_param fail_loc=0x80000143
 	ls -l $foo && error "error not detected"
 	return 0
 }
@@ -831,6 +831,17 @@ test_24v() {
 }
 run_test 24v "list directory with large files (handle hash collision, bug: 17560)"
 
+test_24w() { # bug21506
+        SZ1=234852
+        dd if=/dev/zero of=$DIR/$tfile bs=1M count=1 seek=4096 || return 1
+        dd if=/dev/zero bs=$SZ1 count=1 >> $DIR/$tfile || return 2
+        dd if=$DIR/$tfile of=$DIR/${tfile}_left bs=1M skip=4097 || return 3
+        SZ2=`ls -l $DIR/${tfile}_left | awk '{print $5}'`
+        [ "$SZ1" = "$SZ2" ] || \
+                error "Error reading at the end of the file $tfile"
+}
+run_test 24w "Reading a file larger than 4Gb"
+
 test_25a() {
 	echo '== symlink sanity ============================================='
 
@@ -1019,7 +1030,7 @@ test_27m() {
 run_test 27m "create file while OST0 was full =================="
 
 sleep_maxage() {
-        local DELAY=$(do_facet mds lctl get_param -n lov.*.qos_maxage | head -n 1 | awk '{print $1 * 2}')
+        local DELAY=$(do_facet $SINGLEMDS lctl get_param -n lov.*.qos_maxage | head -n 1 | awk '{print $1 * 2}')
         sleep $DELAY
 }
 
@@ -1288,7 +1299,7 @@ test_27y() {
         [ $fcount -eq 0 ] && skip "not enough space on OST0" && return
         [ $fcount -gt $OSTCOUNT ] && fcount=$OSTCOUNT
 
-        MDS_OSCS=`do_facet mds lctl dl | awk '/[oO][sS][cC].*md[ts]/ { print $4 }'`
+        MDS_OSCS=`do_facet $SINGLEMDS lctl dl | awk '/[oO][sS][cC].*md[ts]/ { print $4 }'`
         OFFSET=$(($OSTCOUNT-1))
         OST=-1
         for OSC in $MDS_OSCS; do
@@ -1296,7 +1307,7 @@ test_27y() {
                         OST=`osc_to_ost $OSC`
                 } else {
                         echo $OSC "is Deactivate:"
-                        do_facet mds lctl --device  %$OSC deactivate
+                        do_facet $SINGLEMDS lctl --device  %$OSC deactivate
                 } fi
         done
 
@@ -1316,7 +1327,7 @@ test_27y() {
         for OSC in $MDS_OSCS; do
                 [ `osc_to_ost $OSC` != $OST  ] && {
                         echo $OSC "is activate"
-                        do_facet mds lctl --device %$OSC activate
+                        do_facet $SINGLEMDS lctl --device %$OSC activate
                 }
         done
 }
@@ -2122,11 +2133,11 @@ test_39() {
 	$OPENFILE -f O_CREAT:O_TRUNC:O_WRONLY $DIR/${tfile}2
 	if [ ! $DIR/${tfile}2 -nt $DIR/$tfile ]; then
 		echo "mtime"
-		ls -l  $DIR/$tfile $DIR/${tfile}2
+		ls -l --full-time $DIR/$tfile $DIR/${tfile}2
 		echo "atime"
-		ls -lu  $DIR/$tfile $DIR/${tfile}2
+		ls -lu --full-time $DIR/$tfile $DIR/${tfile}2
 		echo "ctime"
-		ls -lc  $DIR/$tfile $DIR/${tfile}2
+		ls -lc --full-time $DIR/$tfile $DIR/${tfile}2
 		error "O_TRUNC didn't change timestamps"
 	fi
 }
@@ -2375,6 +2386,56 @@ test_39k() {
 	done
 }
 run_test 39k "write, utime, close, stat ========================"
+
+# this should be set to future
+TEST_39_ATIME=`date -d "1 year" +%s`
+
+test_39l() {
+	local atime_diff=$(do_facet $SINGLEMDS lctl get_param -n mdd.*.atime_diff)
+
+	mkdir -p $DIR/$tdir
+
+	# test setting directory atime to future
+	touch -a -d @$TEST_39_ATIME $DIR/$tdir
+	local atime=$(stat -c %X $DIR/$tdir)
+	[ "$atime" = $TEST_39_ATIME ] || \
+		error "atime is not set to future: $atime, should be $TEST_39_ATIME"
+
+	# test setting directory atime from future to now
+	local d1=$(date +%s)
+	ls $DIR/$tdir
+	local d2=$(date +%s)
+
+	cancel_lru_locks mdc
+	atime=$(stat -c %X $DIR/$tdir)
+	[ "$atime" -ge "$d1" -a "$atime" -le "$d2" ] || \
+		error "atime is not updated from future: $atime, should be $d1<atime<$d2"
+
+	do_facet $SINGLEMDS lctl set_param -n mdd.*.atime_diff=2
+	sleep 3
+
+	# test setting directory atime when now > dir atime + atime_diff
+	d1=$(date +%s)
+	ls $DIR/$tdir
+	d2=$(date +%s)
+	cancel_lru_locks mdc
+	atime=$(stat -c %X $DIR/$tdir)
+	[ "$atime" -ge "$d1" -a "$atime" -le "$d2" ] || \
+		error "atime is not updated  : $atime, should be $d2"
+
+	do_facet $SINGLEMDS lctl set_param -n mdd.*.atime_diff=60
+	sleep 3
+
+	# test not setting directory atime when now < dir atime + atime_diff
+	ls $DIR/$tdir
+	cancel_lru_locks mdc
+	atime=$(stat -c %X $DIR/$tdir)
+	[ "$atime" -ge "$d1" -a "$atime" -le "$d2" ] || \
+		error "atime is updated to $atime, should remain $d1<atime<$d2"
+
+	do_facet $SINGLEMDS lctl set_param -n mdd.*.atime_diff=$atime_diff
+}
+run_test 39l "directory atime update ==========================="
 
 test_40() {
 	dd if=/dev/zero of=$DIR/f40 bs=4096 count=1
@@ -3258,8 +3319,8 @@ run_test 56h "check lfs find ! -name ============================="
 test_56i() {
        tdir=${tdir}i
        mkdir -p $DIR/$tdir
-       UUID=`$LFS osts | awk '/0: / { print $2 }'`
-       OUT="`$LFIND -ost $UUID $DIR/$tdir`"
+       UUID=$(ostuuid_from_index 0 $DIR/$tdir)
+       OUT=$($LFIND -obd $UUID $DIR/$tdir)
        [ "$OUT" ] && error "$LFIND returned directory '$OUT'" || true
 }
 run_test 56i "check 'lfs find -ost UUID' skips directories ======="
@@ -3376,6 +3437,39 @@ test_56q() {
 	echo "lfs find -gid and ! -gid passed."
 }
 run_test 56q "check lfs find -gid and ! -gid ==============================="
+
+test_56r() {
+	setup_56 $NUMFILES $NUMDIRS
+	TDIR=$DIR/${tdir}g
+	
+	EXPECTED=12
+	NUMS=`$LFIND -size 0 -t f $TDIR | wc -l`
+	[ $NUMS -eq $EXPECTED ] || \
+		error "lfs find $TDIR -size 0 wrong: found $NUMS, expected $EXPECTED"
+	EXPECTED=0
+	NUMS=`$LFIND ! -size 0 -t f $TDIR | wc -l`
+	[ $NUMS -eq $EXPECTED ] || \
+		error "lfs find $TDIR ! -size 0 wrong: found $NUMS, expected $EXPECTED"
+	echo "test" > $TDIR/56r && sync
+	EXPECTED=1
+	NUMS=`$LFIND -size 5 -t f $TDIR | wc -l`
+	[ $NUMS -eq $EXPECTED ] || \
+		error "lfs find $TDIR -size 5 wrong: found $NUMS, expected $EXPECTED"
+	EXPECTED=1
+	NUMS=`$LFIND -size +5 -t f $TDIR | wc -l`
+	[ $NUMS -eq $EXPECTED ] || \
+		error "lfs find $TDIR -size +5 wrong: found $NUMS, expected $EXPECTED"
+	EXPECTED=13
+	NUMS=`$LFIND -size +0 -t f $TDIR | wc -l`
+	[ $NUMS -eq $EXPECTED ] || \
+		error "lfs find $TDIR -size +0 wrong: found $NUMS, expected $EXPECTED"
+	EXPECTED=0
+	NUMS=`$LFIND ! -size -5 -t f $TDIR | wc -l`
+	[ $NUMS -eq $EXPECTED ] || \
+		error "lfs find $TDIR ! -size -5 wrong: found $NUMS, expected $EXPECTED"
+}
+
+run_test 56r "check lfs find -size works =========================="
 
 test_57a() {
 	# note test will not do anything if MDS is not local
@@ -3714,7 +3808,7 @@ test_65k() { # bug11679
                         STRIPE_INDEX=`do_facet $SINGLEMDS lctl get_param -n lov.*md*.target_obd |
                                       grep $STRIPE_OST | awk -F: '{print $1}' | head -n 1`
 
-			[ -f $DIR/$tdir/${STRIPE_INDEX} ] && continue
+                [ -f $DIR/$tdir/${STRIPE_INDEX} ] && continue
                         echo "$SETSTRIPE $DIR/$tdir/${STRIPE_INDEX} -i ${STRIPE_INDEX} -c 1"
                         do_facet client $SETSTRIPE $DIR/$tdir/${STRIPE_INDEX} -i ${STRIPE_INDEX} -c 1
                         RC=$?
@@ -4638,7 +4732,7 @@ test_102c() {
 	[ "$OSTCOUNT" -lt "2" ] && skip_env "skipping 2-stripe test" && return
 	mkdir -p $DIR/$tdir
 	chown $RUNAS_ID $DIR/$tdir
-    # we access params_tree by ioctl, so have to change permission on /dev/*
+        # we access params_tree by ioctl, so have to change permission on /dev/*
 	chown $RUNAS_ID /dev/lnet
 	local testfile=$DIR/$tdir/$tfile
 	$RUNAS $SETSTRIPE -s 65536 -i 1 -c 2 $testfile||error "setstripe failed"
@@ -6116,6 +6210,7 @@ set_dir_limits () {
                 devs=$(do_node $node "lctl get_param -n devices" | awk '($3 ~ "mdt" && $4 ~ "MDT") { print $4 }')
 	        for dev in $devs; do
 		        mntdev=$(do_node $node "lctl get_param -n osd*.$dev.mntdev")
+		        do_node $node "test -e $LDPROC/\\\$(basename $mntdev)/max_dir_size" || LDPROC=/sys/fs/ldiskfs
 		        do_node $node "echo $1 >$LDPROC/\\\$(basename $mntdev)/max_dir_size"
 		done
 	done
@@ -6470,11 +6565,11 @@ som_mode_switch() {
         if [ x$som = x"enabled" ]; then
                 [ $((gl2 - gl1)) -gt 0 ] && error "no glimpse RPC is expected"
                 MOUNTOPT=`echo $MOUNTOPT | sed 's/som_preview//g'`
-                do_facet mgs "$LCTL conf_param mdt.$FSNAME.som=disabled"
+                do_facet mgs "$LCTL conf_param $FSNAME.mdt.som=disabled"
         else
                 [ $((gl2 - gl1)) -gt 0 ] || error "some glimpse RPC is expected"
                 MOUNTOPT="$MOUNTOPT,som_preview"
-                do_facet mgs "$LCTL conf_param mdt.$FSNAME.som=enabled"
+                do_facet mgs "$LCTL conf_param $FSNAME.mdt.som=enabled"
         fi
 
         # do remount to make new mount-conf parameters actual
@@ -7090,7 +7185,7 @@ test_163() {
 	sleep 1
 	local uuid=$($LCTL get_param -n mdc.${FSNAME}-MDT0000-mdc-*.uuid)
 	# this proc file is temporary and linux-only
-	do_facet mds lctl set_param mdt.${FSNAME}-MDT0000.mdccomm=$uuid ||\
+	do_facet $SINGLEMDS lctl set_param mdt.${FSNAME}-MDT0000.mdccomm=$uuid ||\
          error "kernel->userspace send failed"
 	kill -INT $!
 }
@@ -7643,10 +7738,7 @@ test_217() { # bug 22430
 run_test 217 "check lctl ping for hostnames with hiphen ('-')"
 
 test_218() { # bug 15384
-    #cleanup/setup to check params_tree build/remove correctly
-    cleanup
-    setup
-    #compare parameters
+    #compare parameters between /proc and params_tree
     difflog=$TMP/diff_$tfile
     for node in $(nodes_list); do
         echo "node=$node"

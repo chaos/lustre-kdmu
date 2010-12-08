@@ -52,12 +52,12 @@ static int lmv_rd_numobd(char *page, char **start, off_t off, int count,
         struct obd_device    *dev;
         struct lmv_desc      *desc;
 
-        LIBCFS_PARAM_GET_DATA(dev, data, NULL);
+        cfs_param_get_data(dev, data, NULL);
         LASSERT(dev != NULL);
         desc = &dev->u.lmv.desc;
 
-        return libcfs_param_snprintf(page, count, data, LP_U32,
-                                     "%u\n", desc->ld_tgt_count);
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_U32,
+                                  "%u\n", desc->ld_tgt_count);
 }
 
 static const char *placement_name[] = {
@@ -88,17 +88,17 @@ static int lmv_rd_placement(char *page, char **start, off_t off, int count,
         struct obd_device           *dev;
         struct lmv_obd              *lmv;
 
-        LIBCFS_PARAM_GET_DATA(dev, data, NULL);
+        cfs_param_get_data(dev, data, NULL);
         LASSERT(dev != NULL);
         lmv = &dev->u.lmv;
 
-        return libcfs_param_snprintf(page, count, data, LP_STR, "%s\n",
-                      placement_policy2name(lmv->lmv_placement));
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_STR, "%s\n",
+                                  placement_policy2name(lmv->lmv_placement));
 }
 
 #define MAX_POLICY_STRING_SIZE 64
 
-static int lmv_wr_placement(libcfs_file_t *file, const char *buffer,
+static int lmv_wr_placement(cfs_param_file_t *file, const char *buffer,
                             unsigned long count, void *data)
 {
         struct obd_device       *dev;
@@ -109,8 +109,8 @@ static int lmv_wr_placement(libcfs_file_t *file, const char *buffer,
         int                      rc;
         int                      flag = 0;
 
-        LIBCFS_PARAM_GET_DATA(dev, data, &flag);
-        rc = libcfs_param_copy(flag, dummy, buffer, MAX_POLICY_STRING_SIZE);
+        cfs_param_get_data(dev, data, &flag);
+        rc = cfs_param_copy(flag, dummy, buffer, MAX_POLICY_STRING_SIZE);
         if (rc < 0)
                 return rc;
 
@@ -142,12 +142,12 @@ static int lmv_rd_activeobd(char *page, char **start, off_t off, int count,
         struct obd_device           *dev;
         struct lmv_desc             *desc;
 
-        LIBCFS_PARAM_GET_DATA(dev, data, NULL);
+        cfs_param_get_data(dev, data, NULL);
         LASSERT(dev != NULL);
         desc = &dev->u.lmv.desc;
 
-        return libcfs_param_snprintf(page, count, data, LP_U32,
-                                     "%u\n", desc->ld_active_tgt_count);
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_U32,
+                                  "%u\n", desc->ld_active_tgt_count);
 }
 
 static int lmv_rd_desc_uuid(char *page, char **start, off_t off, int count,
@@ -156,77 +156,64 @@ static int lmv_rd_desc_uuid(char *page, char **start, off_t off, int count,
         struct obd_device           *dev;
         struct lmv_obd              *lmv;
 
-        LIBCFS_PARAM_GET_DATA(dev, data, NULL);
+        cfs_param_get_data(dev, data, NULL);
         LASSERT(dev != NULL);
         lmv = &dev->u.lmv;
 
-        return libcfs_param_snprintf(page, count, data, LP_STR,
-                                     "%s\n", lmv->desc.ld_uuid.uuid);
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_STR,
+                                  "%s\n", lmv->desc.ld_uuid.uuid);
 }
 
-static void *lmv_tgt_seq_start(libcfs_seq_file_t *p, loff_t *pos)
+static void *lmv_tgt_seq_start(cfs_seq_file_t *p, loff_t *pos)
 {
-        struct obd_device       *dev = LIBCFS_SEQ_PRIVATE(p);
+        struct obd_device       *dev = cfs_seq_private(p);
         struct lmv_obd          *lmv = &dev->u.lmv;
         return (*pos >= lmv->desc.ld_tgt_count) ? NULL : &(lmv->tgts[*pos]);
 
 }
 
-static void lmv_tgt_seq_stop(libcfs_seq_file_t *p, void *v)
+static void lmv_tgt_seq_stop(cfs_seq_file_t *p, void *v)
 {
         return;
 }
 
-static void *lmv_tgt_seq_next(libcfs_seq_file_t *p, void *v, loff_t *pos)
+static void *lmv_tgt_seq_next(cfs_seq_file_t *p, void *v, loff_t *pos)
 {
-        struct obd_device       *dev = LIBCFS_SEQ_PRIVATE(p);
+        struct obd_device       *dev = cfs_seq_private(p);
         struct lmv_obd          *lmv = &dev->u.lmv;
         ++*pos;
         return (*pos >=lmv->desc.ld_tgt_count) ? NULL : &(lmv->tgts[*pos]);
 }
 
-static int lmv_tgt_seq_show(libcfs_seq_file_t *p, void *v)
+static int lmv_tgt_seq_show(cfs_seq_file_t *p, void *v)
 {
         struct lmv_tgt_desc     *tgt = v;
-        struct obd_device       *dev = LIBCFS_SEQ_PRIVATE(p);
+        struct obd_device       *dev = cfs_seq_private(p);
         struct lmv_obd          *lmv = &dev->u.lmv;
         int                      idx = tgt - &(lmv->tgts[0]);
 
-        return LIBCFS_SEQ_PRINTF(p, "%d: %s %sACTIVE\n", idx, tgt->ltd_uuid.uuid,
+        return cfs_seq_printf(p, "%d: %s %sACTIVE\n", idx, tgt->ltd_uuid.uuid,
                                  tgt->ltd_active ? "" : "IN");
 }
 
-libcfs_seq_ops_t lmv_tgt_sops = {
+cfs_seq_ops_t lmv_tgt_sops = {
         .start                 = lmv_tgt_seq_start,
         .stop                  = lmv_tgt_seq_stop,
         .next                  = lmv_tgt_seq_next,
         .show                  = lmv_tgt_seq_show,
 };
 
-static int lmv_target_seq_open(libcfs_inode_t *inode, libcfs_file_t *file)
+static int lmv_target_seq_open(cfs_inode_t *inode, cfs_param_file_t *file)
 {
-        libcfs_param_dentry_t   *dp = LIBCFS_PDE(inode);
-        libcfs_seq_file_t       *seq;
-        int                     rc;
-
-        LPROCFS_ENTRY_AND_CHECK(dp);
-        LIBCFS_SEQ_OPEN(file, &lmv_tgt_sops, rc);
-        if (rc) {
-                LPROCFS_EXIT();
-                return rc;
-        }
-        seq = LIBCFS_FILE_PRIVATE(file);
-        LIBCFS_SEQ_PRIVATE(seq) = LIBCFS_DENTRY_DATA(dp);
-
-        return 0;
+        return cfs_param_seq_fopen(inode, file, &lmv_tgt_sops);
 }
 
-libcfs_file_ops_t lmv_proc_target_fops = {
-        .owner                = THIS_MODULE,
+cfs_param_file_ops_t lmv_proc_target_fops = {
+        .owner                = CFS_PARAM_MODULE,
         .open                 = lmv_target_seq_open,
-        .read                 = LIBCFS_SEQ_READ_COMMON,
-        .llseek               = LIBCFS_SEQ_LSEEK_COMMON,
-        .release              = libcfs_param_seq_release_common,
+        .read                 = cfs_seq_read,
+        .llseek               = cfs_seq_lseek,
+        .release              = cfs_seq_release,
 };
 struct lprocfs_vars lprocfs_lmv_obd_vars[] = {
         { "numobd",             lmv_rd_numobd,          0, 0 },

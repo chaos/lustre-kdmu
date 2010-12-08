@@ -247,7 +247,7 @@ static int make_lustre_backfs(struct mkfs_opts *mop)
         snprintf(mkfs_cmd, sizeof(mkfs_cmd),
                  "com.sun.lustre:label=%s:%s%04x",
                  mop->mo_ldd.ldd_fsname,
-                 mop->mo_ldd.ldd_flags & SVTYPE_MDT ? "MDT":"OST",
+                 mop->mo_ldd.ldd_flags & LDD_F_SV_TYPE_MDT ? "MDT":"OST",
                  mop->mo_ldd.ldd_svindex);
 
         if (prop2nvlist(props, mkfs_cmd))
@@ -339,13 +339,13 @@ static int parse_opts(int argc, char *const argv[], struct mkfs_opts *mop)
                         force_zpool = 1;
                         break;
                 case 'G':
-                        mop->mo_ldd.ldd_flags |= SVTYPE_MGS;
+                        mop->mo_ldd.ldd_flags |= LDD_F_SV_TYPE_MGS;
                         break;
                 case 'M':
-                        mop->mo_ldd.ldd_flags |= SVTYPE_MDT;
+                        mop->mo_ldd.ldd_flags |= LDD_F_SV_TYPE_MDT;
                         break;
                 case 'O':
-                        mop->mo_ldd.ldd_flags |= SVTYPE_OST;
+                        mop->mo_ldd.ldd_flags |= LDD_F_SV_TYPE_OST;
                         break;
                 case 'h':
                         usage(stdout);

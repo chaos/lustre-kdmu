@@ -1217,7 +1217,7 @@ static int osd_declare_object_create(const struct lu_env *env,
          * XXX: this is a very short-term solution to reserve space
          * for unlinks. by default 1/25 of space is reserved.
          */
-        if (fid->f_seq != LU_LLOG_LUSTRE_SEQ) {
+        if (fid->f_seq != FID_SEQ_LLOG_OBJ) {
                 rc = osd_check_for_reserved_space(osd);
                 if (rc)
                         RETURN(rc);
@@ -3063,7 +3063,6 @@ int __init osd_init(void)
         struct lprocfs_static_vars lvars;
 
         lprocfs_osd_init_vars(&lvars);
-        udmu_objset_register_type();
         return class_register_type(&osd_obd_device_ops, NULL, lvars.module_vars,
                                    LUSTRE_ZFS_NAME, &osd_device_type);
 }

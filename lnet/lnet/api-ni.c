@@ -47,44 +47,44 @@ lnet_t      the_lnet;                           /* THE state of the network */
 
 #ifdef __KERNEL__
 
-static char ip2nets[MAX_STRLEN];
+static char ip2nets[LNET_MAX_STRLEN];
 CFS_MODULE_PARM_STR(ip2nets, ip2nets, sizeof(ip2nets), 0444,
                 "LNET network <- IP table");
 
-static char networks[MAX_STRLEN];
+static char networks[LNET_MAX_STRLEN];
 CFS_MODULE_PARM_STR(networks, networks, sizeof(networks), 0444,
                     "local networks");
 
-static char routes[MAX_STRLEN];
+static char routes[LNET_MAX_STRLEN];
 CFS_MODULE_PARM_STR(routes, routes, sizeof(routes), 0444,
                 "routes to non-local networks");
 
-struct libcfs_param_ctl_table libcfs_param_apini_ctl_table[] = {
+cfs_param_sysctl_table_t apini_ctl_table[] = {
         {
                 .name     = "ip2nets",
                 .data     = ip2nets,
                 .mode     = 0444,
-                .read     = libcfs_param_string_read
+                .read     = cfs_param_string_read
         },
         {
                 .name     = "networks",
                 .data     = networks,
                 .mode     = 0444,
-                .read     = libcfs_param_string_read,
-                .write    = libcfs_param_string_write,
+                .read     = cfs_param_string_read,
+                .write    = cfs_param_string_write
         },
         {
                 .name     = "routes",
                 .data     = routes,
                 .mode     = 0444,
-                .read     = libcfs_param_string_read
+                .read     = cfs_param_string_read
         },
         {0}
 };
-void lnet_apini_sysctl_init()
+int lnet_apini_param_init()
 {
-        libcfs_param_sysctl_init("lnet", libcfs_param_apini_ctl_table,
-                                 libcfs_param_lnet_root);
+        return cfs_param_sysctl_init("lnet", apini_ctl_table,
+                                     cfs_param_get_lnet_root());
 }
 
 char *
@@ -1056,6 +1056,15 @@ lnet_startup_lndnis (void)
 
                 LASSERT (libcfs_isknown_lnd(lnd_type));
 
+                if (lnd_type == CIBLND    ||
+                    lnd_type == OPENIBLND ||
+                    lnd_type == IIBLND    ||
+                    lnd_type == VIBLND) {
+                        CERROR("LND %s obsoleted\n",
+                               libcfs_lnd2str(lnd_type));
+                        goto failed;
+                }
+
                 LNET_MUTEX_DOWN(&the_lnet.ln_lnd_mutex);
                 lnd = lnet_find_lnd_by_type(lnd_type);
 
@@ -1329,7 +1338,9 @@ LNetNIInit(lnet_pid_t requested_pid)
         rc = lnet_params_init();
         if (rc != 0)
                 goto failed5;
+
         goto out;
+
  failed5:
         lnet_params_fini();
  failed4:
@@ -1372,7 +1383,7 @@ LNetNIFini()
                 LASSERT (!the_lnet.ln_niinit_self);
 
 #ifdef __KERNEL__
-                libcfs_param_sysctl_fini("lnet", libcfs_param_lnet_root);
+                cfs_param_sysctl_fini("lnet", cfs_param_get_lnet_root());
 #endif
                 lnet_proc_fini();
                 lnet_params_fini();

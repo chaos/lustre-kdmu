@@ -108,44 +108,50 @@ static cfs_sysctl_table_t kiblnd_plat_top_ctl_table[] = {
 
 #endif /* defined(CONFIG_SYSCTL) && !CFS_SYSFS_MODULE_PARM */
 
-static struct libcfs_param_ctl_table libcfs_plat_param_kiblnd_ctl_table[] = {
+static cfs_param_sysctl_table_t cfs_plat_param_kiblnd_ctl_table[] = {
         {
                 .name     = "fmr_pool_size",
                 .data     = &fmr_pool_size,
                 .mode     = 0444,
-                .read     = libcfs_param_intvec_read
+                .read     = cfs_param_intvec_read
         },
         {
                 .name     = "fmr_flush_trigger",
                 .data     = &fmr_flush_trigger,
                 .mode     = 0444,
-                .read     = libcfs_param_intvec_read
+                .read     = cfs_param_intvec_read
         },
         {
                 .name     = "fmr_cache",
                 .data     = &fmr_cache,
                 .mode     = 0444,
-                .read     = libcfs_param_intvec_read
+                .read     = cfs_param_intvec_read
         },
         {
                 .name     = "pmr_pool_size",
                 .data     = &pmr_pool_size,
                 .mode     = 0444,
-                .read     = libcfs_param_intvec_read
+                .read     = cfs_param_intvec_read
         },
         {0}
 };
 
-void
+int
 kiblnd_plat_modparams_init(void)
 {
+        int rc;
+
         kiblnd_tunables.kib_fmr_pool_size     = &fmr_pool_size;
         kiblnd_tunables.kib_fmr_flush_trigger = &fmr_flush_trigger;
         kiblnd_tunables.kib_fmr_cache         = &fmr_cache;
         kiblnd_tunables.kib_pmr_pool_size     = &pmr_pool_size;
 
-        libcfs_param_sysctl_init("o2iblnd", libcfs_plat_param_kiblnd_ctl_table,
-                                 libcfs_param_lnet_root);
+        rc = cfs_param_sysctl_init("o2iblnd", cfs_plat_param_kiblnd_ctl_table,
+                                   cfs_param_get_lnet_root());
+        if (rc != 0) {
+                CERROR("kiblnd_plat_modparams_init: error %d\n", rc);
+                return rc;
+        }
         
 #if defined(CONFIG_SYSCTL) && !CFS_SYSFS_MODULE_PARM
         kiblnd_tunables.kib_plat_sysctl =
@@ -154,6 +160,7 @@ kiblnd_plat_modparams_init(void)
         if (kiblnd_tunables.kib_plat_sysctl == NULL)
                 CWARN("Can't setup plat /proc tunables\n");
 #endif
+        return 0;
 }
 
 void

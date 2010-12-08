@@ -34,8 +34,8 @@
  * Lustre is a trademark of Sun Microsystems, Inc.
  */
 
-#ifndef _UPCALL_CACHE_H
-#define _UPCALL_CACHE_H
+#ifndef _LUCACHE_H
+#define _LUCACHE_H
 
 #ifndef EXPORT_SYMTAB
 # define EXPORT_SYMTAB
@@ -163,4 +163,4 @@ void upcall_cache_cleanup(struct upcall_cache *hash);
 
 /** @} ucache */
 
-#endif /* _UPCALL_CACHE_H */
+#endif /* _LUCACHE_H */

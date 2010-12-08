@@ -80,7 +80,7 @@ struct cmm_device {
         /** lock for cmm_device::cmm_targets operations */
         cfs_spinlock_t          cmm_tgt_guard;
         /** /proc entry with CMM data */
-        libcfs_param_entry_t   *cmm_proc_entry;
+        cfs_param_entry_t      *cmm_proc_entry;
         /** CMM statistic */
         struct lprocfs_stats   *cmm_stats;
 };

@@ -140,13 +140,20 @@ struct lustre_qunit_size {
         struct lustre_quota_ctxt *lqs_ctxt; /** quota ctxt */
 };
 
-#define LQS_IS_GRP(lqs)    ((lqs)->lqs_flags & LQUOTA_FLAGS_GRP)
-#define LQS_IS_ADJBLK(lqs) ((lqs)->lqs_flags & LQUOTA_FLAGS_ADJBLK)
-#define LQS_IS_ADJINO(lqs) ((lqs)->lqs_flags & LQUOTA_FLAGS_ADJINO)
+#define LQS_IS_GRP(lqs)      ((lqs)->lqs_flags & LQUOTA_FLAGS_GRP)
+#define LQS_IS_ADJBLK(lqs)   ((lqs)->lqs_flags & LQUOTA_FLAGS_ADJBLK)
+#define LQS_IS_ADJINO(lqs)   ((lqs)->lqs_flags & LQUOTA_FLAGS_ADJINO)
+#define LQS_IS_RECOVERY(lqs) ((lqs)->lqs_flags & LQUOTA_FLAGS_RECOVERY)
+#define LQS_IS_SETQUOTA(lqs) ((lqs)->lqs_flags & LQUOTA_FLAGS_SETQUOTA)
 
-#define LQS_SET_GRP(lqs)    ((lqs)->lqs_flags |= LQUOTA_FLAGS_GRP)
-#define LQS_SET_ADJBLK(lqs) ((lqs)->lqs_flags |= LQUOTA_FLAGS_ADJBLK)
-#define LQS_SET_ADJINO(lqs) ((lqs)->lqs_flags |= LQUOTA_FLAGS_ADJINO)
+#define LQS_SET_GRP(lqs)      ((lqs)->lqs_flags |= LQUOTA_FLAGS_GRP)
+#define LQS_SET_ADJBLK(lqs)   ((lqs)->lqs_flags |= LQUOTA_FLAGS_ADJBLK)
+#define LQS_SET_ADJINO(lqs)   ((lqs)->lqs_flags |= LQUOTA_FLAGS_ADJINO)
+#define LQS_SET_RECOVERY(lqs) ((lqs)->lqs_flags |= LQUOTA_FLAGS_RECOVERY)
+#define LQS_SET_SETQUOTA(lqs) ((lqs)->lqs_flags |= LQUOTA_FLAGS_SETQUOTA)
+
+#define LQS_CLEAR_RECOVERY(lqs) ((lqs)->lqs_flags &= ~LQUOTA_FLAGS_RECOVERY)
+#define LQS_CLEAR_SETQUOTA(lqs) ((lqs)->lqs_flags &= ~LQUOTA_FLAGS_SETQUOTA)
 
 /* In the hash for lustre_qunit_size, the key is decided by
  * grp_or_usr and uid/gid, in here, I combine these two values,
@@ -201,7 +208,7 @@ static inline void lqs_initref(struct lustre_qunit_size *lqs)
 #define DQUOT_DEBUG(dquot, fmt, arg...)                                       \
         CDEBUG(D_QUOTA, "refcnt(%u) id(%u) type(%u) off(%llu) flags(%lu) "    \
                "bhardlimit("LPU64") curspace("LPU64") ihardlimit("LPU64") "   \
-               "curinodes("LPU64"): " fmt, dquot->dq_refcnt,                  \
+               "curinodes("LPU64"): " fmt, cfs_atomic_read(&dquot->dq_refcnt),\
                dquot->dq_id, dquot->dq_type, dquot->dq_off,  dquot->dq_flags, \
                dquot->dq_dqb.dqb_bhardlimit, dquot->dq_dqb.dqb_curspace,      \
                dquot->dq_dqb.dqb_ihardlimit, dquot->dq_dqb.dqb_curinodes,     \
@@ -336,12 +343,13 @@ extern int quote_copy_qdata(struct ptlrpc_request *req, struct qunit_data *qdata
                             int is_req, int is_exp);
 int filter_quota_adjust_qunit(struct obd_export *exp,
                               struct quota_adjust_qunit *oqaq,
-                              struct lustre_quota_ctxt *qctxt);
+                              struct lustre_quota_ctxt *qctxt,
+                              struct ptlrpc_request_set *rqset);
 int lquota_proc_setup(struct obd_device *obd, int is_master);
 int lquota_proc_cleanup(struct lustre_quota_ctxt *qctxt);
 void build_lqs(struct obd_device *obd);
 
-extern libcfs_param_entry_t *lquota_type_proc_dir;
+extern cfs_param_entry_t *lquota_type_proc_dir;
 #endif
 
 #define LQS_BLK_DECREASE 1
@@ -355,10 +363,13 @@ extern libcfs_param_entry_t *lquota_type_proc_dir;
 #endif
 int client_quota_adjust_qunit(struct obd_export *exp,
                               struct quota_adjust_qunit *oqaq,
-                              struct lustre_quota_ctxt *qctxt);
+                              struct lustre_quota_ctxt *qctxt,
+                              struct ptlrpc_request_set *set);
+
 int lov_quota_adjust_qunit(struct obd_export *exp,
                            struct quota_adjust_qunit *oqaq,
-                           struct lustre_quota_ctxt *qctxt);
+                           struct lustre_quota_ctxt *qctxt,
+                           struct ptlrpc_request_set *rqset);
 int client_quota_ctl(struct obd_device *unused, struct obd_export *exp,
                      struct obd_quotactl *oqctl);
 int lmv_quota_ctl(struct obd_device *unused, struct obd_export *exp,

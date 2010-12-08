@@ -62,8 +62,8 @@ typedef struct kstatfs cfs_kstatfs_t;
 #define cfs_filp_size(f)               (i_size_read((f)->f_dentry->d_inode))
 #define cfs_filp_poff(f)                (&(f)->f_pos)
 
-/* 
- * XXX Do we need to parse flags and mode in cfs_filp_open? 
+/*
+ * XXX Do we need to parse flags and mode in cfs_filp_open?
  */
 cfs_file_t *cfs_filp_open (const char *name, int flags, int mode, int *err);
 #define cfs_filp_close(f)                   filp_close(f, NULL)

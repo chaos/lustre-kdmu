@@ -58,34 +58,38 @@ CFS_MODULE_PARM(rpc_timeout, "i", int, 0644,
                 "rpc timeout in seconds (64 by default, 0 == never)");
 
 #ifdef __KERNEL__
-static struct libcfs_param_ctl_table libcfs_param_sfw_ctl_table[] = {
+static cfs_param_sysctl_table_t sfw_ctl_table[] = {
         {
                 .name     = "brw_inject_errors",
                 .data     = &brw_inject_errors,
                 .mode     = 0644,
-                .read     = libcfs_param_intvec_read,
-                .write    = libcfs_param_intvec_write
+                .read     = cfs_param_intvec_read,
+                .write    = cfs_param_intvec_write
         },
         {
                 .name     = "session_timeout",
                 .data     = &session_timeout,
                 .mode     = 0444,
-                .read     = libcfs_param_intvec_read
+                .read     = cfs_param_intvec_read
         },
         {
                 .name     = "rpc_timeout",
                 .data     = &rpc_timeout,
                 .mode     = 0644,
-                .read     = libcfs_param_intvec_read,
-                .write    = libcfs_param_intvec_write
+                .read     = cfs_param_intvec_read,
+                .write    = cfs_param_intvec_write
         },
         {0}
 };
 
-void lnet_sfw_sysctl_init()
+int lnet_sfw_param_init(void)
 {
-        libcfs_param_sysctl_init("selftest", libcfs_param_sfw_ctl_table,
-                                 libcfs_param_lnet_root);
+        return cfs_param_sysctl_init("selftest", sfw_ctl_table,
+                                     cfs_param_get_lnet_root());
+}
+void lnet_sfw_param_fini(void)
+{
+        cfs_param_sysctl_fini("selftest", cfs_param_get_lnet_root());
 }
 #endif
 
@@ -351,7 +355,7 @@ sfw_server_rpc_done (srpc_server_rpc_t *rpc)
                 "Incoming framework RPC done: "
                 "service %s, peer %s, status %s:%d\n",
                 sv->sv_name, libcfs_id2str(rpc->srpc_peer),
-                swi_state2str(rpc->srpc_wi.wi_state),
+                swi_state2str(rpc->srpc_wi.swi_state),
                 status);
 
         if (rpc->srpc_bulk != NULL)
@@ -373,7 +377,7 @@ sfw_client_rpc_fini (srpc_client_rpc_t *rpc)
                 "Outgoing framework RPC done: "
                 "service %d, peer %s, status %s:%d:%d\n",
                 rpc->crpc_service, libcfs_id2str(rpc->crpc_dest),
-                swi_state2str(rpc->crpc_wi.wi_state),
+                swi_state2str(rpc->crpc_wi.swi_state),
                 rpc->crpc_aborted, rpc->crpc_status);
 
         cfs_spin_lock(&sfw_data.fw_lock);
@@ -957,7 +961,7 @@ sfw_create_test_rpc (sfw_test_unit_t *tsu, lnet_process_id_t peer,
 int
 sfw_run_test (swi_workitem_t *wi)
 {
-        sfw_test_unit_t     *tsu = wi->wi_data;
+        sfw_test_unit_t     *tsu = wi->swi_workitem.wi_data;
         sfw_test_instance_t *tsi = tsu->tsu_instance;
         srpc_client_rpc_t   *rpc = NULL;
 
@@ -1032,7 +1036,8 @@ sfw_run_batch (sfw_batch_t *tsb)
                         cfs_atomic_inc(&tsi->tsi_nactive);
                         tsu->tsu_loop = tsi->tsi_loop;
                         wi = &tsu->tsu_worker;
-                        swi_init_workitem(wi, tsu, sfw_run_test);
+                        swi_init_workitem(wi, tsu, sfw_run_test,
+                                          CFS_WI_SCHED_ANY);
                         swi_schedule_workitem(wi);
                 }
         }

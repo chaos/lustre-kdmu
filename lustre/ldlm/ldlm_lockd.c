@@ -342,7 +342,7 @@ repeat:
                         LDLM_LOCK_RELEASE(lock);
                         continue;
                 }
-                lock->l_resource->lr_namespace->ns_timeouts++;
+                ldlm_lock_to_ns(lock)->ns_timeouts++;
                 LDLM_ERROR(lock, "lock callback timer expired after %lds: "
                            "evicting client at %s ",
                            cfs_time_current_sec()- lock->l_last_activity,
@@ -608,19 +608,29 @@ static int ldlm_handle_ast_error(struct ldlm_lock *lock,
                         ldlm_failed_ast(lock, rc, ast_type);
                 }
         } else if (rc) {
-                if (rc == -EINVAL)
+                if (rc == -EINVAL) {
+                        struct ldlm_resource *res = lock->l_resource;
                         LDLM_DEBUG(lock, "client (nid %s) returned %d"
                                " from %s AST - normal race",
                                libcfs_nid2str(peer.nid),
                                req->rq_repmsg ?
                                lustre_msg_get_status(req->rq_repmsg) : -1,
                                ast_type);
-                else
+                        if (res) {
+                                /* update lvbo to return proper attributes.
+                                 * see bug 23174 */
+                                ldlm_resource_getref(res);
+                                ldlm_res_lvbo_update(res, NULL, 1);
+                                ldlm_resource_putref(res);
+                        }
+
+                } else {
                         LDLM_ERROR(lock, "client (nid %s) returned %d "
                                    "from %s AST", libcfs_nid2str(peer.nid),
                                    (req->rq_repmsg != NULL) ?
                                    lustre_msg_get_status(req->rq_repmsg) : 0,
                                    ast_type);
+                }
                 ldlm_lock_cancel(lock);
                 /* Server-side AST functions are called from ldlm_reprocess_all,
                  * which needs to be told to please restart its reprocessing. */
@@ -643,11 +653,6 @@ static int ldlm_cb_interpret(const struct lu_env *env,
         lock = req->rq_async_args.pointer_arg[1];
         LASSERT(lock != NULL);
         if (rc != 0) {
-                /* If client canceled the lock but the cancel has not
-                 * been received yet, we need to update lvbo to have the
-                 * proper attributes cached. */
-                if (rc == -EINVAL && arg->type == LDLM_BL_CALLBACK)
-                        ldlm_res_lvbo_update(lock->l_resource, NULL, 1);
                 rc = ldlm_handle_ast_error(lock, req, rc,
                                            arg->type == LDLM_BL_CALLBACK
                                            ? "blocking" : "completion");
@@ -860,7 +865,7 @@ int ldlm_server_completion_ast(struct ldlm_lock *lock, int flags, void *data)
         /* Server-side enqueue wait time estimate, used in
             __ldlm_add_waiting_lock to set future enqueue timers */
         if (total_enqueue_wait < ldlm_get_enq_timeout(lock))
-                at_measured(&lock->l_resource->lr_namespace->ns_at_estimate,
+                at_measured(ldlm_lock_to_ns_at(lock),
                             total_enqueue_wait);
         else
                 /* bz18618. Don't add lock enqueue time we spend waiting for a
@@ -870,7 +875,7 @@ int ldlm_server_completion_ast(struct ldlm_lock *lock, int flags, void *data)
                 LDLM_DEBUG(lock, "lock completed after %lus; estimate was %ds. "
                        "It is likely that a previous callback timed out.",
                        total_enqueue_wait,
-                       at_get(&lock->l_resource->lr_namespace->ns_at_estimate));
+                       at_get(ldlm_lock_to_ns_at(lock)));
 
         ptlrpc_request_set_replen(req);
 
@@ -2067,28 +2072,30 @@ static int ldlm_cancel_handler(struct ptlrpc_request *req)
         RETURN(0);
 }
 
-void ldlm_revoke_lock_cb(void *obj, void *data)
+int ldlm_revoke_lock_cb(cfs_hash_t *hs, cfs_hash_bd_t *bd,
+                        cfs_hlist_node_t *hnode, void *data)
+
 {
         cfs_list_t         *rpc_list = data;
-        struct ldlm_lock   *lock = obj;
+        struct ldlm_lock   *lock = cfs_hash_object(hs, hnode);
 
         lock_res_and_lock(lock);
 
         if (lock->l_req_mode != lock->l_granted_mode) {
                 unlock_res_and_lock(lock);
-                return;
+                return 0;
         }
 
         LASSERT(lock->l_resource);
         if (lock->l_resource->lr_type != LDLM_IBITS &&
             lock->l_resource->lr_type != LDLM_PLAIN) {
                 unlock_res_and_lock(lock);
-                return;
+                return 0;
         }
 
         if (lock->l_flags & LDLM_FL_AST_SENT) {
                 unlock_res_and_lock(lock);
-                return;
+                return 0;
         }
 
         LASSERT(lock->l_blocking_ast);
@@ -2103,6 +2110,7 @@ void ldlm_revoke_lock_cb(void *obj, void *data)
         LDLM_LOCK_GET(lock);
 
         unlock_res_and_lock(lock);
+        return 0;
 }
 
 void ldlm_revoke_export_locks(struct obd_export *exp)
@@ -2313,11 +2321,26 @@ ldlm_export_lock_key(cfs_hlist_node_t *hnode)
         RETURN(&lock->l_remote_handle);
 }
 
+static void
+ldlm_export_lock_keycpy(cfs_hlist_node_t *hnode, void *key)
+{
+        struct ldlm_lock     *lock;
+
+        lock = cfs_hlist_entry(hnode, struct ldlm_lock, l_exp_hash);
+        lock->l_remote_handle = *(struct lustre_handle *)key;
+}
+
 static int
-ldlm_export_lock_compare(void *key, cfs_hlist_node_t *hnode)
+ldlm_export_lock_keycmp(void *key, cfs_hlist_node_t *hnode)
 {
         ENTRY;
         RETURN(lustre_handle_equal(ldlm_export_lock_key(hnode), key));
+}
+
+static void *
+ldlm_export_lock_object(cfs_hlist_node_t *hnode)
+{
+        return cfs_hlist_entry(hnode, struct ldlm_lock, l_exp_hash);
 }
 
 static void *
@@ -2345,11 +2368,14 @@ ldlm_export_lock_put(cfs_hlist_node_t *hnode)
 }
 
 static cfs_hash_ops_t ldlm_export_lock_ops = {
-        .hs_hash    = ldlm_export_lock_hash,
-        .hs_key     = ldlm_export_lock_key,
-        .hs_compare = ldlm_export_lock_compare,
-        .hs_get     = ldlm_export_lock_get,
-        .hs_put     = ldlm_export_lock_put
+        .hs_hash        = ldlm_export_lock_hash,
+        .hs_key         = ldlm_export_lock_key,
+        .hs_keycmp      = ldlm_export_lock_keycmp,
+        .hs_keycpy      = ldlm_export_lock_keycpy,
+        .hs_object      = ldlm_export_lock_object,
+        .hs_get         = ldlm_export_lock_get,
+        .hs_put         = ldlm_export_lock_put,
+        .hs_put_locked  = ldlm_export_lock_put,
 };
 
 int ldlm_init_export(struct obd_export *exp)
@@ -2358,8 +2384,13 @@ int ldlm_init_export(struct obd_export *exp)
 
         exp->exp_lock_hash =
                 cfs_hash_create(obd_uuid2str(&exp->exp_client_uuid),
-                                HASH_EXP_LOCK_CUR_BITS, HASH_EXP_LOCK_MAX_BITS,
-                                &ldlm_export_lock_ops, CFS_HASH_REHASH);
+                                HASH_EXP_LOCK_CUR_BITS,
+                                HASH_EXP_LOCK_MAX_BITS,
+                                HASH_EXP_LOCK_BKT_BITS, 0,
+                                CFS_HASH_MIN_THETA, CFS_HASH_MAX_THETA,
+                                &ldlm_export_lock_ops,
+                                CFS_HASH_DEFAULT | CFS_HASH_REHASH_KEY |
+                                CFS_HASH_NBLK_CHANGE);
 
         if (!exp->exp_lock_hash)
                 RETURN(-ENOMEM);

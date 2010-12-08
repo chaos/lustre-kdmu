@@ -60,12 +60,14 @@ CFS_LIST_HEAD(ldlm_srv_namespace_list);
 cfs_semaphore_t ldlm_cli_namespace_lock;
 CFS_LIST_HEAD(ldlm_cli_namespace_list);
 
-libcfs_param_entry_t *ldlm_type_proc_dir = NULL;
-libcfs_param_entry_t *ldlm_ns_proc_dir = NULL;
-libcfs_param_entry_t *ldlm_svc_proc_dir = NULL;
+cfs_param_entry_t *ldlm_type_proc_dir = NULL;
+cfs_param_entry_t *ldlm_ns_proc_dir = NULL;
+cfs_param_entry_t *ldlm_svc_proc_dir = NULL;
+
+extern unsigned int ldlm_cancel_unused_locks_before_replay;
 
 #ifdef __KERNEL__
-static int ldlm_proc_dump_ns(libcfs_file_t *file, const char *buffer,
+static int ldlm_proc_dump_ns(cfs_param_file_t *file, const char *buffer,
                              unsigned long count, void *data)
 {
         ldlm_dump_all_namespaces(LDLM_NAMESPACE_SERVER, D_DLMTRACE);
@@ -77,7 +79,10 @@ int ldlm_proc_setup(void)
 {
         int rc;
         struct lprocfs_vars list[] = {
-                { "dump_namespaces", NULL, NULL, ldlm_proc_dump_ns, NULL },
+                { "dump_namespaces", NULL, ldlm_proc_dump_ns, NULL },
+                { "cancel_unused_locks_before_replay",
+                  lprocfs_rd_uint, lprocfs_wr_uint,
+                  &ldlm_cancel_unused_locks_before_replay, NULL },
                 { NULL }};
         ENTRY;
         LASSERT(ldlm_ns_proc_dir == NULL);
@@ -111,17 +116,17 @@ int ldlm_proc_setup(void)
 
         rc = lprocfs_add_vars(ldlm_type_proc_dir, list, NULL);
 
-        lprocfs_put_lperef(ldlm_type_proc_dir);
-        lprocfs_put_lperef(ldlm_ns_proc_dir);
-        lprocfs_put_lperef(ldlm_svc_proc_dir);
+        lprocfs_put_peref(ldlm_type_proc_dir);
+        lprocfs_put_peref(ldlm_ns_proc_dir);
+        lprocfs_put_peref(ldlm_svc_proc_dir);
 
         RETURN(0);
 
 err_ns:
-        lprocfs_put_lperef(ldlm_ns_proc_dir);
+        lprocfs_put_peref(ldlm_ns_proc_dir);
         lprocfs_remove(&ldlm_ns_proc_dir);
 err_type:
-        lprocfs_put_lperef(ldlm_type_proc_dir);
+        lprocfs_put_peref(ldlm_type_proc_dir);
         lprocfs_remove(&ldlm_type_proc_dir);
 err:
         ldlm_svc_proc_dir = NULL;
@@ -143,21 +148,21 @@ void ldlm_proc_cleanup(void)
 static int lprocfs_rd_lru_size(char *page, char **start, off_t off,
                                int count, int *eof, void *data)
 {
-        struct libcfs_param_cb_data tmp_data;
+        cfs_param_cb_data_t tmp_data;
         struct ldlm_namespace *ns;
         __u32 *nr;
 
-        LIBCFS_PARAM_GET_DATA(ns, data, NULL);
+        cfs_param_get_data(ns, data, NULL);
         nr = &ns->ns_max_unused;
 
         if (ns_connect_lru_resize(ns))
                 nr = &ns->ns_nr_unused;
-        memcpy(&tmp_data, data, sizeof tmp_data);
+        memcpy(&tmp_data, data, sizeof(tmp_data));
         tmp_data.cb_data = nr;
         return lprocfs_rd_uint(page, start, off, count, eof, &tmp_data);
 }
 
-static int lprocfs_wr_lru_size(libcfs_file_t *file, const char *buffer,
+static int lprocfs_wr_lru_size(cfs_param_file_t *file, const char *buffer,
                                unsigned long count, void *data)
 {
         struct ldlm_namespace *ns;
@@ -166,9 +171,9 @@ static int lprocfs_wr_lru_size(libcfs_file_t *file, const char *buffer,
         int lru_resize;
         int flag = 0;
 
-        LIBCFS_PARAM_GET_DATA(ns, data, &flag);
+        cfs_param_get_data(ns, data, &flag);
 
-        if (libcfs_param_copy(flag, dummy, buffer, MAX_STRING_SIZE))
+        if (cfs_param_copy(flag, dummy, buffer, MAX_STRING_SIZE))
                 return -EFAULT;
         dummy[MAX_STRING_SIZE] = '\0';
 
@@ -424,7 +429,7 @@ static void cleanup_resource(struct ldlm_resource *res, cfs_list_t *q,
                              int flags)
 {
         cfs_list_t *tmp;
-        int rc = 0, client = ns_is_client(res->lr_namespace);
+        int rc = 0, client = ns_is_client(ldlm_res_to_ns(res));
         int local_only = (flags & LDLM_FL_LOCAL_ONLY);
         ENTRY;
 
@@ -664,13 +669,13 @@ void ldlm_namespace_free_post(struct ldlm_namespace *ns)
 
 #ifdef  __KERNEL__
         {
-                libcfs_param_entry_t *dir;
+                cfs_param_entry_t *dir;
                 dir = lprocfs_srch(ldlm_ns_proc_dir, ns->ns_name);
                 if (dir == NULL) {
                         CERROR("ldlm namespace %s has no procfs dir?\n",
                                ns->ns_name);
                 } else {
-                        lprocfs_put_lperef(dir);
+                        lprocfs_put_peref(dir);
                         lprocfs_remove(&dir);
                 }
         }
@@ -808,7 +813,6 @@ static struct ldlm_resource *ldlm_resource_new(void)
 
         memset(res, 0, sizeof(*res));
 
-        CFS_INIT_LIST_HEAD(&res->lr_children);
         CFS_INIT_LIST_HEAD(&res->lr_childof);
         CFS_INIT_LIST_HEAD(&res->lr_granted);
         CFS_INIT_LIST_HEAD(&res->lr_converting);
@@ -897,12 +901,8 @@ ldlm_resource_add(struct ldlm_namespace *ns, struct ldlm_resource *parent,
         ns->ns_resources++;
         ldlm_namespace_get_locked(ns);
 
-        if (parent == NULL) {
-                cfs_list_add(&res->lr_childof, &ns->ns_root_list);
-        } else {
-                res->lr_parent = parent;
-                cfs_list_add(&res->lr_childof, &parent->lr_children);
-        }
+        LASSERT(parent == NULL); /* legacy... */
+        cfs_list_add(&res->lr_childof, &ns->ns_root_list);
         cfs_spin_unlock(&ns->ns_hash_lock);
 
         if (ns->ns_lvbo && ns->ns_lvbo->lvbo_init) {
@@ -968,7 +968,7 @@ struct ldlm_resource *ldlm_resource_getref(struct ldlm_resource *res)
 
 void __ldlm_resource_putref_final(struct ldlm_resource *res)
 {
-        struct ldlm_namespace *ns = res->lr_namespace;
+        struct ldlm_namespace *ns = ldlm_res_to_ns(res);
 
         LASSERT_SPIN_LOCKED(&ns->ns_hash_lock);
 
@@ -987,11 +987,6 @@ void __ldlm_resource_putref_final(struct ldlm_resource *res)
                 LBUG();
         }
 
-        if (!cfs_list_empty(&res->lr_children)) {
-                ldlm_resource_dump(D_ERROR, res);
-                LBUG();
-        }
-
         /* Pass 0 here to not wake ->ns_waitq up yet, we will do it few
          * lines below when all children are freed. */
         ldlm_namespace_put_locked(ns, 0);
@@ -1006,7 +1001,7 @@ void __ldlm_resource_putref_final(struct ldlm_resource *res)
 
 int ldlm_resource_putref_internal(struct ldlm_resource *res, int locked)
 {
-        struct ldlm_namespace *ns = res->lr_namespace;
+        struct ldlm_namespace *ns = ldlm_res_to_ns(res);
         ENTRY;
 
         CDEBUG(D_INFO, "putref res: %p count: %d\n", res,

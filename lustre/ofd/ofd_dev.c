@@ -142,7 +142,7 @@ static int filter_intent_policy(struct ldlm_namespace *ns,
          * lock, and should not be granted if the lock will be blocked.
          */
 
-        LASSERT(ns == res->lr_namespace);
+        LASSERT(ns == ldlm_res_to_ns(res));
         lock_res(res);
         rc = policy(lock, &tmpflags, 0, &err, &rpc_list);
         check_res_locked(res);
@@ -239,13 +239,6 @@ static int filter_intent_policy(struct ldlm_namespace *ns,
 
         LASSERTF(l->l_glimpse_ast != NULL, "l == %p", l);
         rc = l->l_glimpse_ast(l, NULL); /* this will update the LVB */
-        /* Update the LVB from disk if the AST failed (this is a legal race) */
-        /*
-         * XXX nikita: situation when ldlm_server_glimpse_ast() failed before
-         * sending ast is not handled. This can result in lost client writes.
-         */
-        if (rc != 0)
-                ldlm_res_lvbo_update(res, NULL, 1);
 
         lock_res(res);
         *reply_lvb = *res_lvb;
@@ -576,12 +569,12 @@ static int filter_procfs_init(struct filter_device *ofd)
         }
 
         if (obd->obd_proc_exports_entry) {
-                struct libcfs_param_entry *temp = lprocfs_add_simple(
+                struct cfs_param_entry *temp = lprocfs_add_simple(
                                    obd->obd_proc_exports_entry, "clear",
                                    lprocfs_nid_stats_clear_read,
                                    lprocfs_nid_stats_clear_write, obd, NULL);
-                lprocfs_put_lperef(obd->obd_proc_exports_entry);
-                lprocfs_put_lperef(temp);
+                lprocfs_put_peref(obd->obd_proc_exports_entry);
+                lprocfs_put_peref(temp);
         }
         return rc;
 }
@@ -887,7 +880,6 @@ static void filter_key_exit(const struct lu_context *ctx,
         info->fti_no_need_trans = 0;
 
         memset(&info->fti_attr, 0, sizeof info->fti_attr);
-        memset(&info->fti_lvb, 0, sizeof info->fti_lvb);
 }
 
 struct lu_context_key filter_thread_key = {

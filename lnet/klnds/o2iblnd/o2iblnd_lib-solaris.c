@@ -159,9 +159,10 @@ symbols_error:
         return -1;
 }
 
-void
+int
 kiblnd_plat_modparams_init(void)
 {
+        return 0;
 }
 
 void

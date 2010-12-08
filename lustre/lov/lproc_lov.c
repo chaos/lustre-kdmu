@@ -49,15 +49,15 @@ static int lov_rd_stripesize(char *page, char **start, off_t off, int count,
         struct obd_device *dev;
         struct lov_desc *desc;
 
-        LIBCFS_PARAM_GET_DATA(dev, data, NULL);
+        cfs_param_get_data(dev, data, NULL);
         LASSERT(dev != NULL);
         desc = &dev->u.lov.desc;
 
-        return libcfs_param_snprintf(page, count, data, LP_U64, LPU64"\n",
-                                     desc->ld_default_stripe_size);
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_U64, LPU64"\n",
+                                  desc->ld_default_stripe_size);
 }
 
-static int lov_wr_stripesize(libcfs_file_t *file, const char *buffer,
+static int lov_wr_stripesize(cfs_param_file_t *file, const char *buffer,
                              unsigned long count, void *data)
 {
         struct obd_device *dev;
@@ -66,7 +66,7 @@ static int lov_wr_stripesize(libcfs_file_t *file, const char *buffer,
         int   flag = 0;
         int rc;
 
-        LIBCFS_PARAM_GET_DATA(dev, data, &flag);
+        cfs_param_get_data(dev, data, &flag);
         LASSERT(dev != NULL);
         desc = &dev->u.lov.desc;
         rc = lprocfs_write_u64_helper(buffer, count, &val, flag);
@@ -84,15 +84,15 @@ static int lov_rd_stripeoffset(char *page, char **start, off_t off, int count,
         struct obd_device *dev;
         struct lov_desc *desc;
 
-        LIBCFS_PARAM_GET_DATA(dev, data, NULL);
+        cfs_param_get_data(dev, data, NULL);
         LASSERT(dev != NULL);
         desc = &dev->u.lov.desc;
 
-        return libcfs_param_snprintf(page, count, data, LP_U64, LPU64"\n",
-                                     desc->ld_default_stripe_offset);
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_U64, LPU64"\n",
+                                  desc->ld_default_stripe_offset);
 }
 
-static int lov_wr_stripeoffset(libcfs_file_t *file, const char *buffer,
+static int lov_wr_stripeoffset(cfs_param_file_t *file, const char *buffer,
                                unsigned long count, void *data)
 {
         struct obd_device *dev;
@@ -101,7 +101,7 @@ static int lov_wr_stripeoffset(libcfs_file_t *file, const char *buffer,
         int flag = 0;
         int rc;
 
-        LIBCFS_PARAM_GET_DATA(dev, data, &flag);
+        cfs_param_get_data(dev, data, &flag);
         LASSERT(dev != NULL);
         desc = &dev->u.lov.desc;
         rc = lprocfs_write_u64_helper(buffer, count, &val, flag);
@@ -118,22 +118,22 @@ static int lov_rd_stripetype(char *page, char **start, off_t off, int count,
         struct obd_device *dev;
         struct lov_desc *desc;
 
-        LIBCFS_PARAM_GET_DATA(dev, data, NULL);
+        cfs_param_get_data(dev, data, NULL);
         LASSERT(dev != NULL);
         desc = &dev->u.lov.desc;
 
-        return libcfs_param_snprintf(page, count, data, LP_U32,
-                                     "%u\n", desc->ld_pattern);
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_U32,
+                                  "%u\n", desc->ld_pattern);
 }
 
-static int lov_wr_stripetype(libcfs_file_t *file, const char *buffer,
+static int lov_wr_stripetype(cfs_param_file_t *file, const char *buffer,
                              unsigned long count, void *data)
 {
         struct obd_device *dev;
         struct lov_desc *desc;
         int val, rc, flag = 0;
 
-        LIBCFS_PARAM_GET_DATA(dev, data, &flag);
+        cfs_param_get_data(dev, data, &flag);
         LASSERT(dev != NULL);
         desc = &dev->u.lov.desc;
         rc = lprocfs_write_helper(buffer, count, &val, flag);
@@ -152,22 +152,23 @@ static int lov_rd_stripecount(char *page, char **start, off_t off, int count,
         struct lov_desc *desc;
         int temp;
 
-        LIBCFS_PARAM_GET_DATA(dev, data, NULL);
+        cfs_param_get_data(dev, data, NULL);
         LASSERT(dev != NULL);
         desc = &dev->u.lov.desc;
         temp = (__s16)(desc->ld_default_stripe_count + 1) - 1;
 
-        return libcfs_param_snprintf(page, count, data, LP_D32, "%d\n", temp);
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_S32,
+                                  "%d\n", temp);
 }
 
-static int lov_wr_stripecount(libcfs_file_t *file, const char *buffer,
+static int lov_wr_stripecount(cfs_param_file_t *file, const char *buffer,
                               unsigned long count, void *data)
 {
         struct obd_device *dev;
         struct lov_desc *desc;
         int val, rc, flag = 0;
 
-        LIBCFS_PARAM_GET_DATA(dev, data, &flag);
+        cfs_param_get_data(dev, data, &flag);
         LASSERT(dev != NULL);
         desc = &dev->u.lov.desc;
         rc = lprocfs_write_helper(buffer, count, &val, flag);
@@ -185,12 +186,12 @@ static int lov_rd_numobd(char *page, char **start, off_t off, int count,
         struct obd_device *dev;
         struct lov_desc *desc;
 
-        LIBCFS_PARAM_GET_DATA(dev, data, NULL);
+        cfs_param_get_data(dev, data, NULL);
         LASSERT(dev != NULL);
         desc = &dev->u.lov.desc;
 
-        return libcfs_param_snprintf(page, count, data, LP_U32,
-                                     "%u\n", desc->ld_tgt_count);
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_U32,
+                                  "%u\n", desc->ld_tgt_count);
 }
 
 static int lov_rd_activeobd(char *page, char **start, off_t off, int count,
@@ -199,12 +200,12 @@ static int lov_rd_activeobd(char *page, char **start, off_t off, int count,
         struct obd_device *dev;
         struct lov_desc *desc;
 
-        LIBCFS_PARAM_GET_DATA(dev, data, NULL);
+        cfs_param_get_data(dev, data, NULL);
         LASSERT(dev != NULL);
         desc = &dev->u.lov.desc;
 
-        return libcfs_param_snprintf(page, count, data, LP_U32, "%u\n",
-                                     desc->ld_active_tgt_count);
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_U32, "%u\n",
+                                  desc->ld_active_tgt_count);
 }
 
 static int lov_rd_desc_uuid(char *page, char **start, off_t off, int count,
@@ -213,15 +214,15 @@ static int lov_rd_desc_uuid(char *page, char **start, off_t off, int count,
         struct obd_device *dev;
         struct lov_obd *lov;
 
-        LIBCFS_PARAM_GET_DATA(dev, data, NULL);
+        cfs_param_get_data(dev, data, NULL);
         LASSERT(dev != NULL);
         lov = &dev->u.lov;
 
-        return libcfs_param_snprintf(page, count, data, LP_STR, "%s\n",
-                                     lov->desc.ld_uuid.uuid);
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_STR, "%s\n",
+                                  lov->desc.ld_uuid.uuid);
 }
 
-/* free priority (0-256): how badly user wants to choose empty osts */
+/* free priority (0-255): how badly user wants to choose empty osts */ 
 static int lov_rd_qos_priofree(char *page, char **start, off_t off, int count,
                                int *eof, void *data)
 {
@@ -229,35 +230,31 @@ static int lov_rd_qos_priofree(char *page, char **start, off_t off, int count,
         struct lov_obd *lov;
         int flag = 0;
 
-        LIBCFS_PARAM_GET_DATA(dev, data, &flag);
+        cfs_param_get_data(dev, data, &flag);
         LASSERT(dev != NULL);
         lov = &dev->u.lov;
 
-        /* Round the conversion; see below */
-        return libcfs_param_snprintf(page, count, data, LP_STR, "%d%%\n",
-                                 (lov->lov_qos.lq_prio_free * 100 + 128) >> 8);
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_STR, "%d%%\n",
+                                  (lov->lov_qos.lq_prio_free * 100) >> 8);
 }
 
-static int lov_wr_qos_priofree(libcfs_file_t *file, const char *buffer,
+static int lov_wr_qos_priofree(cfs_param_file_t *file, const char *buffer,
                                unsigned long count, void *data)
 {
         struct obd_device *dev;
         struct lov_obd *lov;
         int val, rc, flag = 0;
 
-        LIBCFS_PARAM_GET_DATA(dev, data, &flag);
+        cfs_param_get_data(dev, data, &flag);
         LASSERT(dev != NULL);
         lov = &dev->u.lov;
         rc = lprocfs_write_helper(buffer, count, &val, flag);
         if (rc)
                 return rc;
 
-        if (val > 100 || val < 0)
+        if (val > 100)
                 return -EINVAL;
-        /* We're converting a 0-100% range to 0-256.
-         * Add some rounding so that when we convert back to %
-         * for printout below, we end up with the original value */
-        lov->lov_qos.lq_prio_free = ((val << 8) + 50) / 100;
+        lov->lov_qos.lq_prio_free = (val << 8) / 100;
         lov->lov_qos.lq_dirty = 1;
         lov->lov_qos.lq_reset = 1;
         return count;
@@ -270,15 +267,15 @@ static int lov_rd_qos_thresholdrr(char *page, char **start, off_t off,
         struct lov_obd *lov;
         int flag = 0;
 
-        LIBCFS_PARAM_GET_DATA(dev, data, &flag);
+        cfs_param_get_data(dev, data, &flag);
         LASSERT(dev != NULL);
         lov = &dev->u.lov;
 
-        return libcfs_param_snprintf(page, count, data, LP_STR, "%d%%\n",
-                        ((lov->lov_qos.lq_threshold_rr * 100) + 128) >> 8);
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_STR, "%d%%\n",
+                                  (lov->lov_qos.lq_threshold_rr * 100) >> 8);
 }
 
-static int lov_wr_qos_thresholdrr(libcfs_file_t *file, const char *buffer,
+static int lov_wr_qos_thresholdrr(cfs_param_file_t *file, const char *buffer,
                                   unsigned long count, void *data)
 {
         struct obd_device *dev;
@@ -286,7 +283,7 @@ static int lov_wr_qos_thresholdrr(libcfs_file_t *file, const char *buffer,
         int val, rc;
         int flag = 0;
 
-        LIBCFS_PARAM_GET_DATA(dev, data, &flag);
+        cfs_param_get_data(dev, data, &flag);
         LASSERT(dev != NULL);
         lov = &dev->u.lov;
         rc = lprocfs_write_helper(buffer, count, &val, flag);
@@ -296,7 +293,7 @@ static int lov_wr_qos_thresholdrr(libcfs_file_t *file, const char *buffer,
         if (val > 100 || val < 0)
                 return -EINVAL;
 
-        lov->lov_qos.lq_threshold_rr = ((val << 8) + 50) / 100;
+        lov->lov_qos.lq_threshold_rr = (val << 8) / 100;
         lov->lov_qos.lq_dirty = 1;
         return count;
 }
@@ -307,15 +304,16 @@ static int lov_rd_qos_maxage(char *page, char **start, off_t off, int count,
         struct obd_device *dev;
         struct lov_obd *lov;
 
-        LIBCFS_PARAM_GET_DATA(dev, data, NULL);
+        cfs_param_get_data(dev, data, NULL);
         LASSERT(dev != NULL);
         lov = &dev->u.lov;
 
-        return libcfs_param_snprintf_common(page, count, data, LP_U32,
-                        NULL, "sec", "%u", lov->desc.ld_qos_maxage);
+        return cfs_param_snprintf_common(page, count, data, CFS_PARAM_U32,
+                                         NULL, "sec", "%u",
+                                         lov->desc.ld_qos_maxage);
 }
 
-static int lov_wr_qos_maxage(libcfs_file_t *file, const char *buffer,
+static int lov_wr_qos_maxage(cfs_param_file_t *file, const char *buffer,
                              unsigned long count, void *data)
 {
         struct obd_device *dev;
@@ -323,7 +321,7 @@ static int lov_wr_qos_maxage(libcfs_file_t *file, const char *buffer,
         int val, rc;
         int flag = 0;
 
-        LIBCFS_PARAM_GET_DATA(dev, data, &flag);
+        cfs_param_get_data(dev, data, &flag);
         LASSERT(dev != NULL);
         lov = &dev->u.lov;
         rc = lprocfs_write_helper(buffer, count, &val, flag);
@@ -336,9 +334,9 @@ static int lov_wr_qos_maxage(libcfs_file_t *file, const char *buffer,
         return count;
 }
 
-static void *lov_tgt_seq_start(libcfs_seq_file_t *p, loff_t *pos)
+static void *lov_tgt_seq_start(cfs_seq_file_t *p, loff_t *pos)
 {
-        struct obd_device *dev = LIBCFS_SEQ_PRIVATE(p);
+        struct obd_device *dev = cfs_seq_private(p);
         struct lov_obd *lov;
 
         lov = &dev->u.lov;
@@ -350,14 +348,14 @@ static void *lov_tgt_seq_start(libcfs_seq_file_t *p, loff_t *pos)
         return NULL;
 }
 
-static void lov_tgt_seq_stop(libcfs_seq_file_t *p, void *v)
+static void lov_tgt_seq_stop(cfs_seq_file_t *p, void *v)
 {
 }
 
-static void *lov_tgt_seq_next(libcfs_seq_file_t *p, void *v,
+static void *lov_tgt_seq_next(cfs_seq_file_t *p, void *v,
                               loff_t *pos)
 {
-        struct obd_device *dev = LIBCFS_SEQ_PRIVATE(p);
+        struct obd_device *dev = cfs_seq_private(p);
         struct lov_obd *lov;
 
         lov = &dev->u.lov;
@@ -368,46 +366,33 @@ static void *lov_tgt_seq_next(libcfs_seq_file_t *p, void *v,
         return NULL;
 }
 
-static int lov_tgt_seq_show(libcfs_seq_file_t *seq, void *v)
+static int lov_tgt_seq_show(cfs_seq_file_t *seq, void *v)
 {
         struct lov_tgt_desc *tgt = v;
 
-        return LIBCFS_SEQ_PRINTF(seq, "%d: %s %sACTIVE\n",
-                                 tgt->ltd_index, obd_uuid2str(&tgt->ltd_uuid),
-                                 tgt->ltd_active ? "" : "IN");
+        return cfs_seq_printf(seq, "%d: %s %sACTIVE\n",
+                              tgt->ltd_index, obd_uuid2str(&tgt->ltd_uuid),
+                              tgt->ltd_active ? "" : "IN");
 }
 
-libcfs_seq_ops_t lov_tgt_sops = {
+cfs_seq_ops_t lov_tgt_sops = {
         .start = lov_tgt_seq_start,
         .stop = lov_tgt_seq_stop,
         .next = lov_tgt_seq_next,
         .show = lov_tgt_seq_show,
 };
 
-static int lov_target_seq_open(libcfs_inode_t *inode,
-                               libcfs_file_t *file)
+static int lov_target_seq_open(cfs_inode_t *inode, cfs_param_file_t *file)
 {
-        libcfs_param_dentry_t *dp = LIBCFS_PDE(inode);
-        libcfs_seq_file_t *seq;
-        int rc;
-
-        LPROCFS_ENTRY_AND_CHECK(dp);
-        LIBCFS_SEQ_OPEN(file, &lov_tgt_sops, rc);
-        if (rc) {
-                LPROCFS_EXIT();
-                return rc;
-        }
-        seq = LIBCFS_FILE_PRIVATE(file);
-        LIBCFS_SEQ_PRIVATE(seq) = LIBCFS_DENTRY_DATA(dp);
-        return rc;
+        return cfs_param_seq_fopen(inode, file, &lov_tgt_sops);
 }
 
-libcfs_file_ops_t lov_proc_target_fops = {
-        .owner   = THIS_MODULE,
+cfs_param_file_ops_t lov_proc_target_fops = {
+        .owner   = CFS_PARAM_MODULE,
         .open    = lov_target_seq_open,
-        .read    = LIBCFS_SEQ_READ_COMMON,
-        .llseek  = LIBCFS_SEQ_LSEEK_COMMON,
-        .release = libcfs_param_seq_release_common,
+        .read    = cfs_seq_read,
+        .llseek  = cfs_seq_lseek,
+        .release = cfs_seq_release,
 };
 
 struct lprocfs_vars lprocfs_lov_obd_vars[] = {

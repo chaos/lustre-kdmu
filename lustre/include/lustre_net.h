@@ -318,9 +318,9 @@ struct ptlrpc_cb_id {
         void    *cbid_arg;                      /* additional arg */
 };
 
-/** Maximum number of locks to fit into reply state */ 
+/** Maximum number of locks to fit into reply state */
 #define RS_MAX_LOCKS 8
-#define RS_DEBUG     1
+#define RS_DEBUG     0
 
 /**
  * Structure to define reply state on the server
@@ -560,11 +560,11 @@ struct ptlrpc_request {
         /**
          * security and encryption data
          * @{ */
-        struct ptlrpc_cli_ctx   *rq_cli_ctx;     /* client's half ctx */
-        struct ptlrpc_svc_ctx   *rq_svc_ctx;     /* server's half ctx */
-        cfs_list_t               rq_ctx_chain;   /* link to waited ctx */
+        struct ptlrpc_cli_ctx   *rq_cli_ctx;     /**< client's half ctx */
+        struct ptlrpc_svc_ctx   *rq_svc_ctx;     /**< server's half ctx */
+        cfs_list_t               rq_ctx_chain;   /**< link to waited ctx */
 
-        struct sptlrpc_flavor    rq_flvr;        /* client & server */
+        struct sptlrpc_flavor    rq_flvr;        /**< for client & server */
         enum lustre_sec_part     rq_sp_from;
 
         unsigned long            /* client/server security flags */
@@ -590,8 +590,6 @@ struct ptlrpc_request {
         /* (server side), pointed directly into req buffer */
         struct ptlrpc_user_desc *rq_user_desc;
 
-        /** @} */
-
         /** early replies go to offset 0, regular replies go after that */
         unsigned int             rq_reply_off;
 
@@ -606,6 +604,8 @@ struct ptlrpc_request {
         struct lustre_msg       *rq_clrbuf;      /* only in priv mode */
         int                      rq_clrbuf_len;  /* only in priv mode */
         int                      rq_clrdata_len; /* only in priv mode */
+
+        /** @} */
 
         /** Fields that help to see if request and reply were swabbed or not */
         __u32 rq_req_swab_mask;
@@ -1007,7 +1007,7 @@ struct ptlrpc_request_buffer_desc {
 };
 
 typedef int (*svc_handler_t)(struct ptlrpc_request *req);
-typedef int (*svcreq_printfn_t)(void *, int, struct ptlrpc_request *);
+typedef void (*svcreq_printfn_t)(void *, struct ptlrpc_request *);
 typedef int (*svc_hpreq_handler_t)(struct ptlrpc_request *);
 
 /**
@@ -1096,7 +1096,7 @@ struct ptlrpc_service {
         cfs_spinlock_t        srv_lock;
 
         /** Root of /proc dir tree for this service */
-        libcfs_param_entry_t  *srv_procroot;
+        cfs_param_entry_t  *srv_procroot;
         /** Pointer to statistic data for this service */
         struct lprocfs_stats *srv_stats;
 
@@ -1392,7 +1392,7 @@ void ptlrpc_dispatch_difficult_reply (struct ptlrpc_reply_state *rs);
 void ptlrpc_schedule_difficult_reply (struct ptlrpc_reply_state *rs);
 struct ptlrpc_service *ptlrpc_init_svc_conf(struct ptlrpc_service_conf *c,
                                             svc_handler_t h, char *name,
-                                            libcfs_param_entry_t *proc_entry,
+                                            cfs_param_entry_t *proc_entry,
                                             svcreq_printfn_t prntfn,
                                             char *threadname);
 
@@ -1401,7 +1401,7 @@ struct ptlrpc_service *ptlrpc_init_svc(int nbufs, int bufsize, int max_req_size,
                                        int req_portal, int rep_portal,
                                        int watchdog_factor,
                                        svc_handler_t, char *name,
-                                       libcfs_param_entry_t *proc_entry,
+                                       cfs_param_entry_t *proc_entry,
                                        svcreq_printfn_t,
                                        int min_threads, int max_threads,
                                        char *threadname, __u32 ctx_tags,

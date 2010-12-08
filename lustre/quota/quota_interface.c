@@ -1015,7 +1015,7 @@ quota_interface_t lov_quota_interface = {
 
 #ifdef __KERNEL__
 
-libcfs_param_entry_t *lquota_type_proc_dir = NULL;
+cfs_param_entry_t *lquota_type_proc_dir = NULL;
 
 static int __init init_lustre_quota(void)
 {
@@ -1030,7 +1030,7 @@ static int __init init_lustre_quota(void)
                 rc = PTR_ERR(lquota_type_proc_dir);
                 return rc;
         }
-        lprocfs_put_lperef(lquota_type_proc_dir);
+        lprocfs_put_peref(lquota_type_proc_dir);
 
         rc = qunit_cache_init();
         if (rc)

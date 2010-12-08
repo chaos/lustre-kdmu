@@ -211,7 +211,11 @@ int
 ksocknal_tunables_init(void)
 {
 #if !defined(__sun__)
-        ksocknal_modparams_init();
+        int rc = ksocknal_modparams_init();
+        if (rc != 0) {
+                CERROR("ksocknal_tunables_init: error %d\n", rc);
+                return rc;
+        }
 #endif
 
 #if defined(CONFIG_SYSCTL) && !CFS_SYSFS_MODULE_PARM

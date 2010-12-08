@@ -754,7 +754,8 @@ void cfs_trace_flush_pages(void)
 }
 
 int cfs_trace_copyin_string(char *knl_buffer, int knl_buffer_nob,
-                            const char *usr_buffer, int usr_buffer_nob, int flag)
+                            const char *usr_buffer, int usr_buffer_nob,
+                            int flag)
 {
         int    nob;
         int    rc;
@@ -762,7 +763,7 @@ int cfs_trace_copyin_string(char *knl_buffer, int knl_buffer_nob,
         if (usr_buffer_nob > knl_buffer_nob)
                 return -EOVERFLOW;
 
-        rc = libcfs_param_copy(flag, (void *)knl_buffer,
+        rc = cfs_param_copy(flag, (void *)knl_buffer,
                                (void *)usr_buffer, usr_buffer_nob);
         if (rc < 0)
                 return rc;

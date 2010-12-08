@@ -96,7 +96,7 @@ struct lov_oinfo {                 /* per-stripe data structure */
         cfs_list_t loi_hp_ready_item;
         cfs_list_t loi_write_item;
         cfs_list_t loi_read_item;
-
+        cfs_list_t loi_sync_fs_item;
         unsigned long loi_kms_valid:1;
         __u64 loi_kms;             /* known minimum size */
         struct ost_lvb loi_lvb;
@@ -123,6 +123,7 @@ static inline void loi_init(struct lov_oinfo *loi)
         CFS_INIT_LIST_HEAD(&loi->loi_hp_ready_item);
         CFS_INIT_LIST_HEAD(&loi->loi_write_item);
         CFS_INIT_LIST_HEAD(&loi->loi_read_item);
+        CFS_INIT_LIST_HEAD(&loi->loi_sync_fs_item);
 }
 
 struct lov_stripe_md {
@@ -158,6 +159,12 @@ struct lov_stripe_md {
 struct obd_info;
 
 typedef int (*obd_enqueue_update_f)(void *cookie, int rc);
+
+struct osc_sync_fs_wait {
+        struct obd_info      *sfw_oi;
+        obd_enqueue_update_f  sfw_upcall;
+        int started;
+};
 
 /* obd info for a particular level (lov, osc). */
 struct obd_info {
@@ -207,7 +214,7 @@ struct obd_type {
         cfs_list_t typ_chain;
         struct obd_ops *typ_dt_ops;
         struct md_ops *typ_md_ops;
-        libcfs_param_entry_t *typ_procroot;
+        cfs_param_entry_t *typ_procroot;
         char *typ_name;
         int  typ_refcnt;
         struct lu_device_type *typ_lu;
@@ -438,6 +445,7 @@ struct client_obd {
         cfs_list_t               cl_loi_hp_ready_list;
         cfs_list_t               cl_loi_write_list;
         cfs_list_t               cl_loi_read_list;
+        cfs_list_t               cl_loi_sync_fs_list;
         int                      cl_r_in_flight;
         int                      cl_w_in_flight;
         /* just a sum of the loi/lop pending numbers to be exported by /proc */
@@ -486,7 +494,9 @@ struct client_obd {
         struct lu_client_seq    *cl_seq;
 
         cfs_atomic_t             cl_resends; /* resend count */
+        struct osc_sync_fs_wait  cl_sf_wait;
 };
+
 #define obd2cli_tgt(obd) ((char *)(obd)->u.cli.cl_target_uuid.uuid)
 
 #define CL_NOT_QUOTACHECKED 1   /* client->cl_qchk_stat init value */
@@ -502,7 +512,7 @@ struct mgs_obd {
 #endif /* __linux__ */
         cfs_list_t                       mgs_fs_db_list;
         cfs_semaphore_t                  mgs_sem;
-        libcfs_param_entry_t            *mgs_proc_live;
+        cfs_param_entry_t               *mgs_proc_live;
 };
 
 struct dt_object;
@@ -699,7 +709,7 @@ struct pool_desc {
         struct lov_qos_rr     pool_rr;                /* round robin qos */
         cfs_hlist_node_t      pool_hash;              /* access by poolname */
         cfs_list_t            pool_list;              /* serial access */
-        libcfs_param_entry_t *pool_proc_entry;        /* file in /proc */
+        cfs_param_entry_t    *pool_proc_entry;        /* file in /proc */
         struct lov_obd       *pool_lov;               /* lov obd to which this
                                                          pool belong */
 };
@@ -721,7 +731,7 @@ struct lov_obd {
         int                     lov_pool_count;
         cfs_hash_t             *lov_pools_hash_body; /* used for key access */
         cfs_list_t              lov_pool_list; /* used for sequential access */
-        libcfs_param_entry_t *lov_pool_proc_entry;
+        cfs_param_entry_t      *lov_pool_proc_entry;
         enum lustre_sec_part    lov_sp_me;
 };
 
@@ -788,7 +798,7 @@ struct niobuf_local {
 #define LUSTRE_VVP_NAME         "vvp"
 #define LUSTRE_LMV_NAME         "lmv"
 #define LUSTRE_CMM_MDC_NAME     "cmm-mdc"
-#define LUSTRE_SLP_NAME         "slp"
+#define LUSTRE_SCFS_PARAM_NAME         "slp"
 #define LUSTRE_ZFS_NAME         "osd-zfs"
 
 /* obd device type names */
@@ -900,6 +910,8 @@ static inline void oti_free_cookies(struct obd_trans_info *oti)
  * Events signalled through obd_notify() upcall-chain.
  */
 enum obd_notify_event {
+        /* target added */
+        OBD_NOTIFY_CREATE,
         /* Device connect start */
         OBD_NOTIFY_CONNECT,
         /* Device activated */
@@ -1105,9 +1117,9 @@ struct obd_device {
         unsigned int           md_cntr_base;
         struct lprocfs_stats  *md_stats;
 
-        libcfs_param_entry_t  *obd_proc_entry;
-        libcfs_param_entry_t  *obd_proc_exports_entry;
-        libcfs_param_entry_t  *obd_svc_procroot;
+        cfs_param_entry_t     *obd_proc_entry;
+        cfs_param_entry_t     *obd_proc_exports_entry;
+        cfs_param_entry_t     *obd_svc_procroot;
         struct lprocfs_stats  *obd_svc_stats;
         cfs_atomic_t           obd_evict_inprogress;
         cfs_waitq_t            obd_evict_inprogress_waitq;
@@ -1197,7 +1209,7 @@ struct md_op_data {
         struct lu_fid           op_fid4; /* to the operation locks. */
         mdsno_t                 op_mds;  /* what mds server open will go to */
         struct lustre_handle    op_handle;
-        __u64                   op_mod_time;
+        obd_time                op_mod_time;
         const char             *op_name;
         int                     op_namelen;
         __u32                   op_mode;
@@ -1416,6 +1428,8 @@ struct obd_ops {
                           char *ostname);
         void (*o_getref)(struct obd_device *obd);
         void (*o_putref)(struct obd_device *obd);
+        int (*o_sync_fs)(struct obd_device *obd, struct obd_info *oinfo,
+                         int wait);
         /*
          * NOTE: If adding ops, add another LPROCFS_OBD_OP_INIT() line
          * to lprocfs_alloc_obd_stats() in obdclass/lprocfs_status.c.

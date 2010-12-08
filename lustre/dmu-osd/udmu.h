@@ -291,9 +291,6 @@ void udmu_xattr_declare_del(udmu_objset_t *uos, dmu_buf_t *db, const char *name,
 int udmu_xattr_del(udmu_objset_t *uos, dmu_buf_t *db, const char *name, dmu_tx_t *tx);
 
 void udmu_freeze(udmu_objset_t *uos);
-
-/* Used by lquota */
-void udmu_objset_register_type(void);
 #ifdef  __cplusplus
 }
 #endif

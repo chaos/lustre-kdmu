@@ -48,14 +48,14 @@ static int lprocfs_mds_rd_evictostnids(char *page, char **start, off_t off,
         struct obd_device* obd;
         int temp;
 
-        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        cfs_param_get_data(obd, data, NULL);
         LASSERT(obd != NULL);
         temp = obd->u.mds.mds_evict_ost_nids;
 
-        return libcfs_param_snprintf(page, count, data, LP_D32, "%d\n", temp);
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_S32, "%d\n", temp);
 }
 
-static int lprocfs_mds_wr_evictostnids(libcfs_file_t *file,
+static int lprocfs_mds_wr_evictostnids(cfs_param_file_t *file,
                                        const char *buffer,
                                        unsigned long count, void *data)
 {
@@ -63,7 +63,7 @@ static int lprocfs_mds_wr_evictostnids(libcfs_file_t *file,
         int val, rc;
         int flag = 0;
 
-        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        cfs_param_get_data(obd, data, NULL);
         rc = lprocfs_write_helper(buffer, count, &val, flag);
         if (rc)
                 return rc;
@@ -73,7 +73,7 @@ static int lprocfs_mds_wr_evictostnids(libcfs_file_t *file,
         return count;
 }
 
-static int lprocfs_mds_wr_evict_client(libcfs_file_t *file,
+static int lprocfs_mds_wr_evict_client(cfs_param_file_t *file,
                                        const char *buffer,
                                        unsigned long count, void *data)
 {
@@ -83,7 +83,7 @@ static int lprocfs_mds_wr_evict_client(libcfs_file_t *file,
         struct ptlrpc_request_set *set;
         int rc;
 
-        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        cfs_param_get_data(obd, data, NULL);
         mds = &obd->u.mds;
         sscanf(buffer, "%40s", tmpbuf);
 
@@ -126,7 +126,7 @@ static int lprocfs_mds_wr_evict_client(libcfs_file_t *file,
         return count;
 }
 
-static int lprocfs_wr_atime_diff(libcfs_file_t *file, const char *buffer,
+static int lprocfs_wr_atime_diff(cfs_param_file_t *file, const char *buffer,
                                  unsigned long count, void *data)
 {
         struct obd_device *obd;
@@ -136,12 +136,12 @@ static int lprocfs_wr_atime_diff(libcfs_file_t *file, const char *buffer,
         int flag = 0;
         int rc;
 
-        LIBCFS_PARAM_GET_DATA(obd, data, &flag);
+        cfs_param_get_data(obd, data, &flag);
         mds = &obd->u.mds;
         if (count > (sizeof(kernbuf) - 1))
                 return -EINVAL;
 
-        if ((rc = libcfs_param_copy(flag, kernbuf, buffer, count)))
+        if ((rc = cfs_param_copy(flag, kernbuf, buffer, count)))
                 return rc;
 
         kernbuf[count] = '\0';
@@ -160,10 +160,10 @@ static int lprocfs_rd_atime_diff(char *page, char **start, off_t off,
         struct obd_device *obd;
         struct mds_obd *mds;
 
-        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        cfs_param_get_data(obd, data, NULL);
         mds = &obd->u.mds;
 
-        return libcfs_param_snprintf(page, count, data, LP_U32,
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_U32,
                                      "%lu\n", mds->mds_atime_diff);
 }
 

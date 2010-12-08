@@ -174,11 +174,11 @@ const char* ll_eopcode2str(__u32 opcode)
 }
 
 #ifdef  __KERNEL__
-void ptlrpc_lprocfs_register(libcfs_param_entry_t *root, char *dir,
-                           char *name, libcfs_param_entry_t **procroot_ret,
+void ptlrpc_lprocfs_register(cfs_param_entry_t *root, char *dir,
+                           char *name, cfs_param_entry_t **procroot_ret,
                              struct lprocfs_stats **stats_ret)
 {
-        libcfs_param_entry_t *svc_procroot;
+        cfs_param_entry_t *svc_procroot;
         struct lprocfs_stats *svc_stats;
         int i, rc;
         unsigned int svc_counter_config = LPROCFS_CNTR_AVGMINMAX |
@@ -237,14 +237,14 @@ void ptlrpc_lprocfs_register(libcfs_param_entry_t *root, char *dir,
         rc = lprocfs_register_stats(svc_procroot, name, svc_stats);
         if (rc < 0) {
                 if (dir) {
-                        lprocfs_put_lperef(svc_procroot);
+                        lprocfs_put_peref(svc_procroot);
                         lprocfs_remove(&svc_procroot);
                 }
                 lprocfs_free_stats(&svc_stats);
         } else {
                 if (dir) {
                         *procroot_ret = svc_procroot;
-                        lprocfs_put_lperef(svc_procroot);
+                        lprocfs_put_peref(svc_procroot);
                 }
                 *stats_ret = svc_stats;
         }
@@ -256,9 +256,9 @@ ptlrpc_lprocfs_read_req_history_len(char *page, char **start, off_t off,
 {
         struct ptlrpc_service *svc;
 
-        LIBCFS_PARAM_GET_DATA(svc, data, NULL);
+        cfs_param_get_data(svc, data, NULL);
 
-        return libcfs_param_snprintf(page, count, data, LP_D32, "%d\n",
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_S32, "%d\n",
                                      svc->srv_n_history_rqbds);
 }
 
@@ -268,14 +268,14 @@ ptlrpc_lprocfs_read_req_history_max(char *page, char **start, off_t off,
 {
         struct ptlrpc_service *svc;
 
-        LIBCFS_PARAM_GET_DATA(svc, data, NULL);
+        cfs_param_get_data(svc, data, NULL);
 
-        return libcfs_param_snprintf(page, count, data, LP_D32, "%d\n",
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_S32, "%d\n",
                                      svc->srv_max_history_rqbds);
 }
 
 static int
-ptlrpc_lprocfs_write_req_history_max(libcfs_file_t *file, const char *buffer,
+ptlrpc_lprocfs_write_req_history_max(cfs_param_file_t *file, const char *buffer,
                                      unsigned long count, void *data)
 {
         struct ptlrpc_service *svc;
@@ -284,7 +284,7 @@ ptlrpc_lprocfs_write_req_history_max(libcfs_file_t *file, const char *buffer,
         int                    rc;
         int                    flag = 0;
 
-        LIBCFS_PARAM_GET_DATA(svc, data, &flag); 
+        cfs_param_get_data(svc, data, &flag); 
         rc = lprocfs_write_helper(buffer, count, &val, flag);
         if (rc < 0)
                 return rc;
@@ -312,14 +312,14 @@ ptlrpc_lprocfs_rd_threads_min(char *page, char **start, off_t off,
 {
         struct ptlrpc_service *svc;
 
-        LIBCFS_PARAM_GET_DATA(svc, data, NULL);
+        cfs_param_get_data(svc, data, NULL);
 
-        return libcfs_param_snprintf(page, count, data, LP_D32, "%d\n",
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_S32, "%d\n",
                                      svc->srv_threads_min);
 }
 
 static int
-ptlrpc_lprocfs_wr_threads_min(libcfs_file_t *file, const char *buffer,
+ptlrpc_lprocfs_wr_threads_min(cfs_param_file_t *file, const char *buffer,
                               unsigned long count, void *data)
 {
         struct ptlrpc_service *svc;
@@ -327,7 +327,7 @@ ptlrpc_lprocfs_wr_threads_min(libcfs_file_t *file, const char *buffer,
         int                    rc;
         int                    flag = 0;
 
-        LIBCFS_PARAM_GET_DATA(svc, data, &flag);
+        cfs_param_get_data(svc, data, &flag);
         rc = lprocfs_write_helper(buffer, count, &val, flag);
 
         if (rc < 0)
@@ -352,9 +352,9 @@ ptlrpc_lprocfs_rd_threads_started(char *page, char **start, off_t off,
 {
         struct ptlrpc_service *svc;
 
-        LIBCFS_PARAM_GET_DATA(svc, data, NULL);
+        cfs_param_get_data(svc, data, NULL);
 
-        return libcfs_param_snprintf(page, count, data, LP_D32, "%d\n",
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_S32, "%d\n",
                                      svc->srv_threads_started);
 }
 
@@ -364,14 +364,14 @@ ptlrpc_lprocfs_rd_threads_max(char *page, char **start, off_t off,
 {
         struct ptlrpc_service *svc;
 
-        LIBCFS_PARAM_GET_DATA(svc, data, NULL);
+        cfs_param_get_data(svc, data, NULL);
 
-        return libcfs_param_snprintf(page, count, data, LP_D32, "%d\n",
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_S32, "%d\n",
                                      svc->srv_threads_max);
 }
 
 static int
-ptlrpc_lprocfs_wr_threads_max(libcfs_file_t *file, const char *buffer,
+ptlrpc_lprocfs_wr_threads_max(cfs_param_file_t *file, const char *buffer,
                               unsigned long count, void *data)
 {
         struct ptlrpc_service *svc;
@@ -379,7 +379,7 @@ ptlrpc_lprocfs_wr_threads_max(libcfs_file_t *file, const char *buffer,
         int                    rc;
         int                    flag = 0;
 
-        LIBCFS_PARAM_GET_DATA(svc, data, &flag);
+        cfs_param_get_data(svc, data, &flag);
         rc = lprocfs_write_helper(buffer, count, &val, flag);
         if (rc < 0)
                 return rc;
@@ -442,9 +442,9 @@ ptlrpc_lprocfs_svc_req_history_seek(struct ptlrpc_service *svc,
 }
 
 static void *
-ptlrpc_lprocfs_svc_req_history_start(libcfs_seq_file_t *s, loff_t *pos)
+ptlrpc_lprocfs_svc_req_history_start(cfs_seq_file_t *s, loff_t *pos)
 {
-        struct ptlrpc_service       *svc = LIBCFS_SEQ_PRIVATE(s);
+        struct ptlrpc_service       *svc = cfs_seq_private(s);
         struct ptlrpc_srh_iterator  *srhi;
         int                          rc;
 
@@ -469,7 +469,7 @@ ptlrpc_lprocfs_svc_req_history_start(libcfs_seq_file_t *s, loff_t *pos)
 }
 
 static void
-ptlrpc_lprocfs_svc_req_history_stop(libcfs_seq_file_t *s, void *iter)
+ptlrpc_lprocfs_svc_req_history_stop(cfs_seq_file_t *s, void *iter)
 {
         struct ptlrpc_srh_iterator *srhi = iter;
 
@@ -478,10 +478,10 @@ ptlrpc_lprocfs_svc_req_history_stop(libcfs_seq_file_t *s, void *iter)
 }
 
 static void *
-ptlrpc_lprocfs_svc_req_history_next(libcfs_seq_file_t *s,
+ptlrpc_lprocfs_svc_req_history_next(cfs_seq_file_t *s,
                                     void *iter, loff_t *pos)
 {
-        struct ptlrpc_service       *svc = LIBCFS_SEQ_PRIVATE(s);
+        struct ptlrpc_service       *svc = cfs_seq_private(s);
         struct ptlrpc_srh_iterator  *srhi = iter;
         int                          rc;
 
@@ -499,59 +499,40 @@ ptlrpc_lprocfs_svc_req_history_next(libcfs_seq_file_t *s,
 }
 
 /* common ost/mdt srv_request_history_print_fn */
-int target_print_req(void *data, int count, struct ptlrpc_request *req)
+void target_print_req(void *data, struct ptlrpc_request *req)
 {
         /* Called holding srv_lock with irqs disabled.
          * Print specific req contents and a newline.
          * CAVEAT EMPTOR: check request message length before printing!!!
          * You might have received any old crap so you must be just as
          * careful here as the service's request parser!!! */
-        int rc = 0;
+        /* this is a seq file pointer */
+        cfs_seq_file_t *sf = data;
 
-        if (count == 0) {
-                /* this is a seq file pointer */
-                libcfs_seq_file_t *sf = data;
-
-                switch (req->rq_phase) {
-                case RQ_PHASE_NEW:
-                        /* still awaiting a service thread's attention, or rejected
-                         * because the generic request message didn't unpack */
-                        LIBCFS_SEQ_PRINTF(sf, "<not swabbed>\n");
-                        break;
-                case RQ_PHASE_INTERPRET:
-                        /* being handled, so basic msg swabbed, and opc is valid
-                         * but racing with mds_handle() */
-                case RQ_PHASE_COMPLETE:
-                        /* been handled by mds_handle() reply state possibly still
-                         * volatile */
-                        LIBCFS_SEQ_PRINTF(sf, "opc %d\n",
-                                   lustre_msg_get_opc(req->rq_reqmsg));
-                        break;
-                default:
-                        DEBUG_REQ(D_ERROR, req, "bad phase %d", req->rq_phase);
-                }
-        } else {
-                char *page = data;
-                switch (req->rq_phase) {
-                case RQ_PHASE_NEW:
-                        rc = snprintf(page, count, "<not swabbed>");
-                        break;
-                case RQ_PHASE_INTERPRET:
-                case RQ_PHASE_COMPLETE:
-                        rc = snprintf(page, count, "opc %d",
-                                      lustre_msg_get_opc(req->rq_reqmsg));
-                        break;
-                default:
-                        DEBUG_REQ(D_ERROR, req, "bad phase %d", req->rq_phase);
-                }
+        switch (req->rq_phase) {
+        case RQ_PHASE_NEW:
+                /* still awaiting a service thread's attention, or rejected
+                 * because the generic request message didn't unpack */
+                cfs_seq_printf(sf, "<not swabbed>\n");
+                break;
+        case RQ_PHASE_INTERPRET:
+                /* being handled, so basic msg swabbed, and opc is valid
+                 * but racing with mds_handle() */
+        case RQ_PHASE_COMPLETE:
+                /* been handled by mds_handle() reply state possibly still
+                 * volatile */
+                cfs_seq_printf(sf, "opc %d\n",
+                           lustre_msg_get_opc(req->rq_reqmsg));
+                break;
+        default:
+                DEBUG_REQ(D_ERROR, req, "bad phase %d", req->rq_phase);
         }
-        return rc;
 }
 EXPORT_SYMBOL(target_print_req);
 
-static int ptlrpc_lprocfs_svc_req_history_show(libcfs_seq_file_t *s, void *iter)
+static int ptlrpc_lprocfs_svc_req_history_show(cfs_seq_file_t *s, void *iter)
 {
-        struct ptlrpc_service      *svc = LIBCFS_SEQ_PRIVATE(s);
+        struct ptlrpc_service      *svc = cfs_seq_private(s);
         struct ptlrpc_srh_iterator *srhi = iter;
         struct ptlrpc_request      *req;
         int                         rc;
@@ -569,7 +550,7 @@ static int ptlrpc_lprocfs_svc_req_history_show(libcfs_seq_file_t *s, void *iter)
                  * must be just as careful as the service's request
                  * parser. Currently I only print stuff here I know is OK
                  * to look at coz it was set up in request_in_callback()!!! */
-                LIBCFS_SEQ_PRINTF(s, LPD64":%s:%s:x"LPU64":%d:%s:%ld:%lds(%+lds) ",
+                cfs_seq_printf(s, LPD64":%s:%s:x"LPU64":%d:%s:%ld:%lds(%+lds) ",
                            req->rq_history_seq, libcfs_nid2str(req->rq_self),
                            libcfs_id2str(req->rq_peer), req->rq_xid,
                            req->rq_reqlen, ptlrpc_rqphase2str(req),
@@ -577,9 +558,9 @@ static int ptlrpc_lprocfs_svc_req_history_show(libcfs_seq_file_t *s, void *iter)
                            req->rq_sent - req->rq_arrival_time.tv_sec,
                            req->rq_sent - req->rq_deadline);
                 if (svc->srv_request_history_print_fn == NULL)
-                        LIBCFS_SEQ_PRINTF(s, "\n");
+                        cfs_seq_printf(s, "\n");
                 else
-                        svc->srv_request_history_print_fn(s, 0, srhi->srhi_req);
+                        svc->srv_request_history_print_fn(s, srhi->srhi_req);
         }
 
         cfs_spin_unlock(&svc->srv_lock);
@@ -587,7 +568,7 @@ static int ptlrpc_lprocfs_svc_req_history_show(libcfs_seq_file_t *s, void *iter)
         return rc;
 }
 
-static libcfs_seq_ops_t req_history_sops = {
+static cfs_seq_ops_t req_history_sops = {
         .start = ptlrpc_lprocfs_svc_req_history_start,
         .stop  = ptlrpc_lprocfs_svc_req_history_stop,
         .next  = ptlrpc_lprocfs_svc_req_history_next,
@@ -595,30 +576,17 @@ static libcfs_seq_ops_t req_history_sops = {
 };
 
 static int
-ptlrpc_lprocfs_svc_req_history_open(libcfs_inode_t *inode, libcfs_file_t *file)
+ptlrpc_lprocfs_svc_req_history_open(cfs_inode_t *inode, cfs_param_file_t *file)
 {
-        libcfs_param_dentry_t *dp = LIBCFS_PDE(inode);
-        libcfs_seq_file_t     *seqf;
-        int                    rc;
-
-        LPROCFS_ENTRY_AND_CHECK(dp);
-        LIBCFS_SEQ_OPEN(file, &req_history_sops, rc);
-        if (rc) {
-                LPROCFS_EXIT();
-                return rc;
-        }
-
-        seqf = LIBCFS_FILE_PRIVATE(file);
-        LIBCFS_SEQ_PRIVATE(seqf) = LIBCFS_DENTRY_DATA(dp);
-        return 0;
+        return cfs_param_seq_fopen(inode, file, &req_history_sops);
 }
 
-static libcfs_file_ops_t req_history_fops = {
-        .owner       = THIS_MODULE,
+static cfs_param_file_ops_t req_history_fops = {
+        .owner       = CFS_PARAM_MODULE,
         .open        = ptlrpc_lprocfs_svc_req_history_open,
-        .read        = LIBCFS_SEQ_READ_COMMON,
-        .llseek      = LIBCFS_SEQ_LSEEK_COMMON,
-        .release     = libcfs_param_seq_release_common,
+        .read        = cfs_seq_read,
+        .llseek      = cfs_seq_lseek,
+        .release     = cfs_seq_release,
 };
 
 /* See also lprocfs_rd_timeouts */
@@ -631,7 +599,7 @@ static int ptlrpc_lprocfs_rd_timeouts(char *page, char **start, off_t off,
         struct dhms ts;
         int rc = 0, flag = 0;
 
-        LIBCFS_PARAM_GET_DATA(svc, data, &flag);
+        cfs_param_get_data(svc, data, &flag);
         cur = at_get(&svc->srv_at_estimate);
         worst = svc->srv_at_estimate.at_worst_ever;
         worstt = svc->srv_at_estimate.at_worst_time;
@@ -646,7 +614,7 @@ static int ptlrpc_lprocfs_rd_timeouts(char *page, char **start, off_t off,
                        DHMS_VARS(&ts));
         rc = lprocfs_at_hist_helper(page, count, rc, &svc->srv_at_estimate);
 
-        return libcfs_param_snprintf(page, count, data, LP_STR, NULL, NULL);
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_STR, NULL, NULL);
 }
 
 static int ptlrpc_lprocfs_rd_hp_ratio(char *page, char **start, off_t off,
@@ -654,19 +622,19 @@ static int ptlrpc_lprocfs_rd_hp_ratio(char *page, char **start, off_t off,
 {
         struct ptlrpc_service *svc;
 
-        LIBCFS_PARAM_GET_DATA(svc, data, NULL);
+        cfs_param_get_data(svc, data, NULL);
 
-        return libcfs_param_snprintf(page, count, data, LP_D32, "%d",
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_S32, "%d",
                                      svc->srv_hpreq_ratio);
 }
 
-static int ptlrpc_lprocfs_wr_hp_ratio(libcfs_file_t *file, const char *buffer,
+static int ptlrpc_lprocfs_wr_hp_ratio(cfs_param_file_t *file, const char *buffer,
                                       unsigned long count, void *data)
 {
         struct ptlrpc_service *svc;
         int rc, val, flag = 0;
 
-        LIBCFS_PARAM_GET_DATA(svc, data, &flag);
+        cfs_param_get_data(svc, data, &flag);
         rc = lprocfs_write_helper(buffer, count, &val, flag);
         if (rc < 0)
                 return rc;
@@ -794,14 +762,14 @@ void ptlrpc_lprocfs_unregister_obd(struct obd_device *obd)
 }
 EXPORT_SYMBOL(ptlrpc_lprocfs_unregister_obd);
 
-int lprocfs_wr_evict_client(libcfs_file_t *file, const char *buffer,
+int lprocfs_wr_evict_client(cfs_param_file_t *file, const char *buffer,
                             unsigned long count, void *data)
 {
         struct obd_device *obd;
         char tmpbuf[sizeof(struct obd_uuid)];
         int flag;
 
-        LIBCFS_PARAM_GET_DATA(obd, data, &flag);
+        cfs_param_get_data(obd, data, &flag);
         /* as lprocfs_evict_client_open() does */
         cfs_atomic_inc(&obd->obd_evict_inprogress);
 
@@ -813,7 +781,7 @@ int lprocfs_wr_evict_client(libcfs_file_t *file, const char *buffer,
          * to drop the lock at first here.
          * - jay, jxiong@clusterfs.com */
         class_incref(obd, __FUNCTION__, cfs_current());
-        if (!(flag & LIBCFS_PARAM_ACCESS))
+        if (!(flag & CFS_PARAM_ACCESS))
                 LPROCFS_EXIT();
 
         sscanf(buffer, "%40s", tmpbuf);
@@ -824,7 +792,7 @@ int lprocfs_wr_evict_client(libcfs_file_t *file, const char *buffer,
         else
                 obd_export_evict_by_uuid(obd, tmpbuf);
 
-        if (!(flag & LIBCFS_PARAM_ACCESS))
+        if (!(flag & CFS_PARAM_ACCESS))
                 LPROCFS_ENTRY();
         class_decref(obd, __FUNCTION__, cfs_current());
         /* as lprocfs_evict_client_release() does */
@@ -835,7 +803,7 @@ int lprocfs_wr_evict_client(libcfs_file_t *file, const char *buffer,
 }
 EXPORT_SYMBOL(lprocfs_wr_evict_client);
 
-int lprocfs_wr_ping(libcfs_file_t *file, const char *buffer,
+int lprocfs_wr_ping(cfs_param_file_t *file, const char *buffer,
                     unsigned long count, void *data)
 {
         struct obd_device     *obd;
@@ -843,7 +811,7 @@ int lprocfs_wr_ping(libcfs_file_t *file, const char *buffer,
         int                    rc;
         ENTRY;
 
-        LIBCFS_PARAM_GET_DATA(obd, data, NULL);
+        cfs_param_get_data(obd, data, NULL);
         LPROCFS_CLIMP_CHECK(obd);
         req = ptlrpc_prep_ping(obd->u.cli.cl_import);
         LPROCFS_CLIMP_EXIT(obd);

@@ -854,13 +854,13 @@ static int server_stop_servers(int lddflags, int lsiflags)
 
         /* Either an MDT or an OST or neither  */
         /* if this was an MDT, and there are no more MDT's, clean up the MDS */
-        if ((lddflags & SVTYPE_MDT) &&
+        if ((lddflags & LDD_F_SV_TYPE_MDT) &&
             (obd = class_name2obd(LUSTRE_MDS_OBDNAME))) {
                 /*FIXME pre-rename, should eventually be LUSTRE_MDT_NAME*/
                 type = class_search_type(LUSTRE_MDS_NAME);
         }
         /* if this was an OST, and there are no more OST's, clean up the OSS */
-        if ((lddflags & SVTYPE_OST) &&
+        if ((lddflags & LDD_F_SV_TYPE_OST) &&
             (obd = class_name2obd(LUSTRE_OSS_OBDNAME))) {
                 type = class_search_type(LUSTRE_OST_NAME);
         }
@@ -969,16 +969,16 @@ int server_name2index(char *svname, __u32 *idx, char **endptr)
         dash++;
 
         if (strncmp(dash, "MDT", 3) == 0)
-                rc |= SVTYPE_MDT;
+                rc |= LDD_F_SV_TYPE_MDT;
         else if (strncmp(dash, "OST", 3) == 0)
-                rc |= SVTYPE_OST;
+                rc |= LDD_F_SV_TYPE_OST;
         else
                 return(-EINVAL);
 
         dash += 3;
 
         if (strcmp(dash, "all") == 0)
-                return rc | SVTYPE_ALL;
+                return rc | LDD_F_SV_ALL;
 
         if (strcmp(dash, "ffff") == 0) {
                 rc |= LDD_F_NEED_INDEX;
@@ -1230,7 +1230,7 @@ static int server_start_targets(struct lustre_sb_info *lsi, struct dt_device *dt
 
 #if 0
         /* If we're an MDT, make sure the global MDS is running */
-        if (lsi->lsi_ldd->ldd_flags & SVTYPE_MDT) {
+        if (lsi->lsi_ldd->ldd_flags & LDD_F_SV_TYPE_MDT) {
                 /* make sure the MDS is started */
                 cfs_mutex_down(&server_start_lock);
                 obd = class_name2obd(LUSTRE_MDS_OBDNAME);
@@ -1257,7 +1257,7 @@ static int server_start_targets(struct lustre_sb_info *lsi, struct dt_device *dt
         stop_temp_site(lsi);
 
         /* If we're an OST, make sure the global OSS is running */
-        if (lsi->lsi_ldd->ldd_flags & SVTYPE_OST) {
+        if (lsi->lsi_ldd->ldd_flags & LDD_F_SV_TYPE_OST) {
                 /* make sure OSS is started */
                 cfs_mutex_down(&server_start_lock);
                 obd = class_name2obd(LUSTRE_OSS_OBDNAME);
@@ -1962,8 +1962,8 @@ int lustre_check_exclusion(struct lustre_sb_info *lsi, char *svname)
         int i, rc;
         ENTRY;
 
-        rc = libcfs_str2server(svname, &i, &index, NULL);
-        if (rc ||  i != SVTYPE_OST)
+        rc = server_name2index(svname, &index, NULL);
+        if (rc != LDD_F_SV_TYPE_OST)
                 /* Only exclude OSTs */
                 RETURN(0);
 
@@ -1984,7 +1984,7 @@ static int lmd_make_exclusion(struct lustre_mount_data *lmd, char *ptr)
 {
         char *s1 = ptr, *s2;
         __u32 index, *exclude_list;
-        int rc = 0, devmax, type;
+        int rc = 0, devmax;
         ENTRY;
 
         /* The shortest an ost name can be is 8 chars: -OST0000.
@@ -2000,12 +2000,12 @@ static int lmd_make_exclusion(struct lustre_mount_data *lmd, char *ptr)
         /* we enter this fn pointing at the '=' */
         while (*s1 && *s1 != ' ' && *s1 != ',') {
                 s1++;
-                rc = libcfs_str2server(s1, &type, &index, &s2);
+                rc = server_name2index(s1, &index, &s2);
                 if (rc < 0) {
                         CERROR("Can't parse server name '%s'\n", s1);
                         break;
                 }
-                if (type == SVTYPE_OST)
+                if (rc == LDD_F_SV_TYPE_OST)
                         exclude_list[lmd->lmd_exclude_count++] = index;
                 else
                         CDEBUG(D_MOUNT, "ignoring exclude %.7s\n", s1);
@@ -2336,7 +2336,8 @@ void lustre_server_umount(struct lustre_sb_info *lsi)
                 /* if MDS start with --nomgs, don't stop MGS then */
                 if (!(lsi->lsi_lmd->lmd_flags & LMD_FLG_NOMGS)) {
                         server_stop_mgs(lsi);
-                        if (!(lddflags & (SVTYPE_MDT | SVTYPE_OST))) {
+                        if (!(lddflags &
+                              (LDD_F_SV_TYPE_MDT | LDD_F_SV_TYPE_OST))) {
                                 /* XXX: OSD isn't part of MSG stack yet
                                  *      shutdown OSD manually */
                                 stop_osd(lsi->lsi_dt_dev);

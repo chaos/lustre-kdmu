@@ -82,6 +82,6 @@ extern struct lprocfs_vars seq_server_proc_list[];
 extern struct lprocfs_vars seq_client_proc_list[];
 #endif  /* __KERNEL__ */
 
-extern libcfs_param_entry_t *seq_type_proc_dir;
+extern cfs_param_entry_t *seq_type_proc_dir;
 
 #endif /* __FID_INTERNAL_H */

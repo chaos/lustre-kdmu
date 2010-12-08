@@ -128,12 +128,12 @@ void osd_set_quota_index_ops(struct dt_object *dt)
 #define ISUSER       0
 #define ISGROUP      1
 
-static void *quota_start(libcfs_seq_file_t *p, loff_t *pos)
+static void *quota_start(cfs_seq_file_t *p, loff_t *pos)
 {
-        return LIBCFS_SEQ_PRIVATE(p);
+        return cfs_seq_private(p);
 }
 
-static int quota_show(libcfs_seq_file_t *f, void *it)
+static int quota_show(cfs_seq_file_t *f, void *it)
 {
         struct dt_object       *dt   = DT_IT2DT(it);
         const struct dt_it_ops *iops = &dt->do_index_ops->dio_it;
@@ -142,7 +142,7 @@ static int quota_show(libcfs_seq_file_t *f, void *it)
 
         rc = iops->key_rec(NULL, (struct dt_it *)it, &qe);
         if (rc == 0)
-                return LIBCFS_SEQ_PRINTF(f, LPU64"\t\t"LPU64"\n",
+                return cfs_seq_printf(f, LPU64"\t\t"LPU64"\n",
                                          qe.qe_id, qe.qe_value);
         else if (rc == ENOENT)
                 return 0;
@@ -150,7 +150,7 @@ static int quota_show(libcfs_seq_file_t *f, void *it)
                 return -rc;
 }
 
-static void *quota_next(libcfs_seq_file_t *f, void *it, loff_t *pos)
+static void *quota_next(cfs_seq_file_t *f, void *it, loff_t *pos)
 {
         struct dt_object       *dt   = DT_IT2DT(it);
         const struct dt_it_ops *iops = &dt->do_index_ops->dio_it;
@@ -165,23 +165,23 @@ static void *quota_next(libcfs_seq_file_t *f, void *it, loff_t *pos)
                 return ERR_PTR(rc);
 }
 
-static void quota_stop(libcfs_seq_file_t *f, void *v)
+static void quota_stop(cfs_seq_file_t *f, void *v)
 {
         /* Nothing to do */
 }
 
-static libcfs_seq_ops_t quota_sops = {
+static cfs_seq_ops_t quota_sops = {
         .start                 = quota_start,
         .stop                  = quota_stop,
         .next                  = quota_next,
         .show                  = quota_show,
 };
 
-static int quota_seq_open(libcfs_inode_t *inode, libcfs_file_t *filp, int isgroup)
+static int quota_seq_open(cfs_inode_t *inode, cfs_param_file_t *filp, int isgroup)
 {
-        libcfs_param_dentry_t   *dp  = LIBCFS_PDE(inode);
-        struct osd_device       *osd = LIBCFS_DENTRY_DATA(dp);
-        libcfs_seq_file_t       *seq;
+        cfs_param_dentry_t      *dp = CFS_PDE(inode);
+        struct osd_device       *osd = cfs_dentry_data(dp);
+        cfs_seq_file_t          *seq;
         struct dt_object        *tdo;
         const struct dt_it_ops  *iops;
         struct dt_it            *it;
@@ -194,9 +194,9 @@ static int quota_seq_open(libcfs_inode_t *inode, libcfs_file_t *filp, int isgrou
                 tdo = osd->od_qctxt.qc_slave_uid_dto;
         iops = &tdo->do_index_ops->dio_it;
 
-        LIBCFS_SEQ_OPEN(filp, &quota_sops, rc);
+        rc = cfs_seq_open(filp, &quota_sops);
         if (rc == 0)
-                seq = LIBCFS_FILE_PRIVATE(filp);
+                seq = cfs_file_private(filp);
         else
                 return -EINVAL;
 
@@ -204,42 +204,42 @@ static int quota_seq_open(libcfs_inode_t *inode, libcfs_file_t *filp, int isgrou
         if (IS_ERR(it))
                 return PTR_ERR(it);
 
-        LIBCFS_SEQ_PRIVATE(seq) = it;
+        cfs_seq_private(seq) = it;
         return rc;
 }
 
-static int quota_user_seq_open(libcfs_inode_t *inode, libcfs_file_t *filp)
+static int quota_user_seq_open(cfs_inode_t *inode, cfs_param_file_t *filp)
 {
         return quota_seq_open(inode, filp, ISUSER);
 }
 
-static int quota_group_seq_open(libcfs_inode_t *inode, libcfs_file_t *filp)
+static int quota_group_seq_open(cfs_inode_t *inode, cfs_param_file_t *filp)
 {
         return quota_seq_open(inode, filp, ISGROUP);
 }
 
-static int quota_seq_release(libcfs_inode_t *inode, libcfs_file_t *filp)
+static int quota_seq_release(cfs_inode_t *inode, cfs_param_file_t *filp)
 {
-        libcfs_seq_file_t *seq  = LIBCFS_FILE_PRIVATE(filp);
+        cfs_seq_file_t *seq  = cfs_file_private(filp);
         struct dt_it      *dit  = seq->private;
         struct dt_object  *dt   = DT_IT2DT(dit);
         const struct dt_it_ops *iops = &dt->do_index_ops->dio_it;
 
         iops->fini(NULL, dit);
-        return(libcfs_param_seq_release_common(inode, filp));
+        return(cfs_seq_release(inode, filp));
 }
 
-static libcfs_file_ops_t quota_user_file_ops = {
-        .owner   = THIS_MODULE,
+static cfs_param_file_ops_t quota_user_file_ops = {
+        .owner   = CFS_PARAM_MODULE,
         .open    = quota_user_seq_open,
-        .read    = LIBCFS_SEQ_READ_COMMON,
+        .read    = cfs_seq_read,
         .release = quota_seq_release,
 };
 
-static libcfs_file_ops_t quota_group_file_ops = {
-        .owner   = THIS_MODULE,
+static cfs_param_file_ops_t quota_group_file_ops = {
+        .owner   = CFS_PARAM_MODULE,
         .open    = quota_group_seq_open,
-        .read    = LIBCFS_SEQ_READ_COMMON,
+        .read    = cfs_seq_read,
         .release = quota_seq_release,
 };
 

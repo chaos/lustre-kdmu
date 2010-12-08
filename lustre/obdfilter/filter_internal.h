@@ -62,8 +62,8 @@
 #define FILTER_GRANT_SHRINK_LIMIT (16ULL * FILTER_GRANT_CHUNK)
 #define GRANT_FOR_LLOG(obd) 16
 
-extern libcfs_file_ops_t filter_per_export_stats_fops;
-extern libcfs_file_ops_t filter_per_nid_stats_fops;
+extern cfs_param_file_ops_t filter_per_export_stats_fops;
+extern cfs_param_file_ops_t filter_per_nid_stats_fops;
 
 /* Limit the returned fields marked valid to those that we actually might set */
 #define FILTER_VALID_FLAGS (OBD_MD_FLTYPE | OBD_MD_FLMODE | OBD_MD_FLGENER  |\

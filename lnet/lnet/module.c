@@ -45,22 +45,22 @@ CFS_MODULE_PARM(config_on_load, "i", int, 0444,
                 "configure network at module load");
 
 static cfs_semaphore_t lnet_config_mutex;
-static struct libcfs_param_ctl_table libcfs_param_module_ctl_table[] = {
+static cfs_param_sysctl_table_t module_ctl_table[] = {
         {
                 .name     = "config_on_load",
                 .data     = &config_on_load,
                 .mode     = 0444,
-                .read     = libcfs_param_intvec_read
+                .read     = cfs_param_intvec_read
         },
         {0}
 };
 
-void lnet_module_sysctl_init()
+static int
+lnet_module_param_init(void)
 {
-        libcfs_param_sysctl_init("lnet", libcfs_param_module_ctl_table,
-                                 libcfs_param_lnet_root);
+        return cfs_param_sysctl_init("lnet", module_ctl_table,
+                                     cfs_param_get_lnet_root());
 }
-
 
 int
 lnet_configure (void *arg)
@@ -86,7 +86,7 @@ int
 lnet_unconfigure (void)
 {
         int   refcount;
-        
+
         LNET_MUTEX_DOWN(&lnet_config_mutex);
 
         if (the_lnet.ln_niinit_self) {
@@ -113,7 +113,7 @@ lnet_ioctl(unsigned int cmd, struct libcfs_ioctl_data *data)
 
         case IOC_LIBCFS_UNCONFIGURE:
                 return lnet_unconfigure();
-                
+
         default:
                 /* Passing LNET_PID_ANY only gives me a ref if the net is up
                  * already; I'll need it to ensure the net can't go down while
@@ -129,21 +129,39 @@ lnet_ioctl(unsigned int cmd, struct libcfs_ioctl_data *data)
 
 DECLARE_IOCTL_HANDLER(lnet_ioctl_handler, lnet_ioctl);
 
-/* initialize lnet parameters exported with CFS_MODULE_PARAM */
-void
+int
 lnet_modparams_init(void)
 {
-        lnet_apini_sysctl_init();
-        lnet_module_sysctl_init();
-        lnet_router_sysctl_init();
-        lnet_libmove_sysctl_init();
-        lnet_acceptor_sysctl_init();
+        int                  rc;
+
+        /* initialize lnet parameters exported with CFS_MODULE_PARAM */
+        rc = lnet_apini_param_init();
+        if (rc != 0)
+                goto fail;
+        rc = lnet_module_param_init();
+        if (rc != 0)
+                goto fail;
+        rc = lnet_router_param_init();
+        if (rc != 0)
+                goto fail;
+        rc = lnet_libmove_param_init();
+        if (rc != 0)
+                goto fail;
+        rc = lnet_acceptor_param_init();
+        if (rc != 0)
+                goto fail;
+
+        return 0;
+
+fail:
+        cfs_param_sysctl_fini("lnet", cfs_param_get_lnet_root());
+        return rc;
 }
 
 void
 lnet_modparams_fini(void)
 {
-        libcfs_param_sysctl_fini("lnet", libcfs_param_lnet_root);
+        cfs_param_sysctl_fini("lnet", cfs_param_get_lnet_root());
 }
 
 int
@@ -153,7 +171,11 @@ init_lnet(void)
         ENTRY;
 
 #if !defined(__sun__)
-        lnet_modparams_init();
+        rc = lnet_modparams_init();
+        if (rc != 0) {
+                CERROR("lnet_modparams_init: error %d\n", rc);
+                RETURN(rc);
+        }
 #endif
         cfs_init_mutex(&lnet_config_mutex);
 

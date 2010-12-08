@@ -67,7 +67,7 @@
  * use.
  */
 static int
-seq_proc_write_common(libcfs_file_t *file, const char *buffer,
+seq_proc_write_common(cfs_param_file_t *file, const char *buffer,
                       unsigned long count, void *data,
                       struct lu_seq_range *range)
 {
@@ -93,8 +93,8 @@ seq_proc_read_common(char *page, char **start, off_t off,
 	int rc;
 	ENTRY;
 
-        rc = libcfs_param_snprintf(page, count, data, LP_STR,
-                                   "["LPX64" - "LPX64"]:%x\n", PRANGE(range));
+        rc = cfs_param_snprintf(page, count, data, CFS_PARAM_STR,
+                                "["LPX64" - "LPX64"]:%x\n", PRANGE(range));
 
 	RETURN(rc);
 }
@@ -103,14 +103,14 @@ seq_proc_read_common(char *page, char **start, off_t off,
  * Server side procfs stuff.
  */
 static int
-seq_server_proc_write_space(libcfs_file_t *file, const char *buffer,
+seq_server_proc_write_space(cfs_param_file_t *file, const char *buffer,
                             unsigned long count, void *data)
 {
         struct lu_server_seq *seq;
 	int rc;
 	ENTRY;
 
-        LIBCFS_PARAM_GET_DATA(seq, data, NULL);
+        cfs_param_get_data(seq, data, NULL);
 
         LASSERT(seq != NULL);
 
@@ -135,7 +135,7 @@ seq_server_proc_read_space(char *page, char **start, off_t off,
 	int rc;
 	ENTRY;
 
-        LIBCFS_PARAM_GET_DATA(seq, data, NULL);
+        cfs_param_get_data(seq, data, NULL);
         LASSERT(seq != NULL);
 
         cfs_down(&seq->lss_sem);
@@ -155,35 +155,37 @@ seq_server_proc_read_server(char *page, char **start, off_t off,
 	int rc;
 	ENTRY;
 
-        LIBCFS_PARAM_GET_DATA(seq, data, NULL);
+        cfs_param_get_data(seq, data, NULL);
         LASSERT(seq != NULL);
 
 	if (seq->lss_cli) {
                 if (seq->lss_cli->lcs_exp != NULL) {
                         cli = &seq->lss_cli->lcs_exp->exp_obd->u.cli;
-                        rc = libcfs_param_snprintf(page, count, data, LP_STR,
-                                       "%s\n", cli->cl_target_uuid.uuid);
+                        rc = cfs_param_snprintf(page, count, data,
+                                                CFS_PARAM_STR, "%s\n",
+                                                cli->cl_target_uuid.uuid);
                 } else {
-                        rc = libcfs_param_snprintf(page, count, data, LP_STR,
-                                       "%s\n", seq->lss_cli->lcs_srv->lss_name);
+                        rc = cfs_param_snprintf(page, count, data,
+                                                CFS_PARAM_STR, "%s\n",
+                                                seq->lss_cli->lcs_srv->lss_name);
                 }
 	} else {
-		rc = libcfs_param_snprintf(page, count, data, LP_STR,
-                                           "%s", "<none>\n");
+		rc = cfs_param_snprintf(page, count, data, CFS_PARAM_STR,
+                                        "%s", "<none>\n");
 	}
 
 	RETURN(rc);
 }
 
 static int
-seq_server_proc_write_width(libcfs_file_t *file, const char *buffer,
+seq_server_proc_write_width(cfs_param_file_t *file, const char *buffer,
                             unsigned long count, void *data)
 {
         struct lu_server_seq *seq;
 	int rc, val, flag = 0;
 	ENTRY;
 
-        LIBCFS_PARAM_GET_DATA(seq, data, &flag);
+        cfs_param_get_data(seq, data, &flag);
         LASSERT(seq != NULL);
 
         cfs_down(&seq->lss_sem);
@@ -212,11 +214,11 @@ seq_server_proc_read_width(char *page, char **start, off_t off,
 	int rc;
 	ENTRY;
 
-        LIBCFS_PARAM_GET_DATA(seq, data, NULL);
+        cfs_param_get_data(seq, data, NULL);
         LASSERT(seq != NULL);
         cfs_down(&seq->lss_sem);
-        rc = libcfs_param_snprintf(page, count, data, LP_U64,
-                                   LPU64"\n", seq->lss_width);
+        rc = cfs_param_snprintf(page, count, data, CFS_PARAM_U64,
+                                LPU64"\n", seq->lss_width);
         cfs_up(&seq->lss_sem);
 
 	RETURN(rc);
@@ -224,14 +226,14 @@ seq_server_proc_read_width(char *page, char **start, off_t off,
 
 /* Client side procfs stuff */
 static int
-seq_client_proc_write_space(libcfs_file_t *file, const char *buffer,
+seq_client_proc_write_space(cfs_param_file_t *file, const char *buffer,
                             unsigned long count, void *data)
 {
         struct lu_client_seq *seq;
 	int rc;
 	ENTRY;
 
-        LIBCFS_PARAM_GET_DATA(seq, data, NULL);
+        cfs_param_get_data(seq, data, NULL);
         LASSERT(seq != NULL);
 
         cfs_down(&seq->lcs_sem);
@@ -256,7 +258,7 @@ seq_client_proc_read_space(char *page, char **start, off_t off,
 	int rc;
 	ENTRY;
 
-        LIBCFS_PARAM_GET_DATA(seq, data, NULL);
+        cfs_param_get_data(seq, data, NULL);
         LASSERT(seq != NULL);
 
         cfs_down(&seq->lcs_sem);
@@ -268,7 +270,7 @@ seq_client_proc_read_space(char *page, char **start, off_t off,
 }
 
 static int
-seq_client_proc_write_width(libcfs_file_t *file, const char *buffer,
+seq_client_proc_write_width(cfs_param_file_t *file, const char *buffer,
                             unsigned long count, void *data)
 {
         struct lu_client_seq *seq;
@@ -276,7 +278,7 @@ seq_client_proc_write_width(libcfs_file_t *file, const char *buffer,
 	ENTRY;
 
 
-        LIBCFS_PARAM_GET_DATA(seq, data, &flag);
+        cfs_param_get_data(seq, data, &flag);
         LASSERT(seq != NULL);
 
         cfs_down(&seq->lcs_sem);
@@ -307,12 +309,12 @@ seq_client_proc_read_width(char *page, char **start, off_t off,
 	int rc;
 	ENTRY;
 
-        LIBCFS_PARAM_GET_DATA(seq, data, NULL);
+        cfs_param_get_data(seq, data, NULL);
         LASSERT(seq != NULL);
 
         cfs_down(&seq->lcs_sem);
-        rc = libcfs_param_snprintf(page, count, data, LP_U64,
-                                   LPU64"\n", seq->lcs_width);
+        rc = cfs_param_snprintf(page, count, data, CFS_PARAM_U64,
+                                LPU64"\n", seq->lcs_width);
         cfs_up(&seq->lcs_sem);
 
 	RETURN(rc);
@@ -326,12 +328,12 @@ seq_client_proc_read_fid(char *page, char **start, off_t off,
 	int rc;
 	ENTRY;
 
-        LIBCFS_PARAM_GET_DATA(seq, data, NULL);
+        cfs_param_get_data(seq, data, NULL);
         LASSERT(seq != NULL);
 
         cfs_down(&seq->lcs_sem);
-        rc = libcfs_param_snprintf(page, count, data, LP_STR,
-                                   DFID"\n", PFID(&seq->lcs_fid));
+        rc = cfs_param_snprintf(page, count, data, CFS_PARAM_STR,
+                                DFID"\n", PFID(&seq->lcs_fid));
         cfs_up(&seq->lcs_sem);
 
 	RETURN(rc);
@@ -346,15 +348,15 @@ seq_client_proc_read_server(char *page, char **start, off_t off,
 	int rc;
 	ENTRY;
 
-        LIBCFS_PARAM_GET_DATA(seq, data, NULL);
+        cfs_param_get_data(seq, data, NULL);
         LASSERT(seq != NULL);
         if (seq->lcs_exp != NULL) {
                 cli = &seq->lcs_exp->exp_obd->u.cli;
-                rc = libcfs_param_snprintf(page, count, data, LP_STR,
-                                           "%s\n", cli->cl_target_uuid.uuid);
+                rc = cfs_param_snprintf(page, count, data, CFS_PARAM_STR,
+                                        "%s\n", cli->cl_target_uuid.uuid);
         } else {
-                rc = libcfs_param_snprintf(page, count, data, LP_STR,
-                                           "%s\n", seq->lcs_srv->lss_name);
+                rc = cfs_param_snprintf(page, count, data, CFS_PARAM_STR,
+                                        "%s\n", seq->lcs_srv->lss_name);
         }
 
 	RETURN(rc);

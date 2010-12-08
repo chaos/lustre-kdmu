@@ -108,6 +108,16 @@ int filter_precreate_object(const struct lu_env *env, struct filter_device *ofd,
         loff_t                   off;
         int                      rc;
 
+        /* Don't create objects beyond the valid range for this SEQ */
+        if (unlikely(fid_seq_is_mdt0(group) && id >= IDIF_MAX_OID)) {
+                CERROR("%s:"POSTID" hit the IDIF_MAX_OID (1<<48)!\n",
+                       filter_name(ofd), id, group);
+                RETURN(rc = -ENOSPC);
+        } else if (unlikely(!fid_seq_is_mdt0(group) && id >= OBIF_MAX_OID)) {
+                CERROR("%s:"POSTID" hit the OBIF_MAX_OID (1<<32)!\n",
+                       filter_name(ofd), id, group);
+                RETURN(rc = -ENOSPC);
+        }
         ostid.oi_id = id;
         ostid.oi_seq = group;
         fid_ostid_unpack(&fid, &ostid, 0);

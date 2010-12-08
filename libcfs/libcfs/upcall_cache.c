@@ -33,7 +33,7 @@
  * This file is part of Lustre, http://www.lustre.org/
  * Lustre is a trademark of Sun Microsystems, Inc.
  *
- * lustre/lvfs/upcall_cache.c
+ * libcfs/libcfs/upcall_cache.c
  *
  * Supplementary groups cache.
  */
@@ -121,7 +121,8 @@ static int check_unlink_entry(struct upcall_cache *cache,
                 return 0;
 
         if (UC_CACHE_IS_ACQUIRING(entry)) {
-                if (cfs_time_before(cfs_time_current(),
+                if (entry->ue_acquire_expire == 0 ||
+                    cfs_time_before(cfs_time_current(),
                                     entry->ue_acquire_expire))
                         return 0;
 
@@ -169,7 +170,7 @@ find_again:
                 }
         }
 
-        if (!found) { /* didn't find it */
+        if (!found) {
                 if (!new) {
                         cfs_spin_unlock(&cache->uc_lock);
                         new = alloc_entry(cache, key, args);
@@ -195,47 +196,47 @@ find_again:
         if (UC_CACHE_IS_NEW(entry)) {
                 UC_CACHE_SET_ACQUIRING(entry);
                 UC_CACHE_CLEAR_NEW(entry);
-                entry->ue_acquire_expire =
-                        cfs_time_shift(cache->uc_acquire_expire);
                 cfs_spin_unlock(&cache->uc_lock);
                 rc = refresh_entry(cache, entry);
                 cfs_spin_lock(&cache->uc_lock);
+                entry->ue_acquire_expire =
+                        cfs_time_shift(cache->uc_acquire_expire);
                 if (rc < 0) {
                         UC_CACHE_CLEAR_ACQUIRING(entry);
                         UC_CACHE_SET_INVALID(entry);
+                        cfs_waitq_broadcast(&entry->ue_waitq);
                         if (unlikely(rc == -EREMCHG)) {
                                 put_entry(cache, entry);
                                 GOTO(out, entry = ERR_PTR(rc));
                         }
                 }
-                /* fall through */
         }
-        /* someone (and only one) is doing upcall upon
-         * this item, just wait it complete
-         */
+        /* someone (and only one) is doing upcall upon this item,
+         * wait it to complete */
         if (UC_CACHE_IS_ACQUIRING(entry)) {
-                cfs_time_t expiry = cfs_time_shift(cache->uc_acquire_expire);
+                long expiry = (entry == new) ?
+                              cfs_time_seconds(cache->uc_acquire_expire) :
+                              CFS_MAX_SCHEDULE_TIMEOUT;
+                long left;
 
                 cfs_waitlink_init(&wait);
                 cfs_waitq_add(&entry->ue_waitq, &wait);
                 cfs_set_current_state(CFS_TASK_INTERRUPTIBLE);
                 cfs_spin_unlock(&cache->uc_lock);
 
-                cfs_waitq_timedwait(&wait, CFS_TASK_INTERRUPTIBLE, 
-                                    cfs_time_seconds(cache->uc_acquire_expire));
+                left = cfs_waitq_timedwait(&wait, CFS_TASK_INTERRUPTIBLE,
+                                           expiry);
 
                 cfs_spin_lock(&cache->uc_lock);
                 cfs_waitq_del(&entry->ue_waitq, &wait);
                 if (UC_CACHE_IS_ACQUIRING(entry)) {
                         /* we're interrupted or upcall failed in the middle */
-                        rc = cfs_time_before(cfs_time_current(), expiry) ?
-                                -EINTR : -ETIMEDOUT;
+                        rc = left > 0 ? -EINTR : -ETIMEDOUT;
+                        CERROR("acquire for key "LPU64": error %d\n",
+                               entry->ue_key, rc);
                         put_entry(cache, entry);
-                        CERROR("acquire timeout exceeded for key "LPU64
-                               "\n", entry->ue_key);
                         GOTO(out, entry = ERR_PTR(rc));
                 }
-                /* fall through */
         }
 
         /* invalid means error, don't need to try again */
@@ -443,8 +444,8 @@ struct upcall_cache *upcall_cache_init(const char *name, const char *upcall,
         strncpy(cache->uc_name, name, sizeof(cache->uc_name) - 1);
         /* upcall pathname proc tunable */
         strncpy(cache->uc_upcall, upcall, sizeof(cache->uc_upcall) - 1);
-        cache->uc_entry_expire = 10 * 60;
-        cache->uc_acquire_expire = 15;
+        cache->uc_entry_expire = 20 * 60;
+        cache->uc_acquire_expire = 30;
         cache->uc_ops = ops;
 
         RETURN(cache);

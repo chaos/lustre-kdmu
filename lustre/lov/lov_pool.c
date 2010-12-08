@@ -73,6 +73,13 @@ void lov_pool_putref(struct pool_desc *pool)
         }
 }
 
+void lov_pool_putref_locked(struct pool_desc *pool)
+{
+        CDEBUG(D_INFO, "pool %p\n", pool);
+        LASSERT(cfs_atomic_read(&pool->pool_refcount) > 1);
+
+        cfs_atomic_dec(&pool->pool_refcount);
+}
 
 /*
  * hash function using a Rotating Hash algorithm
@@ -105,16 +112,19 @@ static void *pool_key(cfs_hlist_node_t *hnode)
         return (pool->pool_name);
 }
 
-static int pool_hashkey_compare(void *key, cfs_hlist_node_t *compared_hnode)
+static int pool_hashkey_keycmp(void *key, cfs_hlist_node_t *compared_hnode)
 {
         char *pool_name;
         struct pool_desc *pool;
-        int rc;
 
         pool_name = (char *)key;
         pool = cfs_hlist_entry(compared_hnode, struct pool_desc, pool_hash);
-        rc = strncmp(pool_name, pool->pool_name, LOV_MAXPOOLNAME);
-        return (!rc);
+        return !strncmp(pool_name, pool->pool_name, LOV_MAXPOOLNAME);
+}
+
+static void *pool_hashobject(cfs_hlist_node_t *hnode)
+{
+        return cfs_hlist_entry(hnode, struct pool_desc, pool_hash);
 }
 
 static void *pool_hashrefcount_get(cfs_hlist_node_t *hnode)
@@ -126,21 +136,23 @@ static void *pool_hashrefcount_get(cfs_hlist_node_t *hnode)
         return (pool);
 }
 
-static void *pool_hashrefcount_put(cfs_hlist_node_t *hnode)
+static void *pool_hashrefcount_put_locked(cfs_hlist_node_t *hnode)
 {
         struct pool_desc *pool;
 
         pool = cfs_hlist_entry(hnode, struct pool_desc, pool_hash);
-        lov_pool_putref(pool);
+        lov_pool_putref_locked(pool);
         return (pool);
 }
 
 cfs_hash_ops_t pool_hash_operations = {
         .hs_hash        = pool_hashfn,
         .hs_key         = pool_key,
-        .hs_compare     = pool_hashkey_compare,
+        .hs_keycmp      = pool_hashkey_keycmp,
+        .hs_object      = pool_hashobject,
         .hs_get         = pool_hashrefcount_get,
-        .hs_put         = pool_hashrefcount_put,
+        .hs_put_locked  = pool_hashrefcount_put_locked,
+
 };
 
 #ifdef __KERNEL__
@@ -161,9 +173,9 @@ struct pool_iterator {
         int idx;        /* from 0 to pool_tgt_size - 1 */
 };
 
-static void *pool_proc_next(libcfs_seq_file_t *s, void *v, loff_t *pos)
+static void *pool_proc_next(cfs_seq_file_t *s, void *v, loff_t *pos)
 {
-        struct pool_iterator *iter = LIBCFS_SEQ_PRIVATE(s);
+        struct pool_iterator *iter = cfs_seq_private(s);
         int prev_idx;
 
         LASSERTF(iter->magic == POOL_IT_MAGIC, "%08X", iter->magic);
@@ -187,9 +199,9 @@ static void *pool_proc_next(libcfs_seq_file_t *s, void *v, loff_t *pos)
         return iter;
 }
 
-static void *pool_proc_start(libcfs_seq_file_t *s, loff_t *pos)
+static void *pool_proc_start(cfs_seq_file_t *s, loff_t *pos)
 {
-        struct pool_desc *pool = LIBCFS_SEQ_PRIVATE(s);
+        struct pool_desc *pool = cfs_seq_private(s);
         struct pool_iterator *iter;
 
         lov_pool_getref(pool);
@@ -211,7 +223,7 @@ static void *pool_proc_start(libcfs_seq_file_t *s, loff_t *pos)
         /* we use seq_file private field to memorized iterator so
          * we can free it at stop() */
         /* /!\ do not forget to restore it to pool before freeing it */
-        LIBCFS_SEQ_PRIVATE(s) = iter;
+        cfs_seq_private(s) = iter;
         if (*pos > 0) {
                 loff_t i;
                 void *ptr;
@@ -225,9 +237,9 @@ static void *pool_proc_start(libcfs_seq_file_t *s, loff_t *pos)
         return iter;
 }
 
-static void pool_proc_stop(libcfs_seq_file_t *s, void *v)
+static void pool_proc_stop(cfs_seq_file_t *s, void *v)
 {
-        struct pool_iterator *iter = LIBCFS_SEQ_PRIVATE(s);
+        struct pool_iterator *iter = cfs_seq_private(s);
 
         /* in some cases stop() method is called 2 times, without
          * calling start() method (see seq_read() from fs/seq_file.c)
@@ -235,14 +247,14 @@ static void pool_proc_stop(libcfs_seq_file_t *s, void *v)
         if ((iter) && (iter->magic == POOL_IT_MAGIC)) {
                 /* we restore s->private so next call to pool_proc_start()
                  * will work */
-                LIBCFS_SEQ_PRIVATE(s) = iter->pool;
+                cfs_seq_private(s) = iter->pool;
                 lov_pool_putref(iter->pool);
                 OBD_FREE_PTR(iter);
         }
         return;
 }
 
-static int pool_proc_show(libcfs_seq_file_t *seq, void *v)
+static int pool_proc_show(cfs_seq_file_t *seq, void *v)
 {
         struct pool_iterator *iter = (struct pool_iterator *)v;
         struct lov_tgt_desc *tgt;
@@ -256,41 +268,29 @@ static int pool_proc_show(libcfs_seq_file_t *seq, void *v)
         tgt = pool_tgt(iter->pool, iter->idx);
         cfs_up_read(&pool_tgt_rw_sem(iter->pool));
         if (tgt)
-                rc = LIBCFS_SEQ_PRINTF(seq, "%s\n",
+                rc = cfs_seq_printf(seq, "%s\n",
                                 obd_uuid2str(&(tgt->ltd_uuid)));
         return rc;
 }
 
-libcfs_seq_ops_t pool_proc_sops = {
+cfs_seq_ops_t pool_proc_sops = {
         .start          = pool_proc_start,
         .next           = pool_proc_next,
         .stop           = pool_proc_stop,
         .show           = pool_proc_show,
 };
 
-static int pool_proc_open(libcfs_inode_t *inode, libcfs_file_t *file)
+static int pool_proc_open(cfs_inode_t *inode, cfs_param_file_t *file)
 {
-        libcfs_param_dentry_t *dp = LIBCFS_PDE(inode);
-        libcfs_seq_file_t *seq;
-        int rc;
-
-        LPROCFS_ENTRY_AND_CHECK(dp);
-        LIBCFS_SEQ_OPEN(file, &pool_proc_sops, rc);
-        if (rc) {
-                LPROCFS_EXIT();
-                return rc;
-        }
-        seq = LIBCFS_FILE_PRIVATE(file);
-        LIBCFS_SEQ_PRIVATE(seq) = LIBCFS_DENTRY_DATA(dp);
-        return rc;
+        return cfs_param_seq_fopen(inode, file, &pool_proc_sops);
 }
 
-libcfs_file_ops_t pool_proc_operations = {
-        .owner   = THIS_MODULE,
+cfs_param_file_ops_t pool_proc_operations = {
+        .owner   = CFS_PARAM_MODULE,
         .open    = pool_proc_open,
-        .read    = LIBCFS_SEQ_READ_COMMON,
-        .llseek  = LIBCFS_SEQ_LSEEK_COMMON,
-        .release = libcfs_param_seq_release_common,
+        .read    = cfs_seq_read,
+        .llseek  = cfs_seq_lseek,
+        .release = cfs_seq_release,
 };
 #endif
 
@@ -472,7 +472,7 @@ int lov_pool_new(struct obd_device *obd, char *poolname)
                 new_pool->pool_proc_entry = NULL;
                 lov_pool_putref(new_pool);
         } else {
-                lprocfs_put_lperef(new_pool->pool_proc_entry);
+                lprocfs_put_peref(new_pool->pool_proc_entry);
         }
         CDEBUG(D_INFO, "pool %p - proc %p\n", new_pool, new_pool->pool_proc_entry);
 #endif

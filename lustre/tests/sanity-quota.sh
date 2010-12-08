@@ -99,7 +99,7 @@ build_test_filter
 set_blk_tunesz() {
 	local btune=$(($1 * BLK_SZ))
 	# set btune size on all obdfilters
-	do_facet ost1 "lctl set_param lquota.${FSNAME}-OST*.quota_btune_sz=$btune"
+	do_nodes $(comma_list $(osts_nodes)) "lctl set_param lquota.${FSNAME}-OST*.quota_btune_sz=$btune"
 	# set btune size on mds
 	do_facet $SINGLEMDS "lctl set_param lquota.mdd_obd-${FSNAME}-MDT*.quota_btune_sz=$btune"
 }
@@ -108,7 +108,7 @@ set_blk_tunesz() {
 set_blk_unitsz() {
 	local bunit=$(($1 * BLK_SZ))
 	# set bunit size on all obdfilters
-	do_facet ost1 "lctl set_param lquota.${FSNAME}-OST*.quota_bunit_sz=$bunit"
+	do_nodes $(comma_list $(osts_nodes)) "lctl set_param lquota.${FSNAME}-OST*.quota_bunit_sz=$bunit"
 	# set bunit size on mds
 	do_facet $SINGLEMDS "lctl set_param lquota.mdd_obd-${FSNAME}-MDT*.quota_bunit_sz=$bunit"
 }
@@ -116,8 +116,6 @@ set_blk_unitsz() {
 # set_file_tunesz(itune_sz)
 set_file_tunesz() {
 	local itune=$1
-	# set itune size on all obdfilters
-	do_facet ost1 "lctl set_param lquota.${FSNAME}-OST*.quota_itune_sz=$itune"
 	# set itune size on mds
 	do_facet $SINGLEMDS "lctl set_param lquota.mdd_obd-${FSNAME}-MDT*.quota_itune_sz=$itune"
 }
@@ -125,8 +123,6 @@ set_file_tunesz() {
 # set_file_unitsz(iunit_sz)
 set_file_unitsz() {
 	local iunit=$1
-	# set iunit size on all obdfilters
-	do_facet ost1 "lctl set_param lquota.${FSNAME}-OST*.quota_iunit_sz=$iunit"
 	# set iunit size on mds
 	do_facet $SINGLEMDS "lctl set_param lquota.mdd_obd-${FSNAME}-MDT*.quota_iunit_sz=$iunit"
 }
@@ -267,7 +263,7 @@ getquota() {
 
         [ "$uuid" = "global" ] && uuid=$DIR
 
-        $LFS quota -v "$1" "$2" $DIR | awk 'BEGIN { num='$spec' } { if ($1 == "'$uuid'") { if (NF == 1) { getline } else { num++ } ; print $num;} }'
+        $LFS quota -v "$1" "$2" $DIR | awk 'BEGIN { num='$spec' } { if ($1 == "'$uuid'") { if (NF == 1) { getline } else { num++ } ; print $num;} }' | tr -d "*"
 }
 
 quota_show_check() {
@@ -1519,7 +1515,7 @@ test_18bc_sub() {
 	fi
 
         DDPID=$!
-        do_facet $SINGLEMDS "$LCTL conf_param mdd.${FSNAME}-MDT*.quota_type=ug"
+        do_facet $SINGLEMDS "$LCTL conf_param ${FSNAME}-MDT*.mdd.quota_type=ug"
 
 	log "failing mds for $((2 * timeout)) seconds"
         fail $SINGLEMDS $((2 * timeout))

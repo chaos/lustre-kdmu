@@ -174,7 +174,7 @@ typedef __u32 mdsno_t;
 typedef __u64 seqno_t;
 typedef __u64 obd_id;
 typedef __u64 obd_seq;
-typedef __u64 obd_time;
+typedef __s64 obd_time;
 typedef __u64 obd_size;
 typedef __u64 obd_off;
 typedef __u64 obd_blocks;
@@ -389,6 +389,10 @@ static inline obd_id fid_ver_oid(const struct lu_fid *fid)
 }
 
 /**
+ * Note that reserved SEQ numbers below 12 will conflict with ldiskfs
+ * inodes in the IGIF namespace, so these reserved SEQ numbers can be
+ * used for other purposes and not risk collisions with existing inodes.
+ *
  * Different FID Format
  * http://arch.lustre.org/index.php?title=Interoperability_fids_zfs#NEW.0
  */
@@ -407,7 +411,8 @@ enum fid_seq {
         FID_SEQ_START      = 0x200000000ULL,
         FID_SEQ_LOCAL_FILE = 0x200000001ULL,
         FID_SEQ_DOT_LUSTRE = 0x200000002ULL,
-        FID_SEQ_NORMAL     = 0x200000400ULL
+        FID_SEQ_LLOG_OBJ   = 0x200000003ULL,
+        FID_SEQ_NORMAL     = 0x200000400ULL,
 };
 
 #define OBIF_OID_MAX_BITS           32
@@ -1387,11 +1392,11 @@ extern void lustre_swab_niobuf_remote (struct niobuf_remote *nbr);
 #define OST_LVB_GET_ERR(blocks)    (int)(blocks - OST_LVB_ERR_INIT)
 
 struct ost_lvb {
-        __u64 lvb_size;
-        __u64 lvb_mtime;
-        __u64 lvb_atime;
-        __u64 lvb_ctime;
-        __u64 lvb_blocks;
+        __u64     lvb_size;
+        obd_time  lvb_mtime;
+        obd_time  lvb_atime;
+        obd_time  lvb_ctime;
+        __u64     lvb_blocks;
 };
 
 extern void lustre_swab_ost_lvb(struct ost_lvb *);
@@ -1556,9 +1561,9 @@ struct mds_body {
         struct lustre_handle handle;
         __u64          valid;
         __u64          size;   /* Offset, in the case of MDS_READPAGE */
-        __u64          mtime;
-        __u64          atime;
-        __u64          ctime;
+        obd_time       mtime;
+        obd_time       atime;
+        obd_time       ctime;
         __u64          blocks; /* XID, in the case of MDS_READPAGE */
         __u64          io_epoch;
         __u64          ino;
@@ -1588,9 +1593,9 @@ struct mdt_body {
         struct lustre_handle handle;
         __u64          valid;
         __u64          size;   /* Offset, in the case of MDS_READPAGE */
-        __u64          mtime;
-        __u64          atime;
-        __u64          ctime;
+       obd_time        mtime;
+       obd_time        atime;
+       obd_time        ctime;
         __u64          blocks; /* XID, in the case of MDS_READPAGE */
         __u64          ioepoch;
         __u64          ino;    /* for 1.6 compatibility */
@@ -1683,6 +1688,8 @@ extern void lustre_swab_quota_adjust_qunit(struct quota_adjust_qunit *q);
 #define LQUOTA_FLAGS_ADJINO    8UL   /* adjust the inode qunit size */
 #define LQUOTA_FLAGS_CHG_QS   16UL   /* indicate whether it has capability of
                                       * OBD_CONNECT_CHANGE_QS */
+#define LQUOTA_FLAGS_RECOVERY 32UL   /* recovery is going on a uid/gid */
+#define LQUOTA_FLAGS_SETQUOTA 64UL   /* being setquota on a uid/gid */
 
 /* flags is specific for quota_adjust_qunit */
 #define LQUOTA_QAQ_CREATE_LQS  (1 << 31) /* when it is set, need create lqs */
@@ -1750,9 +1757,9 @@ struct mdt_rec_setattr {
         __u32           sa_gid;
         __u64           sa_size;
         __u64           sa_blocks;
-        __u64           sa_mtime;
-        __u64           sa_atime;
-        __u64           sa_ctime;
+        obd_time        sa_mtime;
+        obd_time        sa_atime;
+        obd_time        sa_ctime;
         __u32           sa_attr_flags;
         __u32           sa_mode;
         __u32           sa_padding_2;
@@ -1868,7 +1875,7 @@ struct mdt_rec_create {
         struct lu_fid   cr_fid1;
         struct lu_fid   cr_fid2;
         struct lustre_handle cr_old_handle; /* handle in case of open replay */
-        __u64           cr_time;
+        obd_time        cr_time;
         __u64           cr_rdev;
         __u64           cr_ioepoch;
         __u64           cr_padding_1;   /* rr_blocks */
@@ -1894,7 +1901,7 @@ struct mdt_rec_link {
         __u32           lk_suppgid2_h;
         struct lu_fid   lk_fid1;
         struct lu_fid   lk_fid2;
-        __u64           lk_time;
+        obd_time        lk_time;
         __u64           lk_padding_1;   /* rr_atime */
         __u64           lk_padding_2;   /* rr_ctime */
         __u64           lk_padding_3;   /* rr_size */
@@ -1921,7 +1928,7 @@ struct mdt_rec_unlink {
         __u32           ul_suppgid2_h;
         struct lu_fid   ul_fid1;
         struct lu_fid   ul_fid2;
-        __u64           ul_time;
+        obd_time        ul_time;
         __u64           ul_padding_2;   /* rr_atime */
         __u64           ul_padding_3;   /* rr_ctime */
         __u64           ul_padding_4;   /* rr_size */
@@ -1948,7 +1955,7 @@ struct mdt_rec_rename {
         __u32           rn_suppgid2_h;
         struct lu_fid   rn_fid1;
         struct lu_fid   rn_fid2;
-        __u64           rn_time;
+        obd_time        rn_time;
         __u64           rn_padding_1;   /* rr_atime */
         __u64           rn_padding_2;   /* rr_ctime */
         __u64           rn_padding_3;   /* rr_size */
@@ -1978,7 +1985,7 @@ struct mdt_rec_setxattr {
         __u32           sx_padding_2;
         __u32           sx_padding_3;
         __u64           sx_valid;
-        __u64           sx_time;
+        obd_time        sx_time;
         __u64           sx_padding_5;   /* rr_ctime */
         __u64           sx_padding_6;   /* rr_size */
         __u64           sx_padding_7;   /* rr_blocks */
@@ -2011,9 +2018,9 @@ struct mdt_rec_reint {
         __u32           rr_suppgid2_h;
         struct lu_fid   rr_fid1;
         struct lu_fid   rr_fid2;
-        __u64           rr_mtime;
-        __u64           rr_atime;
-        __u64           rr_ctime;
+        obd_time        rr_mtime;
+        obd_time        rr_atime;
+        obd_time        rr_ctime;
         __u64           rr_size;
         __u64           rr_blocks;
         __u32           rr_bias;
@@ -2320,8 +2327,8 @@ struct cfg_marker {
         __u32             cm_flags;
         __u32             cm_vers;       /* lustre release version number */
         __u32             padding;       /* 64 bit align */
-        __u64             cm_createtime; /*when this record was first created */
-        __u64             cm_canceltime; /*when this record is no longer valid*/
+        obd_time          cm_createtime; /*when this record was first created */
+        obd_time          cm_canceltime; /*when this record is no longer valid*/
         char              cm_tgtname[MTI_NAME_MAXLEN];
         char              cm_comment[MTI_NAME_MAXLEN];
 };
@@ -2531,7 +2538,7 @@ struct llog_gen_rec {
 
 struct llog_log_hdr {
         struct llog_rec_hdr     llh_hdr;
-        __u64                   llh_timestamp;
+        obd_time                llh_timestamp;
         __u32                   llh_count;
         __u32                   llh_bitmap_offset;
         __u32                   llh_size;

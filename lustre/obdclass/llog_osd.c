@@ -157,9 +157,9 @@ static struct llog_superblock *llog_osd_get_sb(const struct lu_env *env,
 
         /* initialize data allowing to generate new fids,
          * literally we need a sequece */
-        lsb->lsb_seq = LU_LLOG_LUSTRE_SEQ;
+        lsb->lsb_seq = FID_SEQ_LLOG_OBJ;
 
-        fid.f_seq = LU_LLOG_LUSTRE_SEQ;
+        fid.f_seq = FID_SEQ_LLOG_OBJ;
         fid.f_oid = 1;
         fid.f_ver = 0;
 

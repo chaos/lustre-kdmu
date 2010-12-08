@@ -211,6 +211,6 @@ fld_target_name(struct lu_fld_target *tar)
         return (const char *)tar->ft_exp->exp_obd->obd_name;
 }
 
-extern libcfs_param_entry_t *fld_type_proc_dir;
+extern cfs_param_entry_t *fld_type_proc_dir;
 
 #endif /* __FLD_INTERNAL_H */

@@ -489,12 +489,12 @@ int obd_proc_read_version(char *page, char **start, off_t off, int count,
                           int *eof, void *data)
 {
 #ifdef HAVE_VFS_INTENT_PATCHES
-        return libcfs_param_snprintf(page, count, data, LP_STR,
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_STR,
                       "lustre: %s\nkernel: %u\nbuild:  %s\n",
                       LUSTRE_VERSION_STRING, LUSTRE_KERNEL_VERSION,
                       BUILD_VERSION);
 #else
-        return libcfs_param_snprintf(page, count, data, LP_STR,
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_STR,
                       "lustre: %s\nkernel: %s\nbuild:  %s\n",
                       LUSTRE_VERSION_STRING, "patchless", BUILD_VERSION);
 #endif
@@ -503,7 +503,7 @@ int obd_proc_read_version(char *page, char **start, off_t off, int count,
 int obd_proc_read_pinger(char *page, char **start, off_t off, int count,
                          int *eof, void *data)
 {
-        return libcfs_param_snprintf(page, count, data, LP_STR, "%s",
+        return cfs_param_snprintf(page, count, data, CFS_PARAM_STR, "%s",
 #ifdef ENABLE_PINGER
                         "on"
 #else
@@ -561,17 +561,17 @@ static int obd_proc_read_health(char *page, char **start, off_t off,
         cfs_spin_unlock(&obd_dev_lock);
 
         if (rc == 0)
-                return libcfs_param_snprintf(page, count, data, LP_STR,
+                return cfs_param_snprintf(page, count, data, CFS_PARAM_STR,
                                              "%s", "healthy\n");
 
         rc += snprintf(page + rc, count - rc, "NOT HEALTHY\n");
-        rc = libcfs_param_snprintf(page, count, data, LP_STR, NULL, NULL);
+        rc = cfs_param_snprintf(page, count, data, CFS_PARAM_STR, NULL, NULL);
 
         return rc;
 }
 
 /* Root for /proc/fs/lustre */
-libcfs_param_entry_t *proc_lustre_root = NULL;
+cfs_param_entry_t *proc_lustre_root = NULL;
 
 struct lprocfs_vars lprocfs_base[] = {
         { "version", obd_proc_read_version, NULL, NULL },
@@ -580,7 +580,7 @@ struct lprocfs_vars lprocfs_base[] = {
         { 0 }
 };
 
-static void *obd_device_list_seq_start(libcfs_seq_file_t *p, loff_t *pos)
+static void *obd_device_list_seq_start(cfs_seq_file_t *p, loff_t *pos)
 {
         if (*pos >= class_devno_max())
                 return NULL;
@@ -588,11 +588,11 @@ static void *obd_device_list_seq_start(libcfs_seq_file_t *p, loff_t *pos)
         return pos;
 }
 
-static void obd_device_list_seq_stop(libcfs_seq_file_t *p, void *v)
+static void obd_device_list_seq_stop(cfs_seq_file_t *p, void *v)
 {
 }
 
-static void *obd_device_list_seq_next(libcfs_seq_file_t *p, void *v, loff_t *pos)
+static void *obd_device_list_seq_next(cfs_seq_file_t *p, void *v, loff_t *pos)
 {
         ++*pos;
         if (*pos >= class_devno_max())
@@ -601,7 +601,7 @@ static void *obd_device_list_seq_next(libcfs_seq_file_t *p, void *v, loff_t *pos
         return pos;
 }
 
-static int obd_device_list_seq_show(libcfs_seq_file_t *p, void *v)
+static int obd_device_list_seq_show(cfs_seq_file_t *p, void *v)
 {
         loff_t index = *(loff_t *)v;
         struct obd_device *obd = class_num2obd((int)index);
@@ -622,43 +622,30 @@ static int obd_device_list_seq_show(libcfs_seq_file_t *p, void *v)
         else
                 status = "--";
 
-        return LIBCFS_SEQ_PRINTF(p, "%3d %s %s %s %s %d\n",
-                          (int)index, status, obd->obd_type->typ_name,
-                          obd->obd_name, obd->obd_uuid.uuid,
-                          cfs_atomic_read(&obd->obd_refcount));
+        return cfs_seq_printf(p, "%3d %s %s %s %s %d\n",
+                              (int)index, status, obd->obd_type->typ_name,
+                              obd->obd_name, obd->obd_uuid.uuid,
+                              cfs_atomic_read(&obd->obd_refcount));
 }
 
-libcfs_seq_ops_t obd_device_list_sops = {
+cfs_seq_ops_t obd_device_list_sops = {
         .start = obd_device_list_seq_start,
         .stop = obd_device_list_seq_stop,
         .next = obd_device_list_seq_next,
         .show = obd_device_list_seq_show,
 };
 
-static int obd_device_list_open(libcfs_inode_t *inode, libcfs_file_t *file)
+static int obd_device_list_open(cfs_inode_t *inode, cfs_param_file_t *file)
 {
-        libcfs_param_dentry_t *dp = LIBCFS_PDE(inode);
-        libcfs_seq_file_t *seq;
-        int rc;
-
-        LPROCFS_ENTRY_AND_CHECK(dp);
-        LIBCFS_SEQ_OPEN(file, &obd_device_list_sops, rc);
-        if (rc) {
-                LPROCFS_EXIT();
-                return rc;
-        }
-
-        seq = LIBCFS_FILE_PRIVATE(file);
-        LIBCFS_SEQ_PRIVATE(seq) = LIBCFS_DENTRY_DATA(dp);
-        return rc;
+        return cfs_param_seq_fopen(inode, file, &obd_device_list_sops);
 }
 
-libcfs_file_ops_t obd_device_list_fops = {
-        .owner   = THIS_MODULE,
+cfs_param_file_ops_t obd_device_list_fops = {
+        .owner   = CFS_PARAM_MODULE,
         .open    = obd_device_list_open,
-        .read    = LIBCFS_SEQ_READ_COMMON, 
-        .llseek  = LIBCFS_SEQ_LSEEK_COMMON,
-        .release = libcfs_param_seq_release_common,
+        .read    = cfs_seq_read,
+        .llseek  = cfs_seq_lseek,
+        .release = cfs_seq_release,
 };
 
 static int class_procfs_clean(void)
@@ -672,29 +659,29 @@ static int class_procfs_clean(void)
 
 static int class_procfs_init(void)
 {
-        libcfs_param_entry_t *root;
-        libcfs_param_entry_t *lustre_root;
+        cfs_param_entry_t *root;
+        cfs_param_entry_t *lustre_root;
         int rc;
         ENTRY;
 
-        root = libcfs_param_get_root();
-        libcfs_param_get(root);
-        lustre_root = libcfs_param_mkdir("lustre", root);
+        root = cfs_param_get_root();
+        cfs_param_get(root);
+        lustre_root = cfs_param_mkdir("lustre", root);
         if (!lustre_root) {
-                libcfs_param_put(root);
+                cfs_param_put(root);
                 CERROR("can not setup params tree interface for lustre\n");
                 GOTO(out, rc = -EINVAL);
         }
         proc_lustre_root = lustre_root;
 #ifdef LPROCFS
-        lustre_root->lpe_proc = proc_mkdir("fs/lustre", NULL);
-        if (!lustre_root->lpe_proc)
+        lustre_root->pe_proc = proc_mkdir("fs/lustre", NULL);
+        if (!lustre_root->pe_proc)
                 CERROR("mkdir /proc/fs/lustre failed, disable procfs \n"); 
 #endif
-        libcfs_param_put(root);
+        cfs_param_put(root);
         rc = lprocfs_add_vars(lustre_root, lprocfs_base, NULL);
         if (rc) {
-                lprocfs_put_lperef(lustre_root);
+                lprocfs_put_peref(lustre_root);
                 CERROR("error for adding lustre root \n");
                 GOTO(out, rc);
         }
@@ -702,11 +689,11 @@ static int class_procfs_init(void)
         rc = lprocfs_seq_create(lustre_root, "devices", 0444,
                                 &obd_device_list_fops, NULL);
         if (rc) {
-                lprocfs_put_lperef(lustre_root);
+                lprocfs_put_peref(lustre_root);
                 CERROR("error adding /proc/fs/lustre/devices file\n");
                 GOTO(out, rc);
         }
-        lprocfs_put_lperef(lustre_root);
+        lprocfs_put_peref(lustre_root);
 
 #if !defined(__sun__)
         obd_sysctl_init();

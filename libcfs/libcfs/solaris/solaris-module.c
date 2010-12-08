@@ -439,7 +439,6 @@ static int
 lustrefs_lookup_props(dev_info_t *dip, void *arg)
 {
         int   *rc_p   = (int *)arg;
-        char  *prefix = "params_root/";
         char **prop_val;        
         uint_t prop_len;
         int    i, rc;
@@ -466,6 +465,7 @@ lustrefs_lookup_props(dev_info_t *dip, void *arg)
                 char *path;
                 char *p;
                 int   pathsiz;
+                int   valsiz;
 
                 /* expect val in form of "param_path=param_value" */
                 if (delim == NULL || delim == val) {
@@ -475,8 +475,7 @@ lustrefs_lookup_props(dev_info_t *dip, void *arg)
                 }
                 delim++; /* points to "param_value" now */
 
-                pathsiz = strlen(prefix) + delim - val;
-                /* NB: pathsiz - strlen(prefix) == strlen("param_path=") now */
+                pathsiz = delim - val;
 
                 LIBCFS_ALLOC(path, pathsiz);
                 if (path == NULL) {
@@ -485,22 +484,24 @@ lustrefs_lookup_props(dev_info_t *dip, void *arg)
                         break;
                 }
 
-                strncpy(path, prefix, strlen(prefix));
-                strncat(path, val, pathsiz - strlen(prefix) - 1);
+                strncpy(path, val, pathsiz - 1);
+                path[pathsiz] = '\0';
 
                 /* sed 's/\./\//g' path > path */
                 for (p = strchr(path, '.'); p != NULL; p = strchr(p, '.'))
                         *p = '/';
                 
-                rc = libcfs_param_write(path, delim, strlen(delim) + 1);
-                if (rc != 0) {
+                valsiz = strlen(delim) + 1;
+                rc = cfs_param_kwrite(path, delim, valsiz, 1);
+                if (rc != valsiz) {
                         CERROR("Can't write val=%s to param=%s (rc=%d)\n",
                                delim, path, rc);
                         LIBCFS_FREE(path, pathsiz);
+                        rc = -EINVAL;
                         break;
                 }
-
                 LIBCFS_FREE(path, pathsiz);
+                rc = 0;
         }
 
         ddi_prop_free(prop_val);
@@ -509,11 +510,11 @@ lustrefs_lookup_props(dev_info_t *dip, void *arg)
         return DDI_WALK_TERMINATE;
 }
 
-void lnet_modparams_init(void);
+int  lnet_modparams_init(void);
 void lnet_modparams_fini(void);
-void kiblnd_modparams_init(void);
+int  kiblnd_modparams_init(void);
 void kiblnd_modparams_fini(void);
-void ksocknal_modparams_init(void);
+int ksocknal_modparams_init(void);
 void ksocknal_modparams_fini(void);
 
 static int
@@ -522,15 +523,22 @@ libcfs_all_modules_init(void)
         int rc;
 
         rc = libcfs_module_desc.mdesc_init();
-
         if (rc != 0) {
                 CDEBUG(D_ERROR, "libcfs module init failed\n");
                 goto libcfs_fail;
         }
-
-        lnet_modparams_init();
-        ksocknal_modparams_init();
-        kiblnd_modparams_init();
+        if ((rc = lnet_modparams_init()) != 0) {
+                CDEBUG(D_ERROR, "lnet_modparams_init: failed\n");
+                goto lnet_fail;
+        }
+        if ((rc = ksocknal_modparams_init()) != 0) {
+                CDEBUG(D_ERROR, "ksocknal_modparams_init: failed\n");
+                goto ksocknal_fail;
+        }
+        if ((rc = kiblnd_modparams_init()) != 0) {
+                CDEBUG(D_ERROR, "kiblnd_modparams_init: failed\n");
+                goto kiblnd_fail;
+        }
 
         rc = 1; /* lustrefs_lookup_props() *must* change it */
         e_ddi_walk_driver(LUSTREFS_DRIVER, lustrefs_lookup_props, &rc);
@@ -549,8 +557,11 @@ libcfs_all_modules_init(void)
 
 startup_fail:
         kiblnd_modparams_fini();
+kiblnd_fail:
         ksocknal_modparams_fini();
+ksocknal_fail:
         lnet_modparams_fini();
+lnet_fail:
         libcfs_module_desc.mdesc_fini();
 libcfs_fail:
         return (rc);

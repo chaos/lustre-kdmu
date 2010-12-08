@@ -185,8 +185,8 @@ dbg_write_cmd(int fd, char *str, int len)
 
         if (fd < 0 || fd >= PARAMS_NUM)
                 return 1;
-        rc = params_write(params_name[fd], strlen(params_name[fd]),
-                          str, len, 0);
+        rc = cfs_param_uwrite(params_name[fd], strlen(params_name[fd]),
+                              str, len);
 
         return (rc == (len + 1) ? 0 : 1);
 }
@@ -859,17 +859,13 @@ static struct mod_paths {
 } mod_paths[] = {
         {"libcfs", "libcfs/libcfs"},
         {"lnet", "lnet/lnet"},
-        {"kciblnd", "lnet/klnds/ciblnd"},
         {"kmxlnd", "lnet/klnds/mxlnd"},
-        {"kiiblnd", "lnet/klnds/iiblnd"},
         {"ko2iblnd", "lnet/klnds/o2iblnd"},
-        {"kopeniblnd", "lnet/klnds/openiblnd"},
         {"kptllnd", "lnet/klnds/ptllnd"},
         {"kqswlnd", "lnet/klnds/qswlnd"},
         {"kralnd", "lnet/klnds/ralnd"},
         {"ksocklnd", "lnet/klnds/socklnd"},
         {"ktdilnd", "lnet/klnds/tdilnd"},
-        {"kviblnd", "lnet/klnds/viblnd"},
         {"lvfs", "lustre/lvfs"},
         {"obdclass", "lustre/obdclass"},
         {"llog_test", "lustre/obdclass"},

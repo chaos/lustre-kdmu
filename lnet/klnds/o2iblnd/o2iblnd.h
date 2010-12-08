@@ -342,7 +342,7 @@ typedef struct
 typedef struct
 {
         /* First 2 fields fixed FOR ALL TIME */
-        __u32             ibm_magic;            /* I'm an openibnal message */
+        __u32             ibm_magic;            /* I'm an ibnal message */
         __u16             ibm_version;          /* this is my version number */
 
         __u8              ibm_type;             /* msg type */
@@ -466,7 +466,6 @@ typedef struct kib_conn
         int                  ibc_credits;       /* # credits I have */
         int                  ibc_outstanding_credits; /* # credits to return */
         int                  ibc_reserved_credits;/* # ACK/DONE msg credits */
-        int                  ibc_retry_noop;    /* need to retry returning credits */
         int                  ibc_comms_error;   /* set on comms error */
         int                  ibc_nrx:16;        /* receive buffers owned */
         int                  ibc_scheduled:1;   /* scheduled for attention */
@@ -835,5 +834,5 @@ int kiblnd_kiov2frags(lnet_kiov_t *kiov, int nkiov,
 int kiblnd_plat_dev_setup(kib_dev_t *ibdev, int acflags);
 void kiblnd_dev_cleanup(kib_dev_t *ibdev);
 
-void kiblnd_plat_modparams_init(void);
+int  kiblnd_plat_modparams_init(void);
 void kiblnd_plat_modparams_fini(void);

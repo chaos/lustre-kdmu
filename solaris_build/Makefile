@@ -143,7 +143,8 @@ GENERIC_LIBCFS_SRCS = $(GENERIC_LIBCFS_PATH)/module.c \
                       $(GENERIC_LIBCFS_PATH)/libcfs_sysctl.c \
                       $(GENERIC_LIBCFS_PATH)/upcall_cache.c \
                       $(GENERIC_LIBCFS_PATH)/hash.c \
-                      $(GENERIC_LIBCFS_PATH)/kernel_user_comm.c
+                      $(GENERIC_LIBCFS_PATH)/kernel_user_comm.c \
+                      $(GENERIC_LIBCFS_PATH)/workitem.c
 
 SOLARIS_LIBCFS_SRCS = $(SOLARIS_LIBCFS_PATH)/solaris-module.c \
                       $(SOLARIS_LIBCFS_PATH)/solaris-debug.c \
@@ -193,8 +194,7 @@ SELFTEST_SRCS      = $(SELFTEST_PATH)/brw_test.c \
                      $(SELFTEST_PATH)/module.c \
                      $(SELFTEST_PATH)/ping_test.c \
                      $(SELFTEST_PATH)/rpc.c \
-                     $(SELFTEST_PATH)/timer.c \
-                     $(SELFTEST_PATH)/workitem.c
+                     $(SELFTEST_PATH)/timer.c
 
 PTLRPC_SRCS        = $(PTLRPC_PATH)/client.c \
                      $(PTLRPC_PATH)/connection.c \

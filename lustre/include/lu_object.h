@@ -269,7 +269,7 @@ struct lu_device {
          * Stack this device belongs to.
          */
         struct lu_site                    *ld_site;
-        libcfs_param_entry_t              *ld_proc_entry;
+        cfs_param_entry_t              *ld_proc_entry;
 
         /** \todo XXX: temporary back pointer into obd. */
         struct obd_device                 *ld_obd;
@@ -400,11 +400,11 @@ struct lu_attr {
         /** size in bytes */
         __u64          la_size;
         /** modification time in seconds since Epoch */
-        __u64          la_mtime;
+        obd_time       la_mtime;
         /** access time in seconds since Epoch */
-        __u64          la_atime;
+        obd_time       la_atime;
         /** change time in seconds since Epoch */
-        __u64          la_ctime;
+        obd_time       la_ctime;
         /** 512-byte blocks allocated to object */
         __u64          la_blocks;
         /** permission bits and file type */

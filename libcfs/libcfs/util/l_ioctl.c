@@ -61,11 +61,11 @@ set_ioc_handler (ioc_handler_t *handler)
 #endif
 
 static int
-open_ioc_dev(int dev_id) 
+open_ioc_dev(int dev_id)
 {
         const char * dev_name;
 
-        if (dev_id < 0 || 
+        if (dev_id < 0 ||
             dev_id >= sizeof(ioc_dev_list) / sizeof(ioc_dev_list[0]))
                 return -EINVAL;
 
@@ -81,7 +81,7 @@ open_ioc_dev(int dev_id)
 #if !defined(__sun__)
                 /* Make the /dev/ node if we need to */
                 if (fd < 0 && errno == ENOENT) {
-                        if (cfs_proc_mknod(dev_name, 
+                        if (cfs_proc_mknod(dev_name,
                                   S_IFCHR|S_IWUSR|S_IRUSR,
                                   MKDEV(ioc_dev_list[dev_id].dev_major,
                                         ioc_dev_list[dev_id].dev_minor)) == 0)
@@ -120,13 +120,13 @@ do_ioctl(int dev_id, unsigned int opc, void *buf)
 }
 
 static FILE *
-get_dump_file() 
+get_dump_file()
 {
         FILE *fp = NULL;
-        
-        if (!dump_filename) {
+
+        if (!dump_filename)
                 fprintf(stderr, "no dump filename\n");
-        } else 
+        else
                 fp = fopen(dump_filename, "a");
         return fp;
 }
@@ -135,16 +135,16 @@ get_dump_file()
  * The dump file should start with a description of which devices are
  * used, but for now it will assumed whatever app reads the file will
  * know what to do. */
-int 
+int
 dump(int dev_id, unsigned int opc, void *buf)
 {
         FILE *fp;
         struct dump_hdr dump_hdr;
         struct libcfs_ioctl_hdr * ioc_hdr = (struct  libcfs_ioctl_hdr *) buf;
         int rc;
-        
+
         printf("dumping opc %x to %s\n", opc, dump_filename);
-        
+
 
         dump_hdr.magic = 0xdeadbeef;
         dump_hdr.dev_id = dev_id;
@@ -152,11 +152,11 @@ dump(int dev_id, unsigned int opc, void *buf)
 
         fp = get_dump_file();
         if (fp == NULL) {
-                fprintf(stderr, "%s: %s\n", dump_filename, 
+                fprintf(stderr, "%s: %s\n", dump_filename,
                         strerror(errno));
                 return -EINVAL;
         }
-        
+
         rc = fwrite(&dump_hdr, sizeof(dump_hdr), 1, fp);
         if (rc == 1)
                 rc = fwrite(buf, ioc_hdr->ioc_len, 1, fp);
@@ -171,11 +171,11 @@ dump(int dev_id, unsigned int opc, void *buf)
 }
 
 /* register a device to send ioctls to.  */
-int 
-register_ioc_dev(int dev_id, const char * dev_name, int major, int minor) 
+int
+register_ioc_dev(int dev_id, const char * dev_name, int major, int minor)
 {
 
-        if (dev_id < 0 || 
+        if (dev_id < 0 ||
             dev_id >= sizeof(ioc_dev_list) / sizeof(ioc_dev_list[0]))
                 return -EINVAL;
 
@@ -185,33 +185,33 @@ register_ioc_dev(int dev_id, const char * dev_name, int major, int minor)
         ioc_dev_list[dev_id].dev_fd = -1;
         ioc_dev_list[dev_id].dev_major = major;
         ioc_dev_list[dev_id].dev_minor = minor;
- 
+
         return dev_id;
 }
 
 void
-unregister_ioc_dev(int dev_id) 
+unregister_ioc_dev(int dev_id)
 {
 
-        if (dev_id < 0 || 
+        if (dev_id < 0 ||
             dev_id >= sizeof(ioc_dev_list) / sizeof(ioc_dev_list[0]))
                 return;
         if (ioc_dev_list[dev_id].dev_name != NULL &&
-            ioc_dev_list[dev_id].dev_fd >= 0) 
+            ioc_dev_list[dev_id].dev_fd >= 0)
                 cfs_proc_close(ioc_dev_list[dev_id].dev_fd);
 
         ioc_dev_list[dev_id].dev_name = NULL;
         ioc_dev_list[dev_id].dev_fd = -1;
 }
 
-/* If this file is set, then all ioctl buffers will be 
+/* If this file is set, then all ioctl buffers will be
    appended to the file. */
 int
 set_ioctl_dump(char * file)
 {
         if (dump_filename)
                 free(dump_filename);
-        
+
         dump_filename = strdup(file);
         if (dump_filename == NULL)
                 abort();
@@ -231,10 +231,10 @@ l_ioctl(int dev_id, unsigned int opc, void *buf)
  *
  * parse_dump("lctl.dump", l_ioctl);
  *
- * Note: if using l_ioctl, then you also need to register_ioc_dev() for 
+ * Note: if using l_ioctl, then you also need to register_ioc_dev() for
  * each device used in the dump.
  */
-int 
+int
 parse_dump(char * dump_file, ioc_handler_t ioc_func)
 {
         int line =0;
@@ -287,12 +287,12 @@ parse_dump(char * dump_file, ioc_handler_t ioc_func)
 
         fd = open(dump_file, O_RDONLY);
         if (fd < 0) {
-                fprintf(stderr, "couldn't open %s: %s\n", dump_file, 
+                fprintf(stderr, "couldn't open %s: %s\n", dump_file,
                         strerror(errno));
                 exit(1);
         }
 
-        if (fstat(fd, &st)) { 
+        if (fstat(fd, &st)) {
                 perror("stat fails");
                 exit(1);
         }
@@ -354,7 +354,7 @@ parse_dump(char * dump_file, ioc_handler_t ioc_func)
         return 0;
 }
 
-int 
+int
 jt_ioc_dump(int argc, char **argv)
 {
         if (argc > 2) {
@@ -362,7 +362,7 @@ jt_ioc_dump(int argc, char **argv)
                 return 0;
         }
         printf("setting dumpfile to: %s\n", argv[1]);
-        
+
         set_ioctl_dump(argv[1]);
         return 0;
 }

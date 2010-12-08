@@ -76,7 +76,7 @@ lnet_accept_magic(__u32 magic, __u32 constant)
 
 EXPORT_SYMBOL(lnet_acceptor_port);
 
-static char accept[MAX_STRLEN] = "secure";
+static char accept[LNET_MAX_STRLEN] = "secure";
 
 CFS_MODULE_PARM_STR(accept, accept, sizeof(accept), 0444,
                 "Accept connections (secure|all|none)");
@@ -87,39 +87,39 @@ CFS_MODULE_PARM(accept_backlog, "i", int, 0444,
 CFS_MODULE_PARM(accept_timeout, "i", int, 0644,
                 "Acceptor's timeout (seconds)");
 
-static struct libcfs_param_ctl_table libcfs_param_acceptor_ctl_table[] = {
+static cfs_param_sysctl_table_t acceptor_ctl_table[] = {
         {
                 .name     = "accept",
                 .data     = accept,
                 .mode     = 0444,
-                .read     = libcfs_param_string_read
+                .read     = cfs_param_string_read
         },
         {
                 .name     = "accept_port",
                 .data     = &accept_port,
                 .mode     = 0444,
-                .read     = libcfs_param_intvec_read
+                .read     = cfs_param_intvec_read
         },
         {
                 .name     = "accept_backlog",
                 .data     = &accept_backlog,
                 .mode     = 0444,
-                .read     = libcfs_param_intvec_read
+                .read     = cfs_param_intvec_read
         },
         {
                 .name     = "accept_timeout",
                 .data     = &accept_timeout,
                 .mode     = 0644,
-                .read     = libcfs_param_intvec_read,
-                .write    = libcfs_param_intvec_write
+                .read     = cfs_param_intvec_read,
+                .write    = cfs_param_intvec_write
         },
         {0}
 };
 
-void lnet_acceptor_sysctl_init()
+int lnet_acceptor_param_init()
 {
-        libcfs_param_sysctl_init("lnet", libcfs_param_acceptor_ctl_table,
-                                 libcfs_param_lnet_root);
+        return cfs_param_sysctl_init("lnet", acceptor_ctl_table,
+                                     cfs_param_get_lnet_root());
 }
 
 static char *accept_type = NULL;
@@ -346,8 +346,6 @@ lnet_accept(cfs_socket_t *sock, __u32 magic)
                         str = "'old' socknal/tcpnal";
                 else if (lnet_accept_magic(magic, LNET_PROTO_RA_MAGIC))
                         str = "'old' ranal";
-                else if (lnet_accept_magic(magic, LNET_PROTO_OPENIB_MAGIC))
-                        str = "'old' openibnal";
                 else
                         str = "unrecognised";
 

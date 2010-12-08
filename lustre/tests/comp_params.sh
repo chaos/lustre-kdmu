@@ -20,9 +20,8 @@ for dir in $proc_dirs; do
         for path in $proc_files; do
                 [ -d $path ] && continue
                 param=${path:2}
-                #To parse the parameter correctly, we need replace '.' with '#',
-                #e.g. mgc.MGC10.10.121.1@tcp.import
-                new=`echo $param | awk 'gsub(/\./,"#")'`
+                #e.g. mgc.MGC10\.10\.121\.1@tcp.import
+                new=`echo $param | awk 'gsub(/\./,"\\\\.")'`
                 [ ! -z $new ] && param=$new
                 ptreep=`$LCTL get_param -n $param 2>/dev/null`
                 procp=`cat $path 2>/dev/null`
