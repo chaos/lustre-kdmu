@@ -1124,10 +1124,15 @@ static __u32 osp_sync_id_get(struct osp_device *d, __u32 id)
         tr = d->opd_syn_tracker;
         LASSERT(tr);
 
-        LASSERT(tr->otr_next_id > d->opd_syn_last_used_id);
-
         /* XXX: we can improve this introducing per-cpu preallocated ids? */
         cfs_spin_lock(&tr->otr_lock);
+        if (unlikely(tr->otr_next_id <= d->opd_syn_last_used_id)) {
+                cfs_spin_unlock(&tr->otr_lock);
+                CERROR("%lu %lu\n", (unsigned long) tr->otr_next_id,
+                         (unsigned long) d->opd_syn_last_used_id);
+                LBUG();
+        }
+
         if (id == 0)
                 id = tr->otr_next_id++;
         if (id > d->opd_syn_last_used_id)
