@@ -249,19 +249,29 @@ static inline int fid_is_oi_fid(const struct lu_fid *fid)
                 fid_oid(fid) == OSD_OI_FID_16_OID));
 }
 
+static inline int fid_is_fs_root(const struct lu_fid *fid)
+{
+        /* Map root inode to special local object FID */
+        return (unlikely(fid_seq(fid) == FID_SEQ_LOCAL_FILE &&
+                fid_oid(fid) == OSD_FS_ROOT_OID));
+}
+
 int osd_oi_lookup(struct osd_thread_info *info, struct osd_device *osd,
                   const struct lu_fid *fid, struct osd_inode_id *id)
 {
         struct osd_oi *oi     = &osd->od_oi;
         struct lu_fid *oi_fid = &info->oti_fid;
-        int rc;
+        int rc = 0;
 
         if (fid_is_idif(fid)) {
                 /* old OSD obj id */
                 rc = osd_compat_objid_lookup(info, osd, fid, id);
-        } else if (osd_fid_is_igif(fid)) {
+        } else if (fid_is_igif(fid)) {
                 lu_igif_to_id(fid, id);
-                rc = 0;
+        } else if (fid_is_fs_root(fid)) {
+                struct inode *inode = osd_sb(osd)->s_root->d_inode;
+                id->oii_ino = inode->i_ino;
+                id->oii_gen = inode->i_generation;
         } else {
                 struct dt_object    *idx;
                 const struct dt_key *key;
@@ -299,7 +309,7 @@ int osd_oi_insert(struct osd_thread_info *info, struct osd_device *osd,
         struct osd_inode_id *id;
         const struct dt_key *key;
 
-        if (osd_fid_is_igif(fid))
+        if (fid_is_igif(fid))
                 return 0;
 
         if (fid_is_oi_fid(fid))
@@ -334,7 +344,7 @@ int osd_oi_delete(struct osd_thread_info *info,
         struct dt_object    *idx;
         const struct dt_key *key;
 
-        if (osd_fid_is_igif(fid))
+        if (fid_is_igif(fid))
                 return 0;
 
         LASSERT(fid_seq(fid) != FID_SEQ_LOCAL_FILE);
