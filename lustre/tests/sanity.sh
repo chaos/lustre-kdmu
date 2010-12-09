@@ -7759,6 +7759,23 @@ test_218() { # bug 15384
 }
 run_test 218 "compare parameters from /proc and params_tree, and write value back"
 
+test_800() {
+       # do directio so as not to populate the page cache
+       log "creating a 10 Mb file"
+       multiop $DIR/$tfile oO_CREAT:O_DIRECT:O_RDWR:w$((10*1048576))c || error "multiop failed while creating a file"
+       log "starting reads"
+       dd if=$DIR/$tfile of=/dev/null bs=4096 &
+       log "truncating the file"
+       multiop $DIR/$tfile oO_TRUNC:c || error "multiop failed while truncating the file"
+       log "killing dd"
+       kill %+ || true # reads might have finished
+       echo "wait until dd is finished"
+       wait
+       log "removing the temporary file"
+       rm -rf $DIR/$tfile || error "tmp file removal failed"
+}
+run_test 800 "parallel read and truncate should not deadlock ======================="
+
 #
 # tests that do cleanup/setup should be run at the end
 #
@@ -7775,23 +7792,6 @@ test_900() {
         FAIL_ON_ERROR=true setup
 }
 run_test 900 "umount should not race with any mgc requeue thread"
-
-test_1000() {
-       # do directio so as not to populate the page cache
-       log "creating a 10 Mb file"
-       multiop $DIR/$tfile oO_CREAT:O_DIRECT:O_RDWR:w$((10*1048576))c || error "multiop failed while creating a file"
-       log "starting reads"
-       dd if=$DIR/$tfile of=/dev/null bs=4096 &
-       log "truncating the file"
-       multiop $DIR/$tfile oO_TRUNC:c || error "multiop failed while truncating the file"
-       log "killing dd"
-       kill %+ || true # reads might have finished
-       echo "wait until dd is finished"
-       wait
-       log "removing the temporary file"
-       rm -rf $DIR/$tfile || error "tmp file removal failed"
-}
-run_test 1000 "parallel read and truncate should not deadlock ======================="
 
 log "cleanup: ======================================================"
 check_and_cleanup_lustre

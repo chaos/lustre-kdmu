@@ -213,7 +213,7 @@ static int param_fill_list(void *buf, struct param_entry_list **pel)
 }
 
 static int param_ioctl(struct libcfs_ioctl_data *data, char **buf_ptr,
-                        unsigned int opc)
+                       unsigned int opc)
 {
         char *buf = NULL;
         int buflen = 0;
@@ -289,7 +289,7 @@ static int send_req_to_kernel(char *path, char *list_buf, int *list_buflen)
 }
 
 /* list params entry as proc_readdir does. */
-static int cfs_param_ureaddir(char *parent_path, struct param_entry_list **pel)
+static int param_readdir(char *parent_path, struct param_entry_list **pel)
 {
         struct param_entry_list *temp = NULL;
         char *list_buf = NULL;
@@ -339,7 +339,7 @@ static int cfs_param_ureaddir(char *parent_path, struct param_entry_list **pel)
 
 /* match the entry list with the regular expression list */
 static int param_match(char *parent_path, struct param_preg_list *pregl,
-                        struct param_entry_list **pel_ptr)
+                       struct param_entry_list **pel_ptr)
 {
         int pel_name_len = 0;
         int rc = 0;
@@ -356,7 +356,7 @@ static int param_match(char *parent_path, struct param_preg_list *pregl,
                 goto out;
         }
         curdir_list = curdir;
-        rc = cfs_param_ureaddir(parent_path, &curdir);
+        rc = param_readdir(parent_path, &curdir);
         if (rc < 0)
                 goto out;
         curdir = curdir_list->pel_next;
@@ -469,7 +469,7 @@ out:
  * @offset is used to remember the position, read until @eof is set.
  */
 int cfs_param_uread(char *path, int path_len, char *read_buf,
-                int buf_len, long long *offset, int *eof)
+                    int buf_len, long long *offset, int *eof)
 {
         struct libcfs_ioctl_data data = { 0 };
         struct libcfs_ioctl_data *data_ptr;
@@ -477,11 +477,9 @@ int cfs_param_uread(char *path, int path_len, char *read_buf,
         char *buf;
         int rc = 0;
 
-        if (!path || path_len <= 0) {
-                fprintf(stderr, "error: %s: Path is null.\n", __func__);
-                rc = -EINVAL;
-                goto out;
-        }
+        LASSERT(path != NULL && path_len > 0);
+        LASSERT(read_buf != NULL || buf_len > 0);
+
         memset(read_buf, 0, buf_len);
         /* pack the parameters to ioc_data */
         data.ioc_inllen1 = path_len + 1;
@@ -489,8 +487,7 @@ int cfs_param_uread(char *path, int path_len, char *read_buf,
         if (!pathname) {
                 fprintf(stderr,
                         "error: %s: No memory for path name.\n", __func__);
-                rc = -ENOMEM;
-                goto out;
+                return -ENOMEM;
         }
         strncpy(pathname, path, path_len);
         pathname[path_len] = '\0';
@@ -506,10 +503,9 @@ int cfs_param_uread(char *path, int path_len, char *read_buf,
                 rc = data_ptr->ioc_u32[0];
                 free(buf);
         }
-out:
+
         if (pathname)
                 free(pathname);
-
         return rc;
 }
 
@@ -525,19 +521,15 @@ int cfs_param_uwrite(char *path, int path_len, char *write_buf, int buf_len)
         char *buf;
         int rc = 0;
 
-        if (!path || path_len <= 0) {
-                fprintf(stderr, "error: %s: Path is null.\n", __func__);
-                rc = -EINVAL;
-                goto out;
-        }
+        LASSERT(path != NULL && path_len > 0);
+        LASSERT(write_buf != NULL || buf_len > 0);
 
         /* pack the parameters to data first */
         pathname = malloc(path_len + 1);
         if (!pathname) {
                 fprintf(stderr,
                         "error: %s: No memory for path name.\n", __func__);
-                rc = -ENOMEM;
-                goto out;
+                return -ENOMEM;
         }
         strncpy(pathname, path, path_len);
         pathname[path_len] = '\0';
@@ -551,10 +543,9 @@ int cfs_param_uwrite(char *path, int path_len, char *write_buf, int buf_len)
                 rc = data_ptr->ioc_u32[0];
                 free(buf);
         }
-out:
+
         if (pathname)
                 free(pathname);
-
         return rc;
 }
 

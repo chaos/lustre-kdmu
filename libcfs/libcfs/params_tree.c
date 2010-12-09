@@ -1072,10 +1072,8 @@ cfs_param_kread(const char *path, char *buf, int nbytes, loff_t *ppos,
         int                rc = 0;
         int                count;
 
-        if (path == NULL) {
-                CERROR("path is null.\n");
-                return -EINVAL;
-        }
+        LASSERT(path != NULL && buf != NULL);
+
         /* lookup the entry according to its pathname */
         entry = param_lookup_by_path(path, NULL);
         if (entry == NULL)
@@ -1107,10 +1105,8 @@ cfs_param_kwrite(const char *path, char *buf, int count, int force_write)
         cfs_param_entry_t *entry;
         int                rc = 0;
 
-        if (path == NULL) {
-                CERROR("path is null.\n");
-                return -EINVAL;
-        }
+        LASSERT(path != NULL && buf != NULL);
+
         entry = param_lookup_by_path(path, NULL);
         if (entry == NULL)
                 return -ENOENT;

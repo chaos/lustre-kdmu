@@ -145,7 +145,7 @@ static ssize_t lprocfs_fops_write(struct file *f, const char __user *buf,
 
         if (LPROCFS_ENTRY_AND_CHECK(dp))
                 return -ENOENT;
-        if (dp->write_proc)
+        if (buf != NULL && dp->write_proc != NULL)
                 rc = dp->write_proc(f, buf, size, dp->data);
         LPROCFS_EXIT();
         return rc;
