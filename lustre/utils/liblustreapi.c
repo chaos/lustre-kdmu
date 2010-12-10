@@ -1402,8 +1402,14 @@ static void lov_dump_user_lmm_header(struct lov_user_md *lum, char *path,
                 if (verbose & ~VERBOSE_COUNT)
                         llapi_printf(LLAPI_MSG_NORMAL, "%sstripe_count:   ",
                                      prefix);
-                llapi_printf(LLAPI_MSG_NORMAL, "%hd%c",
-                             (__s16)lum->lmm_stripe_count, nl);
+                if (is_dir)
+                        llapi_printf(LLAPI_MSG_NORMAL, "%d%c",
+                                     lum->lmm_stripe_count ==
+                                     (typeof(lum->lmm_stripe_count))(-1) ? -1 :
+                                     lum->lmm_stripe_count, nl);
+                else
+                        llapi_printf(LLAPI_MSG_NORMAL, "%hd%c",
+                                     (__s16)lum->lmm_stripe_count, nl);
         }
 
         if (verbose & VERBOSE_SIZE) {
@@ -1434,8 +1440,10 @@ static void lov_dump_user_lmm_header(struct lov_user_md *lum, char *path,
         }
 
         if ((verbose & VERBOSE_POOL) && (pool_name != NULL)) {
-                llapi_printf(LLAPI_MSG_NORMAL, "pool: %s", pool_name);
-                is_dir = 1;
+                if (verbose & ~VERBOSE_POOL)
+                        llapi_printf(LLAPI_MSG_NORMAL, "%spool:           ",
+                                     prefix);
+                llapi_printf(LLAPI_MSG_NORMAL, "%s%c", pool_name, nl);
         }
 
         if (is_dir && (verbose != VERBOSE_OBJID))

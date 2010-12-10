@@ -270,12 +270,12 @@ struct ptlrpc_reply_state *lustre_get_emerg_rs(struct ptlrpc_service *svc)
 {
         struct ptlrpc_reply_state *rs = NULL;
 
-        cfs_spin_lock(&svc->srv_lock);
+        cfs_spin_lock(&svc->srv_rs_lock);
         /* See if we have anything in a pool, and wait if nothing */
         while (cfs_list_empty(&svc->srv_free_rs_list)) {
                 struct l_wait_info lwi;
                 int rc;
-                cfs_spin_unlock(&svc->srv_lock);
+                cfs_spin_unlock(&svc->srv_rs_lock);
                 /* If we cannot get anything for some long time, we better
                    bail out instead of waiting infinitely */
                 lwi = LWI_TIMEOUT(cfs_time_seconds(10), NULL, NULL);
@@ -284,13 +284,13 @@ struct ptlrpc_reply_state *lustre_get_emerg_rs(struct ptlrpc_service *svc)
                                   &lwi);
                 if (rc)
                         goto out;
-                cfs_spin_lock(&svc->srv_lock);
+                cfs_spin_lock(&svc->srv_rs_lock);
         }
 
         rs = cfs_list_entry(svc->srv_free_rs_list.next,
                             struct ptlrpc_reply_state, rs_list);
         cfs_list_del(&rs->rs_list);
-        cfs_spin_unlock(&svc->srv_lock);
+        cfs_spin_unlock(&svc->srv_rs_lock);
         LASSERT(rs);
         memset(rs, 0, svc->srv_max_reply_size);
         rs->rs_service = svc;
@@ -305,9 +305,9 @@ void lustre_put_emerg_rs(struct ptlrpc_reply_state *rs)
 
         LASSERT(svc);
 
-        cfs_spin_lock(&svc->srv_lock);
+        cfs_spin_lock(&svc->srv_rs_lock);
         cfs_list_add(&rs->rs_list, &svc->srv_free_rs_list);
-        cfs_spin_unlock(&svc->srv_lock);
+        cfs_spin_unlock(&svc->srv_rs_lock);
         cfs_waitq_signal(&svc->srv_free_rs_waitq);
 }
 
@@ -2296,4 +2296,41 @@ void lustre_swab_lustre_capa_key(struct lustre_capa_key *k)
         __swab32s (&k->lk_keyid);
         CLASSERT(offsetof(typeof(*k), lk_padding) != 0);
 }
+
+void lustre_swab_hsm_state(struct hsm_state_set_ioc *hssi)
+{
+        lustre_swab_lu_fid(&hssi->hssi_fid);
+        __swab64s(&hssi->hssi_setmask);
+        __swab64s(&hssi->hssi_clearmask);
+}
+EXPORT_SYMBOL(lustre_swab_hsm_state);
+
+void lustre_swab_hsm_user_request(struct hsm_user_request *hur)
+{
+        int i;
+
+        __swab32s(&hur->hur_action);
+        __swab32s(&hur->hur_itemcount);
+        __swab32s(&hur->hur_data_len);
+        for (i = 0; i < hur->hur_itemcount; i++) {
+                struct hsm_user_item *hui = &hur->hur_user_item[i];
+                lustre_swab_lu_fid(&hui->hui_fid);
+                __swab64s(&hui->hui_extent.offset);
+                __swab64s(&hui->hui_extent.length);
+        }
+        /* Note: data blob is not swabbed here */
+}
+EXPORT_SYMBOL(lustre_swab_hsm_user_request);
+
+void lustre_swab_hsm_progress(struct hsm_progress *hp)
+{
+        lustre_swab_lu_fid(&hp->hp_fid);
+        __swab64s(&hp->hp_cookie);
+        __swab64s(&hp->hp_extent.offset);
+        __swab64s(&hp->hp_extent.length);
+        __swab16s(&hp->hp_flags);
+        __swab16s(&hp->hp_errval);
+}
+EXPORT_SYMBOL(lustre_swab_hsm_progress);
+
 

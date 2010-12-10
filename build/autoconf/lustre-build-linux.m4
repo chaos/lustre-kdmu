@@ -95,7 +95,15 @@ AC_SUBST(modulenetdir)
 
 # ------------ RELEASE --------------------------------
 AC_MSG_CHECKING([for Lustre release])
-RELEASE="`echo ${LINUXRELEASE} | tr '-' '_'`_`date +%Y%m%d%H%M`"
+AC_ARG_WITH([release],
+	AC_HELP_STRING([--with-release=string],
+		       [set the release string (default=$kvers_YYYYMMDDhhmm)]),
+	[RELEASE=$withval],
+	RELEASE=""
+	if test -n "$DOWNSTREAM_RELEASE"; then
+		RELEASE="${DOWNSTREAM_RELEASE}_"
+	fi
+	RELEASE="$RELEASE`echo ${LINUXRELEASE} | tr '-' '_'`_$BUILDID")
 AC_MSG_RESULT($RELEASE)
 AC_SUBST(RELEASE)
 
@@ -159,12 +167,28 @@ AC_DEFUN([LB_ARG_CANON_PATH], [
 # Find paths for linux, handling kernel-source rpms
 #
 AC_DEFUN([LB_LINUX_PATH],
-[AC_MSG_CHECKING([for Linux sources])
+[# prep some default values
+for DEFAULT_LINUX in /lib/modules/$(uname -r)/{source,build} /usr/src/linux; do
+	if readlink -q -e $DEFAULT_LINUX; then
+		break
+	fi
+done
+if test "$DEFAULT_LINUX" = "/lib/modules/$(uname -r)/source"; then
+	PATHS="/lib/modules/$(uname -r)/build"
+fi
+PATHS+="$DEFAULT_LINUX"
+for DEFAULT_LINUX_OBJ in $PATHS; do
+	if readlink -q -e $DEFAULT_LINUX_OBJ; then
+		break
+	fi
+done
+AC_MSG_CHECKING([for Linux sources])
 AC_ARG_WITH([linux],
 	AC_HELP_STRING([--with-linux=path],
-		       [set path to Linux source (default=/usr/src/linux)]),
-	[LB_ARG_CANON_PATH([linux], [LINUX])],
-	[LINUX=/usr/src/linux])
+		       [set path to Linux source (default=/lib/modules/$(uname -r)/{source,build},/usr/src/linux)]),
+	[LB_ARG_CANON_PATH([linux], [LINUX])
+	DEFAULT_LINUX_OBJ=$LINUX],
+	[LINUX=$DEFAULT_LINUX])
 AC_MSG_RESULT([$LINUX])
 AC_SUBST(LINUX)
 
@@ -176,9 +200,10 @@ LB_CHECK_FILE([$LINUX],[],
 AC_MSG_CHECKING([for Linux objects dir])
 AC_ARG_WITH([linux-obj],
 	AC_HELP_STRING([--with-linux-obj=path],
-			[set path to Linux objects dir (default=$LINUX)]),
+			[set path to Linux objects dir (default=/lib/modules/$(uname -r)/build,/usr/src/linux)]),
 	[LB_ARG_CANON_PATH([linux-obj], [LINUX_OBJ])],
-	[LINUX_OBJ=$LINUX])
+	[LINUX_OBJ=$DEFAULT_LINUX_OBJ])
+
 AC_MSG_RESULT([$LINUX_OBJ])
 AC_SUBST(LINUX_OBJ)
 
@@ -355,7 +380,7 @@ $2
 AC_DEFUN([LB_LINUX_COMPILE_IFELSE],
 [m4_ifvaln([$1], [AC_LANG_CONFTEST([$1])])dnl
 rm -f build/conftest.o build/conftest.mod.c build/conftest.ko
-AS_IF([AC_TRY_COMMAND(cp conftest.c build && make -d [$2] ${LD:+"LD=$LD"} CC="$CC" -f $PWD/build/Makefile LUSTRE_LINUX_CONFIG=$LINUX_CONFIG LINUXINCLUDE="$EXTRA_LNET_INCLUDE -I$LINUX/arch/`uname -m|sed -e 's/ppc.*/powerpc/' -e 's/x86_64/x86/' -e 's/i.86/x86/'`/include -I$LINUX/include -I$LINUX_OBJ/include -I$LINUX_OBJ/include2 -include include/linux/autoconf.h" -o tmp_include_depends -o scripts -o include/config/MARKER -C $LINUX_OBJ EXTRA_CFLAGS="-Werror-implicit-function-declaration $EXTRA_KCFLAGS" $ARCH_UM $MODULE_TARGET=$PWD/build) >/dev/null && AC_TRY_COMMAND([$3])],
+AS_IF([AC_TRY_COMMAND(cp conftest.c build && make -d [$2] ${LD:+"LD=$LD"} CC="$CC" -f $PWD/build/Makefile LUSTRE_LINUX_CONFIG=$LINUX_CONFIG LINUXINCLUDE="$EXTRA_LNET_INCLUDE -I$LINUX/arch/`uname -m|sed -e 's/ppc.*/powerpc/' -e 's/x86_64/x86/' -e 's/i.86/x86/'`/include -I$LINUX_OBJ/include -I$LINUX/include -I$LINUX_OBJ/include2 -include include/linux/autoconf.h" -o tmp_include_depends -o scripts -o include/config/MARKER -C $LINUX_OBJ EXTRA_CFLAGS="-Werror-implicit-function-declaration $EXTRA_KCFLAGS" $ARCH_UM $MODULE_TARGET=$PWD/build) >/dev/null && AC_TRY_COMMAND([$3])],
 	[$4],
 	[_AC_MSG_LOG_CONFTEST
 m4_ifvaln([$5],[$5])dnl])

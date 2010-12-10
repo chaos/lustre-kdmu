@@ -798,7 +798,7 @@ void ll_lli_init(struct ll_inode_info *lli)
         lli->lli_inode_magic = LLI_INODE_MAGIC;
         cfs_sema_init(&lli->lli_size_sem, 1);
         cfs_sema_init(&lli->lli_write_sem, 1);
-        cfs_sema_init(&lli->lli_trunc_sem, 1);
+        cfs_init_rwsem(&lli->lli_trunc_sem);
         lli->lli_flags = 0;
         lli->lli_maxbytes = PAGE_CACHE_MAXBYTES;
         cfs_spin_lock_init(&lli->lli_lock);
@@ -815,8 +815,11 @@ void ll_lli_init(struct ll_inode_info *lli)
         cfs_sema_init(&lli->lli_rmtperm_sem, 1);
         CFS_INIT_LIST_HEAD(&lli->lli_oss_capas);
         cfs_spin_lock_init(&lli->lli_sa_lock);
-        CFS_INIT_LIST_HEAD(&lli->lli_sa_dentry);
 }
+
+#ifdef HAVE_NEW_BACKING_DEV_INFO
+static atomic_t ll_bdi_num = ATOMIC_INIT(0);
+#endif
 
 int ll_fill_super(struct super_block *sb)
 {
@@ -844,6 +847,18 @@ int ll_fill_super(struct super_block *sb)
         err = ll_options(lsi->lsi_lmd->lmd_opts, &sbi->ll_flags);
         if (err)
                 GOTO(out_free, err);
+
+        err = ll_bdi_init(&lsi->bdi);
+        if (err)
+                GOTO(out_free, err);
+
+#ifdef HAVE_NEW_BACKING_DEV_INFO
+        lsi->bdi.name = "lustre";
+        lsi->bdi.capabilities = BDI_CAP_MAP_COPY;
+        err = bdi_register(&lsi->bdi, NULL, "lustre-%d",
+                           atomic_inc_return(&ll_bdi_num));
+        sb->s_bdi = &lsi->bdi;
+#endif
 
         /* Generate a string unique to this super, in case some joker tries
            to mount the same fs at two mount points.
@@ -948,6 +963,9 @@ void ll_put_super(struct super_block *sb)
 
         if (profilenm)
                 class_del_profile(profilenm);
+
+        if (ll_bdi_wb_cnt(lsi->bdi) > 0)
+                ll_bdi_destroy(&lsi->bdi);
 
         ll_free_sbi(sb);
         lsi->lsi_llsbi = NULL;
@@ -1252,7 +1270,7 @@ int ll_setattr_raw(struct inode *inode, struct iattr *attr)
         UNLOCK_INODE_MUTEX(inode);
         if (ia_valid & ATTR_SIZE)
                 UP_WRITE_I_ALLOC_SEM(inode);
-        cfs_down(&lli->lli_trunc_sem);
+        cfs_down_write(&lli->lli_trunc_sem);
         LOCK_INODE_MUTEX(inode);
         if (ia_valid & ATTR_SIZE)
                 DOWN_WRITE_I_ALLOC_SEM(inode);
@@ -1293,7 +1311,7 @@ out:
                         rc1 = ll_setattr_done_writing(inode, op_data, mod);
                 ll_finish_md_op_data(op_data);
         }
-        cfs_up(&lli->lli_trunc_sem);
+        cfs_up_write(&lli->lli_trunc_sem);
         return rc ? rc : rc1;
 }
 
@@ -1614,15 +1632,6 @@ void ll_update_inode(struct inode *inode, struct lustre_md *md)
         }
 }
 
-static struct backing_dev_info ll_backing_dev_info = {
-        .ra_pages       = 0,    /* No readahead */
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,12))
-        .capabilities   = 0,    /* Does contribute to dirty memory */
-#else
-        .memory_backed  = 0,    /* Does contribute to dirty memory */
-#endif
-};
-
 void ll_read_inode2(struct inode *inode, void *opaque)
 {
         struct lustre_md *md = opaque;
@@ -1648,6 +1657,10 @@ void ll_read_inode2(struct inode *inode, void *opaque)
 
         /* OIDEBUG(inode); */
 
+        /* initializing backing dev info. */
+        inode->i_mapping->backing_dev_info = &(s2lsi(inode->i_sb)->bdi);
+
+
         if (S_ISREG(inode->i_mode)) {
                 struct ll_sb_info *sbi = ll_i2sbi(inode);
                 inode->i_op = &ll_file_inode_operations;
@@ -1667,9 +1680,6 @@ void ll_read_inode2(struct inode *inode, void *opaque)
 
                 init_special_inode(inode, inode->i_mode,
                                    kdev_t_to_nr(inode->i_rdev));
-
-                /* initializing backing dev info. */
-                inode->i_mapping->backing_dev_info = &ll_backing_dev_info;
 
                 EXIT;
         }

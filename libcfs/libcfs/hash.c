@@ -1266,8 +1266,8 @@ cfs_hash_find_or_add(cfs_hash_t *hs, void *key,
 int
 cfs_hash_add_unique(cfs_hash_t *hs, void *key, cfs_hlist_node_t *hnode)
 {
-        RETURN(cfs_hash_find_or_add(hs, key, hnode, 1) != hnode ?
-               -EALREADY : 0);
+        return cfs_hash_find_or_add(hs, key, hnode, 1) != hnode ?
+               -EALREADY : 0;
 }
 CFS_EXPORT_SYMBOL(cfs_hash_add_unique);
 
@@ -1572,7 +1572,6 @@ cfs_hash_for_each_relax(cfs_hash_t *hs, cfs_hash_for_each_cb_t func, void *data)
 {
         cfs_hlist_node_t *hnode;
         cfs_hlist_node_t *tmp;
-        void             *obj;
         cfs_hash_bd_t     bd;
         __u32             version;
         int               count = 0;
@@ -1596,13 +1595,13 @@ cfs_hash_for_each_relax(cfs_hash_t *hs, cfs_hash_for_each_cb_t func, void *data)
                 cfs_hash_bd_for_each_hlist(hs, &bd, hhead) {
                         for (hnode = hhead->first; hnode != NULL;) {
                                 cfs_hash_bucket_validate(hs, &bd, hnode);
-                                obj = cfs_hash_get(hs, hnode);
+                                cfs_hash_get(hs, hnode);
                                 cfs_hash_bd_unlock(hs, &bd, 0);
                                 cfs_hash_unlock(hs, 0);
 
                                 rc = func(hs, &bd, hnode, data);
                                 if (stop_on_change)
-                                        (void)cfs_hash_put(hs, hnode);
+                                        cfs_hash_put(hs, hnode);
                                 cfs_cond_resched();
                                 count++;
 
@@ -1697,15 +1696,13 @@ cfs_hash_hlist_for_each(cfs_hash_t *hs, unsigned hindex,
         cfs_hlist_head_t   *hhead;
         cfs_hlist_node_t   *hnode;
         cfs_hash_bd_t       bd;
-        ENTRY;
 
         cfs_hash_for_each_enter(hs);
         cfs_hash_lock(hs, 0);
         if (hindex >= CFS_HASH_NHLIST(hs))
                 goto out;
 
-        bd.bd_bucket = hs->hs_buckets[hindex >> hs->hs_bkt_bits];
-        bd.bd_offset = hindex & (CFS_HASH_BKT_NHLIST(hs) - 1);
+        cfs_hash_bd_index_set(hs, hindex, &bd);
 
         cfs_hash_bd_lock(hs, &bd, 0);
         hhead = cfs_hash_bd_hhead(hs, &bd);
@@ -1717,7 +1714,6 @@ cfs_hash_hlist_for_each(cfs_hash_t *hs, unsigned hindex,
  out:
         cfs_hash_unlock(hs, 0);
         cfs_hash_for_each_exit(hs);
-        EXIT;
 }
 
 CFS_EXPORT_SYMBOL(cfs_hash_hlist_for_each);
@@ -1735,7 +1731,6 @@ cfs_hash_for_each_key(cfs_hash_t *hs, void *key,
         cfs_hlist_node_t   *hnode;
         cfs_hash_bd_t       bds[2];
         unsigned            i;
-        ENTRY;
 
         cfs_hash_lock(hs, 0);
 
@@ -1756,8 +1751,6 @@ cfs_hash_for_each_key(cfs_hash_t *hs, void *key,
 
         cfs_hash_dual_bd_unlock(hs, bds, 0);
         cfs_hash_unlock(hs, 0);
-
-        EXIT;
 }
 CFS_EXPORT_SYMBOL(cfs_hash_for_each_key);
 
@@ -1814,7 +1807,6 @@ int
 cfs_hash_rehash(cfs_hash_t *hs, int do_rehash)
 {
         int     rc;
-        ENTRY;
 
         LASSERT(cfs_hash_with_rehash(hs) && !cfs_hash_with_no_lock(hs));
 
@@ -1884,7 +1876,6 @@ cfs_hash_rehash_worker(cfs_workitem_t *wi)
         int                 count = 0;
         int                 rc = 0;
         int                 i;
-        ENTRY;
 
         LASSERT (hs != NULL && cfs_hash_with_rehash(hs));
 
@@ -1970,7 +1961,7 @@ cfs_hash_rehash_worker(cfs_workitem_t *wi)
         if (rc != 0)
                 CDEBUG(D_INFO, "early quit of of rehashing: %d\n", rc);
         /* cfs_workitem require us to always return 0 */
-        RETURN(0);
+        return 0;
 }
 
 /**

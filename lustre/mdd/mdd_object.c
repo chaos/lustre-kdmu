@@ -714,9 +714,9 @@ static int __mdd_lma_get(const struct lu_env *env, struct mdd_object *mdd_obj,
         /* Swab and copy LMA */
         if (ma->ma_need & MA_HSM) {
                 if (lma->lma_compat & LMAC_HSM)
-                        ma->ma_hsm_flags = lma->lma_flags & HSM_FLAGS_MASK;
+                        ma->ma_hsm.mh_flags = lma->lma_flags & HSM_FLAGS_MASK;
                 else
-                        ma->ma_hsm_flags = 0;
+                        ma->ma_hsm.mh_flags = 0;
                 ma->ma_valid |= MA_HSM;
         }
 
@@ -733,8 +733,7 @@ static int __mdd_lma_get(const struct lu_env *env, struct mdd_object *mdd_obj,
         RETURN(0);
 }
 
-static int mdd_attr_get_internal(const struct lu_env *env,
-                                 struct mdd_object *mdd_obj,
+int mdd_attr_get_internal(const struct lu_env *env, struct mdd_object *mdd_obj,
                                  struct md_attr *ma)
 {
         int rc = 0;
@@ -762,8 +761,8 @@ static int mdd_attr_get_internal(const struct lu_env *env,
                         rc = mdd_def_acl_get(env, mdd_obj, ma);
         }
 #endif
-        CDEBUG(D_INODE, "after getattr rc = %d, ma_valid = "LPX64"\n",
-               rc, ma->ma_valid);
+        CDEBUG(D_INODE, "after getattr rc = %d, ma_valid = "LPX64" ma_lmm=%p\n",
+               rc, ma->ma_valid, ma->ma_lmm);
         RETURN(rc);
 }
 
@@ -1281,6 +1280,28 @@ static int mdd_changelog_data_store(const struct lu_env     *env,
         return 0;
 }
 
+int mdd_changelog(const struct lu_env *env, enum changelog_rec_type type,
+                  int flags, struct md_object *obj)
+{
+        struct thandle *handle;
+        struct mdd_object *mdd_obj = md2mdd_obj(obj);
+        struct mdd_device *mdd = mdo2mdd(obj);
+        int rc;
+        ENTRY;
+
+        handle = mdd_trans_start(env, mdd);
+
+        if (IS_ERR(handle))
+                return(PTR_ERR(handle));
+
+        rc = mdd_changelog_data_store(env, mdd, type, flags, mdd_obj,
+                                      handle);
+
+        mdd_trans_stop(env, mdd, rc, handle);
+
+        RETURN(rc);
+}
+
 /**
  * Should be called with write lock held.
  *
@@ -1311,7 +1332,7 @@ static int __mdd_lma_set(const struct lu_env *env, struct mdd_object *mdd_obj,
 
         /* Copy HSM data */
         if (ma->ma_valid & MA_HSM) {
-                lma->lma_flags  |= ma->ma_hsm_flags & HSM_FLAGS_MASK;
+                lma->lma_flags  |= ma->ma_hsm.mh_flags & HSM_FLAGS_MASK;
                 lma->lma_compat |= LMAC_HSM;
         }
 
@@ -1410,6 +1431,16 @@ static int mdd_attr_set(const struct lu_env *env, struct md_object *obj,
 #endif
         ENTRY;
 
+        *la_copy = ma->ma_attr;
+        rc = mdd_fix_attr(env, mdd_obj, la_copy, ma);
+        if (rc != 0)
+                RETURN(rc);
+
+        /* setattr on "close" only change atime, or do nothing */
+        if (ma->ma_valid == MA_INODE &&
+            ma->ma_attr.la_valid == LA_ATIME && la_copy->la_valid == 0)
+                RETURN(0);
+
         mdd_setattr_txn_param_build(env, obj, (struct md_attr *)ma,
                                     MDD_TXN_ATTR_SET_OP);
         handle = mdd_trans_start(env, mdd);
@@ -1434,11 +1465,6 @@ static int mdd_attr_set(const struct lu_env *env, struct md_object *obj,
         if (ma->ma_attr.la_valid & (LA_MTIME | LA_CTIME))
                 CDEBUG(D_INODE, "setting mtime "LPU64", ctime "LPU64"\n",
                        ma->ma_attr.la_mtime, ma->ma_attr.la_ctime);
-
-        *la_copy = ma->ma_attr;
-        rc = mdd_fix_attr(env, mdd_obj, la_copy, ma);
-        if (rc)
-                GOTO(cleanup, rc);
 
 #ifdef HAVE_QUOTA_SUPPORT
         if (mds->mds_quota && la_copy->la_valid & (LA_UID | LA_GID)) {
@@ -2042,7 +2068,7 @@ static int mdd_close(const struct lu_env *env, struct md_object *obj,
 {
         struct mdd_object *mdd_obj = md2mdd_obj(obj);
         struct mdd_device *mdd = mdo2mdd(obj);
-        struct thandle    *handle;
+        struct thandle    *handle = NULL;
         int rc;
         int reset = 1;
 
@@ -2054,14 +2080,26 @@ static int mdd_close(const struct lu_env *env, struct md_object *obj,
 #endif
         ENTRY;
 
-        rc = mdd_log_txn_param_build(env, obj, ma, MDD_TXN_UNLINK_OP);
-        if (rc)
-                RETURN(rc);
-        handle = mdd_trans_start(env, mdo2mdd(obj));
-        if (IS_ERR(handle))
-                RETURN(PTR_ERR(handle));
+        /* check without any lock */
+        if (mdd_obj->mod_count == 1 &&
+            (mdd_obj->mod_flags & (ORPHAN_OBJ | DEAD_OBJ)) != 0) {
+ again:
+                rc = mdd_log_txn_param_build(env, obj, ma, MDD_TXN_UNLINK_OP);
+                if (rc)
+                        RETURN(rc);
+                handle = mdd_trans_start(env, mdo2mdd(obj));
+                if (IS_ERR(handle))
+                        RETURN(PTR_ERR(handle));
+        }
 
         mdd_write_lock(env, mdd_obj, MOR_TGT_CHILD);
+        if (handle == NULL &&
+            mdd_obj->mod_count == 1 &&
+            (mdd_obj->mod_flags & ORPHAN_OBJ) != 0) {
+                mdd_write_unlock(env, mdd_obj);
+                goto again;
+        }
+
         /* release open count */
         mdd_obj->mod_count --;
 
@@ -2116,7 +2154,8 @@ out:
                 ma->ma_valid &= ~(MA_LOV | MA_COOKIE);
 
         mdd_write_unlock(env, mdd_obj);
-        mdd_trans_stop(env, mdo2mdd(obj), rc, handle);
+        if (handle != NULL)
+                mdd_trans_stop(env, mdo2mdd(obj), rc, handle);
 #ifdef HAVE_QUOTA_SUPPORT
         if (quota_opc)
                 /* Trigger dqrel on the owner of child. If failed,
@@ -2408,9 +2447,12 @@ const struct md_object_operations mdd_obj_ops = {
         .moo_close         = mdd_close,
         .moo_readpage      = mdd_readpage,
         .moo_readlink      = mdd_readlink,
+        .moo_changelog     = mdd_changelog,
         .moo_capa_get      = mdd_capa_get,
         .moo_object_sync   = mdd_object_sync,
         .moo_version_get   = mdd_version_get,
         .moo_version_set   = mdd_version_set,
         .moo_path          = mdd_path,
+        .moo_file_lock     = mdd_file_lock,
+        .moo_file_unlock   = mdd_file_unlock,
 };

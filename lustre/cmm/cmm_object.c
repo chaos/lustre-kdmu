@@ -284,6 +284,15 @@ static int cml_readlink(const struct lu_env *env, struct md_object *mo,
         RETURN(rc);
 }
 
+static int cml_changelog(const struct lu_env *env, enum changelog_rec_type type,
+                         int flags, struct md_object *mo)
+{
+        int rc;
+        ENTRY;
+        rc = mo_changelog(env, type, flags, md_object_next(mo));
+        RETURN(rc);
+}
+
 static int cml_xattr_list(const struct lu_env *env, struct md_object *mo,
                           struct lu_buf *buf)
 {
@@ -375,6 +384,25 @@ static int cml_path(const struct lu_env *env, struct md_object *mo,
         RETURN(rc);
 }
 
+static int cml_file_lock(const struct lu_env *env, struct md_object *mo,
+                         struct lov_mds_md *lmm, struct ldlm_extent *extent,
+                         struct lustre_handle *lockh)
+{
+        int rc;
+        ENTRY;
+        rc = mo_file_lock(env, md_object_next(mo), lmm, extent, lockh);
+        RETURN(rc);
+}
+
+static int cml_file_unlock(const struct lu_env *env, struct md_object *mo,
+                           struct lov_mds_md *lmm, struct lustre_handle *lockh)
+{
+        int rc;
+        ENTRY;
+        rc = mo_file_unlock(env, md_object_next(mo), lmm, lockh);
+        RETURN(rc);
+}
+
 static int cml_object_sync(const struct lu_env *env, struct md_object *mo)
 {
         int rc;
@@ -410,11 +438,14 @@ static const struct md_object_operations cml_mo_ops = {
         .moo_close         = cml_close,
         .moo_readpage      = cml_readpage,
         .moo_readlink      = cml_readlink,
+        .moo_changelog     = cml_changelog,
         .moo_capa_get      = cml_capa_get,
         .moo_object_sync   = cml_object_sync,
         .moo_version_get   = cml_version_get,
         .moo_version_set   = cml_version_set,
         .moo_path          = cml_path,
+        .moo_file_lock     = cml_file_lock,
+        .moo_file_unlock   = cml_file_unlock,
 };
 /** @} */
 
@@ -866,7 +897,7 @@ static const struct md_dir_operations cml_dir_ops = {
         .mdo_name_insert = cml_name_insert,
         .mdo_rename      = cml_rename,
         .mdo_rename_tgt  = cml_rename_tgt,
-        .mdo_create_data = cml_create_data
+        .mdo_create_data = cml_create_data,
 };
 /** @} */
 /** @} */
@@ -1024,6 +1055,12 @@ static int cmr_readlink(const struct lu_env *env, struct md_object *mo,
         return -EFAULT;
 }
 
+static int cmr_changelog(const struct lu_env *env, enum changelog_rec_type type,
+                         int flags, struct md_object *mo)
+{
+        return -EFAULT;
+}
+
 static int cmr_xattr_list(const struct lu_env *env, struct md_object *mo,
                           struct lu_buf *buf)
 {
@@ -1090,6 +1127,19 @@ static int cmr_object_sync(const struct lu_env *env, struct md_object *mo)
         return -EFAULT;
 }
 
+static int cmr_file_lock(const struct lu_env *env, struct md_object *mo,
+                         struct lov_mds_md *lmm, struct ldlm_extent *extent,
+                         struct lustre_handle *lockh)
+{
+        return -EREMOTE;
+}
+
+static int cmr_file_unlock(const struct lu_env *env, struct md_object *mo,
+                           struct lov_mds_md *lmm, struct lustre_handle *lockh)
+{
+        return -EREMOTE;
+}
+
 /**
  * cmr moo_version_get().
  */
@@ -1128,11 +1178,14 @@ static const struct md_object_operations cmr_mo_ops = {
         .moo_close         = cmr_close,
         .moo_readpage      = cmr_readpage,
         .moo_readlink      = cmr_readlink,
+        .moo_changelog     = cmr_changelog,
         .moo_capa_get      = cmr_capa_get,
         .moo_object_sync   = cmr_object_sync,
         .moo_version_get   = cmr_version_get,
         .moo_version_set   = cmr_version_set,
         .moo_path          = cmr_path,
+        .moo_file_lock     = cmr_file_lock,
+        .moo_file_unlock   = cmr_file_unlock,
 };
 /** @} */
 

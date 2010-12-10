@@ -1561,7 +1561,7 @@ int filter_vfs_unlink(struct inode *dir, struct dentry *dentry,
                 GOTO(out, rc = -EPERM);
 
         /* check_sticky() */
-        if ((dentry->d_inode->i_uid != current->fsuid &&
+        if ((dentry->d_inode->i_uid != cfs_curproc_fsuid() &&
              !cfs_capable(CFS_CAP_FOWNER)) || IS_APPEND(dentry->d_inode) ||
             IS_IMMUTABLE(dentry->d_inode))
                 GOTO(out, rc = -EPERM);
@@ -1569,7 +1569,7 @@ int filter_vfs_unlink(struct inode *dir, struct dentry *dentry,
         /* NOTE: This might need to go outside i_mutex, though it isn't clear if
          *       that was done because of journal_start (which is already done
          *       here) or some other ordering issue. */
-        DQUOT_INIT(dir);
+        ll_vfs_dq_init(dir);
 
         rc = ll_security_inode_unlink(dir, dentry, mnt);
         if (rc)
@@ -1724,7 +1724,7 @@ static int filter_intent_policy(struct ldlm_namespace *ns,
         if (rc == LDLM_ITER_CONTINUE) {
                 /* do not grant locks to the liblustre clients: they cannot
                  * handle ASTs robustly.  We need to do this while still
-                 * holding ns_lock to avoid the lock remaining on the res_link
+                 * holding lr_lock to avoid the lock remaining on the res_link
                  * list (and potentially being added to l_pending_list by an
                  * AST) when we are going to drop this lock ASAP. */
                 if (lock->l_export->exp_libclient ||
@@ -1747,7 +1747,7 @@ static int filter_intent_policy(struct ldlm_namespace *ns,
         *reply_lvb = *res_lvb;
 
         /*
-         * ->ns_lock guarantees that no new locks are granted, and,
+         * lr_lock guarantees that no new locks are granted, and,
          * therefore, that res->lr_lvb_data cannot increase beyond the
          * end of already granted lock. As a result, it is safe to
          * check against "stale" reply_lvb->lvb_size value without
@@ -2059,8 +2059,10 @@ int filter_common_setup(struct obd_device *obd, struct lustre_cfg* lcfg,
                 GOTO(err_post, rc = -ENOMEM);
 
         sprintf(ns_name, "filter-%s", obd->obd_uuid.uuid);
-        obd->obd_namespace = ldlm_namespace_new(obd, ns_name, LDLM_NAMESPACE_SERVER,
-                                                LDLM_NAMESPACE_GREEDY);
+        obd->obd_namespace = ldlm_namespace_new(obd, ns_name,
+                                                LDLM_NAMESPACE_SERVER,
+                                                LDLM_NAMESPACE_GREEDY,
+                                                LDLM_NS_TYPE_OST);
         if (obd->obd_namespace == NULL)
                 GOTO(err_post, rc = -ENOMEM);
         obd->obd_namespace->ns_lvbp = obd;
@@ -3187,7 +3189,7 @@ int filter_setattr_internal(struct obd_export *exp, struct dentry *dentry,
         }
         if (ia_valid & (ATTR_SIZE | ATTR_UID | ATTR_GID)) {
                 unsigned long now = jiffies;
-                DQUOT_INIT(inode);
+                ll_vfs_dq_init(inode);
                 /* Filter truncates and writes are serialized by
                  * i_alloc_sem, see the comment in
                  * filter_preprw_write.*/
@@ -3276,7 +3278,10 @@ int filter_setattr_internal(struct obd_export *exp, struct dentry *dentry,
         * we have two left for the last_rcvd and VBR inode version updates. */
         err = fsfilt_extend(exp->exp_obd, inode, 2, handle);
 
-        rc = filter_finish_transno(exp, inode, oti, rc, sync);
+        /* Update inode version only if data has changed => size has changed */
+        rc = filter_finish_transno(exp, ia_valid & ATTR_SIZE ? inode : NULL,
+                                   oti, rc, sync);
+
         if (sync) {
                 filter_cancel_cookies_cb(exp->exp_obd, 0, fcc, rc);
                 fcc = NULL;
@@ -4073,7 +4078,7 @@ int filter_destroy(struct obd_export *exp, struct obdo *oa,
                 if (fcc != NULL)
                         *fcc = oa->o_lcookie;
         }
-        DQUOT_INIT(dchild->d_inode);
+        ll_vfs_dq_init(dchild->d_inode);
 
         /* we're gonna truncate it first in order to avoid possible deadlock:
          *      P1                      P2

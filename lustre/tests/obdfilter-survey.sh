@@ -73,7 +73,7 @@ obdflter_survey_run () {
 	rm -f ${TMP}/obdfilter_survey*
 
 	local targets=$(obdflter_survey_targets $case)
-	local cmd="NETTYPE=$NETTYPE thrlo=$thrlo nobjhi=$nobjhi thrhi=$thrhi size=$size case=$case rslt_loc=${TMP} targets=\"$targets\" sh $OBDSURVEY"
+	local cmd="NETTYPE=$NETTYPE thrlo=$thrlo nobjhi=$nobjhi thrhi=$thrhi size=$size case=$case rslt_loc=${TMP} targets=\"$targets\" $OBDSURVEY"
 	echo + $cmd
 	eval $cmd
 
@@ -88,7 +88,7 @@ print_jbd () {
 	local file=$1
 	local facet=$2
 	local varsvc=${facet}_svc
-	local dev=$(basename $(do_facet $facet lctl get_param -n *.${!varsvc}.mntdev))
+	local dev=$(ldiskfs_canon "*.${!varsvc}.mntdev" $facet)
 
 	# ext4: /proc/fs/jbd2/sda1:8/history 
 	# ext3: /proc/fs/jbd/sdb1/history

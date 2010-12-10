@@ -44,7 +44,6 @@ MCREATE=${MCREATE:-mcreate}
 OPENFILE=${OPENFILE:-openfile}
 OPENUNLINK=${OPENUNLINK:-openunlink}
 READS=${READS:-"reads"}
-TRUNCATE=${TRUNCATE:-truncate}
 MUNLINK=${MUNLINK:-munlink}
 SOCKETSERVER=${SOCKETSERVER:-socketserver}
 SOCKETCLIENT=${SOCKETCLIENT:-socketclient}
@@ -2664,7 +2663,7 @@ test_43b() {
 	cp -p `which multiop` $DIR/d43/multiop || cp -p multiop $DIR/d43/multiop
         MULTIOP_PROG=$DIR/d43/multiop multiop_bg_pause $TMP/test43.junk O_c || return 1
         MULTIOP_PID=$!
-        truncate $DIR/d43/multiop 0 && error "expected error, got success"
+        $TRUNCATE $DIR/d43/multiop 0 && error "expected error, got success"
         kill -USR1 $MULTIOP_PID || return 2
         wait $MULTIOP_PID || return 3
         rm $TMP/test43.junk
@@ -3913,7 +3912,7 @@ test_69() {
 	$DIRECTIO write ${f}.2 0 1 || error "directio write error"
 
 	do_facet ost1 lctl set_param fail_loc=0x217
-	truncate $f 1 # vmtruncate() will ignore truncate() error.
+	$TRUNCATE $f 1 # vmtruncate() will ignore truncate() error.
 	$DIRECTIO write $f 0 2 && error "write succeeded, expect -ENOENT"
 
 	do_facet ost1 lctl set_param fail_loc=0
@@ -6169,50 +6168,48 @@ test_128() { # bug 15212
 run_test 128 "interactive lfs for 2 consecutive find's"
 
 set_dir_limits () {
-        local mntdev
-        local node
+	local mntdev
+	local canondev
+	local node
 
 	local LDPROC=/proc/fs/ldiskfs
 
-        for node in $(mdts_nodes); do
-                devs=$(do_node $node "lctl get_param -n devices" | awk '($3 ~ "mdt" && $4 ~ "MDT") { print $4 }')
-	        for dev in $devs; do
-		        mntdev=$(do_node $node "lctl get_param -n osd*.$dev.mntdev")
-		        do_node $node "test -e $LDPROC/\\\$(basename $mntdev)/max_dir_size" || LDPROC=/sys/fs/ldiskfs
-		        do_node $node "echo $1 >$LDPROC/\\\$(basename $mntdev)/max_dir_size"
-		done
+	for facet in $(get_facets MDS); do
+		canondev=$(ldiskfs_canon *.$(convert_facet2label $facet).mntdev $facet)
+		do_facet $facet "test -e $LDPROC/$canondev/max_dir_size" || LDPROC=/sys/fs/ldiskfs
+		do_facet $facet "echo $1 >$LDPROC/$canondev/max_dir_size"
 	done
 }
 test_129() {
-        [ "$FSTYPE" != "ldiskfs" ] && skip "not needed for FSTYPE=$FSTYPE" && return 0
-        remote_mds_nodsh && skip "remote MDS with nodsh" && return
+	[ "$FSTYPE" != "ldiskfs" ] && skip "not needed for FSTYPE=$FSTYPE" && return 0
+	remote_mds_nodsh && skip "remote MDS with nodsh" && return
 
-        EFBIG=27
-        MAX=16384
+	EFBIG=27
+	MAX=16384
 
-        set_dir_limits $MAX
+	set_dir_limits $MAX
 
-        mkdir -p $DIR/$tdir
+	mkdir -p $DIR/$tdir
 
-        I=0
-        J=0
-        while [ ! $I -gt $((MAX * MDSCOUNT)) ]; do
-                multiop $DIR/$tdir/$J Oc
-                rc=$?
-                if [ $rc -eq $EFBIG ]; then
-                        set_dir_limits 0
-                        echo "return code $rc received as expected"
-                        return 0
-                elif [ $rc -ne 0 ]; then
-                        set_dir_limits 0
-                        error_exit "return code $rc received instead of expected $EFBIG"
-                fi
-                J=$((J+1))
-                I=$(stat -c%s "$DIR/$tdir")
-        done
+	I=0
+	J=0
+	while [ ! $I -gt $((MAX * MDSCOUNT)) ]; do
+		multiop $DIR/$tdir/$J Oc
+		rc=$?
+		if [ $rc -eq $EFBIG ]; then
+			set_dir_limits 0
+			echo "return code $rc received as expected"
+			return 0
+		elif [ $rc -ne 0 ]; then
+			set_dir_limits 0
+			error_exit "return code $rc received instead of expected $EFBIG"
+		fi
+		J=$((J+1))
+		I=$(stat -c%s "$DIR/$tdir")
+	done
 
-        error "exceeded dir size limit $MAX x $MDSCOUNT $((MAX * MDSCOUNT)) : $I bytes"
-        do_facet $SINGLEMDS "echo 0 >$LDPROC"
+	set_dir_limits 0
+	error "exceeded dir size limit $MAX x $MDSCOUNT $((MAX * MDSCOUNT)) : $I bytes"
 }
 run_test 129 "test directory size limit ========================"
 
@@ -7399,8 +7396,8 @@ run_test 200c "Set pool on a directory ================================="
 
 test_200d() {
 	remote_mgs_nodsh && skip "remote MGS with nodsh" && return
-	res=$($GETSTRIPE --pool $POOL_DIR | awk '/^pool:/ {print $2}')
-	[ "$res" = $POOL ] || error "Pool on $POOL_DIR is $res, not $POOL"
+	res=$($GETSTRIPE --pool $POOL_DIR)
+	[ $res = $POOL ] || error "Pool on $POOL_DIR is $res, not $POOL"
 }
 run_test 200d "Check pool on a directory ==============================="
 
@@ -7619,12 +7616,12 @@ test_215() { # for bugs 18102, 21079, 21517
 	remove_lnet_proc_files "routers"
 
 	# /proc/sys/lnet/peers should look like this:
-	# nid refs state max rtr min tx min queue
+	# nid refs state last max rtr min tx min queue
 	# where nid is a string like 192.168.1.1@tcp2, refs > 0,
-	# state is up/down/NA, max >= 0. rtr, min, tx, min are 
+	# state is up/down/NA, max >= 0. last, rtr, min, tx, min are
 	# numeric (0 or >0 or <0), queue >= 0.
-	L1="^nid +refs +state +max +rtr +min +tx +min +queue$"
-	BR="^$NID +$P +(up|down|NA) +$N +$I +$I +$I +$I +$N$"
+	L1="^nid +refs +state +last +max +rtr +min +tx +min +queue$"
+	BR="^$NID +$P +(up|down|NA) +$I +$N +$I +$I +$I +$I +$N$"
 	create_lnet_proc_files "peers"
 	check_lnet_proc_entry "peers.out" "/proc/sys/lnet/peers" "$BR" "$L1"
 	check_lnet_proc_entry "peers.sys" "lnet.peers" "$BR" "$L1"
@@ -7706,6 +7703,23 @@ test_217() { # bug 22430
 	done
 }
 run_test 217 "check lctl ping for hostnames with hiphen ('-')"
+
+test_218() {
+       # do directio so as not to populate the page cache
+       log "creating a 10 Mb file"
+       multiop $DIR/$tfile oO_CREAT:O_DIRECT:O_RDWR:w$((10*1048576))c || error "multiop failed while creating a file"
+       log "starting reads"
+       dd if=$DIR/$tfile of=/dev/null bs=4096 &
+       log "truncating the file"
+       multiop $DIR/$tfile oO_TRUNC:c || error "multiop failed while truncating the file"
+       log "killing dd"
+       kill %+ || true # reads might have finished
+       echo "wait until dd is finished"
+       wait
+       log "removing the temporary file"
+       rm -rf $DIR/$tfile || error "tmp file removal failed"
+}
+run_test 218 "parallel read and truncate should not deadlock ======================="
 
 #
 # tests that do cleanup/setup should be run at the end
