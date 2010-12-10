@@ -223,9 +223,10 @@ osd_push_ctxt(const struct lu_env *env, struct osd_ctxt *save)
         if ((tc = prepare_creds())) {
                 tc->fsuid         = uc->mu_fsuid;
                 tc->fsgid         = uc->mu_fsgid;
-                tc->cap_effective = uc->mu_cap;
                 commit_creds(tc);
         }
+        /* XXX not suboptimal */
+        cfs_curproc_cap_unpack(uc->mu_cap);
 }
 
 static inline void
@@ -346,6 +347,14 @@ static struct inode *osd_iget(struct osd_thread_info *info,
                 CERROR("bad inode %lx\n",inode->i_ino);
                 iput(inode);
                 inode = ERR_PTR(-ENOENT);
+        } else {
+                /* Do not update file c/mtime in ldiskfs.
+                 * NB: we don't have any lock to protect this because we don't
+                 * have reference on osd_object now, but contention with
+                 * another lookup + attr_set can't happen in the tiny window
+                 * between if (...) and set S_NOCMTIME. */
+                if (!(inode->i_flags & S_NOCMTIME))
+                        inode->i_flags |= S_NOCMTIME;
         }
         return inode;
 }
@@ -1366,7 +1375,7 @@ static int osd_inode_setattr(const struct lu_env *env,
                 iattr.ia_uid = attr->la_uid;
                 iattr.ia_gid = attr->la_gid;
                 osd_push_ctxt(env, save);
-                rc = DQUOT_TRANSFER(inode, &iattr) ? -EDQUOT : 0;
+                rc = ll_vfs_dq_transfer(inode, &iattr) ? -EDQUOT : 0;
                 osd_pop_ctxt(save);
                 if (rc != 0)
                         return rc;
@@ -1402,8 +1411,11 @@ static int osd_inode_setattr(const struct lu_env *env,
         if (bits & LA_RDEV)
                 inode->i_rdev   = attr->la_rdev;
 
-        if (bits & LA_FLAGS)
-                inode->i_flags = ll_ext_to_inode_flags(attr->la_flags);
+        if (bits & LA_FLAGS) {
+                /* always keep S_NOCMTIME */
+                inode->i_flags = ll_ext_to_inode_flags(attr->la_flags) |
+                                 S_NOCMTIME;
+        }
         return 0;
 }
 
@@ -1428,7 +1440,7 @@ static int osd_attr_set(const struct lu_env *env,
         cfs_spin_unlock(&obj->oo_guard);
 
         if (!rc)
-                mark_inode_dirty(obj->oo_inode);
+                obj->oo_inode->i_sb->s_op->dirty_inode(obj->oo_inode);
         return rc;
 }
 
@@ -1447,6 +1459,8 @@ static int osd_create_post(struct osd_thread_info *info, struct osd_object *obj,
                            struct lu_attr *attr, struct thandle *th)
 {
         osd_object_init0(obj);
+        if (obj->oo_inode && (obj->oo_inode->i_state & I_NEW))
+                unlock_new_inode(obj->oo_inode);
         return 0;
 }
 
@@ -1508,6 +1522,10 @@ static int osd_mkfile(struct osd_thread_info *info, struct osd_object *obj,
         osd_pop_ctxt(save);
 #endif
         if (!IS_ERR(inode)) {
+                /* Do not update file c/mtime in ldiskfs.
+                 * NB: don't need any lock because no contention at this
+                 * early stage */
+                inode->i_flags |= S_NOCMTIME;
                 obj->oo_inode = inode;
                 result = 0;
         } else
@@ -1760,7 +1778,6 @@ static int __osd_xattr_set(const struct lu_env *env, struct dt_object *dt,
         struct inode           *inode    = obj->oo_inode;
         struct osd_thread_info *info     = osd_oti_get(env);
         struct dentry          *dentry   = &info->oti_child_dentry;
-        struct timespec        *t        = &info->oti_time;
         int                     fs_flags = 0;
         int  rc;
 
@@ -1775,14 +1792,8 @@ static int __osd_xattr_set(const struct lu_env *env, struct dt_object *dt,
                 fs_flags |= XATTR_CREATE;
 
         dentry->d_inode = inode;
-        *t = inode->i_ctime;
         rc = inode->i_op->setxattr(dentry, name, buf->lb_buf,
                                    buf->lb_len, fs_flags);
-        /* ctime should not be updated with server-side time. */
-        cfs_spin_lock(&obj->oo_guard);
-        inode->i_ctime = *t;
-        cfs_spin_unlock(&obj->oo_guard);
-        mark_inode_dirty(inode);
         return rc;
 }
 
@@ -1983,7 +1994,7 @@ static void osd_object_ref_add(const struct lu_env *env,
         LASSERT(inode->i_nlink < LDISKFS_LINK_MAX);
         inode->i_nlink++;
         cfs_spin_unlock(&obj->oo_guard);
-        mark_inode_dirty(inode);
+        inode->i_sb->s_op->dirty_inode(inode);
         LINVRNT(osd_invariant(obj));
 }
 
@@ -2006,7 +2017,7 @@ static void osd_object_ref_del(const struct lu_env *env,
         LASSERT(inode->i_nlink > 0);
         inode->i_nlink--;
         cfs_spin_unlock(&obj->oo_guard);
-        mark_inode_dirty(inode);
+        inode->i_sb->s_op->dirty_inode(inode);
         LINVRNT(osd_invariant(obj));
 }
 
@@ -2087,7 +2098,6 @@ static int osd_xattr_del(const struct lu_env *env,
         struct inode           *inode  = obj->oo_inode;
         struct osd_thread_info *info   = osd_oti_get(env);
         struct dentry          *dentry = &info->oti_obj_dentry;
-        struct timespec        *t      = &info->oti_time;
         int                     rc;
 
         LASSERT(dt_object_exists(dt));
@@ -2099,13 +2109,7 @@ static int osd_xattr_del(const struct lu_env *env,
                 return -EACCES;
 
         dentry->d_inode = inode;
-        *t = inode->i_ctime;
         rc = inode->i_op->removexattr(dentry, name);
-        /* ctime should not be updated with server-side time. */
-        cfs_spin_lock(&obj->oo_guard);
-        inode->i_ctime = *t;
-        cfs_spin_unlock(&obj->oo_guard);
-        mark_inode_dirty(inode);
         return rc;
 }
 
@@ -2613,7 +2617,7 @@ static ssize_t osd_write(const struct lu_env *env, struct dt_object *dt,
         struct osd_thandle *oh;
         ssize_t            result = 0;
 #ifdef HAVE_QUOTA_SUPPORT
-        cfs_cap_t           save = current->cap_effective;
+        cfs_cap_t           save = cfs_curproc_cap_pack();
 #endif
 
         LASSERT(handle != NULL);
@@ -2625,9 +2629,9 @@ static ssize_t osd_write(const struct lu_env *env, struct dt_object *dt,
         LASSERT(oh->ot_handle->h_transaction != NULL);
 #ifdef HAVE_QUOTA_SUPPORT
         if (ignore_quota)
-                current->cap_effective |= CFS_CAP_SYS_RESOURCE_MASK;
+                cfs_cap_raise(CFS_CAP_SYS_RESOURCE);
         else
-                current->cap_effective &= ~CFS_CAP_SYS_RESOURCE_MASK;
+                cfs_cap_lower(CFS_CAP_SYS_RESOURCE);
 #endif
         /* Write small symlink to inode body as we need to maintain correct
          * on-disk symlinks for ldiskfs.
@@ -2640,7 +2644,7 @@ static ssize_t osd_write(const struct lu_env *env, struct dt_object *dt,
                                                   buf->lb_len, pos,
                                                   oh->ot_handle);
 #ifdef HAVE_QUOTA_SUPPORT
-        current->cap_effective = save;
+        cfs_curproc_cap_unpack(save);
 #endif
         if (result == 0)
                 result = buf->lb_len;
@@ -2754,20 +2758,8 @@ static int osd_index_ea_delete(const struct lu_env *env, struct dt_object *dt,
         cfs_down_write(&obj->oo_ext_idx_sem);
         bh = ll_ldiskfs_find_entry(dir, dentry, &de);
         if (bh) {
-                struct osd_thread_info *oti = osd_oti_get(env);
-                struct timespec *ctime = &oti->oti_time;
-                struct timespec *mtime = &oti->oti_time2;
-
-                *ctime = dir->i_ctime;
-                *mtime = dir->i_mtime;
                 rc = ldiskfs_delete_entry(oh->ot_handle,
                                 dir, de, bh);
-                /* xtime should not be updated with server-side time. */
-                cfs_spin_lock(&obj->oo_guard);
-                dir->i_ctime = *ctime;
-                dir->i_mtime = *mtime;
-                cfs_spin_unlock(&obj->oo_guard);
-                mark_inode_dirty(dir);
                 brelse(bh);
         } else
                 rc = -ENOENT;
@@ -2857,7 +2849,7 @@ static int osd_index_iam_insert(const struct lu_env *env, struct dt_object *dt,
         struct osd_thandle    *oh;
         struct iam_container  *bag = &obj->oo_dir->od_container;
 #ifdef HAVE_QUOTA_SUPPORT
-        cfs_cap_t              save = current->cap_effective;
+        cfs_cap_t              save = cfs_curproc_cap_pack();
 #endif
         struct osd_thread_info *oti = osd_oti_get(env);
         struct iam_rec *iam_rec = (struct iam_rec *)oti->oti_ldp;
@@ -2882,9 +2874,9 @@ static int osd_index_iam_insert(const struct lu_env *env, struct dt_object *dt,
         LASSERT(oh->ot_handle->h_transaction != NULL);
 #ifdef HAVE_QUOTA_SUPPORT
         if (ignore_quota)
-                current->cap_effective |= CFS_CAP_SYS_RESOURCE_MASK;
+                cfs_cap_raise(CFS_CAP_SYS_RESOURCE);
         else
-                current->cap_effective &= ~CFS_CAP_SYS_RESOURCE_MASK;
+                cfs_cap_lower(CFS_CAP_SYS_RESOURCE);
 #endif
         if (S_ISDIR(obj->oo_inode->i_mode))
                 osd_fid_pack((struct osd_fid_pack *)iam_rec, rec, &oti->oti_fid);
@@ -2893,7 +2885,7 @@ static int osd_index_iam_insert(const struct lu_env *env, struct dt_object *dt,
         rc = iam_insert(oh->ot_handle, bag, (const struct iam_key *)key,
                         iam_rec, ipd);
 #ifdef HAVE_QUOTA_SUPPORT
-        current->cap_effective = save;
+        cfs_curproc_cap_unpack(save);
 #endif
         osd_ipd_put(env, bag, ipd);
         LINVRNT(osd_invariant(obj));
@@ -2927,7 +2919,7 @@ static int __osd_ea_add_rec(struct osd_thread_info *info,
         child = osd_child_dentry_get(info->oti_env, pobj, name, strlen(name));
 
         if (fid_is_igif((struct lu_fid *)fid) ||
-            fid_seq((struct lu_fid *)fid) >= FID_SEQ_NORMAL) {
+            fid_is_norm((struct lu_fid *)fid)) {
                 ldp = (struct ldiskfs_dentry_param *)info->oti_ldp;
                 osd_get_ldiskfs_dirent_param(ldp, fid);
                 child->d_fsdata = (void*) ldp;
@@ -3147,7 +3139,7 @@ static int osd_index_ea_insert(const struct lu_env *env, struct dt_object *dt,
         const char               *name  = (const char *)key;
         struct osd_object        *child;
 #ifdef HAVE_QUOTA_SUPPORT
-        cfs_cap_t                 save  = current->cap_effective;
+        cfs_cap_t                 save  = cfs_curproc_cap_pack();
 #endif
         int rc;
 
@@ -3162,32 +3154,19 @@ static int osd_index_ea_insert(const struct lu_env *env, struct dt_object *dt,
 
         child = osd_object_find(env, dt, fid);
         if (!IS_ERR(child)) {
-                struct inode *inode = obj->oo_inode;
-                struct osd_thread_info *oti = osd_oti_get(env);
-                struct timespec *ctime = &oti->oti_time;
-                struct timespec *mtime = &oti->oti_time2;
-
-                *ctime = inode->i_ctime;
-                *mtime = inode->i_mtime;
 #ifdef HAVE_QUOTA_SUPPORT
                 if (ignore_quota)
-                        current->cap_effective |= CFS_CAP_SYS_RESOURCE_MASK;
+                        cfs_cap_raise(CFS_CAP_SYS_RESOURCE);
                 else
-                        current->cap_effective &= ~CFS_CAP_SYS_RESOURCE_MASK;
+                        cfs_cap_lower(CFS_CAP_SYS_RESOURCE);
 #endif
                 cfs_down_write(&obj->oo_ext_idx_sem);
                 rc = osd_ea_add_rec(env, obj, child->oo_inode, name, rec, th);
                 cfs_up_write(&obj->oo_ext_idx_sem);
 #ifdef HAVE_QUOTA_SUPPORT
-                current->cap_effective = save;
+                cfs_curproc_cap_unpack(save);
 #endif
                 osd_object_put(env, child);
-                /* xtime should not be updated with server-side time. */
-                cfs_spin_lock(&obj->oo_guard);
-                inode->i_ctime = *ctime;
-                inode->i_mtime = *mtime;
-                cfs_spin_unlock(&obj->oo_guard);
-                mark_inode_dirty(inode);
         } else {
                 rc = PTR_ERR(child);
         }

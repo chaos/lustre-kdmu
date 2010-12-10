@@ -315,15 +315,16 @@ fid_build_pdo_res_name(const struct lu_fid *f,
 
 
 /**
- * Flatten 128-bit FID values into a 64-bit value for
- * use as an inode number.  For non-IGIF FIDs this
- * starts just over 2^32, and continues without conflict
- * until 2^64, at which point we wrap the high 32 bits
- * of the SEQ into the range where there may not be many
- * OID values in use, to minimize the risk of conflict.
+ * Flatten 128-bit FID values into a 64-bit value for use as an inode number.
+ * For non-IGIF FIDs this starts just over 2^32, and continues without
+ * conflict until 2^64, at which point we wrap the high 24 bits of the SEQ
+ * into the range where there may not be many OID values in use, to minimize
+ * the risk of conflict.
  *
- * The time between re-used inode numbers is very long -
- * 2^32 SEQ numbers, or about 2^32 client mounts. */
+ * Suppose LUSTRE_SEQ_MAX_WIDTH less than (1 << 24) which is currently true,
+ * the time between re-used inode numbers is very long - 2^40 SEQ numbers,
+ * or about 2^40 client mounts, if clients create less than 2^24 files/mount.
+ */
 static inline __u64 fid_flatten(const struct lu_fid *fid)
 {
         __u64 ino;
@@ -336,7 +337,7 @@ static inline __u64 fid_flatten(const struct lu_fid *fid)
 
         seq = fid_seq(fid);
 
-        ino = (seq << 24) + ((seq >> (64-8)) & 0xffffff0000ULL) + fid_oid(fid);
+        ino = (seq << 24) + ((seq >> 24) & 0xffffff0000ULL) + fid_oid(fid);
 
         RETURN(ino ? ino : fid_oid(fid));
 }
@@ -362,15 +363,14 @@ static inline __u32 fid_flatten32(const struct lu_fid *fid)
 
         seq = fid_seq(fid) - FID_SEQ_START;
 
-	/*
-          map the high bits of the OID into higher bits of the inode number so that
-          inodes generated at about the same time have a reduced chance of collisions.
-          This will give a period of 1024 clients and 128 k = 128M inodes without collisions.
-	*/
-
+        /* Map the high bits of the OID into higher bits of the inode number so
+         * that inodes generated at about the same time have a reduced chance
+         * of collisions. This will give a period of 2^12 = 1024 unique clients
+         * (from SEQ) and up to min(LUSTRE_SEQ_MAX_WIDTH, 2^20) = 128k objects
+         * (from OID), or up to 128M inodes without collisions for new files. */
         ino = ((seq & 0x000fffffULL) << 12) + ((seq >> 8) & 0xfffff000) +
                (seq >> (64 - (40-8)) & 0xffffff00) +
-               (fid_oid(fid) & 0xff000fff) + ((fid_oid(fid) & 0x00fff000) << 16);
+               (fid_oid(fid) & 0xff000fff) + ((fid_oid(fid) & 0x00fff000) << 8);
 
         RETURN(ino ? ino : fid_oid(fid));
 }

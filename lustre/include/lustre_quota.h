@@ -226,17 +226,6 @@ int lustre_quota_convert(struct lustre_quota_info *lqi, int type);
 typedef int (*dqacq_handler_t) (struct obd_device * obd, struct qunit_data * qd,
                                 int opc);
 
-/*
-#ifdef HAVE_VFS_DQ_OFF
-#define LL_DQUOT_OFF(sb, remount)    vfs_dq_off(sb, remount)
-#else
-#define LL_DQUOT_OFF(sb, remount)    DQUOT_OFF(sb)
-#endif
-*/
-
-#define LL_DQUOT_OFF(sb)    DQUOT_OFF(sb)
-
-
 /* user quota is turned on on filter */
 #define LQC_USRQUOTA_FLAG (1 << 0)
 /* group quota is turned on on filter */
@@ -397,39 +386,25 @@ struct lustre_qunit_size {
 #define LQS_KEY_ID(key)      (key & 0xffffffff)
 #define LQS_KEY_GRP(key)     (key >> 32)
 
-static inline void __lqs_getref(struct lustre_qunit_size *lqs)
+static inline void lqs_getref(struct lustre_qunit_size *lqs)
 {
         int count = cfs_atomic_inc_return(&lqs->lqs_refcount);
 
-        if (count == 2) /* quota_create_lqs */
-                cfs_atomic_inc(&lqs->lqs_ctxt->lqc_lqs);
         CDEBUG(D_INFO, "lqs=%p refcount %d\n", lqs, count);
-}
-
-static inline void lqs_getref(struct lustre_qunit_size *lqs)
-{
-        __lqs_getref(lqs);
-}
-
-static inline void __lqs_putref(struct lustre_qunit_size *lqs)
-{
-        LASSERT(cfs_atomic_read(&lqs->lqs_refcount) > 0);
-
-        if (cfs_atomic_dec_return(&lqs->lqs_refcount) == 1)
-                if (cfs_atomic_dec_and_test(&lqs->lqs_ctxt->lqc_lqs))
-                        cfs_waitq_signal(&lqs->lqs_ctxt->lqc_lqs_waitq);
-        CDEBUG(D_INFO, "lqs=%p refcount %d\n",
-               lqs, cfs_atomic_read(&lqs->lqs_refcount));
 }
 
 static inline void lqs_putref(struct lustre_qunit_size *lqs)
 {
-        __lqs_putref(lqs);
-}
+        int count = cfs_atomic_read(&lqs->lqs_refcount);
 
-static inline void lqs_initref(struct lustre_qunit_size *lqs)
-{
-        cfs_atomic_set(&lqs->lqs_refcount, 0);
+        LASSERT(count > 0);
+        CDEBUG(D_INFO, "lqs=%p refcount %d\n", lqs, count - 1);
+
+        if (cfs_atomic_dec_and_test(&lqs->lqs_refcount)) {
+                if (cfs_atomic_dec_and_test(&lqs->lqs_ctxt->lqc_lqs))
+                        cfs_waitq_signal(&lqs->lqs_ctxt->lqc_lqs_waitq);
+                OBD_FREE_PTR(lqs);
+        }
 }
 
 #else

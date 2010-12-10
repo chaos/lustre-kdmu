@@ -700,26 +700,6 @@ LB_LINUX_TRY_COMPILE([
 ])
 
 #
-# LC_D_OBTAIN_ALIAS
-# starting from 2.6.18 kernel don't export do_kern_mount
-# and want to use vfs_kern_mount instead.
-#
-AC_DEFUN([LC_D_OBTAIN_ALIAS],
-[AC_MSG_CHECKING([d_obtain_alias exist in kernel])
-LB_LINUX_TRY_COMPILE([
-        #include <linux/dcache.h>
-],[
-        d_obtain_alias(NULL);
-],[
-        AC_DEFINE(HAVE_D_OBTAIN_ALIAS, 1,
-                [d_obtain_alias exist in kernel])
-        AC_MSG_RESULT([yes])
-],[
-        AC_MSG_RESULT([no])
-])
-])
-
-#
 # LC_INVALIDATEPAGE_RETURN_INT
 # 2.6.17 changes return type for invalidatepage to 'void' from 'int'
 #
@@ -1198,6 +1178,24 @@ LB_LINUX_TRY_COMPILE([
         AC_MSG_RESULT([yes])
         AC_DEFINE(HAVE_REGISTER_SHRINKER, 1,
                 [kernel has register_shrinker])
+],[
+        AC_MSG_RESULT([no])
+])
+])
+
+# 2.6.23 add code to wait other users to complete before removing procfs entry
+AC_DEFUN([LC_PROCFS_USERS],
+[AC_MSG_CHECKING([if kernel has pde_users member in procfs entry struct])
+LB_LINUX_TRY_COMPILE([
+        #include <linux/proc_fs.h>
+],[
+        struct proc_dir_entry pde;
+
+        pde.pde_users   = 0;
+],[
+        AC_MSG_RESULT([yes])
+        AC_DEFINE(HAVE_PROCFS_USERS, 1,
+                [kernel has pde_users member in procfs entry struct])
 ],[
         AC_MSG_RESULT([no])
 ])
@@ -1850,6 +1848,26 @@ LB_LINUX_TRY_COMPILE([
 ])
 ])
 
+#
+# LC_D_OBTAIN_ALIAS
+# starting from 2.6.28 kernel replaces d_alloc_anon() with
+# d_obtain_alias() for getting anonymous dentries
+#
+AC_DEFUN([LC_D_OBTAIN_ALIAS],
+[AC_MSG_CHECKING([d_obtain_alias exist in kernel])
+LB_LINUX_TRY_COMPILE([
+        #include <linux/dcache.h>
+],[
+        d_obtain_alias(NULL);
+],[
+        AC_DEFINE(HAVE_D_OBTAIN_ALIAS, 1,
+                [d_obtain_alias exist in kernel])
+        AC_MSG_RESULT([yes])
+],[
+        AC_MSG_RESULT([no])
+])
+])
+
 # 2.6.31 replaces blk_queue_hardsect_size by blk_queue_logical_block_size function
 AC_DEFUN([LC_BLK_QUEUE_LOG_BLK_SIZE],
 [AC_MSG_CHECKING([if blk_queue_logical_block_size is defined])
@@ -1861,22 +1879,6 @@ LB_LINUX_TRY_COMPILE([
         AC_MSG_RESULT(yes)
         AC_DEFINE(HAVE_BLK_QUEUE_LOG_BLK_SIZE, 1,
                   [blk_queue_logical_block_size is defined])
-],[
-        AC_MSG_RESULT(no)
-])
-])
-
-# 2.6.32 without DQUOT_INIT defined.
-AC_DEFUN([LC_DQUOT_INIT],
-[AC_MSG_CHECKING([if DQUOT_INIT is defined])
-LB_LINUX_TRY_COMPILE([
-        #include <linux/quotaops.h>
-],[
-        DQUOT_INIT(NULL);
-],[
-        AC_MSG_RESULT(yes)
-        AC_DEFINE(HAVE_DQUOT_INIT, 1,
-                  [DQUOT_INIT is defined])
 ],[
         AC_MSG_RESULT(no)
 ])
@@ -1894,6 +1896,40 @@ LB_LINUX_TRY_COMPILE([
         AC_MSG_RESULT(yes)
         AC_DEFINE(HAVE_REQUEST_QUEUE_LIMITS, 1,
                   [request_queue has a limits field])
+],[
+        AC_MSG_RESULT(no)
+])
+])
+
+# RHEL6(backport from 2.6.34) removes 2 functions blk_queue_max_phys_segments and
+# blk_queue_max_hw_segments add blk_queue_max_segments
+AC_DEFUN([LC_BLK_QUEUE_MAX_SEGMENTS],
+[AC_MSG_CHECKING([if blk_queue_max_segments is defined])
+LB_LINUX_TRY_COMPILE([
+        #include <linux/blkdev.h>
+],[
+        blk_queue_max_segments(NULL, 0);
+],[
+        AC_MSG_RESULT(yes)
+        AC_DEFINE(HAVE_BLK_QUEUE_MAX_SEGMENTS, 1,
+                  [blk_queue_max_segments is defined])
+],[
+        AC_MSG_RESULT(no)
+])
+])
+
+# RHEL6(backport from 2.6.34) removes blk_queue_max_sectors and add blk_queue_max_hw_sectors
+# check blk_queue_max_sectors and use it until disappear.
+AC_DEFUN([LC_BLK_QUEUE_MAX_SECTORS],
+[AC_MSG_CHECKING([if blk_queue_max_sectors is defined])
+LB_LINUX_TRY_COMPILE([
+        #include <linux/blkdev.h>
+],[
+        blk_queue_max_sectors(NULL, 0);
+],[
+        AC_MSG_RESULT(yes)
+        AC_DEFINE(HAVE_BLK_QUEUE_MAX_SECTORS, 1,
+                  [blk_queue_max_sectors is defined])
 ],[
         AC_MSG_RESULT(no)
 ])
@@ -2046,6 +2082,7 @@ AC_DEFUN([LC_PROG_LINUX],
          LC_HAVE_EXPORTFS_H
          LC_VM_OP_FAULT
          LC_REGISTER_SHRINKER
+         LC_PROCFS_USERS
   
   	 # 2.6.24
   	 LC_HAVE_MMTYPES_H
@@ -2082,9 +2119,10 @@ AC_DEFUN([LC_PROG_LINUX],
          LC_BLK_QUEUE_LOG_BLK_SIZE
 
          # 2.6.32
-         LC_DQUOT_INIT
          LC_REQUEST_QUEUE_LIMITS
          LC_NEW_BACKING_DEV_INFO
+         LC_BLK_QUEUE_MAX_SECTORS
+         LC_BLK_QUEUE_MAX_SEGMENTS
 
          #
          if test x$enable_server = xyes ; then

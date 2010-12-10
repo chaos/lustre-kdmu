@@ -1477,6 +1477,11 @@ ptlrpc_server_handle_req_in(struct ptlrpc_service *svc)
         svc->srv_n_queued_reqs--;
         /* Consider this still a "queued" request as far as stats are
            concerned */
+        /* ptlrpc_hpreq_init() inserts it to the export list and by the time
+         * of ptlrpc_server_request_add() it could be already handled and
+         * released. To not lose request in between, take an extra reference
+         * on the request. */
+        ptlrpc_request_addref(req);
         cfs_spin_unlock(&svc->srv_lock);
 
         /* go through security check/transform */
@@ -1586,9 +1591,11 @@ ptlrpc_server_handle_req_in(struct ptlrpc_service *svc)
         if (rc)
                 GOTO(err_req, rc);
         cfs_waitq_signal(&svc->srv_waitq);
+        ptlrpc_server_drop_request(req);
         RETURN(1);
 
 err_req:
+        ptlrpc_server_drop_request(req);
         cfs_spin_lock(&svc->srv_rq_lock);
         svc->srv_n_active_reqs++;
         cfs_spin_unlock(&svc->srv_rq_lock);
@@ -2177,7 +2184,7 @@ static int ptlrpc_main(void *arg)
 
                 cfs_cond_resched();
 
-                l_wait_event_exclusive(svc->srv_waitq,
+                l_wait_event_exclusive_head(svc->srv_waitq,
                                        ptlrpc_thread_stopping(thread) ||
                                        ptlrpc_server_request_waiting(svc) ||
                                        ptlrpc_server_request_pending(svc, 0) ||
@@ -2305,7 +2312,7 @@ static int ptlrpc_hr_main(void *arg)
 
         while (!cfs_test_bit(HRT_STOPPING, &t->hrt_flags)) {
 
-                l_cfs_wait_event(t->hrt_wait, hrt_dont_sleep(t, &replies));
+                l_wait_condition(t->hrt_wait, hrt_dont_sleep(t, &replies));
                 while (!cfs_list_empty(&replies)) {
                         struct ptlrpc_reply_state *rs;
 
@@ -2340,7 +2347,7 @@ static int ptlrpc_start_hr_thread(struct ptlrpc_hr_service *hr, int n, int cpu)
                 cfs_complete(&t->hrt_completion);
                 GOTO(out, rc);
         }
-        l_cfs_wait_event(t->hrt_wait, cfs_test_bit(HRT_RUNNING, &t->hrt_flags));
+        l_wait_condition(t->hrt_wait, cfs_test_bit(HRT_RUNNING, &t->hrt_flags));
         RETURN(0);
  out:
         return rc;
