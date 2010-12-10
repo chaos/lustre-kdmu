@@ -91,7 +91,7 @@ struct inode;
 struct osd_ctxt {
         __u32 oc_uid;
         __u32 oc_gid;
-        __u32 oc_cap;
+        cfs_kernel_cap_t oc_cap;
 };
 #endif
 
@@ -345,7 +345,6 @@ struct osd_thread_info {
          * XXX temporary: for ->i_op calls.
          */
         struct timespec        oti_time;
-        struct timespec        oti_time2;
         /*
          * XXX temporary: fake struct file for osd_object_sync
          */

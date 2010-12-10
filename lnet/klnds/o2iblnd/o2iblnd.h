@@ -572,6 +572,7 @@ typedef struct kib_conn
         int                  ibc_ready:1;       /* CQ callback fired */
         unsigned long        ibc_last_send;     /* time of last send */
         cfs_list_t           ibc_early_rxs;     /* rxs completed before ESTABLISHED */
+        cfs_list_t          ibc_tx_noops;       /* IBLND_MSG_NOOPs for IBLND_MSG_VERSION_1 */
         cfs_list_t           ibc_tx_queue;       /* sends that need a credit */
         cfs_list_t           ibc_tx_queue_nocred;/* sends that don't need a credit */
         cfs_list_t           ibc_tx_queue_rsrvd; /* sends that need to reserve an ACK/DONE msg */
@@ -647,7 +648,6 @@ kiblnd_dev_can_failover(kib_dev_t *dev)
 do {                                                            \
         CDEBUG(D_NET, "conn[%p] (%d)++\n",                      \
                (conn), cfs_atomic_read(&(conn)->ibc_refcount)); \
-        LASSERT(cfs_atomic_read(&(conn)->ibc_refcount) > 0);    \
         cfs_atomic_inc(&(conn)->ibc_refcount);                  \
 } while (0)
 
@@ -657,7 +657,7 @@ do {                                                                           \
                                                                                \
         CDEBUG(D_NET, "conn[%p] (%d)--\n",                                     \
                (conn), cfs_atomic_read(&(conn)->ibc_refcount));                \
-        LASSERT(cfs_atomic_read(&(conn)->ibc_refcount) > 0);                   \
+        LASSERT_ATOMIC_POS(&(conn)->ibc_refcount);                             \
         if (cfs_atomic_dec_and_test(&(conn)->ibc_refcount)) {                  \
                 cfs_spin_lock_irqsave(&kiblnd_data.kib_connd_lock, flags);     \
                 cfs_list_add_tail(&(conn)->ibc_list,                           \
@@ -672,7 +672,6 @@ do {                                                            \
         CDEBUG(D_NET, "peer[%p] -> %s (%d)++\n",                \
                (peer), libcfs_nid2str((peer)->ibp_nid),         \
                cfs_atomic_read (&(peer)->ibp_refcount));        \
-        LASSERT(cfs_atomic_read(&(peer)->ibp_refcount) > 0);    \
         cfs_atomic_inc(&(peer)->ibp_refcount);                  \
 } while (0)
 
@@ -681,7 +680,7 @@ do {                                                            \
         CDEBUG(D_NET, "peer[%p] -> %s (%d)--\n",                \
                (peer), libcfs_nid2str((peer)->ibp_nid),         \
                cfs_atomic_read (&(peer)->ibp_refcount));        \
-        LASSERT(cfs_atomic_read(&(peer)->ibp_refcount) > 0);    \
+        LASSERT_ATOMIC_POS(&(peer)->ibp_refcount);              \
         if (cfs_atomic_dec_and_test(&(peer)->ibp_refcount))     \
                 kiblnd_destroy_peer(peer);                      \
 } while (0)
@@ -729,15 +728,25 @@ kiblnd_send_noop(kib_conn_t *conn)
             !kiblnd_send_keepalive(conn))
                 return 0; /* No need to send NOOP */
 
-        if (!cfs_list_empty(&conn->ibc_tx_queue_nocred))
-                return 0; /* NOOP can be piggybacked */
+        if (IBLND_OOB_CAPABLE(conn->ibc_version)) {
+                if (!cfs_list_empty(&conn->ibc_tx_queue_nocred))
+                        return 0; /* NOOP can be piggybacked */
 
-        if (!IBLND_OOB_CAPABLE(conn->ibc_version))
-                /* can't piggyback? */
-                return cfs_list_empty(&conn->ibc_tx_queue);
+                /* No tx to piggyback NOOP onto or no credit to send a tx */
+                return (cfs_list_empty(&conn->ibc_tx_queue) || conn->ibc_credits == 0);
+        }
+
+        if (!cfs_list_empty(&conn->ibc_tx_noops) ||       /* NOOP already queued */
+            !cfs_list_empty(&conn->ibc_tx_queue_nocred) || /* can be piggybacked */
+            conn->ibc_credits == 0)                    /* no credit */
+                return 0;
+
+        if (conn->ibc_credits == 1 &&      /* last credit reserved for */
+            conn->ibc_outstanding_credits == 0) /* giving back credits */
+                return 0;
 
         /* No tx to piggyback NOOP onto or no credit to send a tx */
-        return (cfs_list_empty(&conn->ibc_tx_queue) || conn->ibc_credits == 0);
+        return (cfs_list_empty(&conn->ibc_tx_queue) || conn->ibc_credits == 1);
 }
 
 static inline void
