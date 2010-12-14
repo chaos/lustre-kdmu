@@ -2821,8 +2821,10 @@ static struct lu_device *osd_device_fini(const struct lu_env *env,
 
         osd_procfs_fini(o);
 
-        if (o->od_objset.os)
+        if (o->od_objset.os) {
                 osd_sync(env, lu2dt_dev(d));
+                udmu_wait_callbacks(&o->od_objset);
+        }
 
         lu_context_fini(&o->od_env_for_commit.le_ctx);
         RETURN(NULL);

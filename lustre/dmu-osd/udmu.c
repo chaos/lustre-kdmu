@@ -54,6 +54,7 @@
 #include <sys/dmu_objset.h>
 #include <sys/dsl_prop.h>
 #include <sys/sa_impl.h>
+#include <sys/txg.h>
 
 #include <libcfs/libcfs.h>      /* XXX temp fix for compil. errors in
                                    lustre_idl.h, bug 23267 */
@@ -1460,5 +1461,10 @@ int udmu_xattr_list(udmu_objset_t *uos, dmu_buf_t *db, void *buf, int buflen)
 
 void udmu_freeze(udmu_objset_t *uos)
 {
-        spa_freeze(uos->os->os_spa);
+        spa_freeze(dmu_objset_spa(uos->os));
+}
+
+void udmu_wait_callbacks(udmu_objset_t *uos)
+{
+        txg_wait_callbacks(spa_get_dsl(dmu_objset_spa(uos->os)));
 }
