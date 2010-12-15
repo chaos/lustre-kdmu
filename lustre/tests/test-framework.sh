@@ -341,7 +341,7 @@ load_modules_local() {
     fi
 
     echo Loading modules from $LUSTRE
-    load_module ../libcfs/libcfs/libcfs
+    load_module ../libcfs/libcfs/libcfs libcfs_panic_on_lbug=0
     [ "$PTLDEBUG" ] && lctl set_param debug="$PTLDEBUG"
     [ "$SUBSYSTEM" ] && lctl set_param subsystem_debug="${SUBSYSTEM# }"
     load_module ../lnet/lnet/lnet
@@ -361,7 +361,8 @@ load_modules_local() {
     load_module mgc/mgc
     if ! client_only; then
         grep -q crc16 /proc/kallsyms || { modprobe crc16 2>/dev/null || true; }
-        grep -q jbd /proc/kallsyms || { modprobe jbd 2>/dev/null || true; }
+        grep -q -w jbd /proc/kallsyms || { modprobe jbd 2>/dev/null || true; }
+        grep -q -w jbd2 /proc/kallsyms || { modprobe jbd2 2>/dev/null || true; }
         [ "$FSTYPE" = "ldiskfs" ] && load_module ../ldiskfs/ldiskfs/ldiskfs
         [ "$OSTFSTYPE" = "ldiskfs" ] && load_module ../ldiskfs/ldiskfs/ldiskfs
         [ "$MDSFSTYPE" = "ldiskfs" ] && load_module ../ldiskfs/ldiskfs/ldiskfs

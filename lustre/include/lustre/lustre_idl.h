@@ -446,7 +446,7 @@ static inline int fid_seq_is_mdt(const __u64 seq)
 
 static inline int fid_seq_is_rsvd(const __u64 seq)
 {
-        return seq <= FID_SEQ_RSVD;
+        return (seq > FID_SEQ_OST_MDT0 && seq <= FID_SEQ_RSVD);
 };
 
 static inline int fid_is_mdt0(const struct lu_fid *fid)
@@ -741,7 +741,7 @@ static inline int fid_is_sane(const struct lu_fid *fid)
                 fid != NULL &&
                 ((fid_seq(fid) >= FID_SEQ_START && fid_oid(fid) != 0
                                                 && fid_ver(fid) == 0) ||
-                fid_is_igif(fid));
+                fid_is_igif(fid) || fid_seq_is_rsvd(fid_seq(fid)));
 }
 
 static inline int fid_is_zero(const struct lu_fid *fid)
@@ -1092,7 +1092,7 @@ extern void lustre_swab_ptlrpc_body(struct ptlrpc_body *pb);
                                 OBD_CONNECT_MDS_MDS | OBD_CONNECT_FID | \
                                 LRU_RESIZE_CONNECT_FLAG | OBD_CONNECT_VBR | \
                                 OBD_CONNECT_LOV_V3 | OBD_CONNECT_SOM | \
-                                OBD_CONNECT_FULL20 | OBD_CONNECT_LAYOUTLOCK)
+                                OBD_CONNECT_FULL20)
 #define OST_CONNECT_SUPPORTED  (OBD_CONNECT_SRVLOCK | OBD_CONNECT_GRANT | \
                                 OBD_CONNECT_REQPORTAL | OBD_CONNECT_VERSION | \
                                 OBD_CONNECT_TRUNCLOCK | OBD_CONNECT_INDEX | \

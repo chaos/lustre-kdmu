@@ -107,6 +107,7 @@ int filter_precreate_object(const struct lu_env *env, struct filter_device *ofd,
         obd_id                   tmp;
         loff_t                   off;
         int                      rc;
+        ENTRY;
 
         /* Don't create objects beyond the valid range for this SEQ */
         if (unlikely(fid_seq_is_mdt0(group) && id >= IDIF_MAX_OID)) {
@@ -303,7 +304,10 @@ int filter_object_destroy(const struct lu_env *env, struct filter_object *fo)
         filter_fmd_drop(filter_info(env)->fti_exp, &fo->ofo_header.loh_fid);
 
         filter_write_lock(env, fo);
-        dt_ref_del(env, filter_object_child(fo), th);
+        if (filter_object_exists(fo))
+                dt_ref_del(env, filter_object_child(fo), th);
+        else
+                rc = -ENOENT;
         filter_write_unlock(env, fo);
 
         filter_trans_stop(env, filter_obj2dev(fo), th);

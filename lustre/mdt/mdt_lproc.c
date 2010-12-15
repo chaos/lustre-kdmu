@@ -168,7 +168,7 @@ static int lprocfs_rd_identity_expire(char *page, char **start, off_t off,
         temp = mdt->mdt_identity_cache->uc_entry_expire;
 
         return cfs_param_snprintf(page, count, data, CFS_PARAM_U32,
-                                  "%lu\n", temp);
+                                  "%u\n", temp);
 }
 
 static int lprocfs_wr_identity_expire(cfs_param_file_t *file, const char *buffer,
@@ -201,7 +201,7 @@ static int lprocfs_rd_identity_acquire_expire(char *page, char **start,
         temp = mdt->mdt_identity_cache->uc_acquire_expire;
 
         return cfs_param_snprintf(page, count, data, CFS_PARAM_U32,
-                                  "%lu\n", temp);
+                                  "%u\n", temp);
 }
 
 static int lprocfs_wr_identity_acquire_expire(cfs_param_file_t *file,

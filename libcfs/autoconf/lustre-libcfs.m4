@@ -107,6 +107,10 @@ AC_DEFUN([LIBCFS_FUNC_SHOW_TASK],
 [kernel/ksyms.c kernel/sched.c],[
 AC_DEFINE(HAVE_SHOW_TASK, 1, [show_task is exported])
 ],[
+        LB_CHECK_SYMBOL_EXPORT([sched_show_task],
+        [kernel/ksyms.c kernel/sched.c],[
+        AC_DEFINE(HAVE_SCHED_SHOW_TASK, 1, [sched_show_task is exported])
+        ],[])
 ])
 ])
 
@@ -442,7 +446,7 @@ LB_LINUX_TRY_COMPILE([
 #
 AC_DEFUN([LIBCFS_FUNC_DUMP_TRACE],
 [LB_CHECK_SYMBOL_EXPORT([dump_trace],
-[kernel/ksyms.c arch/${LINUX_ARCH%_64}/kernel/traps_64.c],[
+[kernel/ksyms.c arch/${LINUX_ARCH%_64}/kernel/traps_64.c arch/x86/kernel/dumpstack_32.c arch/x86/kernel/dumpstack_64.c],[
 	tmp_flags="$EXTRA_KCFLAGS"
 	EXTRA_KCFLAGS="-Werror"
 	AC_MSG_CHECKING([whether we can really use dump_trace])
@@ -628,6 +632,29 @@ LB_LINUX_TRY_COMPILE([
 ])
 
 #
+# LIBCFS_ADD_WAIT_QUEUE_EXCLUSIVE
+#
+# 2.6.34 adds __add_wait_queue_exclusive
+#
+AC_DEFUN([LIBCFS_ADD_WAIT_QUEUE_EXCLUSIVE],
+[AC_MSG_CHECKING([if __add_wait_queue_exclusive exists])
+LB_LINUX_TRY_COMPILE([
+        #include <linux/wait.h>
+],[
+        wait_queue_head_t queue;
+        wait_queue_t      wait;
+
+        __add_wait_queue_exclusive(&queue, &wait);
+],[
+        AC_MSG_RESULT(yes)
+        AC_DEFINE(HAVE___ADD_WAIT_QUEUE_EXCLUSIVE, 1,
+                  [__add_wait_queue_exclusive exists])
+],[
+        AC_MSG_RESULT(no)
+])
+])
+
+#
 # LIBCFS_PROG_LINUX
 #
 # LNet linux kernel checks
@@ -675,6 +702,8 @@ LIBCFS_FUNC_UNSHARE_FS_STRUCT
 LIBCFS_SOCK_MAP_FD_2ARG
 # 2.6.32
 LIBCFS_STACKTRACE_OPS_HAVE_WALK_STACK
+# 2.6.34
+LIBCFS_ADD_WAIT_QUEUE_EXCLUSIVE
 ])
 
 #

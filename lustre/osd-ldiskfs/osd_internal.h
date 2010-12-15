@@ -91,7 +91,7 @@ struct inode;
 struct osd_ctxt {
         __u32 oc_uid;
         __u32 oc_gid;
-        __u32 oc_cap;
+        cfs_kernel_cap_t oc_cap;
 };
 #endif
 
@@ -345,7 +345,6 @@ struct osd_thread_info {
          * XXX temporary: for ->i_op calls.
          */
         struct timespec        oti_time;
-        struct timespec        oti_time2;
         /*
          * XXX temporary: fake struct file for osd_object_sync
          */
@@ -506,22 +505,6 @@ static inline struct super_block *osd_sb(const struct osd_device *dev)
 }
 
 #define OSD_MAX_CACHE_SIZE OBD_OBJECT_EOF
-
-/* The on-disk extN format reserves inodes 0-11 for internal filesystem
- * use, and these inodes will be invisible on client side, so the valid
- * sequence for IGIF fid is 12-0xffffffff. But root inode (2#) will be seen
- * on server side (osd), and it should be valid too here.
- */
-#define OSD_ROOT_SEQ            2
-static inline int osd_fid_is_root(const struct lu_fid *fid)
-{
-        return fid_seq(fid) == OSD_ROOT_SEQ;
-}
-
-static inline int osd_fid_is_igif(const struct lu_fid *fid)
-{
-        return fid_is_igif(fid) || osd_fid_is_root(fid);
-}
 
 #endif /* __KERNEL__ */
 
