@@ -54,6 +54,6 @@
 #error Do not #include this file directly. #include <lustre_log.h> instead
 #endif
 
-/* #define LUSTRE_LOG_SERVER */
+#define LUSTRE_LOG_SERVER
 
 #endif /* __SOLARIS_LUSTRE_LOG_H__ */

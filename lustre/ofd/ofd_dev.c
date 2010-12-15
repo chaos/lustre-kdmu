@@ -607,11 +607,7 @@ static int filter_init0(const struct lu_env *env, struct filter_device *m,
         LASSERT(obd != NULL);
 
         lmi = server_get_mount(dev);
-        obd->obd_fsops = fsfilt_get_ops(MT_STR(lmi->lmi_lsi->lsi_ldd));
-        if (IS_ERR(obd->obd_fsops)) {
-                obd->obd_fsops = NULL;
-                /* this filesystem doesn't support fsfilt */
-        }
+        obd->obd_fsops = NULL;
 
         m->ofd_fmd_max_num = FILTER_FMD_MAX_NUM_DEFAULT;
         m->ofd_fmd_max_age = FILTER_FMD_MAX_AGE_DEFAULT;
@@ -800,8 +796,6 @@ static void filter_fini(const struct lu_env *env, struct filter_device *m)
         }
 
         filter_procfs_fini(m);
-        if (obd->obd_fsops)
-                fsfilt_put_ops(obd->obd_fsops);
 #if 0
         sptlrpc_rule_set_free(&m->mdt_sptlrpc_rset);
 #endif
@@ -948,5 +942,4 @@ MODULE_AUTHOR("Sun Microsystems, Inc. <http://www.lustre.org/>");
 MODULE_DESCRIPTION("Lustre Filtering driver");
 MODULE_LICENSE("GPL");
 
-module_init(ofd_init);
-module_exit(ofd_exit);
+cfs_module(ofd, "1.0.0", ofd_init, ofd_exit);

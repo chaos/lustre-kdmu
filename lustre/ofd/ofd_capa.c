@@ -40,14 +40,6 @@
 
 #define DEBUG_SUBSYSTEM S_FILTER
 
-#ifdef __KERNEL__
-#include <linux/fs.h>
-#include <linux/version.h>
-#include <asm/uaccess.h>
-#include <linux/file.h>
-#include <linux/kmod.h>
-#endif
-
 #include <obd.h>
 #include <lustre_capa.h>
 #include "ofd_internal.h"

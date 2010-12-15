@@ -64,10 +64,6 @@ struct ldiskfs_dx_hash_info
 
 int ldiskfsfs_dirhash(const char *name, int len, struct ldiskfs_dx_hash_info *hinfo);
 
-/* obdo.c */
-void obdo_from_la(struct obdo *dst, struct lu_attr *la, obd_flag valid);
-void la_from_obdo(struct lu_attr *la, struct obdo *dst, obd_flag valid);
-
 #endif /* __KERNEL__ */
 
 #endif /* __SOLARIS_CLASS_OBD_H__ */

@@ -937,7 +937,13 @@ void sptlrpc_conf_client_adapt(struct obd_device *obd)
 }
 EXPORT_SYMBOL(sptlrpc_conf_client_adapt);
 
-#if defined(__KERNEL__) && defined(SOLARIS_LLOG)
+#if defined(__KERNEL__)
+
+#define LOG_SPTLRPC     "sptlrpc"
+
+#if 0
+
+#define LOG_SPTLRPC_TMP "sptlrpc.tmp"
 
 static void rule2string(struct sptlrpc_rule *r, char *buf, int buflen)
 {
@@ -1008,9 +1014,6 @@ static int sptlrpc_record_rules(struct llog_handle *llh,
         }
         return 0;
 }
-
-#define LOG_SPTLRPC_TMP "sptlrpc.tmp"
-#define LOG_SPTLRPC     "sptlrpc"
 
 static
 int sptlrpc_target_local_copy_conf(struct obd_device *obd,
@@ -1088,6 +1091,8 @@ out_ctx:
                obd->obd_name, rc);
         RETURN(rc);
 }
+
+#endif /* 0 */
 
 static int local_read_handler(struct llog_handle *llh,
                               struct llog_rec_hdr *rec,
@@ -1171,7 +1176,7 @@ out_pop:
         RETURN(rc);
 }
 
-#endif /* __KERNEL__ && SOLARIS_LLOG */
+#endif /* __KERNEL__ */
 
 /**
  * called by target devices, extract sptlrpc rules which applies to
@@ -1208,7 +1213,7 @@ int sptlrpc_conf_target_get_rules(struct obd_device *obd,
                 GOTO(out, rc);
         }
 
-#if defined(__KERNEL__) && defined(SOLARIS_LLOG)
+#if defined(__KERNEL__)
         if (conf->sc_updated  == 0) {
                 /*
                  * always read from local copy. here another option is
@@ -1221,12 +1226,13 @@ int sptlrpc_conf_target_get_rules(struct obd_device *obd,
                 sptlrpc_target_local_read_conf(obd, conf);
         } else {
                 LASSERT(conf->sc_local == 0);
-
+#if 0
                 /* write a local copy */
                 if (initial || conf->sc_modified)
                         sptlrpc_target_local_copy_conf(obd, conf);
                 else
                         CDEBUG(D_SEC, "unchanged, skip updating local copy\n");
+#endif
         }
 #endif
 

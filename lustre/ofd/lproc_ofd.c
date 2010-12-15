@@ -38,11 +38,8 @@
 
 #define DEBUG_SUBSYSTEM S_CLASS
 
-#include <linux/version.h>
 #include <lprocfs_status.h>
 #include <obd.h>
-#include <linux/seq_file.h>
-#include <linux/version.h>
 
 #include "ofd_internal.h"
 
@@ -470,54 +467,6 @@ static struct lprocfs_vars lprocfs_filter_module_vars[] = {
         { "num_refs",     lprocfs_rd_numrefs,       0, 0 },
         { 0 }
 };
-
-void filter_tally(struct obd_export *exp, struct page **pages, int nr_pages,
-                  unsigned long *blocks, int blocks_per_page, int wr)
-{
-#if 0
-        struct filter_obd *filter = &exp->exp_obd->u.filter;
-        struct page *last_page = NULL;
-        unsigned long *last_block = NULL;
-        unsigned long discont_pages = 0;
-        unsigned long discont_blocks = 0;
-        int i;
-
-        if (nr_pages == 0)
-                return;
-
-        lprocfs_oh_tally_log2(&filter->fo_filter_stats.hist[BRW_R_PAGES + wr],
-                              nr_pages);
-        if (exp->exp_nid_stats && exp->exp_nid_stats->nid_brw_stats)
-                lprocfs_oh_tally_log2(&exp->exp_nid_stats->nid_brw_stats->
-                                        hist[BRW_R_PAGES + wr], nr_pages);
-
-        while (nr_pages-- > 0) {
-                if (last_page && (*pages)->index != (last_page->index + 1))
-                        discont_pages++;
-                last_page = *pages;
-                pages++;
-                for (i = 0; i < blocks_per_page; i++) {
-                        if (last_block && *blocks != (*last_block + 1))
-                                discont_blocks++;
-                        last_block = blocks++;
-                }
-        }
-
-        lprocfs_oh_tally(&filter->fo_filter_stats.hist[BRW_R_DISCONT_PAGES +wr],
-                         discont_pages);
-        lprocfs_oh_tally(&filter->fo_filter_stats.hist[BRW_R_DISCONT_BLOCKS+wr],
-                         discont_blocks);
-
-        if (exp->exp_nid_stats && exp->exp_nid_stats->nid_brw_stats) {
-                lprocfs_oh_tally_log2(&exp->exp_nid_stats->nid_brw_stats->
-                                        hist[BRW_R_DISCONT_PAGES + wr],
-                                      discont_pages);
-                lprocfs_oh_tally_log2(&exp->exp_nid_stats->nid_brw_stats->
-                                        hist[BRW_R_DISCONT_BLOCKS + wr],
-                                      discont_blocks);
-        }
-#endif
-}
 
 #define pct(a,b) (b ? a * 100 / b : 0)
 

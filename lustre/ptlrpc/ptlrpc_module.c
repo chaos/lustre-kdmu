@@ -108,15 +108,10 @@ __init int ptlrpc_init(void)
         if (rc)
                 GOTO(cleanup, rc);
 
-/*
- * Remove SOLARIS_LLOG checks when llog works on solaris.
- */
-#if defined(SOLARIS_LLOG)
         cleanup_phase = 6;
         rc = llog_recov_init();
         if (rc)
                 GOTO(cleanup, rc);
-#endif /* SOLARIS_LLOG */
 
         RETURN(0);
 
@@ -144,9 +139,7 @@ cleanup:
 #ifdef __KERNEL__
 static void __exit ptlrpc_exit(void)
 {
-#if defined(SOLARIS_LLOG)
         llog_recov_fini();
-#endif
         sptlrpc_fini();
         ldlm_exit();
         ptlrpc_stop_pinger();

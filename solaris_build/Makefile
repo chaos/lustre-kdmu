@@ -34,12 +34,8 @@ LUSTRE_CPPFLAGS += -DENABLE_LIBLUSTRE_RECOVERY=1
 LUSTRE_CPPFLAGS += -DLIBLUSTRE_POSIX_ACL=1
 LUSTRE_CPPFLAGS += -DOBD_MAX_IOCTL_BUFFER=8192
 
-# if !defined(SOLARIS_LSERVER) test may be used to exclude lustre code we
-# may still need later when we port the client to Solaris. Lustre code not
-# needed by either Solaris client or server is excluded with
-# !if defined(__sun__) test.
-
-LUSTRE_CPPFLAGS += -DSOLARIS_LSERVER
+# Avoid compiling some client specific code that's not ported to solaris yet.
+LUSTRE_CPPFLAGS += -DLUSTRE_SERVER_ONLY
 
 SOLARIS_KCPPFLAGS = -D_KERNEL -D_MACHDEP
 
@@ -106,6 +102,7 @@ OBDCLASS_PATH=lustre/obdclass
 MISC_PATH=lustre/lvfs
 OST_PATH=lustre/ost
 ECHO_PATH=lustre/obdecho
+OFD_PATH=lustre/ofd
 
 MKFS_LUSTRE_SRCS   = $(LUSTRE_SOLARIS_UTILS_PATH)/mkfs_lustre.c
 
@@ -201,6 +198,9 @@ PTLRPC_SRCS        = $(PTLRPC_PATH)/client.c \
                      $(PTLRPC_PATH)/events.c \
                      $(PTLRPC_PATH)/import.c \
                      $(PTLRPC_PATH)/layout.c \
+                     $(PTLRPC_PATH)/llog_client.c \
+                     $(PTLRPC_PATH)/llog_server.c \
+                     $(PTLRPC_PATH)/llog_net.c \
                      $(PTLRPC_PATH)/lproc_ptlrpc.c \
                      $(PTLRPC_PATH)/niobuf.c \
                      $(PTLRPC_PATH)/pack_generic.c \
@@ -209,6 +209,7 @@ PTLRPC_SRCS        = $(PTLRPC_PATH)/client.c \
                      $(PTLRPC_PATH)/ptlrpc_module.c \
                      $(PTLRPC_PATH)/ptlrpcd.c \
                      $(PTLRPC_PATH)/recover.c \
+                     $(PTLRPC_PATH)/recov_thread.c \
                      $(PTLRPC_PATH)/sec.c \
                      $(PTLRPC_PATH)/sec_bulk.c \
                      $(PTLRPC_PATH)/sec_config.c \
@@ -271,6 +272,20 @@ OST_SRCS           = $(OST_PATH)/ost_handler.c \
 ECHO_SRCS          = $(ECHO_PATH)/echo.c \
                      $(ECHO_PATH)/lproc_echo.c
 
+OFD_SRCS           = $(OFD_PATH)/lproc_ofd.c \
+                     $(OFD_PATH)/ofd_capa.c \
+                     $(OFD_PATH)/ofd_clients.c \
+                     $(OFD_PATH)/ofd_dev.c \
+                     $(OFD_PATH)/ofd_fmd.c \
+                     $(OFD_PATH)/ofd_fs.c \
+                     $(OFD_PATH)/ofd_grant.c \
+                     $(OFD_PATH)/ofd_io.c \
+                     $(OFD_PATH)/ofd_llog.c \
+                     $(OFD_PATH)/ofd_lvb.c \
+                     $(OFD_PATH)/ofd_obd.c \
+                     $(OFD_PATH)/ofd_objects.c \
+                     $(OFD_PATH)/ofd_recovery.c
+
 MKFS_LUSTRE_OBJS   = $(MKFS_LUSTRE_SRCS:.c=.o)
 MOUNT_LUSTRE_OBJS   = $(MOUNT_LUSTRE_SRCS:.c=.o)
 
@@ -301,10 +316,11 @@ OBDCLASS_OBJS = $(OBDCLASS_SRCS:%.c=kernel/%.o)
 MISC_OBJS     = $(MISC_SRCS:%.c=kernel/%.o)
 OST_OBJS      = $(OST_SRCS:%.c=kernel/%.o)
 ECHO_OBJS     = $(ECHO_SRCS:%.c=kernel/%.o)
+OFD_OBJS     =  $(OFD_SRCS:%.c=kernel/%.o)
 
 LUSTREFS_OBJS = $(LIBCFS_OBJS) $(LNET_OBJS) $(KSOCKLND_OBJS) $(KO2IBLND_OBJS)
 LUSTREFS_OBJS += $(SELFTEST_OBJS) $(PTLRPC_OBJS) $(LDLM_OBJS) $(OBDCLASS_OBJS)
-LUSTREFS_OBJS += $(MISC_OBJS) $(OST_OBJS) $(ECHO_OBJS)
+LUSTREFS_OBJS += $(MISC_OBJS) $(OST_OBJS) $(ECHO_OBJS) $(OFD_OBJS)
 
 MKFS_LUSTRE = $(LUSTRE_SOLARIS_UTILS_PATH)/mkfs.lustre
 MKFS_LUSTRE_LIBS = -lnvpair -lzfs
@@ -389,6 +405,7 @@ clean:
 	@mkdir -p kernel/lustre/lvfs
 	@mkdir -p kernel/lustre/ost
 	@mkdir -p kernel/lustre/obdecho
+	@mkdir -p kernel/lustre/ofd
 	@mkdir -p libcfs/libcfs/util
 	@mkdir -p lnet/utils
 	@mkdir -p lustre/utils/solaris

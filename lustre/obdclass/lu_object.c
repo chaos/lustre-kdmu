@@ -1223,7 +1223,7 @@ void lu_context_key_quiesce(struct lu_context_key *key)
         struct lu_context *ctx;
 
         if (!(key->lct_tags & LCT_QUIESCENT)) {
-#if !defined(SOLARIS_LSERVER)
+#if !defined(LUSTRE_SERVER_ONLY)
                 extern unsigned cl_env_cache_purge(unsigned nr);
                 /*
                  * XXX layering violation.
@@ -1532,7 +1532,7 @@ static int lu_cache_shrink(int nr, unsigned int gfp_mask)
 }
 #endif /* __KERNEL__ */
 
-#if !defined(SOLARIS_LSERVER)
+#if !defined(LUSTRE_SERVER_ONLY)
 int  cl_global_init(void);
 void cl_global_fini(void);
 #endif
@@ -1600,7 +1600,7 @@ int lu_global_init(void)
                 GOTO(out, result);
 #endif
 
-#if !defined(SOLARIS_LSERVER)
+#if !defined(LUSTRE_SERVER_ONLY)
         result = cl_global_init();
 #endif
 
@@ -1614,7 +1614,7 @@ out:
  */
 void lu_global_fini(void)
 {
-#if !defined(SOLARIS_LSERVER)
+#if !defined(LUSTRE_SERVER_ONLY)
         cl_global_fini();
 #endif
 #ifdef __KERNEL__

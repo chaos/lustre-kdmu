@@ -375,87 +375,7 @@ int llog_origin_handle_close(struct ptlrpc_request *req)
         RETURN(0);
 }
 
-int llog_origin_handle_cancel(struct ptlrpc_request *req)
-{
-        struct obd_device *obd = req->rq_export->exp_obd;
-        int num_cookies, rc = 0, err, i, failed = 0;
-        struct obd_device *disk_obd;
-        struct llog_cookie *logcookies;
-        struct llog_ctxt *ctxt = NULL;
-        struct lvfs_run_ctxt saved;
-        struct llog_handle *cathandle;
-        struct inode *inode;
-        void *handle;
-        ENTRY;
-
-        logcookies = req_capsule_client_get(&req->rq_pill, &RMF_LOGCOOKIES);
-        num_cookies = req_capsule_get_size(&req->rq_pill, &RMF_LOGCOOKIES,
-                                           RCL_CLIENT) / sizeof(*logcookies);
-        if (logcookies == NULL || num_cookies == 0) {
-                DEBUG_REQ(D_HA, req, "No llog cookies sent");
-                RETURN(-EFAULT);
-        }
-
-        ctxt = llog_get_context(obd, logcookies->lgc_subsys);
-        if (ctxt == NULL)
-                RETURN(-ENODEV);
-
-        disk_obd = ctxt->loc_exp->exp_obd;
-        push_ctxt(&saved, &disk_obd->obd_lvfs_ctxt, NULL);
-        for (i = 0; i < num_cookies; i++, logcookies++) {
-                cathandle = ctxt->loc_handle;
-                LASSERT(cathandle != NULL);
-                inode = cathandle->lgh_file->f_dentry->d_inode;
-
-                handle = fsfilt_start_log(disk_obd, inode,
-                                          FSFILT_OP_CANCEL_UNLINK, NULL, 1);
-                if (IS_ERR(handle)) {
-                        CERROR("fsfilt_start_log() failed: %ld\n",
-                               PTR_ERR(handle));
-                        GOTO(pop_ctxt, rc = PTR_ERR(handle));
-                }
-
-                rc = llog_cat_cancel_records(cathandle, 1, logcookies);
-
-                /*
-                 * Do not raise -ENOENT errors for resent rpcs. This rec already
-                 * might be killed.
-                 */
-                if (rc == -ENOENT &&
-                    (lustre_msg_get_flags(req->rq_reqmsg) & MSG_RESENT)) {
-                        /*
-                         * Do not change this message, reply-single.sh test_59b
-                         * expects to find this in log.
-                         */
-                        CDEBUG(D_RPCTRACE, "RESENT cancel req %p - ignored\n",
-                               req);
-                        rc = 0;
-                } else if (rc == 0) {
-                        CDEBUG(D_RPCTRACE, "Canceled %d llog-records\n",
-                               num_cookies);
-                }
-
-                err = fsfilt_commit(disk_obd, inode, handle, 0);
-                if (err) {
-                        CERROR("Error committing transaction: %d\n", err);
-                        if (!rc)
-                                rc = err;
-                        failed++;
-                        GOTO(pop_ctxt, rc);
-                } else if (rc)
-                        failed++;
-        }
-        GOTO(pop_ctxt, rc);
-pop_ctxt:
-        pop_ctxt(&saved, &disk_obd->obd_lvfs_ctxt, NULL);
-        if (rc)
-                CERROR("Cancel %d of %d llog-records failed: %d\n",
-                       failed, num_cookies, rc);
-
-        llog_ctxt_put(ctxt);
-        return rc;
-}
-EXPORT_SYMBOL(llog_origin_handle_cancel);
+#if 0
 
 static int llog_catinfo_config(struct obd_device *obd, char *buf, int buf_len,
                                char *client)
@@ -658,6 +578,22 @@ release_ctxt:
         return rc;
 }
 
+#else
+
+static int llog_catinfo_config(struct obd_device *obd, char *buf, int buf_len,
+                               char *client)
+{
+        return 0;
+}
+
+static int llog_catinfo_deletions(struct obd_device *obd, char *buf,
+                                  int buf_len)
+{
+        return 0;
+}
+
+#endif
+
 int llog_catinfo(struct ptlrpc_request *req)
 {
         struct obd_export *exp = req->rq_export;
@@ -734,11 +670,6 @@ int llog_origin_handle_read_header(struct ptlrpc_request *req)
         return 0;
 }
 int llog_origin_handle_close(struct ptlrpc_request *req)
-{
-        LBUG();
-        return 0;
-}
-int llog_origin_handle_cancel(struct ptlrpc_request *req)
 {
         LBUG();
         return 0;

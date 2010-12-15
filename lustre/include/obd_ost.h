@@ -55,7 +55,7 @@ struct osc_brw_async_args {
         struct client_obd *aa_cli;
         cfs_list_t         aa_oaps;
         struct obd_capa   *aa_ocapa;
-#if !defined(SOLARIS_LSERVER)
+#if !defined(LUSTRE_SERVER_ONLY)
         struct cl_req     *aa_clerq;
 #endif
 };

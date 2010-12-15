@@ -2525,7 +2525,7 @@ void obd_finalize(int argc, char **argv)
         do_disconnect(argv[0], 1);
 }
 
-#if !defined(SOLARIS_LSERVER)
+#if !defined(LUSTRE_SERVER_ONLY)
 
 static int check_pool_cmd(enum lcfg_command_type cmd,
                           char *fsname, char *poolname,
@@ -3046,7 +3046,7 @@ out:
         return rc;
 }
 
-#endif /* !SOLARIS_LSERVER */
+#endif /* !LUSTRE_SERVER_ONLY */
 
 int jt_get_obj_version(int argc, char **argv)
 {

@@ -1794,7 +1794,6 @@ int llog_origin_handle_prev_block(struct ptlrpc_request *req);
 int llog_origin_handle_next_block(struct ptlrpc_request *req);
 int llog_origin_handle_read_header(struct ptlrpc_request *req);
 int llog_origin_handle_close(struct ptlrpc_request *req);
-int llog_origin_handle_cancel(struct ptlrpc_request *req);
 int llog_catinfo(struct ptlrpc_request *req);
 
 /* ptlrpc/llog_client.c */

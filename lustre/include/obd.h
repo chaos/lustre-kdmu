@@ -1186,7 +1186,7 @@ enum obd_cleanup_stage {
 
 struct lu_context;
 
-#if !defined (SOLARIS_LSERVER)
+#if !defined (LUSTRE_SERVER_ONLY)
 
 static inline int it_to_lock_mode(struct lookup_intent *it)
 {
@@ -1200,7 +1200,7 @@ static inline int it_to_lock_mode(struct lookup_intent *it)
         return -EINVAL;
 }
 
-#endif /* !SOLARIS_LSERVER */
+#endif /* !LUSTRE_SERVER_ONLY */
 
 struct md_op_data {
         struct lu_fid           op_fid1; /* operation fid1 (usualy parent) */
@@ -1221,7 +1221,7 @@ struct md_op_data {
         cfs_cap_t               op_cap;
         void                   *op_data;
 
-#if !defined(SOLARIS_LSERVER)
+#if !defined(LUSTRE_SERVER_ONLY)
         /* iattr fields and blocks. */
         struct iattr            op_attr;
 #endif
@@ -1255,7 +1255,7 @@ typedef int (* md_enqueue_cb_t)(struct ptlrpc_request *req,
                                 struct md_enqueue_info *minfo,
                                 int rc);
 
-#if !defined(SOLARIS_LSERVER)
+#if !defined(LUSTRE_SERVER_ONLY)
 
 struct md_enqueue_info {
         struct md_op_data       mi_data;
@@ -1268,7 +1268,7 @@ struct md_enqueue_info {
         void                   *mi_cbdata;
 };
 
-#endif /* !SOLARIS_LSERVER */
+#endif /* !LUSTRE_SERVER_ONLY */
 
 struct obd_ops {
         cfs_module_t *o_owner;
@@ -1457,7 +1457,7 @@ struct lustre_md {
         struct mdt_body         *body;
         struct lov_stripe_md    *lsm;
         struct lmv_stripe_md    *mea;
-#if defined(CONFIG_FS_POSIX_ACL) && !defined(SOLARIS_LSERVER)
+#if defined(CONFIG_FS_POSIX_ACL) && !defined(LUSTRE_SERVER_ONLY)
         struct posix_acl        *posix_acl;
 #endif
         struct mdt_remote_perm  *remote_perm;
@@ -1659,9 +1659,9 @@ static inline struct md_open_data *obd_mod_alloc(void)
         }                                                       \
 })
 
-#if !defined(SOLARIS_LSERVER)
+#if !defined(LUSTRE_SERVER_ONLY)
 extern void obdo_from_inode(struct obdo *dst, struct inode *src,
                             struct lu_fid *parent, obd_flag valid);
-#endif /* !SOLARIS_LSERVER */
+#endif /* !LUSTRE_SERVER_ONLY */
 
 #endif /* __OBD_H */

@@ -2391,7 +2391,7 @@ int sptlrpc_current_user_desc_size(void)
 {
         int ngroups;
 
-#if defined(__KERNEL__) && !defined(SOLARIS_LSERVER)
+#if defined(__KERNEL__) && !defined(LUSTRE_SERVER_ONLY)
         ngroups = current_ngroups;
 
         if (ngroups > LUSTRE_MAX_GROUPS)
@@ -2416,7 +2416,7 @@ int sptlrpc_pack_user_desc(struct lustre_msg *msg, int offset)
         pud->pud_cap = cfs_curproc_cap_pack();
         pud->pud_ngroups = (msg->lm_buflens[offset] - sizeof(*pud)) / 4;
 
-#if defined(__KERNEL__) && !defined(SOLARIS_LSERVER)
+#if defined(__KERNEL__) && !defined(LUSTRE_SERVER_ONLY)
         task_lock(current);
         if (pud->pud_ngroups > current_ngroups)
                 pud->pud_ngroups = current_ngroups;

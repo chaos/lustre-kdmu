@@ -282,14 +282,14 @@ static inline struct lr_server_data *class_server_data(struct obd_device *obd)
 void obdo_cpy_md(struct obdo *dst, struct obdo *src, obd_flag valid);
 void obdo_to_ioobj(struct obdo *oa, struct obd_ioobj *ioobj);
 
-#if !defined(SOLARIS_LSERVER)
+#if !defined(LUSTRE_SERVER_ONLY)
 void obdo_from_iattr(struct obdo *oa, struct iattr *attr,
                      unsigned int ia_valid);
 void iattr_from_obdo(struct iattr *attr, struct obdo *oa, obd_flag valid);
 void md_from_obdo(struct md_op_data *op_data, struct obdo *oa, obd_flag valid);
 void obdo_from_md(struct obdo *oa, struct md_op_data *op_data,
                   unsigned int valid);
-#endif /* !SOLARIS_LSERVER */
+#endif /* !LUSTRE_SERVER_ONLY */
 
 #define OBT(dev)        (dev)->obd_type
 #define OBP(dev, op)    (dev)->obd_type->typ_dt_ops->o_ ## op
@@ -2133,6 +2133,11 @@ static inline int md_revalidate_lock(struct obd_export *exp,
 
 
 /* OBD Metadata Support */
+
+#ifdef __KERNEL__
+void obdo_from_la(struct obdo *dst, struct lu_attr *la, obd_flag valid);
+void la_from_obdo(struct lu_attr *la, struct obdo *dst, obd_flag valid);
+#endif
 
 extern int obd_init_caches(void);
 extern void obd_cleanup_caches(void);

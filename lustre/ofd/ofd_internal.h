@@ -5,9 +5,6 @@
 #ifndef _FILTER_INTERNAL_H
 #define _FILTER_INTERNAL_H
 
-#ifdef __KERNEL__
-# include <linux/spinlock.h>
-#endif
 #include <lustre/lustre_idl.h>
 #include <lustre_disk.h>
 #include <lustre_handles.h>
@@ -84,8 +81,6 @@ enum {
 //#define FILTER_MAX_CACHE_SIZE (32 * 1024 * 1024) /* was OBD_OBJECT_EOF */
 #define FILTER_MAX_CACHE_SIZE OBD_OBJECT_EOF
 
-void filter_tally(struct obd_export *exp, struct page **pages, int nr_pages,
-                  unsigned long *blocks, int blocks_per_page, int wr);
 int lproc_filter_attach_seqstat(struct obd_device *dev);
 void lprocfs_filter_init_vars(struct lprocfs_static_vars *lvars);
 
@@ -378,23 +373,15 @@ int filter_commitrw(int cmd, struct obd_export *exp,
                     struct obd_trans_info *oti, int rc);
 int filter_brw(int cmd, struct obd_export *, struct obd_info *oinfo,
                obd_count oa_bufs, struct brw_page *pga, struct obd_trans_info *);
-void flip_into_page_cache(struct inode *inode, struct page *new_page);
 
 /* filter_io_*.c */
 struct filter_iobuf;
 struct filter_iobuf *filter_alloc_iobuf(struct filter_obd *, int rw,
                                         int num_pages);
 void filter_free_iobuf(struct filter_iobuf *iobuf);
-int filter_iobuf_add_page(struct obd_device *obd, struct filter_iobuf *iobuf,
-                          struct inode *inode, struct page *page);
 void *filter_iobuf_get(struct filter_obd *filter, struct obd_trans_info *oti);
 void filter_iobuf_put(struct filter_obd *filter, struct filter_iobuf *iobuf,
                       struct obd_trans_info *oti);
-int filter_direct_io(int rw, struct dentry *dchild, struct filter_iobuf *iobuf,
-                     struct obd_export *exp, struct iattr *attr,
-                     struct obd_trans_info *oti, void **wait_handle);
-int filter_clear_truncated_page(struct inode *inode);
-
 /* filter_log.c */
 
 struct ost_filterdata {
@@ -403,11 +390,6 @@ struct ost_filterdata {
 int filter_llog_init(struct obd_device *obd, struct obd_llog_group *olg,
                      struct obd_device *tgt, int *idx);
 int filter_llog_finish(struct obd_device *obd, int count);
-int filter_log_sz_change(struct llog_handle *cathandle,
-                         struct ll_fid *mds_fid,
-                         __u32 ioepoch,
-                         struct llog_cookie *logcookie,
-                         struct inode *inode);
 void filter_cancel_cookies_cb(struct obd_device *obd, __u64 transno,
                               void *cb_data, int error);
 int filter_recov_log_mds_ost_cb(struct llog_handle *llh,

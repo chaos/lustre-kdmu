@@ -1838,18 +1838,6 @@ static int ldlm_callback_handler(struct ptlrpc_request *req)
                 rc = ldlm_handle_setinfo(req);
                 ldlm_callback_reply(req, rc);
                 RETURN(0);
-#if defined(LUSTRE_LOG_SERVER)
-        case OBD_LOG_CANCEL: /* remove this eventually - for 1.4.0 compat */
-                CERROR("shouldn't be handling OBD_LOG_CANCEL on DLM thread\n");
-                req_capsule_set(&req->rq_pill, &RQF_LOG_CANCEL);
-                if (OBD_FAIL_CHECK(OBD_FAIL_OBD_LOG_CANCEL_NET))
-                        RETURN(0);
-                rc = llog_origin_handle_cancel(req);
-                if (OBD_FAIL_CHECK(OBD_FAIL_OBD_LOG_CANCEL_REP))
-                        RETURN(0);
-                ldlm_callback_reply(req, rc);
-                RETURN(0);
-#endif /* LUSTRE_LOG_SERVER */
         case OBD_QC_CALLBACK:
                 req_capsule_set(&req->rq_pill, &RQF_QC_CALLBACK);
                 if (OBD_FAIL_CHECK(OBD_FAIL_OBD_QC_CALLBACK_NET))
@@ -2051,17 +2039,6 @@ static int ldlm_cancel_handler(struct ptlrpc_request *req)
                 if (rc)
                         break;
                 RETURN(0);
-#if defined(LUSTRE_LOG_SERVER)
-        case OBD_LOG_CANCEL:
-                req_capsule_set(&req->rq_pill, &RQF_LOG_CANCEL);
-                if (OBD_FAIL_CHECK(OBD_FAIL_OBD_LOG_CANCEL_NET))
-                        RETURN(0);
-                rc = llog_origin_handle_cancel(req);
-                if (OBD_FAIL_CHECK(OBD_FAIL_OBD_LOG_CANCEL_REP))
-                        RETURN(0);
-                ldlm_callback_reply(req, rc);
-                RETURN(0);
-#endif /* LUSTRE_LOG_SERVER */
         default:
                 CERROR("invalid opcode %d\n",
                        lustre_msg_get_opc(req->rq_reqmsg));

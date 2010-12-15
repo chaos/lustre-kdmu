@@ -103,7 +103,7 @@
 # include <liblustre.h>
 #endif
 
-#if !defined(SOLARIS_LSERVER)
+#if !defined(LUSTRE_SERVER_ONLY)
 # include <cl_object.h>
 #endif
 
@@ -1095,7 +1095,7 @@ static int ldlm_pools_shrink(ldlm_side_t client, int nr,
         CDEBUG(D_DLMTRACE, "Request to shrink %d %s locks from all pools\n",
                nr, client == LDLM_NAMESPACE_CLIENT ? "client" : "server");
 
-#if !defined(SOLARIS_LSERVER)
+#if !defined(LUSTRE_SERVER_ONLY)
         cookie = cl_env_reenter();
 #endif
 
@@ -1108,7 +1108,7 @@ static int ldlm_pools_shrink(ldlm_side_t client, int nr,
                 cfs_mutex_down(ldlm_namespace_lock(client));
                 if (cfs_list_empty(ldlm_namespace_list(client))) {
                         cfs_mutex_up(ldlm_namespace_lock(client));
-#if !defined(SOLARIS_LSERVER)
+#if !defined(LUSTRE_SERVER_ONLY)
                         cl_env_reexit(cookie);
 #endif
                         return 0;
@@ -1122,7 +1122,7 @@ static int ldlm_pools_shrink(ldlm_side_t client, int nr,
         }
 
         if (nr == 0 || total == 0) {
-#if !defined(SOLARIS_LSERVER)
+#if !defined(LUSTRE_SERVER_ONLY)
                 cl_env_reexit(cookie);
 #endif
                 return total;
@@ -1161,7 +1161,7 @@ static int ldlm_pools_shrink(ldlm_side_t client, int nr,
                 cached += ldlm_pool_granted(&ns->ns_pool);
                 ldlm_namespace_put(ns, 1);
         }
-#if !defined(SOLARIS_LSERVER)
+#if !defined(LUSTRE_SERVER_ONLY)
         cl_env_reexit(cookie);
 #endif
         return cached;

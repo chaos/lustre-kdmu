@@ -982,7 +982,7 @@ static int loadgen_init(int argc, char **argv)
 
         /* Test to make sure obdecho module is loaded */
         args[0] = cmdname;
-#if !defined(SOLARIS_LSERVER)
+#if !defined(LUSTRE_SERVER_ONLY)
         args[1] = "echo_client";
         args[2] = args[3] = "ecc_test";
 #else

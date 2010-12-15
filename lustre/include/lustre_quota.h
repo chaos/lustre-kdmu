@@ -48,6 +48,8 @@
 #include <darwin/lustre_quota.h>
 #elif defined(__WINNT__)
 #include <winnt/lustre_quota.h>
+#elif defined(__sun__)
+#include <solaris/lustre_quota.h>
 #else
 #error Unsupported operating system.
 #endif

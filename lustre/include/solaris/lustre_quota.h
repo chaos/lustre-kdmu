@@ -34,30 +34,11 @@
  * Lustre is a trademark of Sun Microsystems, Inc.
  */
 
-#ifndef _LINUX_LUSTRE_QUOTA_H
-#define _LINUX_LUSTRE_QUOTA_H
+#ifndef __SOLARIS_LUSTRE_QUOTA_H__
+#define __SOLARIS_LUSTRE_QUOTA_H__
 
 #ifndef _LUSTRE_QUOTA_H
 #error Do not #include this file directly. #include <lustre_quota.h> instead
 #endif
 
-#ifdef __KERNEL__
-#include <linux/version.h>
-#include <linux/fs.h>
-#include <linux/quota.h>
-#include <linux/quotaops.h>
-#endif
-
-#ifndef QUOTABLOCK_BITS
-#define QUOTABLOCK_BITS 10
-#endif
-
-#ifndef QUOTABLOCK_SIZE
-#define QUOTABLOCK_SIZE (1 << QUOTABLOCK_BITS)
-#endif
-
-#ifndef toqb
-#define toqb(x) (((x) + QUOTABLOCK_SIZE - 1) >> QUOTABLOCK_BITS)
-#endif
-
-#endif /* _LINUX_LUSTRE_QUOTA_H */
+#endif /* __SOLARIS_LUSTRE_QUOTA_H__ */

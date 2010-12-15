@@ -628,7 +628,7 @@ static struct obd_ops echo_obd_ops = {
         .o_cleanup         = echo_cleanup
 };
 
-#if !defined(SOLARIS_LSERVER)
+#if !defined(LUSTRE_SERVER_ONLY)
 extern int echo_client_init(void);
 extern void echo_client_exit(void);
 #endif
@@ -691,7 +691,7 @@ static int __init obdecho_init(void)
         if (rc != 0)
                 goto failed_1;
 
-#if !defined(SOLARIS_LSERVER)
+#if !defined(LUSTRE_SERVER_ONLY)
         rc = echo_client_init();
         if (rc == 0)
 #endif
@@ -706,7 +706,7 @@ static int __init obdecho_init(void)
 
 static void /*__exit*/ obdecho_exit(void)
 {
-#if !defined(SOLARIS_LSERVER)
+#if !defined(LUSTRE_SERVER_ONLY)
         echo_client_exit();
 #endif
         class_unregister_type(LUSTRE_ECHO_NAME);

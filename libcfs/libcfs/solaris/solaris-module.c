@@ -329,6 +329,7 @@ extern cfs_lumodule_desc_t ptlrpc_module_desc;
 extern cfs_lumodule_desc_t obdclass_module_desc;
 extern cfs_lumodule_desc_t ost_module_desc;
 extern cfs_lumodule_desc_t obdecho_module_desc;
+extern cfs_lumodule_desc_t ofd_module_desc;
 
 static int
 lustrefs_startup(void)
@@ -391,8 +392,17 @@ lustrefs_startup(void)
                 goto obdecho_fail;
         }
 
+        rc = ofd_module_desc.mdesc_init();
+
+        if (rc != 0) {
+                CDEBUG(D_ERROR, "ofd module init failed\n");
+                goto ofd_fail;
+        }
+
         return (0);
 
+ofd_fail:
+        obdecho_module_desc.mdesc_fini();
 obdecho_fail:
         ost_module_desc.mdesc_fini();
 ost_fail:
@@ -414,6 +424,7 @@ lnet_fail:
 static void
 lustrefs_shutdown(void)
 {
+        ofd_module_desc.mdesc_fini();
         obdecho_module_desc.mdesc_fini();
         ost_module_desc.mdesc_fini();
         ptlrpc_module_desc.mdesc_fini();
