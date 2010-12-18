@@ -99,7 +99,7 @@ int filter_trans_start(const struct lu_env *env,
                        struct thandle *th)
 {
         int rc;
-        rc = ofd->ofd_osd->dd_ops->dt_trans_start(env, ofd->ofd_osd, th);
+        rc = dt_trans_start(env, ofd->ofd_osd, th);
         if (rc)
                 CERROR("Cannot start transaction, err =%d\n", rc);
         return rc;
