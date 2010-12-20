@@ -1583,11 +1583,8 @@ replay_barrier_nosync() {
     local svc=${facet}_svc
 
     # check_no_seq_change
-    if [ ! -z "$CLIENTS" ]; then
-        $PDSH $CLIENTS "mcreate $MOUNT/fsa;rm $MOUNT/fsa" > /dev/null
-    else
-        mcreate $MOUNT/fsa;rm $MOUNT/fsa > /dev/null
-    fi
+    local clients=${CLIENTS:-$HOSTNAME}
+    do_nodes $clients "f=${MOUNT}/fsa-\\\$(hostname); mcreate \\\$f; rm \\\$f"
 
     do_facet $facet $LCTL --device %${!svc} notransno
     do_facet $facet $LCTL --device %${!svc} readonly

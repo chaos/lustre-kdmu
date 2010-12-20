@@ -409,24 +409,40 @@ out:
         RETURN(rc);
 }
 
+static struct lu_device *osp_device_free(const struct lu_env *env,
+                                         struct lu_device *lu)
+{
+        struct osp_device *m = lu2osp_dev(lu);
+        ENTRY;
+
+        dt_device_fini(&m->opd_dt_dev);
+        OBD_FREE_PTR(m);
+        RETURN(NULL);
+}
+
 static struct lu_device *osp_device_alloc(const struct lu_env *env,
                                           struct lu_device_type *t,
                                           struct lustre_cfg *lcfg)
 {
         struct osp_device *m;
-        struct lu_device   *l;
+        struct lu_device  *l;
 
         OBD_ALLOC_PTR(m);
         if (m == NULL) {
                 l = ERR_PTR(-ENOMEM);
         } else {
-                osp_init0(env, m, t, lcfg);
-                l = osp2lu_dev(m);
-                l->ld_ops = &osp_lu_ops;
-                m->opd_dt_dev.dd_ops = &osp_dt_ops;
-                /* XXX: dt_upcall_init(&m->opd_dt_dev, NULL); */
-        }
+                int rc;
 
+                l = osp2lu_dev(m);
+                rc = osp_init0(env, m, t, lcfg);
+                if (rc != 0) {
+                        osp_device_free(env, l);
+                        l = ERR_PTR(rc);
+                } else {
+                        l->ld_ops = &osp_lu_ops;
+                        m->opd_dt_dev.dd_ops = &osp_dt_ops;
+                }
+        }
         return l;
 }
 
@@ -461,19 +477,6 @@ static struct lu_device *osp_device_fini(const struct lu_env *env,
 
         RETURN(NULL);
 }
-
-static struct lu_device *osp_device_free(const struct lu_env *env,
-                                         struct lu_device *lu)
-{
-        struct osp_device *m = lu2osp_dev(lu);
-        ENTRY;
-
-        LASSERT(atomic_read(&lu->ld_ref) == 0);
-        dt_device_fini(&m->opd_dt_dev);
-        OBD_FREE_PTR(m);
-        RETURN(NULL);
-}
-
 
 static int osp_reconnect(const struct lu_env *env,
                          struct obd_export *exp, struct obd_device *obd,
