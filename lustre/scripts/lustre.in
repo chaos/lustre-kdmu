@@ -77,8 +77,9 @@ import_zpool ()
 	local pool=`$LDEV -z $label`
 	local args="-d /dev/disk/zpool"
 	local cache=`$LDEV -r $label`
+	# -c is incompatible with -d
 	if [ -n "$cache" ] ; then
-		args="$args -c $cache"
+		args="-c $cache"
 	fi
 
 	if zpool status $pool >/dev/null 2>&1 ; then
