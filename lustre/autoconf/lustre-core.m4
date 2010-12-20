@@ -8,7 +8,7 @@
 AC_DEFUN([LC_CONFIG_SRCDIR],
 [AC_CONFIG_SRCDIR([lustre/obdclass/obdo.c])
 libcfs_is_module=yes
-ldiskfs_is_ext4=no
+ldiskfs_is_ext4=yes
 ])
 
 #
@@ -1663,13 +1663,19 @@ LB_LINUX_TRY_COMPILE([
 ])
 ])
 
-# 2.6.27 sles11 move the quotaio_v1.h to fs
+#
+# 2.6.27 sles11 move the quotaio_v1{2}.h from include/linux to fs
+# 2.6.32 move the quotaio_v1{2}.h from fs to fs/quota
 AC_DEFUN([LC_HAVE_QUOTAIO_V1_H],
 [LB_CHECK_FILE([$LINUX/include/linux/quotaio_v1.h],[
         AC_DEFINE(HAVE_QUOTAIO_V1_H, 1,
                 [kernel has include/linux/quotaio_v1.h])
+],[LB_CHECK_FILE([$LINUX/fs/quota/quotaio_v1.h],[
+               AC_DEFINE(HAVE_FS_QUOTA_QUOTAIO_V1_H, 1,
+                [kernel has fs/quota/quotaio_v1.h])
 ],[
         AC_MSG_RESULT([no])
+])
 ])
 ])
 
@@ -1856,6 +1862,66 @@ LB_LINUX_TRY_COMPILE([
 ])
 ])
 
+# 2.6.32 without DQUOT_INIT defined.
+AC_DEFUN([LC_DQUOT_INIT],
+[AC_MSG_CHECKING([if DQUOT_INIT is defined])
+LB_LINUX_TRY_COMPILE([
+        #include <linux/quotaops.h>
+],[
+        DQUOT_INIT(NULL);
+],[
+        AC_MSG_RESULT(yes)
+        AC_DEFINE(HAVE_DQUOT_INIT, 1,
+                  [DQUOT_INIT is defined])
+],[
+        AC_MSG_RESULT(no)
+])
+])
+
+# 2.6.32 add a limits member in struct request_queue.
+AC_DEFUN([LC_REQUEST_QUEUE_LIMITS],
+[AC_MSG_CHECKING([if request_queue has a limits field])
+LB_LINUX_TRY_COMPILE([
+        #include <linux/blkdev.h>
+],[
+        struct request_queue rq;
+        rq.limits.io_min = 0;
+],[
+        AC_MSG_RESULT(yes)
+        AC_DEFINE(HAVE_REQUEST_QUEUE_LIMITS, 1,
+                  [request_queue has a limits field])
+],[
+        AC_MSG_RESULT(no)
+])
+])
+
+# 2.6.32 has new BDI interface.
+AC_DEFUN([LC_NEW_BACKING_DEV_INFO],
+[AC_MSG_CHECKING([if backing_dev_info has a wb_cnt field])
+LB_LINUX_TRY_COMPILE([
+        #include <linux/backing-dev.h>
+],[
+        struct backing_dev_info bdi;
+        bdi.wb_cnt = 0;
+],[
+        AC_MSG_RESULT(yes)
+        AC_DEFINE(HAVE_NEW_BACKING_DEV_INFO, 1,
+                  [backing_dev_info has a wb_cnt field])
+],[
+        AC_MSG_RESULT(no)
+])
+])
+
+# 2.6.24 has bdi_init()/bdi_destroy() functions.
+AC_DEFUN([LC_EXPORT_BDI_INIT],
+[LB_CHECK_SYMBOL_EXPORT([bdi_init],
+[mm/backing-dev.c],[
+        AC_DEFINE(HAVE_BDI_INIT, 1,
+                [bdi_init/bdi_destroy functions are present])
+],[
+])
+])
+
 #
 # LC_PROG_LINUX
 #
@@ -1909,7 +1975,6 @@ AC_DEFUN([LC_PROG_LINUX],
          LC_FUNC_RCU
          LC_PERCPU_COUNTER
          LC_TASK_CLENV_STORE
-         LC_QUOTA64
          LC_4ARGS_VFS_SYMLINK
 
          # does the kernel have VFS intent patches?
@@ -1969,6 +2034,7 @@ AC_DEFUN([LC_PROG_LINUX],
          LC_STRUCT_HASH_DESC
          LC_STRUCT_BLKCIPHER_DESC
          LC_FS_RENAME_DOES_D_MOVE
+
          # 2.6.23
          LC_UNREGISTER_BLKDEV_RETURN_INT
          LC_KERNEL_SPLICE_READ
@@ -1982,6 +2048,7 @@ AC_DEFUN([LC_PROG_LINUX],
          LC_BIO_ENDIO_2ARG
          LC_FH_TO_DENTRY
          LC_PROCFS_DELETED
+         LC_EXPORT_BDI_INIT
 
          #2.6.25
          LC_MAPPING_CAP_WRITEBACK_DIRTY
@@ -2009,6 +2076,18 @@ AC_DEFUN([LC_PROG_LINUX],
 
          # 2.6.31
          LC_BLK_QUEUE_LOG_BLK_SIZE
+
+         # 2.6.32
+         LC_DQUOT_INIT
+         LC_REQUEST_QUEUE_LIMITS
+         LC_NEW_BACKING_DEV_INFO
+
+         #
+         if test x$enable_server = xyes ; then
+                if test x$enable_quota_module = xyes ; then
+                        LC_QUOTA64    # must after LC_HAVE_QUOTAIO_V1_H
+                fi
+         fi
 ])
 
 #
@@ -2315,26 +2394,25 @@ LB_LINUX_TRY_COMPILE([
 # LC_QUOTA64
 # linux kernel have 64-bit limits support
 #
-AC_DEFUN([LC_QUOTA64],
-[if test x$enable_quota_module = xyes -a x$enable_server = xyes ; then
+AC_DEFUN([LC_QUOTA64],[
         AC_MSG_CHECKING([if kernel has 64-bit quota limits support])
+tmp_flags="$EXTRA_KCFLAGS"
+EXTRA_KCFLAGS="-I$LINUX/fs"
         LB_LINUX_TRY_COMPILE([
                 #include <linux/kernel.h>
                 #include <linux/fs.h>
-                #include <linux/quotaio_v2.h>
+                #ifdef HAVE_QUOTAIO_V1_H
+                # include <linux/quotaio_v2.h>
                 int versions[] = V2_INITQVERSIONS_R1;
                 struct v2_disk_dqblk_r1 dqblk_r1;
-        ],[],[
-                AC_DEFINE(HAVE_QUOTA64, 1, [have quota64])
-                AC_MSG_RESULT([yes])
-        ],[
-        tmp_flags="$EXTRA_KCFLAGS"
-        EXTRA_KCFLAGS="-I$LINUX/fs"
-        LB_LINUX_TRY_COMPILE([
-                #include <linux/kernel.h>
-                #include <linux/fs.h>
-                #include <quotaio_v2.h>
+                #else
+                # ifdef HAVE_FS_QUOTA_QUOTAIO_V1_H
+                #  include <quota/quotaio_v2.h>
+                # else
+                #  include <quotaio_v2.h>
+                # endif
                 struct v2r1_disk_dqblk dqblk_r1;
+                #endif
         ],[],[
                 AC_DEFINE(HAVE_QUOTA64, 1, [have quota64])
                 AC_MSG_RESULT([yes])
@@ -2344,9 +2422,7 @@ AC_DEFUN([LC_QUOTA64],
                 ],[])
                 AC_MSG_RESULT([no])
         ])
-        EXTRA_KCFLAGS=$tmp_flags
-        ])
-fi
+EXTRA_KCFLAGS=$tmp_flags
 ])
 
 # LC_SECURITY_PLUG  # for SLES10 SP2
@@ -2509,6 +2585,17 @@ AC_MSG_CHECKING([whether to track references with lu_ref])
 AC_MSG_RESULT([$enable_lu_ref])
 if test x$enable_lu_ref = xyes ; then
         AC_DEFINE([USE_LU_REF], 1, [enable lu_ref reference tracking code])
+fi
+
+AC_ARG_ENABLE([pgstate-track],
+              AC_HELP_STRING([--enable-pgstate-track],
+                             [enable page state tracking]),
+              [enable_pgstat_track='yes'],[])
+AC_MSG_CHECKING([whether to enable page state tracking])
+AC_MSG_RESULT([$enable_pgstat_track])
+if test x$enable_pgstat_track = xyes ; then
+        AC_DEFINE([LUSTRE_PAGESTATE_TRACKING], 1,
+                  [enable page state tracking code])
 fi
 
          #2.6.29

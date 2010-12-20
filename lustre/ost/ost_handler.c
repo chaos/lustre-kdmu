@@ -99,7 +99,7 @@ static int ost_validate_obdo(struct obd_export *exp, struct obdo *oa,
                         ioobj->ioo_seq = FID_SEQ_OST_MDT0;
         /* remove fid_seq_is_rsvd() after FID-on-OST allows SEQ > 9 */
         } else if (oa == NULL ||
-                   !(fid_seq_is_rsvd(oa->o_seq) || fid_seq_is_idif(oa->o_seq))) {
+                   !(fid_seq_is_rsvd(oa->o_seq) || fid_seq_is_mdt0(oa->o_seq))) {
                 CERROR("%s: client %s sent invalid object "POSTID"\n",
                        exp->exp_obd->obd_name, obd_export_nid2str(exp),
                        oa ? oa->o_id : -1, oa ? oa->o_seq : -1);
@@ -273,6 +273,8 @@ static int ost_getattr(struct obd_export *exp, struct ptlrpc_request *req)
         if (rc)
                 RETURN(rc);
 
+        oinfo.oi_env = req->rq_svc_thread->t_env;
+        LASSERT(oinfo.oi_env);
         oinfo.oi_oa = &repbody->oa;
         if (oinfo.oi_oa->o_valid & OBD_MD_FLOSSCAPA) {
                 oinfo.oi_capa = req_capsule_client_get(&req->rq_pill,
@@ -2543,7 +2545,7 @@ static int ost_setup(struct obd_device *obd, struct lustre_cfg* lcfg)
                 GOTO(out_lprocfs, rc = -ENOMEM);
         }
 
-        rc = ptlrpc_start_threads(obd, ost->ost_service);
+        rc = ptlrpc_start_threads(ost->ost_service);
         if (rc)
                 GOTO(out_service, rc = -EINVAL);
 
@@ -2572,7 +2574,7 @@ static int ost_setup(struct obd_device *obd, struct lustre_cfg* lcfg)
                 GOTO(out_service, rc = -ENOMEM);
         }
 
-        rc = ptlrpc_start_threads(obd, ost->ost_create_service);
+        rc = ptlrpc_start_threads(ost->ost_create_service);
         if (rc)
                 GOTO(out_create, rc = -EINVAL);
 
@@ -2592,7 +2594,7 @@ static int ost_setup(struct obd_device *obd, struct lustre_cfg* lcfg)
         ost->ost_io_service->srv_init = ost_thread_init;
         ost->ost_io_service->srv_done = ost_thread_done;
         ost->ost_io_service->srv_cpu_affinity = 1;
-        rc = ptlrpc_start_threads(obd, ost->ost_io_service);
+        rc = ptlrpc_start_threads(ost->ost_io_service);
         if (rc)
                 GOTO(out_io, rc = -EINVAL);
 

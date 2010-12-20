@@ -260,10 +260,15 @@ void cfs_stack_trace_fill(struct cfs_stack_trace *trace);
  */
 void *cfs_stack_trace_frame(struct cfs_stack_trace *trace, int frame_no);
 
+#ifndef O_NOACCESS
+#define O_NOACCESS O_NONBLOCK
+#endif
+
 /*
  * Universal open flags.
  */
-#define CFS_O_ACCMODE           0003
+#define CFS_O_NOACCESS          0003
+#define CFS_O_ACCMODE           CFS_O_NOACCESS
 #define CFS_O_CREAT             0100
 #define CFS_O_EXCL              0200
 #define CFS_O_NOCTTY            0400
@@ -303,6 +308,7 @@ void cfs_get_random_bytes(void *buf, int size);
 #include <libcfs/libcfs_kernelcomm.h>
 #include <libcfs/libcfs_workitem.h>
 #include <libcfs/libcfs_hash.h>
+#include <libcfs/params_tree.h>
 
 /* container_of depends on "likely" which is defined in libcfs_private.h */
 static inline void *__container_of(void *ptr, unsigned long shift)

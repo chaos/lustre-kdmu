@@ -66,6 +66,10 @@ static inline void mdd_quota_wrapper(struct lu_attr *la, unsigned int *qids)
 }
 #endif
 
+/* PDO lock is unnecessary for current MDT stack because operations
+ * are already protected by ldlm lock */
+#define MDD_DISABLE_PDO_LOCK    1
+
 enum mdd_txn_op {
         MDD_TXN_OBJECT_DESTROY_OP = 0,
         MDD_TXN_OBJECT_CREATE_OP,
@@ -103,7 +107,6 @@ struct mdd_txn_op_descr {
 #ifdef XXX_MDD_CHANGELOG
 struct mdd_changelog {
         cfs_spinlock_t                   mc_lock;    /* for index */
-        cfs_waitq_t                      mc_waitq;
         int                              mc_flags;
         int                              mc_mask;
         __u64                            mc_index;
@@ -397,6 +400,8 @@ int mdd_readpage(const struct lu_env *env, struct md_object *obj,
 void mdd_object_make_hint(const struct lu_env *env, struct mdd_object *parent,
                           struct mdd_object *child, struct lu_attr *attr);
 
+int mdd_changelog(const struct lu_env *env, enum changelog_rec_type type,
+                  int flags, struct md_object *obj);
 /* mdd_quota.c*/
 int mdd_quota_setup(const struct lu_env *env, struct md_device *m,
                     void *data);

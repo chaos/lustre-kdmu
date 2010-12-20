@@ -3896,7 +3896,7 @@ static int mdt_start_ptlrpc_service(struct mdt_device *m)
         if (m->mdt_regular_service == NULL)
                 RETURN(-ENOMEM);
 
-        rc = ptlrpc_start_threads(NULL, m->mdt_regular_service);
+        rc = ptlrpc_start_threads(m->mdt_regular_service);
         if (rc)
                 GOTO(err_mdt_svc, rc);
 
@@ -3926,7 +3926,7 @@ static int mdt_start_ptlrpc_service(struct mdt_device *m)
                 GOTO(err_mdt_svc, rc = -ENOMEM);
         }
 
-        rc = ptlrpc_start_threads(NULL, m->mdt_readpage_service);
+        rc = ptlrpc_start_threads(m->mdt_readpage_service);
 
         /*
          * setattr service configuration.
@@ -3954,7 +3954,7 @@ static int mdt_start_ptlrpc_service(struct mdt_device *m)
                 GOTO(err_mdt_svc, rc = -ENOMEM);
         }
 
-        rc = ptlrpc_start_threads(NULL, m->mdt_setattr_service);
+        rc = ptlrpc_start_threads(m->mdt_setattr_service);
         if (rc)
                 GOTO(err_mdt_svc, rc);
 
@@ -3983,7 +3983,7 @@ static int mdt_start_ptlrpc_service(struct mdt_device *m)
                 GOTO(err_mdt_svc, rc = -ENOMEM);
         }
 
-        rc = ptlrpc_start_threads(NULL, m->mdt_mdsc_service);
+        rc = ptlrpc_start_threads(m->mdt_mdsc_service);
         if (rc)
                 GOTO(err_mdt_svc, rc);
 
@@ -4012,7 +4012,7 @@ static int mdt_start_ptlrpc_service(struct mdt_device *m)
                 GOTO(err_mdt_svc, rc = -ENOMEM);
         }
 
-        rc = ptlrpc_start_threads(NULL, m->mdt_mdss_service);
+        rc = ptlrpc_start_threads(m->mdt_mdss_service);
         if (rc)
                 GOTO(err_mdt_svc, rc);
 
@@ -4044,7 +4044,7 @@ static int mdt_start_ptlrpc_service(struct mdt_device *m)
                 GOTO(err_mdt_svc, rc = -ENOMEM);
         }
 
-        rc = ptlrpc_start_threads(NULL, m->mdt_dtss_service);
+        rc = ptlrpc_start_threads(m->mdt_dtss_service);
         if (rc)
                 GOTO(err_mdt_svc, rc);
 
@@ -4071,7 +4071,7 @@ static int mdt_start_ptlrpc_service(struct mdt_device *m)
                 GOTO(err_mdt_svc, rc = -ENOMEM);
         }
 
-        rc = ptlrpc_start_threads(NULL, m->mdt_fld_service);
+        rc = ptlrpc_start_threads(m->mdt_fld_service);
         if (rc)
                 GOTO(err_mdt_svc, rc);
 
@@ -4101,7 +4101,7 @@ static int mdt_start_ptlrpc_service(struct mdt_device *m)
                 GOTO(err_mdt_svc, rc = -ENOMEM);
         }
 
-        rc = ptlrpc_start_threads(NULL, m->mdt_xmds_service);
+        rc = ptlrpc_start_threads(m->mdt_xmds_service);
         if (rc)
                 GOTO(err_mdt_svc, rc);
 
@@ -4623,7 +4623,8 @@ static int mdt_init0(const struct lu_env *env, struct mdt_device *m,
                  LUSTRE_MDT_NAME"-%p", m);
         m->mdt_namespace = ldlm_namespace_new(obd, info->mti_u.ns_name,
                                               LDLM_NAMESPACE_SERVER,
-                                              LDLM_NAMESPACE_GREEDY);
+                                              LDLM_NAMESPACE_GREEDY,
+                                              LDLM_NS_TYPE_MDT);
         if (m->mdt_namespace == NULL)
                 GOTO(err_fini_seq, rc = -ENOMEM);
 
@@ -5032,12 +5033,9 @@ static int mdt_obd_connect(const struct lu_env *env,
 
         rc = mdt_connect_internal(lexp, mdt, data);
         if (rc == 0) {
-                struct mdt_thread_info *mti;
                 struct lsd_client_data *lcd = lexp->exp_target_data.ted_lcd;
                 LASSERT(lcd);
-                mti = lu_context_key_get(&env->le_ctx, &mdt_thread_key);
-                LASSERT(mti != NULL);
-                mti->mti_exp = lexp;
+                info->mti_exp = lexp;
                 memcpy(lcd->lcd_uuid, cluuid, sizeof lcd->lcd_uuid);
                 rc = mdt_client_new(env, mdt);
                 if (rc == 0)

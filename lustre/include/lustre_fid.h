@@ -108,6 +108,7 @@ enum local_oid {
         MDT_LAST_RECV_OID       = 11UL,
         /** \see osd_mod_init */
         OSD_REM_OBJ_DIR_OID     = 12UL,
+        OSD_FS_ROOT_OID         = 13UL,
         /** \see mds_quota_setup(TODO) */
         QUOTA_SLAVE_UID_OID     = 15UL,
         QUOTA_SLAVE_GID_OID     = 16UL,
@@ -350,6 +351,13 @@ static inline __u64 fid_flatten(const struct lu_fid *fid)
         RETURN(ino ? ino : fid_oid(fid));
 }
 
+static inline __u32 fid_hash(const struct lu_fid *f, int bits)
+{
+        /* all objects with same id and different versions will belong to same
+         * collisions list. */
+        return cfs_hash_long(fid_flatten(f), bits);
+}
+
 /**
  * map fid to 32 bit value for ino on 32bit systems. */
 static inline __u32 fid_flatten32(const struct lu_fid *fid)
@@ -364,11 +372,11 @@ static inline __u32 fid_flatten32(const struct lu_fid *fid)
 
         seq = fid_seq(fid) - FID_SEQ_START;
 
-	/*
+        /*
           map the high bits of the OID into higher bits of the inode number so that
           inodes generated at about the same time have a reduced chance of collisions.
           This will give a period of 1024 clients and 128 k = 128M inodes without collisions.
-	*/
+        */
 
         ino = ((seq & 0x000fffffULL) << 12) + ((seq >> 8) & 0xfffff000) +
                (seq >> (64 - (40-8)) & 0xffffff00) +
@@ -385,28 +393,32 @@ static inline void range_cpu_to_le(struct lu_seq_range *dst, const struct lu_seq
 {
         dst->lsr_start = cpu_to_le64(src->lsr_start);
         dst->lsr_end = cpu_to_le64(src->lsr_end);
-        dst->lsr_mdt = cpu_to_le32(src->lsr_mdt);
+        dst->lsr_index = cpu_to_le32(src->lsr_index);
+        dst->lsr_flags = cpu_to_le32(src->lsr_flags);
 }
 
 static inline void range_le_to_cpu(struct lu_seq_range *dst, const struct lu_seq_range *src)
 {
         dst->lsr_start = le64_to_cpu(src->lsr_start);
         dst->lsr_end = le64_to_cpu(src->lsr_end);
-        dst->lsr_mdt = le32_to_cpu(src->lsr_mdt);
+        dst->lsr_index = le32_to_cpu(src->lsr_index);
+        dst->lsr_flags = le32_to_cpu(src->lsr_flags);
 }
 
 static inline void range_cpu_to_be(struct lu_seq_range *dst, const struct lu_seq_range *src)
 {
         dst->lsr_start = cpu_to_be64(src->lsr_start);
         dst->lsr_end = cpu_to_be64(src->lsr_end);
-        dst->lsr_mdt = cpu_to_be32(src->lsr_mdt);
+        dst->lsr_index = cpu_to_be32(src->lsr_index);
+        dst->lsr_flags = cpu_to_be32(src->lsr_flags);
 }
 
 static inline void range_be_to_cpu(struct lu_seq_range *dst, const struct lu_seq_range *src)
 {
         dst->lsr_start = be64_to_cpu(src->lsr_start);
         dst->lsr_end = be64_to_cpu(src->lsr_end);
-        dst->lsr_mdt = be32_to_cpu(src->lsr_mdt);
+        dst->lsr_index = be32_to_cpu(src->lsr_index);
+        dst->lsr_flags = be32_to_cpu(src->lsr_flags);
 }
 
 /** @} fid */

@@ -157,23 +157,32 @@ static inline void
 osd_push_ctxt(const struct lu_env *env, struct osd_ctxt *save)
 {
         struct md_ucred    *uc = md_ucred(env);
+        struct cred        *tc;
 
         LASSERT(uc != NULL);
 
-        save->oc_uid = current->fsuid;
-        save->oc_gid = current->fsgid;
-        save->oc_cap = current->cap_effective;
-        current->fsuid         = uc->mu_fsuid;
-        current->fsgid         = uc->mu_fsgid;
-        current->cap_effective = uc->mu_cap;
+        save->oc_uid = current_fsuid();
+        save->oc_gid = current_fsgid();
+        save->oc_cap = current_cap();
+        if ((tc = prepare_creds())) {
+                tc->fsuid         = uc->mu_fsuid;
+                tc->fsgid         = uc->mu_fsgid;
+                tc->cap_effective = uc->mu_cap;
+                commit_creds(tc);
+        }
 }
 
 static inline void
 osd_pop_ctxt(struct osd_ctxt *save)
 {
-        current->fsuid         = save->oc_uid;
-        current->fsgid         = save->oc_gid;
-        current->cap_effective = save->oc_cap;
+        struct cred *tc;
+
+        if ((tc = prepare_creds())) {
+                tc->fsuid         = save->oc_uid;
+                tc->fsgid         = save->oc_gid;
+                tc->cap_effective = save->oc_cap;
+                commit_creds(tc);
+        }
 }
 #endif
 
@@ -205,10 +214,7 @@ static int osd_write_locked(const struct lu_env *env, struct osd_object *o)
 static int osd_root_get(const struct lu_env *env,
                         struct dt_device *dev, struct lu_fid *f)
 {
-        struct inode *inode;
-
-        inode = osd_sb(osd_dt_dev(dev))->s_root->d_inode;
-        LU_IGIF_BUILD(f, inode->i_ino, inode->i_generation);
+        lu_local_obj_fid(f, OSD_FS_ROOT_OID);
         return 0;
 }
 
@@ -297,7 +303,7 @@ static int osd_fid_lookup(const struct lu_env *env,
 
         LINVRNT(osd_invariant(obj));
         LASSERT(obj->oo_inode == NULL);
-        LASSERT(fid_is_sane(fid) || osd_fid_is_root(fid) || fid_is_idif(fid));
+        LASSERT(fid_is_sane(fid) || fid_is_idif(fid));
         /*
          * This assertion checks that osd layer sees only local
          * fids. Unfortunately it is somewhat expensive (does a

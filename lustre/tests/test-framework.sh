@@ -144,9 +144,16 @@ init_test_env() {
     if ! echo $PATH | grep -q $LUSTRE/tests; then
         export PATH=$LUSTRE/tests:$PATH
     fi
+    if ! echo $PATH | grep -q $LUSTRE/../lustre-iokit/sgpdd-survey; then
+        export PATH=$PATH:$LUSTRE/../lustre-iokit/sgpdd-survey
+    fi
     export LST=${LST:-"$LUSTRE/../lnet/utils/lst"}
     [ ! -f "$LST" ] && export LST=$(which lst)
-    export SGPDDSURVEY=${SGPDDSURVEY:-$(which sgpdd-survey)}
+    export SGPDDSURVEY=${SGPDDSURVEY:-"$LUSTRE/../lustre-iokit/sgpdd-survey/sgpdd-survey")}
+    [ ! -f "$SGPDDSURVEY" ] && export SGPDDSURVEY=$(which sgpdd-survey)
+    # Ubuntu, at least, has a truncate command in /usr/bin
+    # so fully path our truncate command.
+    export TRUNCATE=${TRUNCATE:-$LUSTRE/tests/truncate}
     export MDSRATE=${MDSRATE:-"$LUSTRE/tests/mpi/mdsrate"}
     [ ! -f "$MDSRATE" ] && export MDSRATE=$(which mdsrate 2> /dev/null)
     if ! echo $PATH | grep -q $LUSTRE/tests/racer; then
@@ -333,7 +340,7 @@ load_modules_local() {
     fi
 
     echo Loading modules from $LUSTRE
-    load_module ../libcfs/libcfs/libcfs
+    load_module ../libcfs/libcfs/libcfs libcfs_panic_on_lbug=0
     [ "$PTLDEBUG" ] && lctl set_param debug="$PTLDEBUG"
     [ "$SUBSYSTEM" ] && lctl set_param subsystem_debug="${SUBSYSTEM# }"
     load_module ../lnet/lnet/lnet
@@ -1058,22 +1065,38 @@ boot_node() {
     fi
 }
 
-# recovery-scale functions
-check_progs_installed () {
-    local clients=$1
-    shift
-    local progs=$@
+facets_hosts () {
+    local facets=$1
+    local hosts
 
-    do_nodes $clients "PATH=:$PATH; status=true;
-for prog in $progs; do
-    if ! [ \\\"\\\$(which \\\$prog)\\\"  -o  \\\"\\\${!prog}\\\" ]; then
-       echo \\\$prog missing on \\\$(hostname);
-       status=false;
-    fi
-done;
-eval \\\$status"
+    for facet in ${facets//,/ }; do
+        hosts=$(expand_list $hosts $(facet_host $facet) )
+    done
+
+    echo $hosts
 }
 
+_check_progs_installed () {
+    local progs=$@
+    local rc=0
+
+    for prog in $progs; do
+        if ! [ "$(which $prog)"  -o  "${!prog}" ]; then
+           echo $prog missing on $(hostname)
+           rc=1
+        fi
+    done
+    return $rc
+}
+
+check_progs_installed () {
+    local nodes=$1
+    shift
+
+    do_rpc_nodes $nodes _check_progs_installed $@
+}
+
+# recovery-scale functions
 client_var_name() {
     echo __$(echo $1 | tr '-' 'X')
 }
@@ -1529,11 +1552,7 @@ facet_failover() {
 
     echo "Failing $facet on node $host"
 
-    local affected=$facet
-
-    if [ "$FAILURE_MODE" = HARD ]; then
-        affected=$(facets_on_host $host)
-    fi
+    local affected=$(affected_facets $facet)
 
     shutdown_facet $facet
 
@@ -1552,9 +1571,7 @@ facet_failover() {
     fi
     # FIXME; has to be changed to mount all facets concurrently
     affected=$(exclude_items_from_list $affected mgs)
-    for facet in ${affected//,/ }; do
-        mount_facet $facet || error "Restart of $facet on node $host failed!"
-    done
+    mount_facets $affected
 }
 
 obd_name() {
@@ -4732,3 +4749,15 @@ run_sgpdd () {
     cat ${rslt}.detail
 }
 
+# returns the canonical name for an ldiskfs device
+ldiskfs_canon() {
+        local dev="$1"
+        local facet="$2"
+
+        do_facet $facet "dv=\\\$(lctl get_param -n $dev);
+if foo=\\\$(lvdisplay -c \\\$dv 2>/dev/null); then
+    echo dm-\\\${foo##*:};
+else
+    echo \\\$(basename \\\$dv);
+fi;"
+}

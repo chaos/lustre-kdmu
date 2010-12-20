@@ -382,6 +382,7 @@ static void osp_object_release(const struct lu_env *env, struct lu_object *o)
                 set_bit(LU_OBJECT_HEARD_BANSHEE, &o->lo_header->loh_flags);
         }
 
+#if 0
         /*
          * XXX: this is a small dirty hack to deal with objects
          * allocated with lu_object_anon() and not put into lu_site
@@ -400,6 +401,7 @@ static void osp_object_release(const struct lu_env *env, struct lu_object *o)
                 s->ls_busy++;
                 s->ls_total++;
         }
+#endif
 }
 
 static int osp_object_print(const struct lu_env *env, void *cookie,

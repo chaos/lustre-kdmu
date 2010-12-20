@@ -827,11 +827,11 @@ int ldlm_server_completion_ast(struct ldlm_lock *lock, int flags, void *data)
         if (req == NULL)
                 RETURN(-ENOMEM);
 
-        lock_res_and_lock(lock);
-        if (lock->l_resource->lr_lvb_len)
+        /* server namespace, doesn't need lock */
+        if (lock->l_resource->lr_lvb_len) {
                  req_capsule_set_size(&req->rq_pill, &RMF_DLM_LVB, RCL_CLIENT,
                                       lock->l_resource->lr_lvb_len);
-        unlock_res_and_lock(lock);
+        }
 
         rc = ptlrpc_request_pack(req, LUSTRE_DLM_VERSION, LDLM_CP_CALLBACK);
         if (rc) {
@@ -938,10 +938,9 @@ int ldlm_server_glimpse_ast(struct ldlm_lock *lock, void *data)
         body->lock_handle[0] = lock->l_remote_handle;
         ldlm_lock2desc(lock, &body->lock_desc);
 
-        lock_res_and_lock(lock);
+        /* server namespace, doesn't need lock */
         req_capsule_set_size(&req->rq_pill, &RMF_DLM_LVB, RCL_SERVER,
                              lock->l_resource->lr_lvb_len);
-        unlock_res_and_lock(lock);
         res = lock->l_resource;
         ptlrpc_request_set_replen(req);
 
@@ -2307,10 +2306,9 @@ static void *
 ldlm_export_lock_key(cfs_hlist_node_t *hnode)
 {
         struct ldlm_lock *lock;
-        ENTRY;
 
         lock = cfs_hlist_entry(hnode, struct ldlm_lock, l_exp_hash);
-        RETURN(&lock->l_remote_handle);
+        return &lock->l_remote_handle;
 }
 
 static void
@@ -2325,8 +2323,7 @@ ldlm_export_lock_keycpy(cfs_hlist_node_t *hnode, void *key)
 static int
 ldlm_export_lock_keycmp(void *key, cfs_hlist_node_t *hnode)
 {
-        ENTRY;
-        RETURN(lustre_handle_equal(ldlm_export_lock_key(hnode), key));
+        return lustre_handle_equal(ldlm_export_lock_key(hnode), key);
 }
 
 static void *
@@ -2335,28 +2332,22 @@ ldlm_export_lock_object(cfs_hlist_node_t *hnode)
         return cfs_hlist_entry(hnode, struct ldlm_lock, l_exp_hash);
 }
 
-static void *
-ldlm_export_lock_get(cfs_hlist_node_t *hnode)
+static void
+ldlm_export_lock_get(cfs_hash_t *hs, cfs_hlist_node_t *hnode)
 {
         struct ldlm_lock *lock;
-        ENTRY;
 
         lock = cfs_hlist_entry(hnode, struct ldlm_lock, l_exp_hash);
         LDLM_LOCK_GET(lock);
-
-        RETURN(lock);
 }
 
-static void *
-ldlm_export_lock_put(cfs_hlist_node_t *hnode)
+static void
+ldlm_export_lock_put(cfs_hash_t *hs, cfs_hlist_node_t *hnode)
 {
         struct ldlm_lock *lock;
-        ENTRY;
 
         lock = cfs_hlist_entry(hnode, struct ldlm_lock, l_exp_hash);
         LDLM_LOCK_RELEASE(lock);
-
-        RETURN(lock);
 }
 
 static cfs_hash_ops_t ldlm_export_lock_ops = {
@@ -2487,11 +2478,11 @@ static int ldlm_setup(void)
                         GOTO(out_thread, rc);
         }
 
-        rc = ptlrpc_start_threads(NULL, ldlm_state->ldlm_cancel_service);
+        rc = ptlrpc_start_threads(ldlm_state->ldlm_cancel_service);
         if (rc)
                 GOTO(out_thread, rc);
 
-        rc = ptlrpc_start_threads(NULL, ldlm_state->ldlm_cb_service);
+        rc = ptlrpc_start_threads(ldlm_state->ldlm_cb_service);
         if (rc)
                 GOTO(out_thread, rc);
 
@@ -2690,7 +2681,6 @@ EXPORT_SYMBOL(ldlm_cli_cancel_req);
 EXPORT_SYMBOL(ldlm_replay_locks);
 EXPORT_SYMBOL(ldlm_resource_foreach);
 EXPORT_SYMBOL(ldlm_namespace_foreach);
-EXPORT_SYMBOL(ldlm_namespace_foreach_res);
 EXPORT_SYMBOL(ldlm_resource_iterate);
 EXPORT_SYMBOL(ldlm_cancel_resource_local);
 EXPORT_SYMBOL(ldlm_cli_cancel_list_local);

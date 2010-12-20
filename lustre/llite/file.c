@@ -859,6 +859,8 @@ static ssize_t ll_file_io_generic(const struct lu_env *env,
                                 if(cfs_down_interruptible(&lli->lli_write_sem))
                                         GOTO(out, result = -ERESTARTSYS);
                                 write_sem_locked = 1;
+                        } else if (iot == CIT_READ) {
+                                cfs_down_read(&lli->lli_trunc_sem);
                         }
                         break;
                 case IO_SENDFILE:
@@ -876,6 +878,8 @@ static ssize_t ll_file_io_generic(const struct lu_env *env,
                 result = cl_io_loop(env, io);
                 if (write_sem_locked)
                         cfs_up(&lli->lli_write_sem);
+                else if (args->via_io_subtype == IO_NORMAL && iot == CIT_READ)
+                        cfs_up_read(&lli->lli_trunc_sem);
         } else {
                 /* cl_io_rw_init() handled IO */
                 result = io->ci_result;
@@ -2428,7 +2432,7 @@ int ll_inode_permission(struct inode *inode, int mask, struct nameidata *nd)
                 return -EROFS;
         if ((mask & MAY_WRITE) && IS_IMMUTABLE(inode))
                 return -EACCES;
-        if (current->fsuid == inode->i_uid) {
+        if (cfs_curproc_fsuid() == inode->i_uid) {
                 mode >>= 6;
         } else if (1) {
                 if (((mode >> 3) & mask & S_IRWXO) != mask)

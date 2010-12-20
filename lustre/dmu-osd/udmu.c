@@ -1178,8 +1178,7 @@ void udmu_object_links_inc(dmu_buf_t *db, dmu_tx_t *tx)
 {
         znode_phys_t *zp = db->db_data;
 
-        if(tx)
-                dmu_buf_will_dirty(db, tx);
+        dmu_buf_will_dirty(db, tx);
         zp->zp_links++;
 }
 
@@ -1187,9 +1186,9 @@ void udmu_object_links_dec(dmu_buf_t *db, dmu_tx_t *tx)
 {
         znode_phys_t *zp = db->db_data;
 
-        ASSERT(zp->zp_links!=0);
-        if(tx)
-                dmu_buf_will_dirty(db, tx);
+        ASSERT(zp->zp_links != 0);
+
+        dmu_buf_will_dirty(db, tx);
         zp->zp_links--;
 }
 

@@ -72,7 +72,7 @@ static int mdd_links_add(const struct lu_env *env,
                          struct mdd_object *mdd_obj,
                          const struct lu_fid *pfid,
                          const struct lu_name *lname,
-                         struct mdd_thandle *handle);
+                         struct mdd_thandle *handle, int first);
 static int mdd_links_rename(const struct lu_env *env,
                             struct mdd_object *mdd_obj,
                             const struct lu_fid *oldpfid,
@@ -555,6 +555,7 @@ static void __mdd_index_delete(const struct lu_env *env, struct mdd_object *pobj
 static int mdd_changelog_ns_store(const struct lu_env  *env,
                                   struct mdd_device    *mdd,
                                   enum changelog_rec_type type,
+                                  int flags,
                                   struct mdd_object    *target,
                                   struct mdd_object    *parent,
                                   const struct lu_fid  *tf,
@@ -587,7 +588,7 @@ static int mdd_changelog_ns_store(const struct lu_env  *env,
                 RETURN(-ENOMEM);
         rec = (struct llog_changelog_rec *)buf->lb_buf;
 
-        rec->cr.cr_flags = CLF_VERSION;
+        rec->cr.cr_flags = CLF_VERSION | (CLF_FLAGMASK & flags);
         rec->cr.cr_type = (__u32)type;
         tfid = tf ? tf : mdo2fid(target);
         rec->cr.cr_tfid = *tfid;
@@ -670,11 +671,11 @@ static int mdd_link(const struct lu_env *env, struct md_object *tgt_obj,
         la->la_valid = LA_CTIME;
         mdd_attr_check_set_internal(env, mdd_sobj, la, handle, 0);
 
-        mdd_links_add(env, mdd_sobj, mdo2fid(mdd_tobj), lname, handle);
+        mdd_links_add(env, mdd_sobj, mdo2fid(mdd_tobj), lname, handle, 0);
 
         EXIT;
 
-        mdd_changelog_ns_store(env, mdd, CL_HARDLINK, mdd_sobj, mdd_tobj,
+        mdd_changelog_ns_store(env, mdd, CL_HARDLINK, 0, mdd_sobj, mdd_tobj,
                                NULL, lname, handle);
         rc = mdd_tx_end(env, handle);
 
@@ -705,6 +706,8 @@ void mdd_finish_unlink(const struct lu_env *env,
 
         LASSERT(mdd_write_locked(env, obj) != 0);
 
+        /* XXX: read HSM flags, needed to set changelogs flags */
+        /* ma->ma_need = MA_HSM | MA_INODE; */
         ma->ma_valid &= ~MA_INODE;
         rc = mdd_iattr_get(env, obj, ma);
         if (rc) {
@@ -842,7 +845,22 @@ static int mdd_unlink(const struct lu_env *env, struct md_object *pobj,
 
         EXIT;
 
-        mdd_changelog_ns_store(env, mdd, is_dir ? CL_RMDIR : CL_UNLINK,
+#if 0
+        /* XXX: fix to support HSM */
+        if (rc == 0) {
+                int cl_flags;
+
+                cl_flags = (ma->ma_attr.la_nlink == 0) ? CLF_UNLINK_LAST : 0;
+                if ((ma->ma_valid & MA_HSM) &&
+                    (ma->ma_hsm.mh_flags & HS_EXISTS))
+                        cl_flags |= CLF_UNLINK_HSM_EXISTS;
+
+                rc = mdd_changelog_ns_store(env, mdd,
+                         is_dir ? CL_RMDIR : CL_UNLINK, cl_flags,
+                         mdd_cobj, mdd_pobj, NULL, lname, handle);
+        }
+#endif
+        mdd_changelog_ns_store(env, mdd, is_dir ? CL_RMDIR : CL_UNLINK, 0,
                                mdd_cobj, mdd_pobj, NULL, lname, handle);
 
         rc = mdd_tx_end(env, handle);
@@ -850,6 +868,7 @@ static int mdd_unlink(const struct lu_env *env, struct md_object *pobj,
 cleanup:
         mdd_write_unlock(env, mdd_cobj);
         mdd_pdo_write_unlock(env, mdd_pobj, dlh);
+
 #ifdef HAVE_QUOTA_SUPPORT
         if (quota_opc)
                 /* Trigger dqrel on the owner of child and parent. If failed,
@@ -1208,10 +1227,12 @@ cleanup:
         if (tobj)
                 mdd_write_unlock(env, mdd_tobj);
         mdd_pdo_write_unlock(env, mdd_tpobj, dlh);
+
 out_trans:
         /* Bare EXT record with no RENAME in front of it signifies
            a partial slave op */
-        mdd_changelog_ns_store(env, mdd, CL_EXT, mdd_tobj, mdd_tpobj, NULL, lname, handle);
+        mdd_changelog_ns_store(env, mdd, CL_EXT, 0, mdd_tobj, mdd_tpobj,
+                               NULL, lname, handle);
 
         rc = mdd_tx_end(env, handle);
 
@@ -1291,7 +1312,7 @@ static int mdd_create_data(const struct lu_env *env, struct md_object *pobj,
 
         CDEBUG(D_OTHER, "ea %p/%u, cr_flags %o, no_create %u\n",
                spec->u.sp_ea.eadata, spec->u.sp_ea.eadatalen,
-               spec->sp_cr_flags, spec->no_create);
+               (unsigned) spec->sp_cr_flags, spec->no_create);
 
         if (spec->no_create) {
                 /* replay case */
@@ -1405,7 +1426,7 @@ void mdd_object_initialize(const struct lu_env *env, const struct lu_fid *pfid,
                 mdd_tx_idx_insert(env, child, pfid, dotdot, handle);
         }
 
-        mdd_links_add(env, child, pfid, lname, handle);
+        mdd_links_add(env, child, pfid, lname, handle, 1);
 
         EXIT;
 }
@@ -1679,7 +1700,7 @@ static int mdd_create(const struct lu_env *env,
                                S_ISDIR(attr->la_mode) ? CL_MKDIR :
                                S_ISREG(attr->la_mode) ? CL_CREATE :
                                S_ISLNK(attr->la_mode) ? CL_SOFTLINK : CL_MKNOD,
-                               son, mdd_pobj, NULL, lname, handle);
+                               0, son, mdd_pobj, NULL, lname, handle);
 
         rc = mdd_tx_end(env, handle);
 
@@ -1879,7 +1900,7 @@ static int mdd_rename(const struct lu_env *env,
                         tdlh = mdd_pdo_write_lock(env, mdd_tpobj, tname,
                                 MOR_TGT_PARENT);
                 else
-                        tdlh = sdlh;
+                        tdlh = NULL;
         } else if (rc == MDD_RN_SRCTGT) {
                 sdlh = mdd_pdo_write_lock(env, mdd_spobj, sname,MOR_SRC_PARENT);
                 tdlh = mdd_pdo_write_lock(env, mdd_tpobj, tname,MOR_TGT_PARENT);
@@ -1887,8 +1908,10 @@ static int mdd_rename(const struct lu_env *env,
                 tdlh = mdd_pdo_write_lock(env, mdd_tpobj, tname,MOR_SRC_PARENT);
                 sdlh = mdd_pdo_write_lock(env, mdd_spobj, sname,MOR_TGT_PARENT);
         }
+#if 0
         if (sdlh == NULL || tdlh == NULL)
                 GOTO(unlock_parents, rc = -ENOMEM);
+#endif
 
         /*
          * source object and target one may have few parents,
@@ -1982,16 +2005,16 @@ static int mdd_rename(const struct lu_env *env,
                 if (rc == -ENOENT)
                         /* Old files might not have EA entry */
                         mdd_links_add(env, mdd_sobj, mdo2fid(mdd_spobj),
-                                      lsname, handle);
+                                      lsname, handle, 0);
                 /* We don't fail the transaction if the link ea can't be
                    updated -- fid2path will use alternate lookup method. */
         }
 
         EXIT;
 
-        mdd_changelog_ns_store(env, mdd, CL_RENAME, mdd_tobj, mdd_spobj,
+        mdd_changelog_ns_store(env, mdd, CL_RENAME, 0, mdd_tobj, mdd_spobj,
                                lf, lsname, handle);
-        mdd_changelog_ns_store(env, mdd, CL_EXT, mdd_tobj,
+        mdd_changelog_ns_store(env, mdd, CL_EXT, 0, mdd_tobj,
                                mdd_tpobj, lf, ltname, handle);
 
         rc = mdd_tx_end(env, handle);
@@ -2001,8 +2024,7 @@ unlock:
                 mdd_write_unlock(env, mdd_tobj);
         mdd_write_unlock(env, mdd_sobj);
 
-unlock_parents:
-        if (likely(tdlh) && sdlh != tdlh)
+        if (likely(tdlh))
                 mdd_pdo_write_unlock(env, mdd_tpobj, tdlh);
         if (likely(sdlh))
                 mdd_pdo_write_unlock(env, mdd_spobj, sdlh);
@@ -2161,7 +2183,7 @@ static int mdd_links_add(const struct lu_env *env,
                          struct mdd_object *mdd_obj,
                          const struct lu_fid *pfid,
                          const struct lu_name *lname,
-                         struct mdd_thandle *handle)
+                         struct mdd_thandle *handle, int first)
 {
         struct lu_buf *buf;
         struct link_ea_header *leh;
@@ -2171,7 +2193,7 @@ static int mdd_links_add(const struct lu_env *env,
         if (!mdd_linkea_enable)
                 RETURN(0);
 
-        buf = mdd_links_get(env, mdd_obj);
+        buf = first ? ERR_PTR(-ENODATA) : mdd_links_get(env, mdd_obj);
         if (IS_ERR(buf)) {
                 rc = PTR_ERR(buf);
                 if (rc != -ENODATA) {
@@ -2307,5 +2329,5 @@ const struct md_dir_operations mdd_dir_ops = {
         .mdo_name_remove   = mdd_name_remove,
         .mdo_rename_tgt    = mdd_rename_tgt,
 #endif
-        .mdo_create_data   = mdd_create_data
+        .mdo_create_data   = mdd_create_data,
 };

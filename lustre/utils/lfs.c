@@ -292,18 +292,12 @@ static int lfs_setstripe(int argc, char **argv)
         st_offset = -1;
         st_count = 0;
 
-#if LUSTRE_VERSION < OBD_OCD_VERSION(2,1,0,0)
+#if LUSTRE_VERSION < OBD_OCD_VERSION(2,4,50,0)
         if (argc == 5 && argv[1][0] != '-' &&
             isnumber(argv[2]) && isnumber(argv[3]) && isnumber(argv[4])) {
-                fprintf(stderr, "warning: deprecated usage of setstripe "
+                fprintf(stderr, "error: obsolete usage of setstripe "
                         "positional parameters.  Use -c, -i, -s instead.\n");
-                /* for compatibility with the existing positional parameter
-                 * usage */
-                fname = argv[1];
-                stripe_size_arg = argv[2];
-                stripe_off_arg = argv[3];
-                stripe_count_arg = argv[4];
-                optind = 4;
+                return CMD_HELP;
         } else
 #else
 #warning "remove obsolete positional parameter code"
@@ -860,7 +854,10 @@ static int lfs_getstripe(int argc, char **argv)
                         }
                         break;
                 case 'p':
-                        param.verbose |= VERBOSE_POOL;
+                        if (!(param.verbose & VERBOSE_DETAIL)) {
+                                param.verbose |= VERBOSE_POOL;
+                                param.maxdepth = 0;
+                        }
                         break;
                 case 'M':
                         param.get_mdt_index = 1;
@@ -974,8 +971,8 @@ static int showdf(char *mntdir, struct obd_statfs *stat,
                         total = (stat->os_blocks * stat->os_bsize) >> shift;
                 }
 
-                if (total > 0)
-                        ratio = (double)used / (double)total;
+                if ((used + avail) > 0)
+                        ratio = (double)used / (double)(used + avail);
 
                 if (cooked) {
                         int i;
@@ -1007,7 +1004,7 @@ static int showdf(char *mntdir, struct obd_statfs *stat,
                         sprintf(abuf, CDF, avail);
                 }
 
-                sprintf(rbuf, RDF, (int)(ratio * 100));
+                sprintf(rbuf, RDF, (int)(ratio * 100 + 0.5));
                 printf(UUF" "CSF" "CSF" "CSF" "RSF" %-s",
                        uuid, tbuf, ubuf, abuf, rbuf, mntdir);
                 if (type)
@@ -1082,18 +1079,14 @@ static int mntdf(char *mntdir, char *fsname, char *pool, int ishow, int cooked)
                         /* the llapi_obd_statfs() call may have returned with
                          * an error, but if it filled in uuid_buf we will at
                          * lease use that to print out a message for that OBD.
-                         * If we didn't even fill in uuid_buf something is
-                         * definitely incorrect and no point in continuing. */
-                        if (uuid_buf.uuid[0] != '\0') {
-                                showdf(mntdir,&stat_buf,obd_uuid2str(&uuid_buf),
-                                       ishow, cooked, tp->st_name, index, rc);
-                        } else {
-                                char tmp_uuid[12];
+                         * If we didn't get anything in the uuid_buf, then fill
+                         * it in so that we can print an error message. */
+                        if (uuid_buf.uuid[0] == '\0')
+                                sprintf(uuid_buf.uuid, "%s%04x",
+					tp->st_name, index);
+			showdf(mntdir,&stat_buf,obd_uuid2str(&uuid_buf),
+			       ishow, cooked, tp->st_name, index, rc);
 
-                                sprintf(tmp_uuid, "%s%04x", tp->st_name, index);
-                                showdf(mntdir, &stat_buf, tmp_uuid,
-                                       ishow, cooked, tp->st_name, index, rc);
-                        }
                         if (rc == 0) {
                                 if (tp->st_op == LL_STATFS_MDC) {
                                         sum.os_ffree += stat_buf.os_ffree;

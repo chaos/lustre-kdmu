@@ -110,30 +110,9 @@ AC_DEFINE(HAVE_SHOW_TASK, 1, [show_task is exported])
 ])
 ])
 
-# check userland & kernel __u64 type
-AC_DEFUN([LIBCFS_U64_LONG_LONG],
-[AC_MSG_CHECKING([u64 is long long type])
-tmp_flags="$CFLAGS"
-CFLAGS="$CFLAGS -Werror"
-AC_COMPILE_IFELSE([
-	#include <stdio.h>
-	#include <linux/types.h>
-	#include <linux/stddef.h>
-	int main(void) {
-		unsigned long long *data1;
-		__u64 *data2 = NULL;
-
-		data1 = data2;
-		return 0;
-	}
-],[
-	AC_MSG_RESULT([yes])
-        AC_DEFINE(HAVE_USER__U64_LONG_LONG, 1,
-                  [__u64 is long long type])
-],[
-	AC_MSG_RESULT([no])
-])
-CFLAGS="$tmp_flags"
+# check kernel __u64 type
+AC_DEFUN([LIBCFS_U64_LONG_LONG_LINUX],
+[
 AC_MSG_CHECKING([kernel __u64 is long long type])
 tmp_flags="$EXTRA_KCFLAGS"
 EXTRA_KCFLAGS="$EXTRA_KCFLAGS -Werror"
@@ -621,6 +600,34 @@ LB_LINUX_TRY_COMPILE([
 ])
 
 #
+# LIBCFS_STACKTRACE_OPS_HAVE_WALK_STACK
+#
+# 2.6.32-30.el6 adds a new 'walk_stack' field in 'struct stacktrace_ops'
+#
+AC_DEFUN([LIBCFS_STACKTRACE_OPS_HAVE_WALK_STACK],
+[AC_MSG_CHECKING([if 'struct stacktrace_ops' has 'walk_stack' field])
+LB_LINUX_TRY_COMPILE([
+        #include <asm/stacktrace.h>
+	unsigned long walkstack(struct thread_info *tinfo,
+                                           unsigned long *stack,
+                                           unsigned long bp,
+                                           const struct stacktrace_ops *ops,
+                                           void *data,
+                                           unsigned long *end,
+                                           int *graph);
+],[
+        struct stacktrace_ops ops;
+
+	ops.walk_stack = walkstack;
+],[
+        AC_MSG_RESULT([yes])
+        AC_DEFINE(STACKTRACE_OPS_HAVE_WALK_STACK, 1, ['struct stacktrace_ops' has 'walk_stack' field])
+],[
+        AC_MSG_RESULT([no])
+])
+])
+
+#
 # LIBCFS_PROG_LINUX
 #
 # LNet linux kernel checks
@@ -632,7 +639,7 @@ LIBCFS_TYPE_GFP_T
 LIBCFS_CONFIG_PANIC_DUMPLOG
 
 LIBCFS_FUNC_SHOW_TASK
-LIBCFS_U64_LONG_LONG
+LIBCFS_U64_LONG_LONG_LINUX
 LIBCFS_TASK_RCU
 # 2.6.18
 LIBCFS_TASKLIST_LOCK
@@ -666,6 +673,8 @@ LIBCFS_STRUCT_CRED_IN_TASK
 # 2.6.30
 LIBCFS_FUNC_UNSHARE_FS_STRUCT
 LIBCFS_SOCK_MAP_FD_2ARG
+# 2.6.32
+LIBCFS_STACKTRACE_OPS_HAVE_WALK_STACK
 ])
 
 #
@@ -750,6 +759,30 @@ AC_CHECK_TYPE([__s64],
 	[AC_DEFINE(HAVE___S64, 1, [__s64 is defined])],
 	[],
 	[#include <asm/types.h>])
+
+# check userland __u64 type
+AC_MSG_CHECKING([userspace __u64 is long long type])
+tmp_flags="$CFLAGS"
+CFLAGS="$CFLAGS -Werror"
+AC_COMPILE_IFELSE([
+	#include <stdio.h>
+	#include <linux/types.h>
+	#include <linux/stddef.h>
+	int main(void) {
+		unsigned long long *data1;
+		__u64 *data2 = NULL;
+
+		data1 = data2;
+		return 0;
+	}
+],[
+	AC_MSG_RESULT([yes])
+        AC_DEFINE(HAVE_USER__U64_LONG_LONG, 1,
+                  [__u64 is long long type])
+],[
+	AC_MSG_RESULT([no])
+])
+CFLAGS="$tmp_flags"
 
 # --------  Check for required packages  --------------
 

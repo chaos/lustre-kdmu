@@ -431,6 +431,7 @@ struct lustre_sb_info {
         char                     *lsi_osd_type;
         char                      lsi_mconf_obdname[64];
         char                      lsi_mconf_uuid[64];
+        struct backing_dev_info   bdi;         /* Each client mountpoint needs own backing_dev_info */
 };
 
 #if !defined(__sun__)
