@@ -198,7 +198,7 @@ test_6() {
     sync
     # let the delete happen
     wait_mds_ost_sync || return 4
-    wait_destroy_complete || return 5
+    wait_delete_completed || return 5
     after=`kbytesfree`
     log "before: $before after: $after"
     (( $before <= $after + 40 )) || return 3	# take OST logs into account
@@ -225,7 +225,7 @@ test_7() {
     sync
     # let the delete happen
     wait_mds_ost_sync || return 4
-    wait_destroy_complete || return 5
+    wait_delete_completed || return 5
     after=`kbytesfree`
     log "before: $before after: $after"
     (( $before <= $after + 40 )) || return 3	# take OST logs into account
