@@ -441,12 +441,13 @@ struct lustre_sb_info {
         struct dt_device         *lsi_dt_dev;  /* dt device to access disk fs*/
         void                     *lsi_vfsp;    /* ptr to OS specific vfs data*/
         cfs_atomic_t              lsi_mounts;  /* references to the srv_mnt */
-        struct backing_dev_info   bdi;         /* Each client mountpoint needs own backing_dev_info */
+        struct backing_dev_info   lsi_bdi;     /* each client mountpoint needs own backing_dev_info */
 };
 
 #define LSI_SERVER                       0x00000001
 #define LSI_UMOUNT_FORCE                 0x00000010
 #define LSI_UMOUNT_FAILOVER              0x00000020
+#define LSI_BDI_INITIALIZED              0x00000040
 
 #if !defined(__sun__)
 #define     s2lsi(sb)        ((struct lustre_sb_info *)((sb)->s_fs_info))

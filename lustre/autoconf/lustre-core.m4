@@ -1902,18 +1902,28 @@ LB_LINUX_TRY_COMPILE([
 ])
 ])
 
-# 2.6.32 has new BDI interface.
-AC_DEFUN([LC_NEW_BACKING_DEV_INFO],
-[AC_MSG_CHECKING([if backing_dev_info has a wb_cnt field])
-LB_LINUX_TRY_COMPILE([
-        #include <linux/backing-dev.h>
+# 2.6.32 has bdi_register() functions.
+AC_DEFUN([LC_EXPORT_BDI_REGISTER],
+[LB_CHECK_SYMBOL_EXPORT([bdi_register],
+[mm/backing-dev.c],[
+        AC_DEFINE(HAVE_BDI_REGISTER, 1,
+                [bdi_register function is present])
 ],[
-        struct backing_dev_info bdi;
-        bdi.wb_cnt = 0;
+])
+])
+
+# 2.6.32 add s_bdi for super block
+AC_DEFUN([LC_SB_BDI],
+[AC_MSG_CHECKING([if super_block has s_bdi field])
+LB_LINUX_TRY_COMPILE([
+        #include <linux/fs.h>
+],[
+        struct super_block sb;
+        sb.s_bdi = NULL;
 ],[
         AC_MSG_RESULT(yes)
-        AC_DEFINE(HAVE_NEW_BACKING_DEV_INFO, 1,
-                  [backing_dev_info has a wb_cnt field])
+        AC_DEFINE(HAVE_SB_BDI, 1,
+                  [super_block has s_bdi field])
 ],[
         AC_MSG_RESULT(no)
 ])
@@ -2085,8 +2095,9 @@ AC_DEFUN([LC_PROG_LINUX],
          LC_BLK_QUEUE_LOG_BLK_SIZE
 
          # 2.6.32
+         LC_EXPORT_BDI_REGISTER
+         LC_SB_BDI
          LC_REQUEST_QUEUE_LIMITS
-         LC_NEW_BACKING_DEV_INFO
          LC_BLK_QUEUE_MAX_SECTORS
          LC_BLK_QUEUE_MAX_SEGMENTS
 
