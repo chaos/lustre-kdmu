@@ -271,6 +271,28 @@ AC_CONFIG_SUBDIRS(lustre-iokit)
 #
 # Handle internal/external ldiskfs
 #
+#
+# LB_PATH_LDISKFS
+# --with-ldiskfs       -  Enable ldiskfs support and attempt to autodetect the
+# --with-ldiskfs=yes      ldiskfs headers in one of the following places in this
+#                         order:
+#                         * ./ldiskfs
+#                         * /usr/src/lustre-ldiskfs-*/$LINUXRELEASE
+#                         * ../ldiskfs
+#
+# --with-ldiskfs=path  - Enable ldiskfs support and use the ldiskfs headers in
+#                        the provided path.  No autodetection is performed.
+#
+# --with-ldiskfs-obj   - When ldiskfs support is enabled the object directory
+#                        will be based on the --with-ldiskfs directory.  If this
+#                        is detected incorrectly it can be explicitly
+#                        specified using this option.
+#
+# NOTE: As with all external packages ldiskfs is expected to already be
+# configured and built.  However, if the ldiskfs tree is located in-tree
+# (./ldiskfs) then it will be configured and built recursively as part of
+# the lustre build system.
+#
 AC_DEFUN([LB_PATH_LDISKFS],
 [AC_ARG_WITH([ldiskfs],
 	AC_HELP_STRING([--with-ldiskfs=path],
@@ -289,12 +311,33 @@ AC_ARG_WITH([ldiskfs-inkernel],
 AC_MSG_CHECKING([location of ldiskfs])
 case x$with_ldiskfs in
 	xyes)
-		AC_MSG_RESULT([internal])
-		LB_CHECK_FILE([$srcdir/ldiskfs/lustre-ldiskfs.spec.in],[],[
-			AC_MSG_ERROR([A complete internal ldiskfs was not found.])
-		])
-		LDISKFS_SUBDIR="ldiskfs"
-		LDISKFS_DIR="$PWD/ldiskfs"
+		LDISKFS_DIR=
+
+		# Check ./ldiskfs
+		ldiskfs_src=$PWD/ldiskfs
+		if test -e "$ldiskfs_src"; then
+			LB_CHECK_FILE([$ldiskfs_src/lustre-ldiskfs.spec.in],[
+				LDISKFS_SUBDIR="ldiskfs"
+				AC_CONFIG_SUBDIRS(ldiskfs)
+			],[
+	                        AC_MSG_ERROR([A complete internal ldiskfs was not found.])
+				ldiskfs_src=
+			])
+		else
+			# Check /usr/src/lustre-ldiskfs-*/$LINUXRELEASE
+			ldiskfs_src=$(ls -d /usr/src/lustre-ldiskfs-*/$LINUXRELEASE \
+					2>/dev/null | tail -1)
+			if ! test -e "$ldiskfs_src"; then
+                                ldiskfs_src=$PWD/../ldiskfs
+                        fi
+                fi
+		if test -e "$ldiskfs_src"; then
+			LDISKFS_DIR=$(readlink -f $ldiskfs_src)
+			AC_MSG_RESULT([$ldiskfs_src])
+		else
+			AC_MSG_ERROR([Could not locate ldiskfs.])
+		fi
+
 		;;
 	xno)
 		AC_MSG_RESULT([disabled])
@@ -307,7 +350,7 @@ case x$with_ldiskfs in
 		;;
 	*)
 		AC_MSG_RESULT([$with_ldiskfs])
-		LB_CHECK_FILE([$with_ldiskfs/ldiskfs/inode.c],[],[
+		LB_CHECK_FILE([$with_ldiskfs/ldiskfs/xattr.h],[],[
 			AC_MSG_ERROR([A complete (built) external ldiskfs was not found.])
 		])
 		LDISKFS_DIR=$with_ldiskfs
@@ -323,7 +366,6 @@ if test x$enable_ext4 = xyes ; then
 fi
 
 # We have to configure even if we don't build here for make dist to work
-AC_CONFIG_SUBDIRS(ldiskfs)
 ])
 
 AC_DEFUN([LC_KERNEL_WITH_EXT4],

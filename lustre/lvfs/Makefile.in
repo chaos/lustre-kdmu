@@ -13,6 +13,6 @@ EXTRA_DIST = $(lvfs-objs:.o=.c) \
 	lvfs_internal.h lvfs_userfs.c
 
 # for <ext3/xattr.h> on 2.6
-EXTRA_PRE_CFLAGS := -I@LINUX@/fs -I@LDISKFS_DIR@ -I@LDISKFS_DIR@/ldiskfs
+EXTRA_PRE_CFLAGS := -I@LINUX@/fs -I@LDISKFS_DIR@ -I@LDISKFS_DIR@/ldiskfs -I@LDISKFS_DIR@/include
 
 @INCLUDE_RULES@
