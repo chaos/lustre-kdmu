@@ -110,6 +110,12 @@ struct osd_ctxt {
 #define OSD_EXEC_OP(oh,op)
 #endif
 
+#ifndef HAVE_PAGE_CONSTANT
+#define mapping_cap_page_constant_write(mapping) 0
+#define SetPageConstant(page) do {} while (0)
+#define ClearPageConstant(page) do {} while (0)
+#endif
+
 struct osd_thandle {
         struct thandle          ot_super;
         handle_t               *ot_handle;
